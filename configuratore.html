@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADA v6.17.5 - Configuratore</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .card h1 {
+            color: #1e3a5f;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .card p.subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #2d5a87;
+        }
+        .btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #c24e17 0%, #f59d1d 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f5f7fa;
+            border-radius: 8px;
+        }
+        .result h3 {
+            color: #1e3a5f;
+            margin-bottom: 15px;
+        }
+        .result-field {
+            margin-bottom: 15px;
+        }
+        .result-field label {
+            display: block;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .result-field textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+        .copy-btn {
+            background: #1e3a5f;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+        .copy-btn:hover { background: #2d5a87; }
+        .instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: #e8f4f8;
+            border-radius: 8px;
+            border-left: 4px solid #1e3a5f;
+        }
+        .instructions h4 {
+            color: #1e3a5f;
+            margin-bottom: 15px;
+        }
+        .instructions ol {
+            padding-left: 20px;
+            color: #555;
+            line-height: 1.8;
+        }
+        .success-msg {
+            color: #10b981;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔐 ADA v6.17.5 - Configuratore</h1>
+        <p class="subtitle">Crittografa la tua API Key OpenAI</p>
+        
+        <div class="form-group">
+            <label>API Key OpenAI</label>
+            <input type="text" id="apiKey" placeholder="sk-...">
+        </div>
+        
+        <div class="form-group">
+            <label>Password (per accedere all'app)</label>
+            <input type="password" id="password" placeholder="Scegli una password sicura">
+        </div>
+        
+        <div class="form-group">
+            <label>Conferma Password</label>
+            <input type="password" id="passwordConfirm" placeholder="Ripeti la password">
+        </div>
+        
+        <button class="btn" onclick="encrypt()">🔒 Crittografa</button>
+        
+        <div class="result" id="result">
+            <h3>✅ Chiave Crittografata</h3>
+            
+            <div class="result-field">
+                <label>ENCRYPTED_KEY</label>
+                <textarea id="encryptedKey" rows="3" readonly></textarea>
+                <button class="copy-btn" onclick="copyToClipboard('encryptedKey')">📋 Copia</button>
+            </div>
+            
+            <div class="result-field">
+                <label>SALT</label>
+                <textarea id="salt" rows="2" readonly></textarea>
+                <button class="copy-btn" onclick="copyToClipboard('salt')">📋 Copia</button>
+            </div>
+            
+            <p class="success-msg" id="copyMsg" style="display:none;">✅ Copiato negli appunti!</p>
+        </div>
+        
+        <div class="instructions">
+            <h4>📋 Istruzioni</h4>
+            <ol>
+                <li>Inserisci la tua API Key OpenAI e scegli una password</li>
+                <li>Clicca "Crittografa" per generare i valori</li>
+                <li>Apri il file <code>config.js</code> nella cartella ADA v6.17.5</li>
+                <li>Sostituisci <code>%%ENCRYPTED_KEY%%</code> con il valore ENCRYPTED_KEY</li>
+                <li>Sostituisci <code>%%SALT%%</code> con il valore SALT</li>
+                <li>Salva il file e apri <code>index.html</code> per usare l'app</li>
+            </ol>
+        </div>
+    </div>
+    
+    <script>
+        async function encrypt() {
+            const apiKey = document.getElementById('apiKey').value;
+            const password = document.getElementById('password').value;
+            const passwordConfirm = document.getElementById('passwordConfirm').value;
+            
+            if (!apiKey || !apiKey.startsWith('sk-')) {
+                alert('Inserisci una API Key OpenAI valida (inizia con sk-)');
+                return;
+            }
+            
+            if (!password || password.length < 6) {
+                alert('La password deve essere di almeno 6 caratteri');
+                return;
+            }
+            
+            if (password !== passwordConfirm) {
+                alert('Le password non corrispondono');
+                return;
+            }
+            
+            // Generate random salt
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const saltB64 = btoa(String.fromCharCode(...salt));
+            
+            // Derive key using PBKDF2
+            const encoder = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                'PBKDF2',
+                false,
+                ['deriveKey']
+            );
+            
+            const key = await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt']
+            );
+            
+            // Generate IV and encrypt
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const encrypted = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                encoder.encode(apiKey)
+            );
+            
+            // Combine IV + encrypted data
+            const combined = new Uint8Array(iv.length + encrypted.byteLength);
+            combined.set(iv);
+            combined.set(new Uint8Array(encrypted), iv.length);
+            
+            const encryptedB64 = btoa(String.fromCharCode(...combined));
+            
+            // Display results
+            document.getElementById('encryptedKey').value = encryptedB64;
+            document.getElementById('salt').value = saltB64;
+            document.getElementById('result').style.display = 'block';
+        }
+        
+        function copyToClipboard(elementId) {
+            const textarea = document.getElementById(elementId);
+            textarea.select();
+            document.execCommand('copy');
+            
+            const msg = document.getElementById('copyMsg');
+            msg.style.display = 'block';
+            setTimeout(() => msg.style.display = 'none', 2000);
+        }
+    </script>
+</body>
+</html>

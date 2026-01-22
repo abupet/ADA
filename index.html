@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ADA v6.17.5 - AI Driven Abupet</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-card">
+            <img src="logo-abupet.png" alt="ADA Logo" class="login-logo">
+            <h1>ADA v6.17.4</h1>
+            <p>AI Driven Abupet</p>
+            <input type="password" id="passwordInput" placeholder="Password" onkeypress="if(event.key==='Enter')login()">
+            <button class="btn btn-primary" onclick="login()">Accedi</button>
+            <p id="loginError" class="error" style="display:none;">Password errata</p>
+        </div>
+    </div>
+
+    <!-- App Container -->
+    <div id="appContainer" class="app-container">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <img src="logo-abupet.png" alt="ADA" class="sidebar-logo">
+                <span class="sidebar-title">ADA</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">VISITA</div>
+                <div class="nav-item active" data-page="recording">🎙️ Visita</div>
+                <div class="nav-item" data-page="soap">📋 Referto</div>
+                                
+                <div class="nav-section">PAZIENTE</div>
+                <div class="nav-item" data-page="patient">🐾 Dati Pet</div>
+                <div class="nav-item" data-page="photos">📷 Foto</div>
+                <div class="nav-item" data-page="vitals">📊 Parametri Vitali</div>
+                <div class="nav-item" data-page="diary">📔 Diario Clinico</div>
+                <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
+                                <div class="nav-item" data-page="history">📁 Archivio <span class="badge" id="historyBadge">0</span></div>
+                
+                <div class="nav-section">CURA</div>
+                <div class="nav-item" data-page="medications">💊 Farmaci</div>
+                <div class="nav-item" data-page="appointment">📅 Appuntamento</div>
+                
+                <div class="nav-section">SISTEMA</div>
+                <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
+                <div class="nav-item" onclick="logout()">🚪 Esci</div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="topbar">
+                <div class="topbar-left">
+                    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+                </div>
+                <div class="topbar-center">
+                    <div class="selected-pet-header" data-selected-pet-header></div>
+                </div>
+                <div class="topbar-right">
+                    <img src="logo-anicura.png" alt="AniCura" class="topbar-logo">
+                </div>
+            </div>
+            
+            <!-- Hidden image for PDF export -->
+            <img id="anicuraLogoImg" src="logo-anicura.png" style="display:none;" crossorigin="anonymous">
+            
+            <!-- Page: Recording -->
+            <div id="page-recording" class="page active">
+                <div class="page-header">
+                    <h2>🎙️ Visita</h2>
+                </div>
+                <div class="card">
+                    <div class="form-group">
+                        <label>Modello referto</label>
+                        <select id="templateSelector" onchange="onTemplateChange(this.value)">
+                            <option value="generale">Visita Generale</option>
+                            <option value="dermatologia">Dermatologia</option>
+                            <option value="postchirurgico">Post-Chirurgico</option>
+                            <option value="emergenza">Pronto Soccorso</option>
+                            <option value="vaccinazione">Vaccinazione</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="record-section">
+                        <button id="recordBtn" class="record-btn" onclick="toggleRecording()">🎤</button>
+                        <div id="timer" class="timer">00:00</div>
+                        <div id="visualizer" class="visualizer"></div>
+                        <p id="recordingStatus" class="recording-status">Premi per registrare</p>
+
+                        <!-- Chunk recording runtime info (visible when chunking is enabled) -->
+                        <div id="chunkingRuntime" class="chunking-runtime" style="display:none;">
+                            <div class="chunking-badges">
+                                <span id="chunkProfileBadge" class="chip">Profilo: —</span>
+                                <span id="chunkDurationBadge" class="chip">Chunk: —</span>
+                                <span id="chunkMimeBadge" class="chip">mimeType: —</span>
+                                <span id="chunkingOnBadge" class="chip chip-green">Chunking ON</span>
+                            </div>
+                            <div class="chunking-status">
+                                <div id="chunkTimerLine" class="chunking-line">Chunk: 00:00 / 00:00</div>
+                                <div id="chunkQueueLine" class="chunking-line">In coda: 0 • In trascrizione: 0</div>
+                                <div id="chunkWarnLine" class="chunking-warn" style="display:none;">⚠️ Tra —s spezzetto il chunk</div>
+                            </div>
+                        </div>
+                        
+                        
+                        <div class="record-controls">
+                            <button id="btnPause" class="btn btn-secondary" onclick="pauseRecording()" disabled>⏸️ Pausa</button>
+                            <button id="btnResume" class="btn btn-secondary" onclick="resumeRecording()" disabled>▶️ Riprendi</button>
+                            <button id="btnCancel" class="btn btn-danger" onclick="cancelVisitProcess()" disabled>✖️ Annulla</button>
+                        </div>
+
+                        
+                        <div class="upload-section">
+                            <p style="margin: 15px 0 10px; color: #666;">oppure</p>
+                            <div class="button-row">
+                                <button class="btn btn-secondary" onclick="triggerAudioUpload()">📁 Carica audio</button>
+                                <button class="btn btn-secondary" onclick="triggerTextUpload()">📄 Carica testo</button>
+                            </div>
+
+                            <!-- Debug-only test tools -->
+                            <input type="file" id="audioFileInput" accept="audio/*,.mp3,.wav,.webm,.ogg,.m4a" style="display:none" onchange="handleAudioUpload(event)">
+                            <input type="file" id="textFileInput" accept=".txt,.text" style="display:none" onchange="handleTextUpload(event)">
+                            <p style="font-size: 12px; color: #888; margin-top: 5px;">Audio: MP3, WAV, WEBM, OGG, M4A | Testo: TXT</p>
+
+                            <!-- Debug-only test helpers (visible only when Debug attivo è ON) -->
+                            <div id="debugTestTools" style="display:none; margin-top: 12px;">
+                                <p style="margin: 10px 0 8px; color: #666; font-size: 12px;">🧪 Strumenti di test (debug)</p>
+                                <div class="button-row">
+                                    <button class="btn btn-secondary" onclick="triggerLongAudioTestUpload()">🧪 Carica audio lungo (test chunking)</button>
+                                    <button class="btn btn-secondary" onclick="triggerLongTextTestUpload()">🧪 Carica testo lungo (test append)</button>
+                                </div>
+                                <input type="file" id="longAudioTestInput" accept="audio/*,.webm,.mp3,.wav,.m4a,.mp4,.ogg" style="display:none" onchange="handleLongAudioTestUpload(event)">
+                                <input type="file" id="longTextTestInput" accept=".txt,.text" style="display:none" onchange="handleLongTextTestUpload(event)">
+                                <p style="font-size: 11px; color: #888; margin-top: 6px;">Audio test: processa il file come se fossero chunk. Testo test: simula arrivo incrementale per stressare append/persistenza.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card" id="transcriptionCard" style="display:none;">
+                    <h3 id="transcriptionTitle">Testo trascritto</h3>
+                    <div class="textarea-wrapper">
+                        <textarea id="transcriptionText" placeholder="La trascrizione o il testo caricato appariranno qui..." rows="8"></textarea>
+                        <!-- Hidden legacy input (v6.17.x): used by generateSOAPFromPaste() as optional source -->
+                        <textarea id="pasteText" style="display:none"></textarea>
+                        <button class="expand-btn" onclick="expandTextarea('transcriptionText', 'Trascrizione')">⛶</button>
+                    </div>
+                    <div id="transcriptionReadOnlyNote" class="readonly-note" style="display:none;">
+                        🔒 Questo testo è in sola lettura perché proviene da una trascrizione audio. Se vuoi correggerlo, modifica un file TXT e ricaricalo con “Carica file testo”.
+                    </div>
+                    <div id="generateSoapRow" class="button-row" style="margin-top: 10px; display:none;">
+                        <button id="btnGenerateSoap" class="btn btn-primary" onclick="generateSOAP()">📋 Genera Referto</button>
+                    </div>
+                    <div id="autoSoapCompleteRow" class="button-row" style="margin-top: 10px; display:none;">
+                        <button id="btnOpenSoap" class="btn btn-success" onclick="navigateToPage('soap')">📋 Apri il referto</button>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Page: SOAP -->
+            <div id="page-soap" class="page">
+                <div class="page-header">
+                    <h2>📋 Referto</h2>
+                </div>
+                <div class="card">
+                    <h3 id="soapTemplateTitle">Visita Generale</h3>
+                    
+                    <div class="lang-selector" id="soapLangSelector">
+                        <button class="lang-btn active" data-lang="IT">IT</button>
+                        <button class="lang-btn" data-lang="EN">EN</button>
+                        <button class="lang-btn" data-lang="DE">DE</button>
+                        <button class="lang-btn" data-lang="FR">FR</button>
+                        <button class="lang-btn" data-lang="ES">ES</button>
+                    </div>
+
+                    <div class="hide-empty-row">
+                        <label class="switch" title="Nasconde campi vuoti e sezioni completamente vuote (solo nella UI)">
+                            <input type="checkbox" id="hideEmptyToggle" onchange="setHideEmptyFields(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="hide-empty-label">Nascondi campi non compilati</span>
+                    </div>
+                    
+                    <div class="soap-section soap-s">
+                        <div class="soap-label">S</div>
+                        <label id="labelSoapS">Soggettivo</label>
+                        <div class="textarea-wrapper">
+                            <textarea id="soap-s" rows="4" placeholder="Sintomi riferiti dal proprietario..."></textarea>
+                            <button class="expand-btn" onclick="expandTextarea('soap-s', 'Soggettivo')">⛶</button>
+                        </div>
+                    </div>
+                    
+                    <div class="soap-section soap-o">
+                        <div class="soap-label">O</div>
+                        <label id="labelSoapO">Oggettivo</label>
+                        <div class="textarea-wrapper">
+                            <textarea id="soap-o" rows="4" placeholder="Esame obiettivo..."></textarea>
+                            <button class="expand-btn" onclick="expandTextarea('soap-o', 'Oggettivo')">⛶</button>
+                        </div>
+                    </div>
+                    
+                    <div class="soap-section soap-a">
+                        <div class="soap-label">A</div>
+                        <label id="labelSoapA">Analisi clinica</label>
+                        <div class="textarea-wrapper">
+                            <textarea id="soap-a" rows="4" placeholder="Diagnosi/valutazione..."></textarea>
+                            <button class="expand-btn" onclick="expandTextarea('soap-a', 'Analisi clinica')">⛶</button>
+                        </div>
+                    </div>
+                    
+                    <div class="soap-section soap-p">
+                        <div class="soap-label">P</div>
+                        <label id="labelSoapP">Piano</label>
+                        <div class="textarea-wrapper">
+                            <textarea id="soap-p" rows="4" placeholder="Piano terapeutico..."></textarea>
+                            <button class="expand-btn" onclick="expandTextarea('soap-p', 'Piano')">⛶</button>
+                        </div>
+                    </div>
+
+                    <!-- Template-specific extra fields (8B) -->
+                    <div id="extrasSection" class="extras-section">
+                        <h4 style="margin: 10px 0 8px;">🧩 Dati clinici specialistici</h4>
+                        <div id="extrasFields"></div>
+                    </div>
+                    
+                    <!-- Checklist Esame -->
+                    <div class="checklist-collapsible" id="checklistCollapsible">
+                        <button class="checklist-toggle" onclick="toggleChecklist()">
+                            ✅ Checklist (template) <span class="toggle-icon">▼</span>
+                        </button>
+                        <div class="checklist-content">
+                            <p style="margin:0 0 10px;color:#666;font-size:12px;">Clicca un item per ciclare: <strong>non deducibile</strong> → <strong>sì</strong> → <strong>no</strong>.</p>
+                            <div class="checklist-grid" id="checklistGrid"></div>
+                            <button class="btn btn-secondary btn-small" onclick="resetChecklist()">🔄 Reset</button>
+                        </div>
+                    </div>
+                    
+                    <div class="soap-actions">
+                        <button class="btn btn-success" onclick="saveSOAP()">💾 Salva</button>
+                        <button class="btn btn-secondary" onclick="exportTXT()">📄 TXT</button>
+                        <button class="btn btn-secondary" onclick="exportPDF()">📑 PDF</button>
+                    </div>
+                    
+                    <div class="soap-actions" style="margin-top: 10px;">
+                        <button id="btnSpeakSOAP" class="btn btn-primary" onclick="speakSOAP()">🔊 Leggi</button>
+                        <button id="btnRecordCorrection" class="btn btn-secondary" onclick="startCorrectionRecording()">🎤 Registra correzione</button>
+                        <div id="correctionButtons" class="correction-buttons">
+                            <button class="btn btn-danger" onclick="cancelCorrection()">❌ Annulla</button>
+                            <button class="btn btn-success" onclick="sendCorrection()">✅ Invia correzione</button>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-inline" style="margin-top: 15px;" onclick="generateOwnerExplanation()">👤 Genera Spiegazione Proprietario</button>
+                </div>
+            </div>
+
+            <!-- Page: Owner -->
+            <div id="page-owner" class="page">
+                <div class="page-header">
+                    <h2>👤 Per il Proprietario</h2>
+
+                </div>
+                <div class="card">
+                    <div class="lang-selector" id="ownerLangSelector">
+                        <button class="lang-btn active" data-lang="IT">IT</button>
+                        <button class="lang-btn" data-lang="EN">EN</button>
+                        <button class="lang-btn" data-lang="DE">DE</button>
+                        <button class="lang-btn" data-lang="FR">FR</button>
+                        <button class="lang-btn" data-lang="ES">ES</button>
+                    </div>
+                    
+                    <h3>Spiegazione</h3>
+                    <div class="textarea-wrapper">
+                        <textarea id="ownerExplanation" rows="10" placeholder="Spiegazione per il proprietario..."></textarea>
+                        <button class="expand-btn" onclick="expandTextarea('ownerExplanation', 'Spiegazione')">⛶</button>
+                    </div>
+                    
+                    <div class="button-row">
+                        <button id="btnSpeakOwner" class="btn btn-primary" onclick="speakOwnerExplanation()">🔊 Leggi</button>
+                        <button class="btn btn-secondary" onclick="exportOwnerTXT()">📄 TXT</button>
+                        <button class="btn btn-secondary" onclick="exportOwnerPDF()">📑 PDF</button>
+                    </div>
+                    
+                    <h3 style="margin-top: 20px;">Glossario</h3>
+                    <div id="glossaryContent" class="glossary"></div>
+                    
+                    <h3 style="margin-top: 20px;">Ti suggerisco io qualche domanda?</h3>
+                    <div class="button-row">
+                        <button class="btn btn-primary" onclick="generateFAQ()">📝 Genera Domande</button>
+                        <button id="btnSpeakFAQ" class="btn btn-secondary" onclick="speakFAQ()">🔊 Leggi Domande</button>
+                    </div>
+                    <div id="faqList" class="faq-list"></div>
+                </div>
+            </div>
+
+            <!-- Page: Patient -->
+            <div id="page-patient" class="page">
+                <div class="page-header">
+                    <h2>🐾 Dati Pet</h2>
+
+                </div>
+                
+                <!-- Pet Selector Card -->
+                <div class="card pet-selector-card">
+                    <div class="pet-selector-row">
+                        <div class="form-group" style="flex: 1; margin: 0;">
+                            <label>🐾 Seleziona Pet</label>
+                            <select id="petSelector" onchange="onPetSelectorChange(this)">
+                                <option value="">-- Seleziona Pet --</option>
+                            </select>
+                        </div>
+                        <div class="pet-actions">
+                            <button id="btnSavePet" class="btn btn-success btn-small" onclick="saveCurrentPet()" title="Salva Pet" disabled>💾</button>
+                            <button class="btn btn-primary btn-small" onclick="openAddPetPage()" title="Aggiungi nuovo Pet">➕</button>
+                            <button class="btn btn-danger btn-small" onclick="deleteCurrentPet()" title="Elimina Pet">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nome Pet <span class="required">*</span></label>
+                            <input type="text" id="petName" placeholder="Nome" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Specie <span class="required">*</span></label>
+                            <select id="petSpecies" required>
+                                <option value="">Seleziona...</option>
+                                <option value="Cane">Cane</option>
+                                <option value="Gatto">Gatto</option>
+                                <option value="Coniglio">Coniglio</option>
+                                <option value="Altro">Altro</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Razza</label>
+                            <input type="text" id="petBreed" placeholder="Razza">
+                        </div>
+                        <div class="form-group">
+                            <label>Età</label>
+                            <input type="text" id="petAge" placeholder="Es: 3 anni">
+                        </div>
+                        <div class="form-group">
+                            <label>Sesso</label>
+                            <select id="petSex">
+                                <option value="">Seleziona...</option>
+                                <option value="Maschio">Maschio</option>
+                                <option value="Maschio castrato">Maschio castrato</option>
+                                <option value="Femmina">Femmina</option>
+                                <option value="Femmina sterilizzata">Femmina sterilizzata</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Peso (kg)</label>
+                            <input type="number" id="petWeight" step="0.1" placeholder="Peso">
+                        </div>
+                        <div class="form-group">
+                            <label>Microchip</label>
+                            <input type="text" id="petMicrochip" placeholder="N° Microchip">
+                        </div>
+                        <div class="form-group">
+                            <label>Proprietario</label>
+                            <input type="text" id="ownerName" placeholder="Nome proprietario">
+                        </div>
+                        <div class="form-group">
+                            <label>Telefono</label>
+                            <input type="tel" id="ownerPhone" placeholder="Telefono">
+                        </div>
+                        <div class="form-group">
+                            <label>Data Visita</label>
+                            <input type="date" id="visitDate">
+                        </div>
+                    </div>
+                    
+                    <!-- Lifestyle Section -->
+                    <button class="btn btn-secondary" style="margin-top: 20px; width: 100%;" onclick="toggleLifestyleSection()">
+                        🏠 Stile di Vita ▼
+                    </button>
+                    
+                    <div id="lifestyleSection" class="lifestyle-section">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Ambiente</label>
+                                <select id="petLifestyle">
+                                    <option value="">Seleziona...</option>
+                                    <option value="indoor">Indoor</option>
+                                    <option value="outdoor">Outdoor</option>
+                                    <option value="misto">Misto</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Conviventi</label>
+                                <select id="petHousehold" multiple>
+                                    <option value="bambini">Bambini</option>
+                                    <option value="anziani">Anziani</option>
+                                    <option value="altri_cani">Altri cani</option>
+                                    <option value="altri_gatti">Altri gatti</option>
+                                    <option value="altri_animali">Altri animali</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Livello di attività</label>
+                                <select id="petActivityLevel">
+                                    <option value="">Seleziona...</option>
+                                    <option value="basso">Basso</option>
+                                    <option value="medio">Medio</option>
+                                    <option value="alto">Alto</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo alimentazione</label>
+                                <select id="petDietType">
+                                    <option value="">Seleziona...</option>
+                                    <option value="secco">Secco</option>
+                                    <option value="umido">Umido</option>
+                                    <option value="barf">BARF</option>
+                                    <option value="misto">Misto</option>
+                                    <option value="casalingo">Casalingo</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Preferenze alimentari</label>
+                                <input type="text" id="petDietPreferences" placeholder="Es: preferisce pollo, evita pesce...">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Condizioni note</label>
+                                <input type="text" id="petKnownConditions" placeholder="Es: insuff. renale, artrosi, allergie...">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Farmaci attuali</label>
+                                <input type="text" id="petCurrentMeds" placeholder="Farmaci in corso (opzionale)">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Note comportamentali</label>
+                                <input type="text" id="petBehaviorNotes" placeholder="Es: paure, ansia, aggressività...">
+                            </div>
+                            <div class="form-group">
+                                <label>Stagione (opz.)</label>
+                                <input type="text" id="petSeasonContext" placeholder="Es: estate">
+                            </div>
+                            <div class="form-group">
+                                <label>Località (opz.)</label>
+                                <input type="text" id="petLocation" placeholder="Es: Milano">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Add New Pet -->
+            <div id="page-addpet" class="page">
+                <div class="page-header">
+                    <h2>➕ Aggiungi Pet</h2>
+
+                </div>
+                
+                <div class="card">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nome Pet <span class="required">*</span></label>
+                            <input type="text" id="newPetName" placeholder="Nome" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Specie <span class="required">*</span></label>
+                            <select id="newPetSpecies" required>
+                                <option value="">Seleziona...</option>
+                                <option value="Cane">Cane</option>
+                                <option value="Gatto">Gatto</option>
+                                <option value="Coniglio">Coniglio</option>
+                                <option value="Altro">Altro</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Razza</label>
+                            <input type="text" id="newPetBreed" placeholder="Razza">
+                        </div>
+                        <div class="form-group">
+                            <label>Età</label>
+                            <input type="text" id="newPetAge" placeholder="Es: 3 anni">
+                        </div>
+                        <div class="form-group">
+                            <label>Sesso</label>
+                            <select id="newPetSex">
+                                <option value="">Seleziona...</option>
+                                <option value="Maschio">Maschio</option>
+                                <option value="Maschio castrato">Maschio castrato</option>
+                                <option value="Femmina">Femmina</option>
+                                <option value="Femmina sterilizzata">Femmina sterilizzata</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Peso (kg)</label>
+                            <input type="number" id="newPetWeight" step="0.1" placeholder="Peso">
+                        </div>
+                        <div class="form-group">
+                            <label>Microchip</label>
+                            <input type="text" id="newPetMicrochip" placeholder="N° Microchip">
+                        </div>
+                        <div class="form-group">
+                            <label>Proprietario</label>
+                            <input type="text" id="newOwnerName" placeholder="Nome proprietario">
+                        </div>
+                        <div class="form-group">
+                            <label>Telefono</label>
+                            <input type="tel" id="newOwnerPhone" placeholder="Telefono">
+                        </div>
+                        <div class="form-group">
+                            <label>Data Visita</label>
+                            <input type="date" id="newVisitDate">
+                        </div>
+                    </div>
+                    
+                    <!-- Lifestyle Section for New Pet -->
+                    <button class="btn btn-secondary" style="margin-top: 20px; width: 100%;" onclick="toggleNewPetLifestyleSection()">
+                        🏠 Stile di Vita ▼
+                    </button>
+                    
+                    <div id="newPetLifestyleSection" class="lifestyle-section">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Ambiente</label>
+                                <select id="newPetLifestyle">
+                                    <option value="">Seleziona...</option>
+                                    <option value="indoor">Indoor</option>
+                                    <option value="outdoor">Outdoor</option>
+                                    <option value="misto">Misto</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Conviventi</label>
+                                <select id="newPetHousehold" multiple>
+                                    <option value="bambini">Bambini</option>
+                                    <option value="anziani">Anziani</option>
+                                    <option value="altri_cani">Altri cani</option>
+                                    <option value="altri_gatti">Altri gatti</option>
+                                    <option value="altri_animali">Altri animali</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Livello di attività</label>
+                                <select id="newPetActivityLevel">
+                                    <option value="">Seleziona...</option>
+                                    <option value="basso">Basso</option>
+                                    <option value="medio">Medio</option>
+                                    <option value="alto">Alto</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo alimentazione</label>
+                                <select id="newPetDietType">
+                                    <option value="">Seleziona...</option>
+                                    <option value="secco">Secco</option>
+                                    <option value="umido">Umido</option>
+                                    <option value="barf">BARF</option>
+                                    <option value="misto">Misto</option>
+                                    <option value="casalingo">Casalingo</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Preferenze alimentari</label>
+                                <input type="text" id="newPetDietPreferences" placeholder="Es: preferisce pollo, evita pesce...">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Condizioni note</label>
+                                <input type="text" id="newPetKnownConditions" placeholder="Es: insuff. renale, artrosi, allergie...">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Farmaci attuali</label>
+                                <input type="text" id="newPetCurrentMeds" placeholder="Farmaci in corso (opzionale)">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Note comportamentali</label>
+                                <input type="text" id="newPetBehaviorNotes" placeholder="Es: paure, ansia, aggressività...">
+                            </div>
+                            <div class="form-group">
+                                <label>Stagione (opz.)</label>
+                                <input type="text" id="newPetSeasonContext" placeholder="Es: estate">
+                            </div>
+                            <div class="form-group">
+                                <label>Località (opz.)</label>
+                                <input type="text" id="newPetLocation" placeholder="Es: Milano">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="button-row" style="margin-top: 20px;">
+                        <button class="btn btn-success" onclick="saveNewPet()">💾 Salva Nuovo Pet</button>
+                        <button class="btn btn-danger" onclick="cancelAddPet()">❌ Annulla</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Photos -->
+            <div id="page-photos" class="page">
+                <div class="page-header">
+                    <h2>📷 Foto</h2>
+
+                </div>
+                <div class="card">
+                    <div class="button-row">
+                        <button class="btn btn-primary" onclick="document.getElementById('photoInput').click()">📁 Aggiungi foto</button>
+                        <button class="btn btn-secondary" onclick="capturePhoto()">📸 Scatta foto</button>
+                        <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="addPhotos(event)">
+                    </div>
+                    <div id="photoGrid" class="photo-grid"></div>
+                </div>
+            </div>
+
+            <!-- Page: Vitals -->
+            <div id="page-vitals" class="page">
+                <div class="page-header">
+                    <h2>📊 Parametri Vitali</h2>
+
+                </div>
+                <div class="card">
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label>Data/Ora rilevazione</label>
+                            <input type="datetime-local" id="vitalDateTime">
+                        </div>
+                        <div class="form-group">
+                            <label>Peso (kg)</label>
+                            <input type="number" id="vitalWeight" step="0.1" placeholder="Peso">
+                        </div>
+                        <div class="form-group">
+                            <label>Temperatura (°C)</label>
+                            <input type="number" id="vitalTemp" step="0.1" placeholder="Temp">
+                        </div>
+                        <div class="form-group">
+                            <label>Freq. Cardiaca (bpm)</label>
+                            <input type="number" id="vitalHR" placeholder="FC">
+                        </div>
+                        <div class="form-group">
+                            <label>Freq. Respiratoria</label>
+                            <input type="number" id="vitalRR" placeholder="FR">
+                        </div>
+                    </div>
+                    <div class="button-row" style="margin-top: 10px;">
+                        <button class="btn btn-success" onclick="recordVitals()">📊 Registra</button>
+                        <button class="btn btn-danger" onclick="resetVitals()">🧹 Azzera</button>
+                    </div>
+                    
+                    <h3 style="margin-top: 20px;">Storico</h3>
+                    <div class="chart-container">
+                        <canvas id="vitalsChart"></canvas>
+                    </div>
+                    <div id="vitalsList" class="vitals-list"></div>
+                </div>
+            </div>
+
+            <!-- Page: Diary -->
+            <div id="page-diary" class="page">
+                <div class="page-header">
+                    <h2>📔 Diario Clinico</h2>
+
+                </div>
+                <div class="card">
+                    <div class="lang-selector" id="diaryLangSelector">
+                        <button class="lang-btn active" data-lang="IT">IT</button>
+                        <button class="lang-btn" data-lang="EN">EN</button>
+                        <button class="lang-btn" data-lang="DE">DE</button>
+                        <button class="lang-btn" data-lang="FR">FR</button>
+                        <button class="lang-btn" data-lang="ES">ES</button>
+                    </div>
+                    
+                    <button id="btnSpeakDiary" class="btn btn-secondary" onclick="speakDiary()" style="margin-bottom: 10px;">🔊 Leggi</button>
+                    
+                    <div class="textarea-wrapper">
+                        <textarea id="diaryText" rows="15" placeholder="Diario clinico del paziente..."></textarea>
+                        <button class="expand-btn" onclick="expandTextarea('diaryText', 'Diario Clinico')">⛶</button>
+                    </div>
+                    
+                    <div class="button-row" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="generateDiary()">🤖 Genera</button>
+                        <button class="btn btn-success" onclick="saveDiary()">💾 Salva</button>
+                        <button class="btn btn-secondary" onclick="exportDiaryTXT()">📄 TXT</button>
+                        <button class="btn btn-secondary" onclick="exportDiaryPDF()">📑 PDF</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Q&A HUB -->
+            <div id="page-qna" class="page">
+                <div class="page-header">
+                    <h2>❓ Domande & Risposte</h2>
+
+                </div>
+                <div class="card">
+                    <p style="color:#666; margin-top:6px;">Scegli cosa vuoi fare:</p>
+                    <div class="hub-grid">
+                        <div class="hub-tile" onclick="navigateToPage('qna-report')">
+                            <div class="hub-emoji">📋</div>
+                            <div class="hub-title">Domande su un referto</div>
+                            <div class="hub-sub">Apri o genera la spiegazione proprietario da archivio</div>
+                        </div>
+                        <div class="hub-tile" onclick="navigateToPage('qna-pet')">
+                            <div class="hub-emoji">🐾</div>
+                            <div class="hub-title">Domande sul tuo pet</div>
+                            <div class="hub-sub">Fai una domanda e ottieni una risposta</div>
+                        </div>
+                        <div class="hub-tile" onclick="navigateToPage('tips')">
+                            <div class="hub-emoji">💡</div>
+                            <div class="hub-title">Tips & Tricks</div>
+                            <div class="hub-sub">Consigli personalizzati per il tuo pet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Q&A Pet -->
+            <div id="page-qna-pet" class="page">
+                <div class="page-header">
+                    <h2>🐾 Domande sul pet</h2>
+
+                </div>
+                <div class="card">
+                    <button id="btnAskQuestion" class="btn btn-primary" onclick="toggleQuestionRecording()">🎤 Chiedi</button>
+                    <div class="textarea-wrapper" style="margin-top: 10px;">
+                        <textarea id="qnaQuestion" rows="3" placeholder="La tua domanda..."></textarea>
+                        <button class="expand-btn" onclick="expandTextarea('qnaQuestion', 'Domanda')">⛶</button>
+                    </div>
+                    
+                    <h3 style="margin-top: 20px;">Risposta</h3>
+                    <div class="textarea-wrapper">
+                        <textarea id="qnaAnswer" rows="6" placeholder="La risposta apparirà qui..." readonly></textarea>
+                        <button class="expand-btn" onclick="expandTextarea('qnaAnswer', 'Risposta')">⛶</button>
+                    </div>
+                    <div class="button-row" style="margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="generateQnAAnswer()">💬 Rispondi</button>
+                        <button id="btnSpeakQnA" class="btn btn-secondary" onclick="speakQnAAnswer()">🔊 Leggi</button>
+                    </div>
+                    
+                    <h3 style="margin-top: 20px;">Ti suggerisco io qualche domanda?</h3>
+                    <button class="btn btn-secondary" onclick="generateQnAFaq()">💡 Genera suggerimenti</button>
+                    <div id="qnaFaqList" class="faq-list"></div>
+                </div>
+            </div>
+
+            <!-- Page: Q&A Report -->
+            <div id="page-qna-report" class="page">
+                <div class="page-header">
+                    <h2>📋 Domande su un referto</h2>
+
+                </div>
+                <div class="card">
+                    <h3>Seleziona un referto dall'archivio</h3>
+                    <div class="form-group" style="margin-top:10px;">
+                        <label>Referto</label>
+                        <select id="qnaReportSelect">
+                            <option value="">-- Seleziona --</option>
+                        </select>
+                        <p style="font-size:12px;color:#888;margin-top:6px;">Suggerimento: se la spiegazione proprietario è già presente nel record, verrà riaperta senza rigenerarla.</p>
+                    </div>
+                    <div class="button-row" style="margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="openOrGenerateOwnerFromSelectedReport()">👤 Apri / Genera spiegazione</button>
+                        <button class="btn btn-secondary" onclick="navigateToPage('history')">📁 Vai all'Archivio</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Tips -->
+            <div id="page-tips" class="page">
+                <div class="page-header">
+                    <h2>💡 Tips & Tricks</h2>
+                    <div id="tipsMeta" class="tips-meta"></div>
+
+                </div>
+                <div class="card">
+                    <div class="button-row">
+                        <button class="btn btn-primary" onclick="generateTipsTricks()">🔄 Genera</button>
+                        <button class="btn btn-danger" onclick="resetTipsMemory()" title="Reset memoria Tips per questo pet">⟲ Ricomincia</button>
+                        <button id="btnSpeakTips" class="btn btn-secondary" onclick="speakTips()">🔊 Leggi</button>
+                    </div>
+                    <div id="tipsTricksList" class="tips-list">
+                        <p style="color: #888; text-align: center; padding: 40px;">Premi "Genera" per ricevere consigli personalizzati per il tuo pet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: History -->
+            <div id="page-history" class="page">
+                <div class="page-header">
+                    <h2>📁 Archivio</h2>
+
+                </div>
+                <div class="card">
+                    <div id="historyList" class="history-list"></div>
+                </div>
+            </div>
+
+            <!-- Page: Medications -->
+            <div id="page-medications" class="page">
+                <div class="page-header">
+                    <h2>💊 Farmaci</h2>
+
+                </div>
+                <div class="card">
+                    <button class="btn btn-primary" onclick="openMedicationModal()">+ Aggiungi Farmaco</button>
+                    <button id="btnSpeakMeds" class="btn btn-secondary" onclick="speakMedications()">🔊 Leggi Farmaci</button>
+                    <div id="medicationList" class="medication-list"></div>
+                </div>
+            </div>
+
+            <!-- Page: Appointment -->
+            <div id="page-appointment" class="page">
+                <div class="page-header">
+                    <h2>📅 Appuntamento</h2>
+
+                </div>
+                <div class="card">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Data</label>
+                            <input type="date" id="appointmentDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Ora</label>
+                            <input type="time" id="appointmentTime">
+                        </div>
+                        <div class="form-group full-width">
+                            <label>Motivo</label>
+                            <input type="text" id="appointmentReason" placeholder="Motivo visita">
+                        </div>
+                        <div class="form-group full-width">
+                            <label>Note</label>
+                            <textarea id="appointmentNotes" rows="3" placeholder="Note aggiuntive..."></textarea>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button id="btnSaveAppointment" class="btn btn-success" onclick="saveAppointment()">💾 Salva</button>
+                        <button id="btnCancelAppointmentEdit" class="btn btn-secondary" onclick="cancelAppointmentEdit()" style="display:none;">❌ Annulla modifica</button>
+                        <button class="btn btn-secondary" onclick="addToCalendar()">📅 Aggiungi a Google Calendar</button>
+                    </div>
+                    <h3 style="margin-top: 20px;">Appuntamenti salvati</h3>
+                    <div id="appointmentList" class="history-list"></div>
+                </div>
+            </div>
+
+            <!-- Page: Settings -->
+            <div id="page-settings" class="page">
+                <div class="page-header">
+                    <h2>⚙️ Impostazioni</h2>
+
+                </div>
+                <div class="card">
+                    <button class="section-toggle" onclick="toggleSpeakersSection()">
+                        <span>🎤 Parlanti (Reference Clips)</span>
+                        <span id="speakersToggleIcon" class="toggle-icon">▸</span>
+                    </button>
+                    <div id="speakersSectionBody" style="display:none;">
+                    <p style="color:#666;font-size:13px;margin-bottom:15px;">
+                        Configura i parlanti con nome e ruolo. Le clip audio (2-10s) migliorano l'identificazione vocale.
+                    </p>
+                    
+                    <div id="speakersContainer" class="speakers-section"></div>
+                    
+                    <button id="btnAddSpeaker" class="btn btn-primary" onclick="addNewSpeaker()" style="margin-top:15px;">
+                        ➕ Aggiungi Parlante (max 4)
+                    </button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Registrazione a chunk (robusta)</h3>
+                    <p style="color:#666;font-size:13px;margin-bottom:10px;">
+                        Default consigliati: Windows 20 min • Android 15 min • iPhone 10 min. Il profilo viene scelto automaticamente e mostrato qui.
+                    </p>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label style="display:flex;align-items:center;gap:10px;">
+                            <input type="checkbox" id="chunkingEnabled" onchange="toggleChunkingEnabled(this.checked)">
+                            <span>Abilita registrazione a chunk (consigliata)</span>
+                        </label>
+                    </div>
+
+                    <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="form-group">
+                            <label>Profilo in uso (auto)</label>
+                            <input type="text" id="chunkingProfile" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>mimeType attivo (auto)</label>
+                            <input type="text" id="chunkingMimeType" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>chunkDurationSec</label>
+                            <input type="number" id="chunkDurationSec" min="60" step="10">
+                        </div>
+                        <div class="form-group">
+                            <label>timesliceMs</label>
+                            <input type="number" id="timesliceMs" min="250" step="50">
+                        </div>
+                        <div class="form-group">
+                            <label>maxPendingChunks</label>
+                            <input type="number" id="maxPendingChunks" min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>maxConcurrentTranscriptions</label>
+                            <input type="number" id="maxConcurrentTranscriptions" min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>uploadRetryCount</label>
+                            <input type="number" id="uploadRetryCount" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>uploadRetryBackoffMs</label>
+                            <input type="number" id="uploadRetryBackoffMs" min="200" step="100">
+                        </div>
+                        <div class="form-group">
+                            <label>hardStopAtMb</label>
+                            <input type="number" id="hardStopAtMb" min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>warnBeforeSplitSec</label>
+                            <input type="number" id="warnBeforeSplitSec" min="0" step="1">
+                        </div>
+                        <div class="form-group full-width">
+                            <label>autoSplitGraceMs</label>
+                            <input type="number" id="autoSplitGraceMs" min="0" step="50">
+                        </div>
+                    </div>
+
+                    <div id="audioCacheTools" style="display:none; margin-top: 12px;">
+                        <p style="font-size: 12px; color: #666; margin: 0 0 8px;">Cache audio di test (salvata solo con Debug ON)</p>
+                        <div class="button-row">
+                            <button class="btn btn-secondary" onclick="exportSavedAudioChunks()">📦 Esporta file audio di test salvati</button>
+                            <button class="btn btn-secondary" onclick="clearSavedAudioChunks()">🗑️ Cancella file audio di test salvati</button>
+                        </div>
+                        <p id="audioCacheInfo" style="font-size: 12px; color: #888; margin-top: 6px;"></p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Sistema</h3>
+
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Nome veterinario</label>
+                        <input type="text" id="vetNameInput" placeholder="Es: Dott. Rossi" oninput="saveVetName(this.value)">
+                        <p style="font-size: 12px; color: #888; margin-top: 5px;">Usato in export e, dove previsto, nelle comunicazioni al proprietario</p>
+                    </div>
+                    <button class="btn btn-primary" style="width: 100%; margin-bottom: 15px;" onclick="openCostsPage()">💰 Consumo API</button>
+                    
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="debugLogEnabled" onchange="toggleDebugLog(this.checked)" checked>
+                            <span>Debug attivo (per i test)</span>
+                        </label>
+                        <p style="font-size: 12px; color: #888; margin-top: 5px;">Disattiva per migliorare le performance in produzione</p>
+                    </div>
+                    
+                    <button class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;" onclick="exportLogFile()">📄 Scarica Log Errori (ADA.log)</button>
+                    <button class="btn btn-secondary" style="width: 100%;" onclick="clearLog(); showToast('Log cancellato', 'success');">🗑️ Cancella Log Errori</button>
+                    
+                    <h3 style="margin-top: 20px;">Informazioni</h3>
+                        <p><strong>Versione:</strong> ADA v6.17.4</p>
+                    <p><strong>Novità v6.17.3:</strong> Registrazione lunga a chunk con trascrizione in parallelo, profili automatici per dispositivo, UI runtime della coda, cache audio test e debug avanzato.</p>
+                </div>
+            </div>
+
+            <!-- Page: Costs -->
+            <div id="page-costs" class="page">
+                <div class="page-header">
+                    <h2>💰 Consumo API</h2>
+
+                </div>
+                <div class="card">
+                    <div id="costList" class="cost-list"></div>
+                    <div class="cost-total-box">
+                        <span>TOTALE STIMATO</span>
+                        <span id="totalCost" class="cost-total-amount">$ 0.00</span>
+                    </div>
+                    <p id="lastResetInfo" class="last-reset-info">Ultimo azzeramento: mai</p>
+                    <button class="btn btn-danger" onclick="resetCosts()">🔄 Azzera contatori</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal: Medication -->
+    <div id="medicationModal" class="modal">
+        <div class="modal-content">
+            <h3 id="medicationModalTitle">Aggiungi Farmaco</h3>
+            <div class="form-group">
+                <label>Nome farmaco</label>
+                <input type="text" id="medName" placeholder="Nome">
+            </div>
+            <div class="form-group">
+                <label>Dosaggio</label>
+                <input type="text" id="medDosage" placeholder="Es: 5mg">
+            </div>
+            <div class="form-group">
+                <label>Frequenza</label>
+                <input type="text" id="medFrequency" placeholder="Es: BID, q12h">
+            </div>
+            <div class="form-group">
+                <label>Durata</label>
+                <input type="text" id="medDuration" placeholder="Es: 7 giorni">
+            </div>
+            <div class="form-group">
+                <label>Istruzioni</label>
+                <textarea id="medInstructions" rows="2" placeholder="Istruzioni speciali..."></textarea>
+            </div>
+            <div class="button-row">
+                <button id="medicationModalSaveBtn" class="btn btn-success" onclick="saveMedication()">✅ Aggiungi</button>
+                <button class="btn btn-secondary" onclick="closeMedicationModal()">❌ Annulla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Fullscreen Textarea -->
+    <div id="textareaFullscreen" class="modal">
+        <div class="modal-content fullscreen-modal">
+            <h3 id="fullscreenTitle" style="margin-bottom: 15px; text-align: center;">Testo</h3>
+            <div class="fullscreen-buttons" style="margin-bottom: 15px;">
+                <button id="btnSpeakFullscreen" class="btn btn-primary" onclick="speakFullscreenText()">🔊 Leggi</button>
+                <button id="btnCorrectFullscreen" class="btn btn-secondary" onclick="startFullscreenCorrection()">🎤 Correggi</button>
+                <button class="btn btn-secondary" onclick="closeFullscreenTextarea()">✕ Chiudi</button>
+            </div>
+            <div id="fullscreenCorrectionButtons" class="correction-buttons" style="display: none; margin-bottom: 15px;">
+                <button class="btn btn-danger" onclick="cancelFullscreenCorrection()">❌ Annulla</button>
+                <button class="btn btn-success" onclick="sendFullscreenCorrection()">✅ Invia correzione</button>
+            </div>
+            <textarea id="fullscreenTextarea" class="fullscreen-textarea"></textarea>
+        </div>
+    </div>
+    
+    <!-- Modal: Credit Exhausted -->
+    <div id="creditExhaustedModal" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <h3 style="color: var(--error);">⚠️ Credito API Esaurito</h3>
+            <p style="margin: 20px 0;">Il credito delle API OpenAI è esaurito. Contatta l'amministratore per ricaricare il credito.</p>
+            <button class="btn btn-primary" onclick="closeCreditExhaustedModal()">OK, Ho capito</button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+    
+    <!-- Progress Bar -->
+    <div id="progressBar" class="progress-bar"><div class="progress-fill"></div></div>
+
+    <!-- Scripts -->
+    <script src="api-keys.js"></script>
+    <script src="config.js"></script>
+    <script src="app-core.js"></script>
+    <script src="app-recording.js"></script>
+    <script src="app-soap.js"></script>
+    <script src="app-tts.js"></script>
+    <script src="app-data.js"></script>
+    <script src="app-pets.js"></script>
+    <script src="app-tips.js"></script>
+</body>
+</html>
