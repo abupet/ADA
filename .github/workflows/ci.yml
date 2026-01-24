@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      - name: Policy checks
+        run: npm run test:policy
+
+      - name: Serve local
+        run: |
+          npm run serve &
+          sleep 2
+
+      - name: Smoke E2E
+        env:
+          ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+        run: npm run test:smoke
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-smoke
+          path: playwright-report
+          retention-days: 7
+
+  regression:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      - name: Serve local
+        run: |
+          npm run serve &
+          sleep 2
+
+      - name: Regression E2E
+        env:
+          ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+        run: npm run test:regression
+
+      - name: Upload report (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-regression
+          path: playwright-report
+          retention-days: 7
+
+  deployed:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [smoke]
+    env:
+      DEPLOY_URL: https://abupet.github.io/ada/index.html
+      ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      - name: Deployed E2E smoke
+        run: npm run test:deployed
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-deployed
+          path: playwright-report
+          retention-days: 7
