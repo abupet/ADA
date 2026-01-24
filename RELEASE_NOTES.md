@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v6.17.6 (2026-01-22)
+- **Fix**: aggiunti `data-testid` ai pulsanti e alle aree di stato/log per facilitare i test automatici.
+- **Behavior**: nessuna modifica funzionale.
+- **Limitazioni**: nessuna nuova limitazione.
+
 ## v6.17.5 (2026-01-22)
 Fix/Behavior/Limitazione: aggiunta pagina Debug con strumenti test e cache spostati fuori dalle pagine normali, voce Debug visibile solo con Debug attivo e ritorno automatico a Visita quando disattivato; gli strumenti debug restano disponibili solo con toggle ON.
 
