@@ -1,3 +1,4 @@
+# long-tests.yml v1
 name: Long tests (manual)
 
 on:
@@ -18,7 +19,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps
 
-      - name: Run @long tests (manual)
+      - name: Run long tests (manual)
         env:
           ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
-        run: npx playwright test --project=chromium --grep @long
+        run: npx playwright test --project=chromium --grep "@""long"

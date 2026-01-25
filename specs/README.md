@@ -1,0 +1,1 @@
+PROMPT.md è la sorgente dei task per la prossima release

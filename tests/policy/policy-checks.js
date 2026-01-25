@@ -36,14 +36,25 @@ const secretPatterns = [
   /-----BEGIN(.*?)PRIVATE KEY-----/i,
   /password\s*=\s*["'][^"']{6,}["']/i,
 ];
+
 const scanExt = new Set([".js", ".ts", ".json", ".md", ".html", ".yml", ".yaml"]);
 const secretHits = [];
+
+// Exclude this policy checker file itself to avoid self-flagging
+const thisFileAbs = path.resolve(__filename);
+const normalize = (p) => path.resolve(p).replace(/\\/g, "/");
+const thisFileNorm = normalize(thisFileAbs);
 
 for (const f of files) {
   const ext = path.extname(f).toLowerCase();
   if (!scanExt.has(ext)) continue;
+
+  // Skip this file itself (prevents self-flagging due to patterns like sk-...)
+  if (normalize(f) === thisFileNorm) continue;
+
   const b = path.basename(f);
   if (b === "package-lock.json") continue; // noisy
+
   const txt = fs.readFileSync(f, "utf8");
   for (const rx of secretPatterns) {
     if (rx.test(txt)) {
