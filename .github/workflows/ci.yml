@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 # ci.yml v1
 name: CI (PR)
 
@@ -69,3 +70,73 @@ jobs:
           path: server.log
           if-no-files-found: ignore
 
+=======
+# ci.yml v2
+name: CI (PR)
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      MODE: MOCK
+      STRICT_NETWORK: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Start server
+        run: |
+          nohup npm run serve > server.log 2>&1 &
+          npx wait-on http://127.0.0.1:4173
+
+      - name: Policy checks
+        run: node tests/policy/policy-checks.js
+
+      - name: Smoke tests (MOCK)
+        run: npx playwright test --grep "@smoke"
+
+      - name: Regression tests (MOCK)
+        run: npx playwright test
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload test-results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          if-no-files-found: ignore
+
+      - name: Upload server log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: server.log
+          if-no-files-found: ignore
+>>>>>>> Stashed changes
