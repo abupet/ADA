@@ -1,4 +1,4 @@
-# ci.yml v1
+# ci.yml v2
 name: CI (PR)
 
 on:
@@ -29,8 +29,6 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      # Avvio server nel runner (NON il tuo PC locale)
-      # Nota: se il tuo progetto usa una porta diversa, cambia 3000 e la URL.
       - name: Start server
         run: |
           nohup npm run serve > server.log 2>&1 &
@@ -68,4 +66,3 @@ jobs:
           name: server-log
           path: server.log
           if-no-files-found: ignore
-
