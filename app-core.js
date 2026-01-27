@@ -106,7 +106,6 @@ async function initApp() {
     initChunkingSectionToggle();
     initVetNameSetting();
     initClinicLogoSetting();
-    initClinicLogoSectionToggle();
     await initSpeakersDB();
     await initMultiPetSystem(); // Initialize multi-pet system
 
@@ -623,30 +622,11 @@ function toggleDebugLog(enabled) {
 }
 
 // ============================================
-// VERSION LABELS
-// ============================================
-
-function updateVersionLabels() {
-    const version = typeof ADA_VERSION === 'string' ? ADA_VERSION : '';
-    const notes = typeof ADA_RELEASE_NOTES === 'string' ? ADA_RELEASE_NOTES : '';
-    document.querySelectorAll('[data-ada-version]').forEach(el => {
-        el.textContent = version;
-    });
-    document.querySelectorAll('[data-ada-release-notes]').forEach(el => {
-        el.textContent = notes;
-    });
-    if (version) {
-        document.title = `ADA v${version} - AI Driven Abupet`;
-    }
-}
-
-// ============================================
 // CLINIC LOGO SETTINGS
 // ============================================
 
 const ADA_CLINIC_LOGO_KEY = 'ada_clinic_logo';
 const ADA_DEFAULT_LOGO_SRC = 'logo-anicura.png';
-const ADA_CLINIC_LOGO_SECTION_OPEN_KEY = 'ada_clinic_logo_section_open';
 
 function getClinicLogoSrc() {
     try {
@@ -706,25 +686,6 @@ function initClinicLogoSetting() {
     if (input) input.addEventListener('change', handleClinicLogoUpload);
 }
 
-function toggleClinicLogoSection(forceOpen) {
-    const body = document.getElementById('clinicLogoSectionBody');
-    const icon = document.getElementById('clinicLogoToggleIcon');
-    if (!body) return;
-    const isOpen = typeof forceOpen === 'boolean' ? forceOpen : body.style.display === 'none';
-    body.style.display = isOpen ? '' : 'none';
-    if (icon) icon.textContent = isOpen ? '▾' : '▸';
-    try { localStorage.setItem(ADA_CLINIC_LOGO_SECTION_OPEN_KEY, isOpen ? 'true' : 'false'); } catch (e) {}
-}
-
-function initClinicLogoSectionToggle() {
-    let open = false;
-    try {
-        const stored = localStorage.getItem(ADA_CLINIC_LOGO_SECTION_OPEN_KEY);
-        if (stored !== null) open = stored !== 'false';
-    } catch (e) {}
-    toggleClinicLogoSection(open);
-}
-
 // ============================================
 // CHUNK RECORDING SETTINGS (v6.17.3)
 // ============================================
@@ -745,7 +706,7 @@ function toggleChunkingSection(forceOpen) {
 }
 
 function initChunkingSectionToggle() {
-    let open = false;
+    let open = true;
     try {
         const stored = localStorage.getItem(ADA_CHUNKING_SECTION_OPEN_KEY);
         if (stored !== null) open = stored !== 'false';
