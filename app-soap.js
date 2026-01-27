@@ -88,8 +88,12 @@ function getWhiteAnicuraLogoDataUrl() {
         // If CORS blocks pixel access, just return the original dataURL
     }
 
-    _cachedWhiteLogoDataUrl = canvas.toDataURL('image/png');
-    return _cachedWhiteLogoDataUrl;
+    try {
+        _cachedWhiteLogoDataUrl = canvas.toDataURL('image/png');
+        return _cachedWhiteLogoDataUrl;
+    } catch (_) {
+        return logoImg.src || null;
+    }
 }
 
 function addAnicuraLogoToPdf(doc, x, y, maxW, maxH) {
@@ -1721,4 +1725,3 @@ Restituisci il referto corretto in JSON: {"S": "...", "O": "...", "A": "...", "P
 
     correctionRecorder.stop();
 }
-
