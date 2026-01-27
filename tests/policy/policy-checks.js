@@ -55,7 +55,7 @@ const thisFileNorm = normalize(thisFileAbs);
 for (const f of files) {
   const ext = path.extname(f).toLowerCase();
   if (!scanExt.has(ext)) continue;
-  if (file.endsWith('.md')) continue;
+  if (f.endsWith('.md')) continue;
   
   // Skip this file itself (prevents self-flagging due to patterns like sk-...)
   if (normalize(f) === thisFileNorm) continue;
