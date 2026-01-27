@@ -267,10 +267,10 @@ function speakSOAP() {
     }
     
     const soap = {
-        s: document.getElementById('soap-s').value,
-        o: document.getElementById('soap-o').value,
-        a: document.getElementById('soap-a').value,
-        p: document.getElementById('soap-p').value
+        s: document.getElementById('soap-s')?.value || '',
+        o: document.getElementById('soap-o')?.value || '',
+        a: document.getElementById('soap-a')?.value || '',
+        p: document.getElementById('soap-p')?.value || ''
     };
     
     let text = 'Referto S O A P.\n\n';
@@ -289,7 +289,7 @@ function speakOwnerExplanation() {
         return;
     }
     
-    const text = document.getElementById('ownerExplanation').value;
+    const text = document.getElementById('ownerExplanation')?.value || '';
     const lang = getSelectedLang('ownerLangSelector');
     speak(text, lang);
 }

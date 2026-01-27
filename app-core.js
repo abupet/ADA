@@ -22,16 +22,9 @@ let tipsData = [];
 let debugLogEnabled = true;
 
 // ============================================
-// LOGIN / SESSION
-// ============================================
-
-async function login() {
-    const password = document.getElementById('passwordInput').value;
-    const apiKey = await decryptApiKey(password, getApiKeyMode());
-
-// ============================================
 // JSON EXTRACTION HELPERS (robust parsing from model output)
 // ============================================
+
 function _extractJsonObject(text) {
     const t = String(text || '');
     const start = t.indexOf('{');
@@ -49,6 +42,14 @@ function _extractJsonArray(text) {
     const candidate = t.slice(start, end + 1);
     try { return JSON.parse(candidate); } catch (e) { return null; }
 }
+
+// ============================================
+// LOGIN / SESSION
+// ============================================
+
+async function login() {
+    const password = document.getElementById('passwordInput').value;
+    const apiKey = await decryptApiKey(password, getApiKeyMode());
 
     if (apiKey) {
         API_KEY = apiKey;

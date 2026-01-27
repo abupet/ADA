@@ -446,7 +446,11 @@ Altrimenti rispondi in modo chiaro e rassicurante.`;
             throw new Error(err?.error?.message || `HTTP ${response.status}`);
         }
         const data = await response.json();
-        document.getElementById('qnaAnswer').value = data.choices[0].message.content;
+        const content = data?.choices?.[0]?.message?.content;
+        if (!content) {
+            throw new Error('Risposta non valida dal modello');
+        }
+        document.getElementById('qnaAnswer').value = content;
         trackChatUsage('gpt-4o', data.usage);
         saveApiUsage();
         updateCostDisplay();
@@ -479,15 +483,33 @@ Rispondi in JSON: {"faq": [{"question": "...", "answer": "..."}]}`;
             throw new Error(err?.error?.message || `HTTP ${response.status}`);
         }
         const data = await response.json();
-        const content = data.choices[0].message.content;
+        const content = data?.choices?.[0]?.message?.content;
+        if (!content) {
+            throw new Error('Risposta non valida dal modello');
+        }
         const result = _extractJsonObject(content);
         if (result) {
-            document.getElementById('qnaFaqList').innerHTML = (result.faq || []).map(item => `
-                <div class="faq-item" onclick="this.classList.toggle('open')">
-                    <div class="faq-question">${item.question}</div>
-                    <div class="faq-answer">${item.answer}</div>
-                </div>
-            `).join('');
+            const list = document.getElementById('qnaFaqList');
+            if (list) {
+                list.innerHTML = '';
+                (result.faq || []).forEach(item => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'faq-item';
+                    wrapper.addEventListener('click', () => wrapper.classList.toggle('open'));
+
+                    const question = document.createElement('div');
+                    question.className = 'faq-question';
+                    question.textContent = item?.question || '';
+
+                    const answer = document.createElement('div');
+                    answer.className = 'faq-answer';
+                    answer.textContent = item?.answer || '';
+
+                    wrapper.appendChild(question);
+                    wrapper.appendChild(answer);
+                    list.appendChild(wrapper);
+                });
+            }
         }
         trackChatUsage('gpt-4o', data.usage);
         saveApiUsage();
