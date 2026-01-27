@@ -1,37 +1,20 @@
 # labeler.yml v1
-# Used by actions/labeler to auto-apply labels based on changed paths.
+name: PR Labeler
 
-ci:
-  - changed-files:
-      - any-glob-to-any-file:
-          - ".github/workflows/**"
-          - ".github/**"
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
 
-tests:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "tests/**"
-          - "**/*.spec.ts"
-          - "**/*.spec.js"
-          - "playwright.config.*"
+permissions:
+  contents: read
+  pull-requests: write
 
-frontend:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "index.html"
-          - "src/**"
-          - "public/**"
-          - "**/*.css"
-
-backend:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "server/**"
-          - "api/**"
-          - "backend/**"
-
-docs:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "**/*.md"
-          - "docs/**"
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply labels
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
