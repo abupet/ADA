@@ -1,4 +1,4 @@
-# ci-real.yml v3
+# ci-real.yml v4
 name: CI (REAL)
 
 on:
@@ -16,6 +16,7 @@ jobs:
       MODE: REAL
       STRICT_NETWORK: "1"
       STRICT_ALLOW_HOSTS: "cdnjs.cloudflare.com"
+      ALLOW_OPENAI: "1"
       ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
