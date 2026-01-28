@@ -67,6 +67,7 @@ async function login() {
 }
 
 async function checkSession() {
+    try { applyVersionInfo(); } catch (e) {}
     const session = localStorage.getItem('ada_session');
     if (session) {
         try {
@@ -134,8 +135,13 @@ async function initApp() {
 function applyVersionInfo() {
     const versionEl = document.getElementById('appVersion');
     const releaseNotesEl = document.getElementById('appReleaseNotesVersion');
+    const loginVersionEl = document.getElementById('loginVersion');
     if (versionEl) versionEl.textContent = ADA_VERSION;
     if (releaseNotesEl) releaseNotesEl.textContent = ADA_VERSION;
+    if (loginVersionEl) loginVersionEl.textContent = ADA_VERSION;
+    if (document && document.title) {
+        document.title = `ADA v${ADA_VERSION} - AI Driven Abupet`;
+    }
 }
 
 function initNavigation() {
@@ -706,12 +712,13 @@ function toggleClinicLogoSection(forceOpen) {
     const body = document.getElementById('clinicLogoSectionBody');
     const icon = document.getElementById('clinicLogoToggleIcon');
     if (!body) return;
-    const isOpen = typeof forceOpen === 'boolean'
-        ? forceOpen
-        : (body.style.display === 'none' || body.style.display === '');
-    body.style.display = isOpen ? '' : 'none';
-    if (icon) icon.textContent = isOpen ? '▾' : '▸';
-    try { localStorage.setItem(ADA_CLINIC_LOGO_SECTION_KEY, isOpen ? 'true' : 'false'); } catch (e) {}
+    const isOpenNow = body.style.display !== 'none' && body.style.display !== ''
+        ? true
+        : (getComputedStyle(body).display !== 'none');
+    const nextOpen = (typeof forceOpen === 'boolean') ? forceOpen : !isOpenNow;
+    body.style.display = nextOpen ? '' : 'none';
+    if (icon) icon.textContent = nextOpen ? '▾' : '▸';
+    try { localStorage.setItem(ADA_CLINIC_LOGO_SECTION_KEY, nextOpen ? 'true' : 'false'); } catch (e) {}
 }
 
 function restoreClinicLogoSectionState() {
@@ -1747,7 +1754,7 @@ function setActiveLangButton(selectorId, lang) {
     const selector = document.getElementById(selectorId);
     if (!selector) return;
     selector.querySelectorAll('.lang-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.lang === lang);
+        btn.classList.remove('active');
     });
 }
 
@@ -1839,7 +1846,6 @@ function initLanguageSelectors() {
                 const currentLang = getStoredLangForSelector(selectorId);
                 if (lang === currentLang) return;
 
-                setActiveLangButton(selectorId, lang);
                 storeLangForSelector(selectorId, lang);
                 
                 showProgress(true);
@@ -1920,6 +1926,11 @@ function resetSoapDraftLink() {
   storeLangForSelector('soapLangSelector', 'IT');
   storeLangForSelector('ownerLangSelector', 'IT');
   syncLangSelectorsForCurrentDoc();
+  try {
+      const oe = document.getElementById('ownerExplanation');
+      if (oe) oe.value = '';
+      localStorage.removeItem('ada_draft_ownerExplanation');
+  } catch (e) {}
 
 }
 
@@ -2138,12 +2149,14 @@ async function openOrGenerateOwnerFromSelectedReport() {
         if (fl) fl.innerHTML = '';
         const oe = document.getElementById('ownerExplanation');
         if (oe) oe.value = '';
+        localStorage.removeItem('ada_draft_ownerExplanation');
 
     } catch (e) {}
 
     if (item.ownerExplanation && item.ownerExplanation.trim()) {
         const oe = document.getElementById('ownerExplanation');
         if (oe) oe.value = item.ownerExplanation;
+        try { localStorage.setItem('ada_draft_ownerExplanation', item.ownerExplanation); } catch (e) {}
         navigateToPage('owner');
         showToast('Spiegazione proprietario aperta', 'success');
         return;
@@ -2222,6 +2235,7 @@ function loadHistoryById(id) {
     try {
         const oe = document.getElementById('ownerExplanation');
         if (oe) oe.value = item.ownerExplanation || '';
+        localStorage.setItem('ada_draft_ownerExplanation', item.ownerExplanation || '');
     } catch (e) {}
 
     setPatientData(item.patient || {});

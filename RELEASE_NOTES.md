@@ -7,6 +7,7 @@
 - **Profilo sanitario**: rinominato il Diario clinico, firma con nome veterinario e data di generazione, file export aggiornati.
 - **Domande & Risposte**: moderazione su domande/risposte e gestione robusta delle spiegazioni proprietario.
 - **Impostazioni**: API Key spostata in Debug e nuova sezione Informazioni clinica con logo collassabile.
+- **UI**: bottoni lingua senza stato attivo, versione login sincronizzata e chiusura logo clinica ripristinata; spiegazione proprietario ripulita quando si cambia referto.
 
 ## v6.17.8 (2026-01-28)
 - Aggiornato il numero di versione visibile nell'app e nei tool di supporto.
