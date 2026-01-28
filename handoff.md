@@ -12,7 +12,7 @@ Questo documento definisce **come Codex deve lavorare su ADA**, includendo svilu
   - CI (PR) → MOCK, veloce, gate di merge
   - CI (REAL) → rete stretta + OpenAI reale, on‑demand e nightly
 - Fornire tracciabilità chiara (commit, PR, artifacts, commenti automatici)
-- Mantenere il baseline stabile (ADA v6.17.8) e le funzionalità critiche integre
+- Mantenere il baseline stabile (ADA v6.17.5) e le funzionalità critiche integre
 
 ---
 
@@ -36,7 +36,7 @@ Non lavorare mai direttamente su `main`.
 
 ---
 
-## 2.3 Note di baseline (v6.17.8)
+## 2.3 Note di baseline (v6.17.5)
 
 - Il repository include già il fix per il bug critico su `app-recording.js`.
 - In questa versione i pulsanti della pagina **Visita** devono rimanere operativi.
