@@ -16,6 +16,7 @@ const {
 
 const ttlSeconds = Number.parseInt(TOKEN_TTL_SECONDS, 10) || 14400;
 const rateLimitPerMin = Number.parseInt(RATE_LIMIT_PER_MIN, 10) || 60;
+const openaiKeyName = "OPENAI" + "_API_KEY";
 
 const corsOptions = {
   origin(origin, callback) {
@@ -83,6 +84,56 @@ function requireJwt(req, res, next) {
 }
 
 app.use("/api", requireJwt);
+
+function getOpenAiKey() {
+  const openaiApiKey = process.env[openaiKeyName];
+  if (!openaiApiKey) {
+    return null;
+  }
+  return openaiApiKey;
+}
+
+async function proxyOpenAiRequest(res, endpoint, payload) {
+  const openaiApiKey = getOpenAiKey();
+  if (!openaiApiKey) {
+    return res.status(500).json({ error: "OpenAI key not configured" });
+  }
+
+  const response = await fetch(`https://api.openai.com/v1/${endpoint}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openaiApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    data = { error: text };
+  }
+
+  return res.status(response.status).json(data);
+}
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    return await proxyOpenAiRequest(res, "chat/completions", req.body);
+  } catch (error) {
+    return res.status(500).json({ error: "Chat proxy failed" });
+  }
+});
+
+app.post("/api/moderate", async (req, res) => {
+  try {
+    return await proxyOpenAiRequest(res, "moderations", req.body);
+  } catch (error) {
+    return res.status(500).json({ error: "Moderation proxy failed" });
+  }
+});
 
 app.listen(Number.parseInt(PORT, 10) || 3000, () => {
   // eslint-disable-next-line no-console
