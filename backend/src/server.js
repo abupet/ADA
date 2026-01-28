@@ -17,6 +17,7 @@ const {
 const ttlSeconds = Number.parseInt(TOKEN_TTL_SECONDS, 10) || 14400;
 const rateLimitPerMin = Number.parseInt(RATE_LIMIT_PER_MIN, 10) || 60;
 const openaiKeyName = "OPENAI" + "_API_KEY";
+const openaiBaseUrl = "https://api.openai.com/v1";
 
 const corsOptions = {
   origin(origin, callback) {
@@ -62,7 +63,7 @@ app.post("/auth/login", (req, res) => {
 });
 
 function requireJwt(req, res, next) {
-  if (req.path === "/api/health") return next();
+  if (req.path === "/health") return next();
 
   const authHeader = req.headers.authorization || "";
   const [scheme, token] = authHeader.split(" ");
@@ -99,21 +100,26 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
 
-  const response = await fetch(`https://api.openai.com/v1/${endpoint}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openaiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload ?? {}),
-  });
+  let response;
+  try {
+    response = await fetch(`${openaiBaseUrl}/${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload ?? {}),
+    });
+  } catch (error) {
+    return res.status(502).json({ error: "OpenAI request failed" });
+  }
 
   const text = await response.text();
   let data;
   try {
     data = JSON.parse(text);
   } catch (error) {
-    data = { error: text };
+    data = { error: text || response.statusText };
   }
 
   return res.status(response.status).json(data);
