@@ -104,16 +104,16 @@ function requireJwt(req, res, next) {
 app.use("/api", requireJwt);
 
 function getOpenAiKey() {
-  const openaiApiKey = process.env[openaiKeyName];
-  if (!openaiApiKey) {
+  const oaKey = process.env[openaiKeyName];
+  if (!oaKey) {
     return null;
   }
-  return openaiApiKey;
+  return oaKey;
 }
 
 async function proxyOpenAiRequest(res, endpoint, payload) {
-  const openaiApiKey = getOpenAiKey();
-  if (!openaiApiKey) {
+  const oaKey = getOpenAiKey();
+  if (!oaKey) {
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
 
@@ -122,7 +122,7 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
     response = await fetch(`${openaiBaseUrl}/${endpoint}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${openaiApiKey}`,
+        Authorization: `Bearer ${oaKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload ?? {}),
