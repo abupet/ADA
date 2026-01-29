@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Install backend dependencies
-        run: npm ci --prefix backend
+        run: npm install --prefix backend
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
