@@ -100,18 +100,24 @@ async function login() {
     }
 
     const apiKey = await decryptApiKey(password, getApiKeyMode());
+    const hasApiKey = Boolean(apiKey);
+    const hasToken = Boolean(auth.token);
 
-    if (apiKey) {
-        API_KEY = apiKey;
-        const sessionKey = btoa(password + ':' + Date.now());
-        localStorage.setItem('ada_session', sessionKey);
-        showAppScreen();
-        loadData();
-        initApp();
-    } else {
+    if (!hasApiKey && !hasToken) {
         clearAuthToken();
         document.getElementById('loginError').style.display = 'block';
+        return;
     }
+
+    if (hasApiKey) {
+        API_KEY = apiKey;
+    }
+
+    const sessionKey = btoa(password + ':' + Date.now());
+    localStorage.setItem('ada_session', sessionKey);
+    showAppScreen();
+    loadData();
+    initApp();
 }
 
 async function checkSession() {
@@ -124,8 +130,12 @@ async function checkSession() {
             const auth = await requestAuthToken(password);
             if (auth.hardFail) return;
             const apiKey = await decryptApiKey(password, getApiKeyMode());
-            if (!apiKey) return;
-            API_KEY = apiKey;
+            const hasApiKey = Boolean(apiKey);
+            const hasToken = Boolean(auth.token);
+            if (!hasApiKey && !hasToken) return;
+            if (hasApiKey) {
+                API_KEY = apiKey;
+            }
             showAppScreen();
             loadData();
             initApp();
