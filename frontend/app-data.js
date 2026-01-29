@@ -421,9 +421,8 @@ async function completeQuestionRecording() {
         formData.append('language', 'it');
         
         try {
-            const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            const response = await fetchApi('/api/transcribe', {
                 method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + API_KEY },
                 body: formData
             });
             if (!response.ok) {

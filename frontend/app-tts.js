@@ -147,10 +147,9 @@ async function playNextChunk(lang = 'IT') {
         const t0 = performance.now();
         const voice = voiceMap[lang] || 'nova';
         
-        const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        const response = await fetchApi('/api/tts', {
             method: 'POST',
             headers: {
-                'Authorization': 'Bearer ' + API_KEY,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({

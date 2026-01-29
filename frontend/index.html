@@ -977,17 +977,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="card">
-                    <h3>API Key</h3>
-                    <div class="form-group">
-                        <label>Chiave da usare</label>
-                        <select id="apiKeyModeSelector" data-testid="api-key-mode-selector">
-                            <option value="general">Generale</option>
-                            <option value="costs">Calcolo consumi</option>
-                        </select>
-                        <p style="font-size: 12px; color: #888; margin-top: 5px;">La scelta viene memorizzata e rimane attiva ai successivi accessi.</p>
-                    </div>
-                </div>
                 <div class="card" data-testid="debug-system-tools">
                     <button class="btn btn-primary" style="width: 100%; margin-bottom: 15px;" onclick="openCostsPage()" data-testid="open-costs-button">💰 Consumo API</button>
                     <button class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;" onclick="exportLogFile()" data-testid="export-log-button">📄 Scarica Log Errori (ADA.log)</button>
@@ -1096,7 +1085,6 @@
     <div id="progressBar" class="progress-bar" data-testid="progress-bar"><div class="progress-fill"></div></div>
 
     <!-- Scripts -->
-    <script src="api-keys.js"></script>
     <script src="config.js"></script>
     <script src="app-core.js"></script>
     <script src="app-recording.js"></script>

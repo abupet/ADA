@@ -1,7 +1,7 @@
 import { test, expect } from "./helpers/test-base";
 import { login } from "./helpers/login";
 
-test("@smoke Impostazioni: logo clinica visibile, API key in debug", async ({ page }) => {
+test("@smoke Impostazioni: logo clinica visibile, debug attivo", async ({ page }) => {
   await login(page);
 
   await page.locator('.nav-item[data-page="settings"]').click();
@@ -13,5 +13,5 @@ test("@smoke Impostazioni: logo clinica visibile, API key in debug", async ({ pa
 
   await page.locator('.nav-item[data-page="debug"]').click();
   await expect(page.locator("#page-debug")).toBeVisible();
-  await expect(page.getByTestId("api-key-mode-selector")).toBeVisible();
+  await expect(page.getByTestId("debug-system-tools")).toBeVisible();
 });

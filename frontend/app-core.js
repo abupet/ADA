@@ -51,7 +51,6 @@ function _extractJsonArray(text) {
 
 async function login() {
     const password = document.getElementById('passwordInput').value;
-    const apiKey = await decryptApiKey(password, getApiKeyMode());
     let token = '';
     try {
         const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -66,9 +65,6 @@ async function login() {
     } catch (e) {}
 
     if (token) {
-        if (apiKey) {
-            API_KEY = apiKey;
-        }
         setAuthToken(token);
         const sessionKey = btoa(password + ':' + Date.now());
         localStorage.setItem('ada_session', sessionKey);
@@ -87,12 +83,7 @@ async function checkSession() {
     const token = getAuthToken();
     if (session && token) {
         try {
-            const decoded = atob(session);
-            const password = decoded.split(':')[0];
-            const apiKey = await decryptApiKey(password, getApiKeyMode());
-            if (apiKey) {
-                API_KEY = apiKey;
-            }
+            atob(session);
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('appContainer').classList.add('active');
             loadData();
@@ -111,7 +102,6 @@ function logout() {
 function handleAuthFailure() {
     localStorage.removeItem('ada_session');
     clearAuthToken();
-    API_KEY = null;
     const loginScreen = document.getElementById('loginScreen');
     const appContainer = document.getElementById('appContainer');
     if (appContainer) appContainer.classList.remove('active');
@@ -137,7 +127,6 @@ async function initApp() {
     initLanguageSelectors();
     initVitalsDateTime();
     initDebugLogSetting();
-    initApiKeySelector();
     initChunkingSettings();
     initChunkingSectionToggle();
     initVetNameSetting();
@@ -614,43 +603,6 @@ function initVetNameSetting() {
 // ============================================
 // API KEY SELECTION (General vs Costs)
 // ============================================
-
-function getSessionPassword() {
-    try {
-        const session = localStorage.getItem('ada_session');
-        if (!session) return null;
-        const decoded = atob(session);
-        return decoded.split(':')[0] || null;
-    } catch (e) {
-        return null;
-    }
-}
-
-async function applyApiKeyMode(mode, { silent = false } = {}) {
-    setApiKeyMode(mode);
-    const password = getSessionPassword();
-    if (!password) return;
-    const apiKey = await decryptApiKey(password, mode);
-    if (apiKey) {
-        API_KEY = apiKey;
-        if (!silent) {
-            const label = mode === 'costs' ? 'calcolo consumi' : 'generale';
-            showToast(`API key impostata su "${label}"`, 'success');
-        }
-    } else if (!silent) {
-        showToast('API key non valida', 'error');
-    }
-}
-
-function initApiKeySelector() {
-    const selector = document.getElementById('apiKeyModeSelector');
-    if (!selector) return;
-    const mode = getApiKeyMode();
-    selector.value = mode;
-    selector.addEventListener('change', async () => {
-        await applyApiKeyMode(selector.value);
-    });
-}
 
 // ============================================
 // DEBUG LOG SETTINGS
@@ -1302,9 +1254,8 @@ async function sendFullscreenCorrection() {
         formData.append('model', 'whisper-1');
         formData.append('language', 'it');
         
-        const transcribeResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        const transcribeResponse = await fetchApi('/api/transcribe', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + API_KEY },
             body: formData
         });
         

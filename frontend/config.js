@@ -1,26 +1,6 @@
 // ADA v6.17.8 - Configuration
-// API Keys are stored in api-keys.js
-
-let API_KEY = null;
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
-const ADA_API_KEY_MODE_KEY = 'ada_api_key_mode';
-
-function getApiKeyMode() {
-    try {
-        const mode = localStorage.getItem(ADA_API_KEY_MODE_KEY);
-        return mode === 'costs' ? 'costs' : 'general';
-    } catch (e) {
-        return 'general';
-    }
-}
-
-function setApiKeyMode(mode) {
-    try {
-        const value = mode === 'costs' ? 'costs' : 'general';
-        localStorage.setItem(ADA_API_KEY_MODE_KEY, value);
-    } catch (e) {}
-}
 
 function setAuthToken(token) {
     try {
@@ -56,14 +36,6 @@ async function fetchApi(path, options = {}) {
         }
     }
     return response;
-}
-
-function getEncryptedKeyForMode(mode) {
-    return mode === 'costs' ? ENCRYPTED_API_KEY_COSTS : ENCRYPTED_API_KEY_GENERAL;
-}
-
-function getSaltForMode(mode) {
-    return mode === 'costs' ? SALT_COSTS : SALT_GENERAL;
 }
 
 // Version
@@ -450,34 +422,6 @@ const SOAP_SIMPLE_SCHEMA = {
         meta: { type: "object", description: "Metadati" }
     }
 };
-
-// Crypto functions
-async function deriveKey(password, salt) {
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: Uint8Array.from(atob(salt), c => c.charCodeAt(0)), iterations: 100000, hash: 'SHA-256' },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-    );
-}
-
-async function decryptApiKey(password, mode = getApiKeyMode()) {
-    try {
-        const salt = getSaltForMode(mode);
-        const encryptedKey = getEncryptedKeyForMode(mode);
-        const key = await deriveKey(password, salt);
-        const data = Uint8Array.from(atob(encryptedKey), c => c.charCodeAt(0));
-        const iv = data.slice(0, 12);
-        const encrypted = data.slice(12);
-        const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted);
-        return new TextDecoder().decode(decrypted);
-    } catch (e) {
-        return null;
-    }
-}
 
 // Helper: blob to base64 data URL
 async function blobToDataURL(blob) {

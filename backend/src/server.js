@@ -7,8 +7,6 @@ const multer = require("multer");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
-
 const app = express();
 
 const {
@@ -180,6 +178,22 @@ app.post("/api/moderate", async (req, res) => {
 app.post("/api/transcribe", upload.single("file"), async (req, res) => {
   const oaKey = getOpenAiKey();
   if (!oaKey) {
+    if (isMockEnv) {
+      return res.status(200).json({
+        text: "Trascrizione mock completata.",
+        segments: [
+          {
+            id: 0,
+            segment_index: 0,
+            text: "Trascrizione mock completata.",
+            start: 0,
+            end: 1,
+            speaker: "sconosciuto",
+            role: "unknown",
+          },
+        ],
+      });
+    }
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
 
@@ -227,6 +241,10 @@ app.post("/api/transcribe", upload.single("file"), async (req, res) => {
 app.post("/api/tts", async (req, res) => {
   const oaKey = getOpenAiKey();
   if (!oaKey) {
+    if (isMockEnv) {
+      res.setHeader("Content-Type", "audio/mpeg");
+      return res.status(200).send(Buffer.from([]));
+    }
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
 

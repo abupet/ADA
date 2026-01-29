@@ -1687,9 +1687,8 @@ async function transcribeDiarizedOpenAI(blob, attemptNum) {
         }
     }
 
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const response = await fetchApi('/api/transcribe', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + API_KEY },
         body: fd,
         signal: getVisitSignal()
     });
@@ -1784,12 +1783,11 @@ async function transcribeWithNormalizedAudio(originalBlob, speakersConfig) {
             }
         }
 
-        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        const response = await fetchApi('/api/transcribe', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + API_KEY },
             body: fd,
-        signal: getVisitSignal()
-    });
+            signal: getVisitSignal()
+        });
 
         if (!response.ok) {
             const errText = await response.text();
@@ -2068,9 +2066,8 @@ async function transcribeWithWhisperFallback(recordedMinutes) {
         formData.append('timestamp_granularities[]', 'segment');
         formData.append('prompt', 'Trascrizione visita veterinaria. Termini: anamnesi, dispnea, tachicardia, BID, TID.');
 
-        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        const response = await fetchApi('/api/transcribe', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + API_KEY },
             body: formData,
             signal: getVisitSignal()
         });

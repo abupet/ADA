@@ -1660,9 +1660,8 @@ async function sendCorrection() {
             formData.append('model', 'whisper-1');
             formData.append('language', 'it');
 
-            const transcribeResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            const transcribeResponse = await fetchApi('/api/transcribe', {
                 method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + API_KEY },
                 body: formData
             });
 
