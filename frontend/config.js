@@ -1,31 +1,41 @@
 // ADA v6.17.8 - Configuration
-// API Keys are stored in api-keys.js
+const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
+const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 
-let API_KEY = null;
-const ADA_API_KEY_MODE_KEY = 'ada_api_key_mode';
-
-function getApiKeyMode() {
+function setAuthToken(token) {
     try {
-        const mode = localStorage.getItem(ADA_API_KEY_MODE_KEY);
-        return mode === 'costs' ? 'costs' : 'general';
-    } catch (e) {
-        return 'general';
-    }
-}
-
-function setApiKeyMode(mode) {
-    try {
-        const value = mode === 'costs' ? 'costs' : 'general';
-        localStorage.setItem(ADA_API_KEY_MODE_KEY, value);
+        if (token) {
+            localStorage.setItem(ADA_AUTH_TOKEN_KEY, token);
+        } else {
+            localStorage.removeItem(ADA_AUTH_TOKEN_KEY);
+        }
     } catch (e) {}
 }
 
-function getEncryptedKeyForMode(mode) {
-    return mode === 'costs' ? ENCRYPTED_API_KEY_COSTS : ENCRYPTED_API_KEY_GENERAL;
+function getAuthToken() {
+    try {
+        return localStorage.getItem(ADA_AUTH_TOKEN_KEY) || '';
+    } catch (e) {
+        return '';
+    }
 }
 
-function getSaltForMode(mode) {
-    return mode === 'costs' ? SALT_COSTS : SALT_GENERAL;
+function clearAuthToken() {
+    setAuthToken('');
+}
+
+async function fetchApi(path, options = {}) {
+    const headers = new Headers((options || {}).headers || {});
+    const token = getAuthToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    if (response.status === 401) {
+        clearAuthToken();
+        if (typeof handleAuthFailure === 'function') {
+            handleAuthFailure();
+        }
+    }
+    return response;
 }
 
 // Version
@@ -412,34 +422,6 @@ const SOAP_SIMPLE_SCHEMA = {
         meta: { type: "object", description: "Metadati" }
     }
 };
-
-// Crypto functions
-async function deriveKey(password, salt) {
-    const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: Uint8Array.from(atob(salt), c => c.charCodeAt(0)), iterations: 100000, hash: 'SHA-256' },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-    );
-}
-
-async function decryptApiKey(password, mode = getApiKeyMode()) {
-    try {
-        const salt = getSaltForMode(mode);
-        const encryptedKey = getEncryptedKeyForMode(mode);
-        const key = await deriveKey(password, salt);
-        const data = Uint8Array.from(atob(encryptedKey), c => c.charCodeAt(0));
-        const iv = data.slice(0, 12);
-        const encrypted = data.slice(12);
-        const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted);
-        return new TextDecoder().decode(decrypted);
-    } catch (e) {
-        return null;
-    }
-}
 
 // Helper: blob to base64 data URL
 async function blobToDataURL(blob) {
