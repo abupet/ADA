@@ -49,19 +49,62 @@ function _extractJsonArray(text) {
 // LOGIN / SESSION
 // ============================================
 
+const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
+
+function showLoginScreen() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appContainer').classList.remove('active');
+}
+
+function showAppScreen() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appContainer').classList.add('active');
+}
+
+function clearAuthToken() {
+    try {
+        sessionStorage.removeItem(ADA_AUTH_TOKEN_KEY);
+    } catch (e) {}
+}
+
+async function requestAuthToken(password) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password || '' })
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (!data?.token) return null;
+        sessionStorage.setItem(ADA_AUTH_TOKEN_KEY, data.token);
+        return data.token;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function login() {
     const password = document.getElementById('passwordInput').value;
+    document.getElementById('loginError').style.display = 'none';
+
+    const token = await requestAuthToken(password);
+    if (!token) {
+        document.getElementById('loginError').style.display = 'block';
+        return;
+    }
+
     const apiKey = await decryptApiKey(password, getApiKeyMode());
 
     if (apiKey) {
         API_KEY = apiKey;
         const sessionKey = btoa(password + ':' + Date.now());
         localStorage.setItem('ada_session', sessionKey);
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('appContainer').classList.add('active');
+        showAppScreen();
         loadData();
         initApp();
     } else {
+        clearAuthToken();
         document.getElementById('loginError').style.display = 'block';
     }
 }
@@ -73,22 +116,42 @@ async function checkSession() {
         try {
             const decoded = atob(session);
             const password = decoded.split(':')[0];
+            const token = await requestAuthToken(password);
+            if (!token) return;
             const apiKey = await decryptApiKey(password, getApiKeyMode());
-            if (apiKey) {
-                API_KEY = apiKey;
-                document.getElementById('loginScreen').style.display = 'none';
-                document.getElementById('appContainer').classList.add('active');
-                loadData();
-                initApp();
-                return;
-            }
+            if (!apiKey) return;
+            API_KEY = apiKey;
+            showAppScreen();
+            loadData();
+            initApp();
+            return;
         } catch (e) {}
     }
 }
 
 function logout() {
     localStorage.removeItem('ada_session');
+    clearAuthToken();
     location.reload();
+}
+
+// ============================================
+// BACKEND FETCH HELPERS
+// ============================================
+
+async function fetchApi(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const token = sessionStorage.getItem(ADA_AUTH_TOKEN_KEY);
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    if (response.status === 401) {
+        clearAuthToken();
+        showLoginScreen();
+    }
+    return response;
 }
 
 // ============================================
@@ -1282,9 +1345,9 @@ async function sendFullscreenCorrection() {
         const correctionText = transcribeResult.text;
         
         // Apply correction using GPT
-        const applyResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        const applyResponse = await fetchApi('/api/chat', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + API_KEY, 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: 'gpt-4o',
                 messages: [
@@ -1897,9 +1960,9 @@ function updateSOAPLabels(lang) {
 }
 
 async function translateText(text, targetLang) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchApi('/api/chat', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + API_KEY, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             model: 'gpt-4o',
             messages: [{ role: 'user', content: `Traduci in ${langNames[targetLang]}. Rispondi SOLO con la traduzione:\n\n${text}` }],

@@ -1,6 +1,9 @@
 // ADA v6.17.8 - Configuration
 // API Keys are stored in api-keys.js
 
+// Backend API base URL (override for deployment)
+const API_BASE_URL = 'http://localhost:3000';
+
 let API_KEY = null;
 const ADA_API_KEY_MODE_KEY = 'ada_api_key_mode';
 
