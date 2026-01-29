@@ -38,6 +38,8 @@ jobs:
 
       - name: Start server
         run: |
+          nohup node backend/src/server.js > backend.log 2>&1 &
+          npx wait-on http://127.0.0.1:3000/api/health
           nohup npm run serve > server.log 2>&1 &
           npx wait-on http://127.0.0.1:4173
 
@@ -68,6 +70,14 @@ jobs:
           path: server.log
           if-no-files-found: ignore
 
+      - name: Upload backend log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend.log
+          if-no-files-found: ignore
+
       - name: Write CI summary
         if: always()
         run: |
@@ -83,6 +93,7 @@ jobs:
             echo "- playwright-report"
             echo "- test-results"
             echo "- server-log"
+            echo "- backend-log"
             echo ""
             echo "### Useful commands (local)"
             echo "- npm ci"
