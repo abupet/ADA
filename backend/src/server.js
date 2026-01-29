@@ -1,21 +1,31 @@
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+
+require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const app = express();
 
 const {
   ADA_LOGIN_PASSWORD,
+  ADA_TEST_PASSWORD,
   JWT_SECRET,
   FRONTEND_ORIGIN,
   TOKEN_TTL_SECONDS = "14400",
   RATE_LIMIT_PER_MIN = "60",
   PORT = "3000",
+  MODE,
+  CI,
 } = process.env;
 
 const ttlSeconds = Number.parseInt(TOKEN_TTL_SECONDS, 10) || 14400;
 const rateLimitPerMin = Number.parseInt(RATE_LIMIT_PER_MIN, 10) || 60;
+const isMockEnv = CI === "true" || MODE === "MOCK";
+const effectivePassword = ADA_LOGIN_PASSWORD || ADA_TEST_PASSWORD;
+const effectiveJwtSecret = isMockEnv ? JWT_SECRET || "dev-jwt-secret" : JWT_SECRET;
 const openaiKeyName = [
   "4f",
   "50",
@@ -52,6 +62,11 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   limit: rateLimitPerMin,
@@ -66,16 +81,18 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/auth/login", (req, res) => {
-  if (!ADA_LOGIN_PASSWORD || !JWT_SECRET) {
+  if (!effectivePassword || !effectiveJwtSecret) {
     return res.status(500).json({ error: "Server not configured" });
   }
 
   const { password } = req.body ?? {};
-  if (password !== ADA_LOGIN_PASSWORD) {
+  if (password !== effectivePassword) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const token = jwt.sign({ sub: "ada-user" }, JWT_SECRET, { expiresIn: ttlSeconds });
+  const token = jwt.sign({ sub: "ada-user" }, effectiveJwtSecret, {
+    expiresIn: ttlSeconds,
+  });
   return res.json({ token, expiresIn: ttlSeconds });
 });
 
@@ -88,12 +105,12 @@ function requireJwt(req, res, next) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  if (!JWT_SECRET) {
+  if (!effectiveJwtSecret) {
     return res.status(500).json({ error: "Server not configured" });
   }
 
   try {
-    jwt.verify(token, JWT_SECRET);
+    jwt.verify(token, effectiveJwtSecret);
   } catch (error) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -156,6 +173,85 @@ app.post("/api/moderate", async (req, res) => {
   } catch (error) {
     return res.status(500).json({ error: "Moderation proxy failed" });
   }
+});
+
+app.post("/api/transcribe", upload.single("file"), async (req, res) => {
+  const oaKey = getOpenAiKey();
+  if (!oaKey) {
+    return res.status(500).json({ error: "OpenAI key not configured" });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: "Missing audio file" });
+  }
+
+  const form = new FormData();
+  const blob = new Blob([req.file.buffer], {
+    type: req.file.mimetype || "application/octet-stream",
+  });
+  form.append("file", blob, req.file.originalname || "audio.webm");
+  const bodyFields = req.body || {};
+  Object.entries(bodyFields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      form.append(key, String(value));
+    }
+  });
+  if (!bodyFields.model) {
+    form.append("model", "whisper-1");
+  }
+
+  let response;
+  try {
+    response = await fetch(`${openaiBaseUrl}/audio/transcriptions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${oaKey}` },
+      body: form,
+    });
+  } catch (error) {
+    return res.status(502).json({ error: "OpenAI request failed" });
+  }
+
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    data = { error: text || response.statusText };
+  }
+
+  return res.status(response.status).json(data);
+});
+
+app.post("/api/tts", async (req, res) => {
+  const oaKey = getOpenAiKey();
+  if (!oaKey) {
+    return res.status(500).json({ error: "OpenAI key not configured" });
+  }
+
+  let response;
+  try {
+    response = await fetch(`${openaiBaseUrl}/audio/speech`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${oaKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(req.body ?? {}),
+    });
+  } catch (error) {
+    return res.status(502).json({ error: "OpenAI request failed" });
+  }
+
+  if (!response.ok) {
+    const errText = await response.text();
+    return res.status(response.status).json({
+      error: errText || response.statusText || "OpenAI request failed",
+    });
+  }
+
+  const audioBuffer = Buffer.from(await response.arrayBuffer());
+  res.setHeader("Content-Type", response.headers.get("content-type") || "audio/mpeg");
+  return res.status(200).send(audioBuffer);
 });
 
 app.listen(Number.parseInt(PORT, 10) || 3000, () => {
