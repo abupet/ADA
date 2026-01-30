@@ -1,10 +1,13 @@
-// server.js v2
+// backend/src/server.js v2
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+
+const { petsRouter } = require("./pets.routes");
+const { petsSyncRouter } = require("./pets.sync.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -81,47 +84,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-
-
-app.get("/api/healthz", (_req, res) => {
-  const now = new Date().toISOString();
-  const openaiKeyConfigured = Boolean(getOpenAiKey());
-  const passwordConfigured = Boolean(effectivePassword);
-  const jwtConfigured = Boolean(effectiveJwtSecret);
-  const corsConfigured = Boolean(FRONTEND_ORIGIN);
-
-  const warnings = [];
-  if (!corsConfigured) warnings.push("FRONTEND_ORIGIN is not set (CORS will reject browser requests).");
-  if (!passwordConfigured) warnings.push("ADA_LOGIN_PASSWORD (or ADA_TEST_PASSWORD) is not set (login will fail).");
-  if (!jwtConfigured) warnings.push("JWT_SECRET is not set (token verification/signing may fail in production).");
-  if (!openaiKeyConfigured && !isMockEnv) warnings.push("OpenAI key not configured (OpenAI proxy endpoints will fail).");
-
-  const details = {
-    ok: warnings.length === 0,
-    time: now,
-    uptime_seconds: Math.floor(process.uptime()),
-    env: {
-      node_env: process.env.NODE_ENV || null,
-      mode: MODE || null,
-      ci: CI || null,
-      is_mock_env: isMockEnv,
-    },
-    config: {
-      port: PORT || null,
-      frontend_origin_set: corsConfigured,
-      token_ttl_seconds: ttlSeconds,
-      rate_limit_per_min: rateLimitPerMin,
-      login_password_set: passwordConfigured,
-      jwt_secret_set: jwtConfigured,
-      openai_key_set: openaiKeyConfigured,
-      openai_base_url: openaiBaseUrl,
-    },
-    warnings,
-  };
-
-  // Keep it safe: do not expose secrets, only booleans and non-sensitive metadata.
-  return res.status(200).json(details);
-});app.post("/auth/login", (req, res) => {
+app.post("/auth/login", (req, res) => {
   if (!effectivePassword || !effectiveJwtSecret) {
     return res.status(500).json({ error: "Server not configured" });
   }
@@ -151,7 +114,8 @@ function requireJwt(req, res, next) {
   }
 
   try {
-    jwt.verify(token, effectiveJwtSecret);
+    const decoded = jwt.verify(token, effectiveJwtSecret);
+    req.user = decoded;
   } catch (error) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -160,6 +124,8 @@ function requireJwt(req, res, next) {
 }
 
 app.use("/api", requireJwt);
+
+const requireAuth = requireJwt;
 
 function getOpenAiKey() {
   const oaKey = process.env[openaiKeyName];
