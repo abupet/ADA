@@ -178,12 +178,31 @@ async function applyRemotePets(items) {
         const store = tx.objectStore(PETS_STORE_NAME);
         for (const item of items) {
             if (!item) continue;
-            const id = item.id;
+            let entry = item;
+            let id = item.id;
+            let isDelete = item.deleted === true || item.is_deleted === true;
+
+            if (item.type === 'pet.delete' || item.type === 'pet.upsert') {
+                id = item.pet_id;
+                if (item.type === 'pet.delete') {
+                    isDelete = true;
+                } else {
+                    entry = item.record && typeof item.record === 'object'
+                        ? { ...item.record, id: item.pet_id ?? item.record.id }
+                        : { id: item.pet_id };
+                }
+            } else if ((id === undefined || id === null) && item.pet_id != null) {
+                id = item.pet_id;
+                if (item.record && typeof item.record === 'object') {
+                    entry = { ...item.record, id };
+                }
+            }
+
             if (id === undefined || id === null) continue;
-            if (item.deleted === true || item.is_deleted === true) {
+            if (isDelete) {
                 store.delete(id);
             } else {
-                store.put(item);
+                store.put({ ...entry, id });
             }
         }
         tx.oncomplete = () => resolve(true);
@@ -208,12 +227,12 @@ async function pullPetsIfOnline() {
 
     // Be tolerant to backend response shapes
     const qs = new URLSearchParams();
-    if (cursor) qs.set('cursor', cursor);
+    if (cursor) qs.set('since', cursor);
     qs.set('device_id', device_id);
 
     let resp;
     try {
-        resp = await fetchApi(`/sync/pets/pull?${qs.toString()}`, { method: 'GET' });
+        resp = await fetchApi(`/api/sync/pets/pull?${qs.toString()}`, { method: 'GET' });
     } catch (e) {
         return; // silent
     }
