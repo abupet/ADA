@@ -19,6 +19,22 @@ function getCurrentPetId() {
     return Number.isFinite(n) ? n : null;
 }
 
+function normalizePetId(rawId) {
+    if (rawId === null || rawId === undefined) return null;
+    if (typeof rawId === 'number' && Number.isFinite(rawId)) return rawId;
+    const asString = String(rawId);
+    if (/^-?\d+$/.test(asString)) {
+        const parsed = parseInt(asString, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    let hash = 0;
+    for (let i = 0; i < asString.length; i += 1) {
+        hash = (hash << 5) - hash + asString.charCodeAt(i);
+        hash |= 0;
+    }
+    return -Math.abs(hash || 1);
+}
+
 async function initPetsDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(PETS_DB_NAME, 2);
@@ -225,16 +241,17 @@ async function pullPetsIfOnline() {
     const changeItems = Array.isArray(data?.changes)
         ? data.changes.map((change) => {
             if (!change) return null;
+            const normalizedId = normalizePetId(change.record?.id ?? change.pet_id);
             if (change.type === 'pet.delete') {
-                return { id: change.pet_id, deleted: true };
+                return normalizedId === null ? null : { id: normalizedId, deleted: true };
             }
             if (change.record) {
                 return {
                     ...change.record,
-                    id: change.record.id ?? change.pet_id
+                    id: normalizedId ?? change.record.id ?? change.pet_id
                 };
             }
-            return { id: change.pet_id };
+            return normalizedId === null ? null : { id: normalizedId };
         })
         : null;
 
