@@ -1,10 +1,10 @@
 import { test, expect } from "./helpers/test-base";
 import { login } from "./helpers/login";
 import { Fixtures } from "./helpers/fixtures";
-import { captureHardErrors } from "./helpers/console";
+import { captureFilteredConsoleErrors } from "./helpers/console-errors";
 
 test("@smoke Upload testo lungo (fixture)", async ({ page }) => {
-  const errors = captureHardErrors(page);
+  const errors = captureFilteredConsoleErrors(page);
 
   await login(page);
 
