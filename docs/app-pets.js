@@ -208,12 +208,12 @@ async function pullPetsIfOnline() {
 
     // Be tolerant to backend response shapes
     const qs = new URLSearchParams();
-    if (cursor) qs.set('cursor', cursor);
+    if (cursor) qs.set('since', cursor);
     qs.set('device_id', device_id);
 
     let resp;
     try {
-        resp = await fetchApi(`/sync/pets/pull?${qs.toString()}`, { method: 'GET' });
+        resp = await fetchApi(`/api/sync/pets/pull?${qs.toString()}`, { method: 'GET' });
     } catch (e) {
         return; // silent
     }
@@ -226,8 +226,19 @@ async function pullPetsIfOnline() {
         Array.isArray(data) ? data :
         Array.isArray(data?.pets) ? data.pets :
         Array.isArray(data?.items) ? data.items :
-        Array.isArray(data?.changes) ? data.changes :
-        [];
+        Array.isArray(data?.changes)
+            ? data.changes
+                .map((change) => {
+                    if (!change) return null;
+                    const id = change.pet_id ?? change.id ?? change.record?.id;
+                    if (change.type === 'pet.delete' || change.type === 'delete') {
+                        return id == null ? null : { id, deleted: true };
+                    }
+                    const record = change.record || {};
+                    return { ...record, id: record.id ?? id };
+                })
+                .filter(Boolean)
+            : [];
 
     await applyRemotePets(items);
 
