@@ -30,6 +30,9 @@ function _uuidv4() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+var inFlightPush = typeof window !== "undefined" && typeof window.ADA_PetsPushInFlight === "boolean"
+  ? window.ADA_PetsPushInFlight
+  : false;
 
 
 
@@ -65,9 +68,13 @@ function _petToPatch(petLike) {
 async function pushOutboxIfOnline() {
   if (!navigator.onLine) return;
   if (typeof getAuthToken !== "function" || !getAuthToken()) return;
+  if (inFlightPush) return;
   if (typeof openPetsDB !== "function") return;
 
-  const db = await openPetsDB();
+  inFlightPush = true;
+  if (typeof window !== "undefined") window.ADA_PetsPushInFlight = true;
+  try {
+    const db = await openPetsDB();
 
   // 1) Read outbox in a short-lived *readonly* transaction (IDB tx becomes inactive across awaits)
   const ops = [];
@@ -82,19 +89,24 @@ async function pushOutboxIfOnline() {
     };
   });
 
-  if (!ops.length) return;
+    if (!ops.length) return;
 
   const opIdToLocalKey = new Map();
+  const opIdToIdMap = new Map();
 
   const mappedOps = ops
     .map(({ key, value }) => {
       const o = value || {};
       const payload = o.payload || {};
-      const pet_id = _normalizeUuid(payload.id);
+      const rawId = payload.id;
+      const pet_id = _normalizeUuid(rawId);
       if (!pet_id) return null;
 
       const op_id = _uuidv4();
       opIdToLocalKey.set(op_id, key);
+      if (typeof rawId === "string" && rawId.startsWith("tmp_") && rawId !== pet_id) {
+        opIdToIdMap.set(op_id, { tmp_id: rawId, server_id: pet_id });
+      }
       const client_ts = o.created_at || new Date().toISOString();
 
       if (o.op_type === "delete") {
@@ -123,49 +135,61 @@ async function pushOutboxIfOnline() {
     })
     .filter(Boolean);
 
-  if (!mappedOps.length) return;
+    if (!mappedOps.length) return;
 
-  let res;
-  try {
-    res = await fetchApi("/api/sync/pets/push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        device_id: localStorage.getItem("ada_device_id") || "debug",
-        ops: mappedOps,
-      }),
-    });
-  } catch {
-    return;
-  }
+    let res;
+    try {
+      res = await fetchApi("/api/sync/pets/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device_id: localStorage.getItem("ada_device_id") || "debug",
+          ops: mappedOps,
+        }),
+      });
+    } catch (e) {
+      return;
+    }
 
-  if (!res || !res.ok) return;
+    if (!res || !res.ok) return;
 
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    return;
-  }
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      return;
+    }
 
   // Backend returns: { accepted: [op_id, ...], rejected: [{op_id,...}, ...] }
-  if (Array.isArray(data.accepted) && data.accepted.length) {
-    // 2) Delete accepted ops in a fresh *readwrite* transaction
-    await new Promise((resolve) => {
-      const txWrite = db.transaction(["outbox"], "readwrite");
-      const storeWrite = txWrite.objectStore("outbox");
+    if (Array.isArray(data.accepted) && data.accepted.length) {
+      // 2) Delete accepted ops in a fresh *readwrite* transaction
+      await new Promise((resolve) => {
+        const txWrite = db.transaction(["outbox"], "readwrite");
+        const storeWrite = txWrite.objectStore("outbox");
+
+        for (const acc of data.accepted) {
+          const opid = typeof acc === "string" ? acc : acc && acc.op_id;
+          const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
+          if (localKey !== undefined && localKey !== null) {
+            try { storeWrite.delete(localKey); } catch (e) {}
+          }
+        }
+
+        txWrite.oncomplete = () => resolve();
+        txWrite.onabort = () => resolve();
+      });
 
       for (const acc of data.accepted) {
         const opid = typeof acc === "string" ? acc : acc && acc.op_id;
-        const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
-        if (localKey !== undefined && localKey !== null) {
-          try { storeWrite.delete(localKey); } catch {}
+        const mapping = opid ? opIdToIdMap.get(opid) : null;
+        if (mapping && typeof recordIdMap === "function") {
+          try { await recordIdMap(mapping.tmp_id, mapping.server_id); } catch (e) {}
         }
       }
-
-      txWrite.oncomplete = () => resolve();
-      txWrite.onabort = () => resolve();
-    });
+    }
+  } finally {
+    inFlightPush = false;
+    if (typeof window !== "undefined") window.ADA_PetsPushInFlight = false;
   }
 }
 
