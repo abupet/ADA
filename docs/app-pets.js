@@ -413,20 +413,15 @@ async function enqueueOutbox(op_type, payload) {
 
 async function applyRemotePets(items) {
     if (!Array.isArray(items) || items.length === 0) return;
-
     // Upsert into pets store; support soft-delete
     if (!petsDB) await initPetsDB();
-
-    // Normalize pull shapes -> { id, entry, isDelete }
     const normalizedItems = [];
     for (const item of items) {
         if (!item) continue;
-
         let entry = item;
         let id = item.id;
         let isDelete = item.deleted === true || item.is_deleted === true;
 
-        // Backend "changes" stream shape
         if (item.type === 'pet.delete' || item.type === 'pet.upsert') {
             id = item.pet_id;
             if (item.type === 'pet.delete') {
@@ -449,25 +444,13 @@ async function applyRemotePets(items) {
 
     if (normalizedItems.length === 0) return;
 
-    // Read local pets once so we can:
-    // - migrate tmp_<uuid> -> <uuid>
-    // - merge server "flat" records without overwriting local structured fields
-    let localPets = [];
-    try { localPets = await getAllPets(); } catch (e) { localPets = []; }
-    const localById = new Map(
-        (Array.isArray(localPets) ? localPets : [])
-            .filter(p => p && typeof p.id === 'string')
-            .map(p => [p.id, p])
-    );
-
-    // tmp_id -> uuid migration if server id is uuid and local tmp_<uuid> exists
     try {
+        const localPets = await getAllPets();
         const tmpIds = new Set(
-            (Array.isArray(localPets) ? localPets : [])
+            localPets
                 .map(pet => pet && pet.id)
                 .filter(id => typeof id === 'string' && id.startsWith('tmp_'))
         );
-
         for (const item of normalizedItems) {
             const id = item.id;
             if (typeof id === 'string' && isUuidString(id)) {
@@ -480,90 +463,54 @@ async function applyRemotePets(items) {
         }
     } catch (e) {}
 
-    function normalizeIncomingEntry(entry, id, existing) {
-        const e = (entry && typeof entry === 'object') ? { ...entry } : { id };
 
-        // Some endpoints may return "flat" fields (name/species/...) while UI expects patient.pet*
-        const hasPatient = e.patient && typeof e.patient === 'object';
 
-        const flatName = e.name ?? e.petName ?? e.pet_name;
-        const flatSpecies = e.species ?? e.petSpecies ?? e.pet_species;
-        const flatBreed = e.breed ?? e.petBreed ?? e.pet_breed;
-        const flatSex = e.sex ?? e.petSex ?? e.pet_sex;
-        const flatWeight = e.weight_kg ?? e.petWeightKg ?? e.pet_weight_kg;
+    // --- Pull merge hardening (non-destructive) ---
+    // The backend pull payload can be flat (name/species/...), while the UI expects patient.*.
+    // Normalize remote records and merge without overwriting local fields with undefined/null.
+    const __merge = (typeof PetsSyncMerge === 'object' && PetsSyncMerge)
+        ? PetsSyncMerge
+        : null;
 
-        const existingPatient = existing && existing.patient && typeof existing.patient === 'object' ? existing.patient : null;
+    const mergedEntriesById = new Map();
+    for (const item of normalizedItems) {
+        if (item.isDelete) continue;
+        let remote = item.entry || {};
+        try {
+            if (__merge && typeof __merge.normalizePetFromServer === 'function') {
+                remote = __merge.normalizePetFromServer(remote);
+            }
+        } catch (e) {}
 
-        const patient = hasPatient ? { ...e.patient } : { ...(existingPatient || {}) };
+        let local = null;
+        try { local = await getPetById(item.id); } catch (e) { local = null; }
 
-        // Only fill/overwrite when we have a value (avoid wiping local rich fields with undefined)
-        if (flatName != null && flatName !== '') patient.petName = flatName;
-        if (flatSpecies != null && flatSpecies !== '') patient.petSpecies = flatSpecies;
-        if (flatBreed != null && flatBreed !== '') patient.petBreed = flatBreed;
-        if (flatSex != null && flatSex !== '') patient.petSex = flatSex;
-        if (flatWeight != null && flatWeight !== '') patient.petWeightKg = flatWeight;
-
-        // Ensure patient exists and id is correct
-        e.patient = patient;
-        e.id = id;
-
-        // Keep top-level name aligned for any UI fallbacks that use e.name
-        if (patient.petName != null && patient.petName !== '') e.name = patient.petName;
-
-        // If server provides version, store it as base_version (used by push logic)
-        if (e.version != null && e.base_version == null) e.base_version = e.version;
-
-        return e;
-    }
-
-    function mergePreservingLocal(existing, incoming) {
-        if (!existing || typeof existing !== 'object') return incoming;
-
-        // Shallow merge for top-level keys, but preserve local when incoming is null/undefined/empty-string
-        const merged = { ...existing };
-
-        for (const [k, v] of Object.entries(incoming || {})) {
-            if (k === 'patient') continue;
-            if (v === undefined || v === null) continue;
-            if (typeof v === 'string' && v.trim() === '') continue;
-            merged[k] = v;
+        let merged = remote;
+        try {
+            if (__merge && typeof __merge.mergePetLocalWithRemote === 'function') {
+                merged = __merge.mergePetLocalWithRemote(local || {}, remote);
+            } else if (local && typeof local === 'object') {
+                // Fallback: preserve existing patient object if remote doesn't have one.
+                merged = { ...local, ...remote };
+                if (!merged.patient && local.patient) merged.patient = local.patient;
+            }
+        } catch (e) {
+            merged = { ...(local || {}), ...(remote || {}) };
+            if (!merged.patient && local && local.patient) merged.patient = local.patient;
         }
 
-        const exP = (existing.patient && typeof existing.patient === 'object') ? existing.patient : {};
-        const inP = (incoming.patient && typeof incoming.patient === 'object') ? incoming.patient : {};
-
-        const mergedPatient = { ...exP };
-        for (const [k, v] of Object.entries(inP)) {
-            if (v === undefined || v === null) continue;
-            if (typeof v === 'string' && v.trim() === '') continue;
-            mergedPatient[k] = v;
-        }
-        merged.patient = mergedPatient;
-        merged.id = incoming.id;
-
-        // Keep top-level name in sync if possible
-        if (merged.patient && merged.patient.petName) merged.name = merged.patient.petName;
-
-        return merged;
+        mergedEntriesById.set(item.id, { ...merged, id: item.id });
     }
-
     await new Promise((resolve, reject) => {
         const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
         const store = tx.objectStore(PETS_STORE_NAME);
-
         for (const item of normalizedItems) {
             if (item.isDelete) {
                 store.delete(item.id);
-                continue;
+            } else {
+                store.put(mergedEntriesById.get(item.id) || { ...item.entry, id: item.id });
             }
-
-            const existing = localById.get(item.id);
-            const normalized = normalizeIncomingEntry(item.entry, item.id, existing);
-            const merged = mergePreservingLocal(existing, normalized);
-
-            store.put({ ...merged, id: item.id });
         }
-
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => reject(tx.error || new Error('applyRemotePets failed'));
     });
