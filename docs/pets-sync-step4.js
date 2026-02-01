@@ -91,6 +91,23 @@ async function pushOutboxIfOnline() {
 
     const opIdToLocalKey = new Map();
 
+    const needsUuid = ops.filter(({ value }) => !value || !value.op_uuid);
+    if (needsUuid.length) {
+      await new Promise((resolve) => {
+        const txWrite = db.transaction(["outbox"], "readwrite");
+        const storeWrite = txWrite.objectStore("outbox");
+        for (const item of needsUuid) {
+          const current = item.value || {};
+          const op_uuid = current.op_uuid || _uuidv4();
+          const updated = { ...current, op_uuid };
+          try { storeWrite.put(updated); } catch {}
+          item.value = updated;
+        }
+        txWrite.oncomplete = () => resolve();
+        txWrite.onabort = () => resolve();
+      });
+    }
+
     const mappedOps = ops
       .map(({ key, value }) => {
         const o = value || {};
@@ -98,7 +115,8 @@ async function pushOutboxIfOnline() {
         const pet_id = _normalizeUuid(payload.id);
         if (!pet_id) return null;
 
-        const op_id = _uuidv4();
+        const op_id = o.op_uuid;
+        if (!op_id) return null;
         opIdToLocalKey.set(op_id, key);
         const client_ts = o.created_at || new Date().toISOString();
 
