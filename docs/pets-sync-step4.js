@@ -85,16 +85,21 @@ async function pushOutboxIfOnline() {
   if (!ops.length) return;
 
   const opIdToLocalKey = new Map();
+  const opIdToIdMap = new Map();
 
   const mappedOps = ops
     .map(({ key, value }) => {
       const o = value || {};
       const payload = o.payload || {};
-      const pet_id = _normalizeUuid(payload.id);
+      const rawId = payload.id;
+      const pet_id = _normalizeUuid(rawId);
       if (!pet_id) return null;
 
       const op_id = _uuidv4();
       opIdToLocalKey.set(op_id, key);
+      if (typeof rawId === "string" && rawId.startsWith("tmp_") && rawId !== pet_id) {
+        opIdToIdMap.set(op_id, { tmp_id: rawId, server_id: pet_id });
+      }
       const client_ts = o.created_at || new Date().toISOString();
 
       if (o.op_type === "delete") {
@@ -135,7 +140,7 @@ async function pushOutboxIfOnline() {
         ops: mappedOps,
       }),
     });
-  } catch {
+  } catch (e) {
     return;
   }
 
@@ -144,7 +149,7 @@ async function pushOutboxIfOnline() {
   let data;
   try {
     data = await res.json();
-  } catch {
+  } catch (e) {
     return;
   }
 
@@ -159,13 +164,21 @@ async function pushOutboxIfOnline() {
         const opid = typeof acc === "string" ? acc : acc && acc.op_id;
         const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
         if (localKey !== undefined && localKey !== null) {
-          try { storeWrite.delete(localKey); } catch {}
+          try { storeWrite.delete(localKey); } catch (e) {}
         }
       }
 
       txWrite.oncomplete = () => resolve();
       txWrite.onabort = () => resolve();
     });
+
+    for (const acc of data.accepted) {
+      const opid = typeof acc === "string" ? acc : acc && acc.op_id;
+      const mapping = opid ? opIdToIdMap.get(opid) : null;
+      if (mapping && typeof recordIdMap === "function") {
+        try { await recordIdMap(mapping.tmp_id, mapping.server_id); } catch (e) {}
+      }
+    }
   }
 }
 
