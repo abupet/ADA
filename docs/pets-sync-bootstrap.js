@@ -1,30 +1,25 @@
 // pets-sync-bootstrap.js v2
-// STEP 5/6 — Automatic sync triggers (push + pull):
-// - online event: push then pull
-// - interval: push (and optionally pull via other triggers)
-// - startup + token detection ("login"): pull once when token becomes available
-// - foreground/resume: pull (throttled)
+// STEP 5/6 — Automatic sync triggers (push + pull)
+// - online: push then pull
+// - interval: push (guarded)
+// - startup: if token present -> push then pull; else short token poll to detect "login" then pull once
+// - foreground/resume: pull (throttled in app-pets)
 //
-// Notes:
-// - Silent behavior: no throw, no noisy logs
-// - Guards: single bootstrap, single interval, throttle/debounce, in-flight mutexes
+// Notes: silent behavior, no noisy logs, single init.
 
 (function initPetsSyncAuto() {
   try {
     if (window.__petsSyncBootstrapped) return;
     window.__petsSyncBootstrapped = true;
   } catch (e) {
-    // if we can't set the guard, continue anyway
+    // continue anyway
   }
 
-  const PUSH_DEBOUNCE_MS = 10_000;
-  const PULL_THROTTLE_MS = 30_000;
-  const TOKEN_POLL_MS = 500;
-  const TOKEN_POLL_MAX_MS = 30_000;
+  var PUSH_DEBOUNCE_MS = 10000;
+  var TOKEN_POLL_MS = 500;
+  var TOKEN_POLL_MAX_MS = 30000;
 
-  let lastPushAt = 0;
-  let lastPullAt = 0;
-  let inFlightPull = false;
+  var lastPushAt = 0;
 
   function hasAuthToken() {
     try {
@@ -33,120 +28,86 @@
     return false;
   }
 
-  async function safePush() {
+  function safePush() {
     try {
-      const now = Date.now();
+      var now = Date.now();
       if (now - lastPushAt < PUSH_DEBOUNCE_MS) return;
       lastPushAt = now;
 
       if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === "function") {
-        await window.ADA_PetsSync.pushOutboxIfOnline();
+        window.ADA_PetsSync.pushOutboxIfOnline();
       }
     } catch (e) {
       // silent
     }
   }
 
-  async function safePull() {
+  function safePull(force) {
     try {
-      const now = Date.now();
-      if (inFlightPull) return;
-      if (now - lastPullAt < PULL_THROTTLE_MS) return;
-      lastPullAt = now;
-
-      // If token isn't available yet, skip (pull function also guards, but this avoids extra calls)
       if (!hasAuthToken()) return;
-
       if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === "function") {
-        inFlightPull = true;
-        try {
-          await window.ADA_PetsSync.pullPetsIfOnline();
-        } finally {
-          inFlightPull = false;
-        }
+        window.ADA_PetsSync.pullPetsIfOnline({ force: !!force });
       }
     } catch (e) {
-      inFlightPull = false;
       // silent
     }
   }
 
-  async function safePushThenPull() {
-    // Push first so we don't pull stale server state, then pull to merge changes from other devices
-    try {
-      await safePush();
-    } catch (e) {}
-    try {
-      await safePull();
-    } catch (e) {}
+  function safePushThenPull() {
+    try { safePush(); } catch (e) {}
+    // Pull after a short delay to let push begin (push has its own mutex)
+    try { setTimeout(function(){ safePull(false); }, 250); } catch (e) {}
   }
 
-  // online event: push then pull
+  // online: push then pull
   try {
-    window.addEventListener("online", () => {
+    window.addEventListener("online", function() {
       safePushThenPull();
     });
-  } catch (e) {
-    // silent
-  }
+  } catch (e) {}
 
-  // foreground/resume: pull (throttled)
+  // foreground/resume: pull (throttled in app-pets)
   try {
-    document.addEventListener("visibilitychange", () => {
+    document.addEventListener("visibilitychange", function() {
       try {
-        if (document.visibilityState === "visible") {
-          safePull();
-        }
+        if (document.visibilityState === "visible") safePull(false);
       } catch (e) {}
     });
-  } catch (e) {
-    // silent
-  }
+  } catch (e) {}
 
-  // focus is a good additional signal; keep it throttled (safePull already throttles)
   try {
-    window.addEventListener("focus", () => {
-      safePull();
+    window.addEventListener("focus", function() {
+      safePull(false);
     });
-  } catch (e) {
-    // silent
-  }
+  } catch (e) {}
 
-  // interval push (guarded to avoid duplicates)
+  // interval push (guarded)
   try {
     if (!window.__petsSyncIntervalId) {
-      window.__petsSyncIntervalId = setInterval(() => {
+      window.__petsSyncIntervalId = setInterval(function() {
         safePush();
-      }, 60_000);
+      }, 60000);
     }
-  } catch (e) {
-    // silent
-  }
+  } catch (e) {}
 
-  // startup:
-  // - if token already present: push then pull
-  // - otherwise poll for token up to 30s; once present, pull once
+  // startup / login detection
   try {
     if (hasAuthToken()) {
       safePushThenPull();
     } else {
-      const start = Date.now();
-      const timer = setInterval(() => {
+      var start = Date.now();
+      var timer = setInterval(function() {
         try {
           if (hasAuthToken()) {
             clearInterval(timer);
-            safePull();
+            safePull(false);
             return;
           }
-          if (Date.now() - start > TOKEN_POLL_MAX_MS) {
-            clearInterval(timer);
-          }
+          if (Date.now() - start > TOKEN_POLL_MAX_MS) clearInterval(timer);
         } catch (e) {
           try { clearInterval(timer); } catch (_) {}
         }
       }, TOKEN_POLL_MS);
     }
-  } catch (e) {
-    // silent
-  }
+  } catch (e) {}
 })();

@@ -1,3 +1,4 @@
+// app-pets.js v6.16.4
 // ADA v6.16.2 - Multi-Pet Management System
 
 // ============================================
@@ -9,6 +10,12 @@ const PETS_STORE_NAME = 'pets';
 const OUTBOX_STORE_NAME = 'outbox';
 const META_STORE_NAME = 'meta';
 const ID_MAP_STORE_NAME = 'id_map';
+
+// pull throttling / in-flight (used by auto triggers and forced manual sync)
+let __petsPullLastAt = 0;
+let __petsPullInFlight = false;
+const __PETS_PULL_THROTTLE_MS = 30_000;
+
 
 function generateTmpPetId() {
     let id = '';
@@ -439,20 +446,11 @@ async function applyRemotePets(items) {
 
     try {
         const localPets = await getAllPets();
-        const localById = new Map(
-            Array.isArray(localPets)
-                ? localPets
-                    .filter(p => p && p.id != null)
-                    .map(p => [String(p.id), p])
-                : []
-        );
-
         const tmpIds = new Set(
             localPets
                 .map(pet => pet && pet.id)
                 .filter(id => typeof id === 'string' && id.startsWith('tmp_'))
         );
-
         for (const item of normalizedItems) {
             const id = item.id;
             if (typeof id === 'string' && isUuidString(id)) {
@@ -463,11 +461,6 @@ async function applyRemotePets(items) {
                 }
             }
         }
-
-        // Attach local snapshots for merge during upsert (avoid overwriting rich local structure with flat server records)
-        for (const item of normalizedItems) {
-            try { item._local = localById.get(String(item.id)) || null; } catch (e) { item._local = null; }
-        }
     } catch (e) {}
 
     await new Promise((resolve, reject) => {
@@ -477,47 +470,7 @@ async function applyRemotePets(items) {
             if (item.isDelete) {
                 store.delete(item.id);
             } else {
-                // Merge strategy:
-                // - Server record is flat (name/species/...) while local UI expects patient.petName/petSpecies/...
-                // - Never overwrite an existing rich local structure with a flat server record.
-                let entry = item.entry || {};
-                const local = item._local || null;
-
-                const hasPatient = entry && typeof entry === 'object' && entry.patient && typeof entry.patient === 'object';
-                const looksLikeServerFlat = entry && typeof entry === 'object' && !hasPatient && (
-                    typeof entry.name === 'string' ||
-                    typeof entry.species === 'string' ||
-                    typeof entry.breed === 'string' ||
-                    typeof entry.sex === 'string' ||
-                    typeof entry.weight_kg === 'number' ||
-                    typeof entry.weight_kg === 'string'
-                );
-
-                if (looksLikeServerFlat) {
-                    const patient = (local && local.patient && typeof local.patient === 'object')
-                        ? { ...local.patient }
-                        : {};
-                    if (typeof entry.name === 'string') patient.petName = entry.name;
-                    if (typeof entry.species === 'string') patient.petSpecies = entry.species;
-                    if (typeof entry.breed === 'string') patient.petBreed = entry.breed;
-                    if (typeof entry.sex === 'string') patient.petSex = entry.sex;
-                    if (typeof entry.weight_kg === 'number' || typeof entry.weight_kg === 'string') patient.petWeight = entry.weight_kg;
-
-                    // Keep/merge other local fields; update base_version if present
-                    entry = {
-                        ...(local && typeof local === 'object' ? local : {}),
-                        ...entry,
-                        patient,
-                        base_version: (typeof entry.version === 'number' ? entry.version : (local ? local.base_version : undefined)),
-                    };
-                } else if (local && typeof local === 'object') {
-                    // If both are in local shape, still prefer preserving existing patient fields if server entry omits them.
-                    if (entry && typeof entry === 'object' && (!entry.patient || typeof entry.patient !== 'object') && local.patient) {
-                        entry = { ...local, ...entry, patient: local.patient };
-                    }
-                }
-
-                store.put({ ...entry, id: item.id });
+                store.put({ ...item.entry, id: item.id });
             }
         }
         tx.oncomplete = () => resolve(true);
@@ -525,7 +478,19 @@ async function applyRemotePets(items) {
     });
 }
 
-async function pullPetsIfOnline() {
+async function pullPetsIfOnline(options) {
+    const force = !!(options && options.force);
+
+    try {
+        if (__petsPullInFlight) return;
+        const now = Date.now();
+        if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return;
+        __petsPullLastAt = now;
+        __petsPullInFlight = true;
+    } catch (e) {
+        // silent
+    }
+
     // Avoid side-effects if not authenticated (prevents smoke-test flakiness)
     try {
         if (typeof getAuthToken === 'function') {
@@ -578,10 +543,16 @@ async function pullPetsIfOnline() {
 
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
+
+    try {
+        __petsPullInFlight = false;
+    } catch (e) {
+        // silent
+    }
 }
 
 async function refreshPetsFromServer() {
-    try { await pullPetsIfOnline(); } catch (e) {}
+    try { await pullPetsIfOnline({ force: true }); } catch (e) {}
     const selectedId = await resolveCurrentPetId();
     try { await rebuildPetSelector(selectedId); } catch (e) {}
     try { await updateSelectedPetHeaders(); } catch (e) {}
@@ -1068,7 +1039,7 @@ async function initMultiPetSystem() {
     await rebuildPetSelector();
     
     // Step 2: non-blocking pull (updates local DB when online)
-    try { pullPetsIfOnline(); } catch (e) {}
+    try { pullPetsIfOnline({ force: true }); } catch (e) {}
     // Restore last selected pet
     const lastPetId = localStorage.getItem('ada_current_pet_id');
     if (lastPetId) {
@@ -1128,4 +1099,16 @@ async function updateSelectedPetHeaders() {
         el.textContent = '🐾 ' + parts.join(' • ');
         el.classList.add('selected-pet-header--visible');
     });
+}
+// Expose pets sync helpers (used by bootstrap). Keep silent.
+try {
+    window.ADA_PetsSync = window.ADA_PetsSync || {};
+    if (typeof window.ADA_PetsSync.pullPetsIfOnline !== 'function') {
+        window.ADA_PetsSync.pullPetsIfOnline = pullPetsIfOnline;
+    }
+    if (typeof window.ADA_PetsSync.refreshPetsFromServer !== 'function') {
+        window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
+    }
+} catch (e) {
+    // silent
 }
