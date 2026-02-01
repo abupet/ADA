@@ -1,11 +1,22 @@
-// pets-sync-step4.js v3
+// pets-sync-step4.js v4
 /**
- * pets-sync-step4.js v3
+ * pets-sync-step4.js v4
  * STEP 4 — Push Outbox (pets) to backend /api/sync/pets/push
  *
  * Backend contract (see backend/src/pets.sync.routes.js):
  *   op = { op_id, type: 'pet.upsert'|'pet.delete', pet_id, base_version?, patch?, client_ts? }
  */
+
+function _normalizeUuid(id) {
+  if (!id || typeof id !== "string") return id;
+  if (id.startsWith("tmp_")) {
+    const u = id.slice(4);
+    if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(u)) return u;
+  }
+  return id;
+}
+
+
 
 function _petToPatch(petLike) {
   // petLike may be: full pet record, or {record}, or {patch}
@@ -60,7 +71,7 @@ async function pushOutboxIfOnline() {
     .map(({ key, value }) => {
       const o = value || {};
       const payload = o.payload || {};
-      const pet_id = payload.id;
+      const pet_id = _normalizeUuid(payload.id);
       if (!pet_id) return null;
 
       const op_id = `local-${key}`;
