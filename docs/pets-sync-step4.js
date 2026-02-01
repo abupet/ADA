@@ -60,7 +60,12 @@ function _petToPatch(petLike) {
   // notes: best-effort (diary is a free text)
   if (typeof r.diary === "string" && r.diary.trim()) patch.notes = r.diary.trim();
 
-  // birthdate is not present in your UI record (you have petAge), so we omit it.
+  if (r.birthdate) patch.birthdate = r.birthdate;
+  if (r.patient && r.patient.petBirthdate) patch.birthdate = r.patient.petBirthdate;
+
+  // Weight aliases
+  if (!patch.weight_kg && r.patient) patch.weight_kg = r.patient.petWeightKg || r.patient.petWeight;
+
   return patch;
 }
 

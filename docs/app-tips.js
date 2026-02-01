@@ -219,7 +219,7 @@ PROFILO PET:
 Nome: ${patient.petName || 'il pet'}
 Specie: ${patient.petSpecies || 'N/D'}
 Razza: ${patient.petBreed || 'N/D'}
-Eta: ${patient.petAge || 'N/D'}
+Eta: ${patient.petBirthdate || 'N/D'}
 Sesso: ${patient.petSex || 'N/D'}
 Peso: ${patient.petWeight || 'N/D'} kg
 

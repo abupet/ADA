@@ -123,7 +123,7 @@ function getPatientData() {
         petName: document.getElementById('petName')?.value || '',
         petSpecies: document.getElementById('petSpecies')?.value || '',
         petBreed: document.getElementById('petBreed')?.value || '',
-        petAge: document.getElementById('petAge')?.value || '',
+        petBirthdate: document.getElementById('petBirthdate')?.value || '',
         petSex: document.getElementById('petSex')?.value || '',
         petWeight: document.getElementById('petWeight')?.value || '',
         petMicrochip: document.getElementById('petMicrochip')?.value || '',
@@ -152,7 +152,7 @@ function getLifestyleData() {
 }
 
 function setPatientData(data) {
-    const fields = ['petName', 'petSpecies', 'petBreed', 'petAge', 'petSex', 'petWeight', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
+    const fields = ['petName', 'petSpecies', 'petBreed', 'petBirthdate', 'petSex', 'petWeight', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
     fields.forEach(f => {
         const el = document.getElementById(f);
         if (el) el.value = (data && data[f]) || '';
@@ -254,7 +254,7 @@ async function generateDiary() {
     
     const prompt = `Genera un profilo sanitario per questo paziente veterinario.
 
-PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${patient.petAge || 'N/D'}
+PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
 PROPRIETARIO: ${patient.ownerName || 'N/D'}
 STILE DI VITA: Ambiente ${lifestyle.lifestyle || 'N/D'}, Attività ${lifestyle.activityLevel || 'N/D'}
 CONDIZIONI NOTE: ${lifestyle.knownConditions || 'Nessuna'}
@@ -463,7 +463,7 @@ async function generateQnAAnswer() {
     
     const prompt = `Sei un assistente veterinario. Rispondi SOLO a domande su pet e animali in generale.
 
-PET: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, Età: ${patient.petAge || 'N/D'}
+PET: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, Età: ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
 AMBIENTE: ${lifestyle.lifestyle || 'N/D'}, CONDIZIONI: ${lifestyle.knownConditions || 'Nessuna'}
 FARMACI: ${medications.map(m => m.name).join(', ') || 'Nessuno'}
 ULTIMA DIAGNOSI: ${_getMostRecentDiagnosisText()}
