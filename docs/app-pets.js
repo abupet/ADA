@@ -183,6 +183,11 @@ async function enqueueOutbox(op_type, payload) {
     if (!petsDB) await initPetsDB();
 
     const petId = payload && payload.id;
+    let opUuid = '';
+    try {
+        if (crypto && crypto.randomUUID) opUuid = crypto.randomUUID();
+    } catch (e) {}
+    if (!opUuid) opUuid = 'op_' + Math.random().toString(16).slice(2) + '_' + Date.now();
 
     return new Promise((resolve) => {
         const tx = petsDB.transaction(OUTBOX_STORE_NAME, 'readwrite');
@@ -201,12 +206,22 @@ async function enqueueOutbox(op_type, payload) {
 
                         if (prev === 'create' && op_type === 'update') {
                             // create + update => keep create, merge payload
-                            store.put({ ...item.value, payload: { ...item.value.payload, ...payload } });
+                            store.put({
+                                ...item.value,
+                                payload: { ...item.value.payload, ...payload },
+                                op_uuid: item.value.op_uuid || opUuid,
+                                pet_local_id: item.value.pet_local_id || petId
+                            });
                             return;
                         }
                         if (prev === 'update' && op_type === 'update') {
                             // update + update => keep last update
-                            store.put({ ...item.value, payload });
+                            store.put({
+                                ...item.value,
+                                payload,
+                                op_uuid: item.value.op_uuid || opUuid,
+                                pet_local_id: item.value.pet_local_id || petId
+                            });
                             return;
                         }
                         if (prev === 'create' && op_type === 'delete') {
@@ -216,13 +231,25 @@ async function enqueueOutbox(op_type, payload) {
                         }
                         if (prev === 'update' && op_type === 'delete') {
                             // update + delete => keep delete
-                            store.put({ ...item.value, op_type: 'delete', payload });
+                            store.put({
+                                ...item.value,
+                                op_type: 'delete',
+                                payload,
+                                op_uuid: item.value.op_uuid || opUuid,
+                                pet_local_id: item.value.pet_local_id || petId
+                            });
                             return;
                         }
                     }
 
                     // Default: add new outbox record
-                    store.add({ op_type, payload, created_at: new Date().toISOString() });
+                    store.add({
+                        op_type,
+                        payload,
+                        created_at: new Date().toISOString(),
+                        op_uuid: opUuid,
+                        pet_local_id: petId
+                    });
                 } catch (e2) {
                     // silent
                 }
@@ -241,7 +268,15 @@ async function enqueueOutbox(op_type, payload) {
         };
         cursorReq.onerror = () => {
             // fallback: try to add without coalescing
-            try { store.add({ op_type, payload, created_at: new Date().toISOString() }); } catch (e) {}
+            try {
+                store.add({
+                    op_type,
+                    payload,
+                    created_at: new Date().toISOString(),
+                    op_uuid: opUuid,
+                    pet_local_id: petId
+                });
+            } catch (e) {}
         };
 
         tx.oncomplete = () => resolve(true);
