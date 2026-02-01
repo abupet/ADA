@@ -315,13 +315,24 @@ async function pullPetsIfOnline() {
     if (cursor) qs.set('since', cursor);
     qs.set('device_id', device_id);
 
-    let resp;
+    const qsString = qs.toString();
+    const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
+    const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
+
+    let resp = null;
     try {
-        resp = await fetchApi(`/api/sync/pets/pull?${qs.toString()}`, { method: 'GET' });
+        resp = await fetchApi(primaryUrl, { method: 'GET' });
     } catch (e) {
-        return; // silent
+        resp = null;
     }
-    if (!resp || !resp.ok) return;
+    if (!resp || !resp.ok) {
+        try {
+            resp = await fetchApi(fallbackUrl, { method: 'GET' });
+        } catch (e) {
+            return; // silent
+        }
+        if (!resp || !resp.ok) return;
+    }
 
     let data = null;
     try { data = await resp.json(); } catch (e) { return; }
@@ -337,6 +348,13 @@ async function pullPetsIfOnline() {
 
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
+}
+
+async function refreshPetsFromServer() {
+    try { await pullPetsIfOnline(); } catch (e) {}
+    const selectedId = getCurrentPetId();
+    try { await rebuildPetSelector(selectedId); } catch (e) {}
+    try { await updateSelectedPetHeaders(); } catch (e) {}
 }
 
 // ============================================
