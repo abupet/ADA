@@ -187,6 +187,15 @@ function initNavigation() {
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') saveCurrentPageState();
     });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && sidebar.classList.contains('open')) {
+            setSidebarOpen(false);
+            event.preventDefault();
+        }
+    });
 }
 
 function navigateToPage(page) {
@@ -197,7 +206,7 @@ function navigateToPage(page) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
-    if (window.innerWidth < 800) document.getElementById('sidebar').classList.remove('open');
+    if (window.innerWidth < 800) setSidebarOpen(false);
     
     // Save current page
     localStorage.setItem('ada_current_page', page);
@@ -210,6 +219,7 @@ function navigateToPage(page) {
     if (page === 'tips') {
         try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
         try { if (typeof updateTipsMeta === 'function') updateTipsMeta(); } catch(e) {}
+        try { if (typeof renderTips === 'function') renderTips(); } catch(e) {}
     }
     syncLangSelectorsForCurrentDoc();
 }
@@ -396,8 +406,22 @@ function debounce(func, wait) {
     };
 }
 
-function toggleSidebar() { 
-    document.getElementById('sidebar').classList.toggle('open'); 
+function setSidebarOpen(isOpen) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (!sidebar) return;
+    sidebar.classList.toggle('open', isOpen);
+    if (overlay) overlay.classList.toggle('open', isOpen);
+}
+
+function toggleSidebar(forceOpen) { 
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    if (typeof forceOpen === 'boolean') {
+        setSidebarOpen(forceOpen);
+        return;
+    }
+    setSidebarOpen(!sidebar.classList.contains('open'));
 }
 
 // ============================================

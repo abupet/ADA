@@ -406,11 +406,17 @@ function renderTips() {
 
     if (!Array.isArray(tipsData) || tipsData.length === 0) {
         container.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">Premi "Genera" per ricevere consigli personalizzati per il tuo pet</p>';
-        if (speakBtn) speakBtn.disabled = true;
+        if (speakBtn) {
+            speakBtn.disabled = true;
+            speakBtn.setAttribute('aria-disabled', 'true');
+        }
         return;
     }
 
-    if (speakBtn) speakBtn.disabled = false;
+    if (speakBtn) {
+        speakBtn.disabled = false;
+        speakBtn.removeAttribute('aria-disabled');
+    }
     container.innerHTML = tipsData.map(tip => {
         const pr = (tip.priority || 'medio').toString().toLowerCase();
         const prLabel = pr.toUpperCase();
