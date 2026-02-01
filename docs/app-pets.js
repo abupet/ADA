@@ -7,6 +7,7 @@
 const PETS_DB_NAME = 'ADA_Pets';
 const PETS_STORE_NAME = 'pets';
 const OUTBOX_STORE_NAME = 'outbox';
+const ID_MAP_STORE_NAME = 'id_map';
 const META_STORE_NAME = 'meta';
 
 function generateTmpPetId() {
@@ -39,7 +40,7 @@ function getCurrentPetId() {
 
 async function initPetsDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(PETS_DB_NAME, 2);
+        const request = indexedDB.open(PETS_DB_NAME, 3);
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
             petsDB = request.result;
@@ -53,6 +54,9 @@ async function initPetsDB() {
 
             if (!db.objectStoreNames.contains(OUTBOX_STORE_NAME)) {
                 db.createObjectStore(OUTBOX_STORE_NAME, { keyPath: 'id', autoIncrement: true });
+            }
+            if (!db.objectStoreNames.contains(ID_MAP_STORE_NAME)) {
+                db.createObjectStore(ID_MAP_STORE_NAME, { keyPath: 'tmp_id' });
             }
             if (!db.objectStoreNames.contains(META_STORE_NAME)) {
                 db.createObjectStore(META_STORE_NAME, { keyPath: 'key' });
@@ -177,12 +181,98 @@ async function setLastPetsCursor(cursor) {
     try { await metaSet('pets_last_cursor', cursor || ''); } catch (e) {}
 }
 
+async function getIdMapEntry(tmpId) {
+    if (!tmpId) return null;
+    if (!petsDB) await initPetsDB();
+    return new Promise((resolve) => {
+        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readonly');
+        const store = tx.objectStore(ID_MAP_STORE_NAME);
+        const req = store.get(tmpId);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+    });
+}
+
+async function setIdMapEntry(tmpId, serverId) {
+    if (!tmpId || !serverId) return false;
+    if (!petsDB) await initPetsDB();
+    return new Promise((resolve) => {
+        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(ID_MAP_STORE_NAME);
+        const req = store.put({ tmp_id: tmpId, server_id: serverId, created_at: new Date().toISOString() });
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => resolve(false);
+    });
+}
+
+async function resolveServerIdForOutbox(petId) {
+    if (!petId || typeof petId !== 'string') return petId;
+    if (!petId.startsWith('tmp_')) return petId;
+    const entry = await getIdMapEntry(petId);
+    return entry?.server_id || petId;
+}
+
+async function migrateTmpPetId(tmpId, serverId) {
+    if (!tmpId || !serverId || tmpId === serverId) return;
+    if (!petsDB) await initPetsDB();
+    await new Promise((resolve) => {
+        const tx = petsDB.transaction([PETS_STORE_NAME, OUTBOX_STORE_NAME], 'readwrite');
+        const petsStore = tx.objectStore(PETS_STORE_NAME);
+        const outboxStore = tx.objectStore(OUTBOX_STORE_NAME);
+        const getReq = petsStore.get(tmpId);
+        getReq.onsuccess = () => {
+            const pet = getReq.result;
+            if (pet) {
+                const updated = { ...pet, id: serverId };
+                try { petsStore.put(updated); } catch (e) {}
+                try { petsStore.delete(tmpId); } catch (e) {}
+                if (currentPetId === tmpId) {
+                    currentPetId = serverId;
+                    try { localStorage.setItem('ada_current_pet_id', String(serverId)); } catch (e) {}
+                }
+            }
+
+            const cursorReq = outboxStore.openCursor();
+            cursorReq.onsuccess = (e) => {
+                const cursor = e.target.result;
+                if (!cursor) return;
+                const value = cursor.value;
+                if (value?.payload?.id === tmpId) {
+                    try {
+                        cursor.update({ ...value, payload: { ...value.payload, id: serverId } });
+                    } catch (e2) {}
+                }
+                cursor.continue();
+            };
+        };
+        getReq.onerror = () => {};
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => resolve();
+    });
+}
+
+async function recordIdMap(tmpId, serverId) {
+    if (!tmpId || !serverId || tmpId === serverId) return;
+    await setIdMapEntry(tmpId, serverId);
+    await migrateTmpPetId(tmpId, serverId);
+}
+
 // NOTE: Outbox is not used in Step 1–2 yet, but store exists for Step 3.
 async function enqueueOutbox(op_type, payload) {
     // STEP 3: Outbox write with coalescing (no network). Silent failures (no console.error).
     if (!petsDB) await initPetsDB();
 
-    const petId = payload && payload.id;
+    let normalizedPayload = payload;
+    if (payload && payload.id) {
+        try {
+            const mappedId = await resolveServerIdForOutbox(payload.id);
+            if (mappedId && mappedId !== payload.id) {
+                normalizedPayload = { ...payload, id: mappedId };
+            }
+        } catch (e) {}
+    }
+
+    const petId = normalizedPayload && normalizedPayload.id;
 
     return new Promise((resolve) => {
         const tx = petsDB.transaction(OUTBOX_STORE_NAME, 'readwrite');
@@ -201,12 +291,12 @@ async function enqueueOutbox(op_type, payload) {
 
                         if (prev === 'create' && op_type === 'update') {
                             // create + update => keep create, merge payload
-                            store.put({ ...item.value, payload: { ...item.value.payload, ...payload } });
+                            store.put({ ...item.value, payload: { ...item.value.payload, ...normalizedPayload } });
                             return;
                         }
                         if (prev === 'update' && op_type === 'update') {
                             // update + update => keep last update
-                            store.put({ ...item.value, payload });
+                            store.put({ ...item.value, payload: normalizedPayload });
                             return;
                         }
                         if (prev === 'create' && op_type === 'delete') {
@@ -216,13 +306,13 @@ async function enqueueOutbox(op_type, payload) {
                         }
                         if (prev === 'update' && op_type === 'delete') {
                             // update + delete => keep delete
-                            store.put({ ...item.value, op_type: 'delete', payload });
+                            store.put({ ...item.value, op_type: 'delete', payload: normalizedPayload });
                             return;
                         }
                     }
 
                     // Default: add new outbox record
-                    store.add({ op_type, payload, created_at: new Date().toISOString() });
+                    store.add({ op_type, payload: normalizedPayload, created_at: new Date().toISOString() });
                 } catch (e2) {
                     // silent
                 }
@@ -315,13 +405,24 @@ async function pullPetsIfOnline() {
     if (cursor) qs.set('since', cursor);
     qs.set('device_id', device_id);
 
-    let resp;
+    const qsString = qs.toString();
+    const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
+    const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
+
+    let resp = null;
     try {
-        resp = await fetchApi(`/api/sync/pets/pull?${qs.toString()}`, { method: 'GET' });
+        resp = await fetchApi(primaryUrl, { method: 'GET' });
     } catch (e) {
-        return; // silent
+        resp = null;
     }
-    if (!resp || !resp.ok) return;
+    if (!resp || !resp.ok) {
+        try {
+            resp = await fetchApi(fallbackUrl, { method: 'GET' });
+        } catch (e) {
+            return; // silent
+        }
+        if (!resp || !resp.ok) return;
+    }
 
     let data = null;
     try { data = await resp.json(); } catch (e) { return; }
@@ -334,9 +435,38 @@ async function pullPetsIfOnline() {
         [];
 
     await applyRemotePets(items);
+    try { await reconcileIdMapFromRemote(items); } catch (e) {}
 
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
+}
+
+async function refreshPetsFromServer() {
+    try { await pullPetsIfOnline(); } catch (e) {}
+    const selectedId = getCurrentPetId();
+    try { await rebuildPetSelector(selectedId); } catch (e) {}
+    try { await updateSelectedPetHeaders(); } catch (e) {}
+}
+
+async function reconcileIdMapFromRemote(items) {
+    if (!Array.isArray(items) || items.length === 0) return;
+    for (const item of items) {
+        if (!item) continue;
+        let serverId = item.pet_id ?? item.id ?? item.record?.id ?? null;
+        if (!serverId || typeof serverId !== 'string') continue;
+        if (serverId.startsWith('tmp_')) continue;
+        const tmpId = `tmp_${serverId}`;
+        let hasTmp = false;
+        try {
+            const pet = await getPetById(tmpId);
+            hasTmp = !!pet;
+        } catch (e) {
+            hasTmp = false;
+        }
+        if (hasTmp) {
+            await recordIdMap(tmpId, serverId);
+        }
+    }
 }
 
 // ============================================
