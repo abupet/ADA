@@ -172,6 +172,9 @@ async function migratePetId(tmp_id, server_id) {
                     localStorage.setItem('ada_current_pet_id', String(server_id));
                 }
             } catch (e) {}
+            if (currentPetId === tmp_id) {
+                currentPetId = server_id;
+            }
             resolve(true);
         };
         tx.onerror = () => resolve(false);
