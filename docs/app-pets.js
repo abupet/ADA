@@ -8,6 +8,7 @@ const PETS_DB_NAME = 'ADA_Pets';
 const PETS_STORE_NAME = 'pets';
 const OUTBOX_STORE_NAME = 'outbox';
 const META_STORE_NAME = 'meta';
+const ID_MAP_STORE_NAME = 'id_map';
 
 function generateTmpPetId() {
     let id = '';
@@ -37,9 +38,22 @@ function getCurrentPetId() {
     return normalizePetId(raw);
 }
 
+async function resolveCurrentPetId() {
+    const raw = getCurrentPetId();
+    if (typeof raw === 'string') {
+        const mapped = await getMappedServerId(raw);
+        if (mapped && mapped !== raw) {
+            currentPetId = mapped;
+            try { localStorage.setItem('ada_current_pet_id', String(mapped)); } catch (e) {}
+            return mapped;
+        }
+    }
+    return raw;
+}
+
 async function initPetsDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(PETS_DB_NAME, 2);
+        const request = indexedDB.open(PETS_DB_NAME, 3);
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
             petsDB = request.result;
@@ -57,6 +71,9 @@ async function initPetsDB() {
             if (!db.objectStoreNames.contains(META_STORE_NAME)) {
                 db.createObjectStore(META_STORE_NAME, { keyPath: 'key' });
             }
+            if (!db.objectStoreNames.contains(ID_MAP_STORE_NAME)) {
+                db.createObjectStore(ID_MAP_STORE_NAME, { keyPath: 'tmp_id' });
+            }
         };
     });
 }
@@ -65,6 +82,101 @@ async function initPetsDB() {
 async function openPetsDB() {
   if (petsDB) return petsDB;
   return await initPetsDB();
+}
+
+function isUuidString(value) {
+    return typeof value === 'string'
+        && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value);
+}
+
+async function getMappedServerId(tmpOrId) {
+    if (!tmpOrId) return tmpOrId;
+    const id = String(tmpOrId);
+    if (!id.startsWith('tmp_')) return id;
+    if (!petsDB) await initPetsDB();
+    const mapped = await new Promise((resolve) => {
+        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readonly');
+        const store = tx.objectStore(ID_MAP_STORE_NAME);
+        const req = store.get(id);
+        req.onsuccess = () => resolve(req.result ? req.result.server_id : null);
+        req.onerror = () => resolve(null);
+    });
+    if (mapped) return mapped;
+    const candidate = id.slice(4);
+    return isUuidString(candidate) ? candidate : id;
+}
+
+async function persistIdMapping(tmp_id, server_id) {
+    if (!tmp_id || !server_id) return false;
+    if (!petsDB) await initPetsDB();
+    return new Promise((resolve) => {
+        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(ID_MAP_STORE_NAME);
+        try {
+            store.put({
+                tmp_id,
+                server_id,
+                updated_at: new Date().toISOString()
+            });
+        } catch (e) {
+            resolve(false);
+            return;
+        }
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+    });
+}
+
+async function migratePetId(tmp_id, server_id) {
+    if (!tmp_id || !server_id || tmp_id === server_id) return false;
+    if (!petsDB) await initPetsDB();
+    return new Promise((resolve) => {
+        const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(PETS_STORE_NAME);
+        let tmpRecord = null;
+        let serverRecord = null;
+        let pending = 2;
+
+        const finalize = () => {
+            pending -= 1;
+            if (pending > 0) return;
+            if (tmpRecord) {
+                if (!serverRecord) {
+                    try { store.put({ ...tmpRecord, id: server_id }); } catch (e) {}
+                }
+                try { store.delete(tmp_id); } catch (e) {}
+            } else {
+                try { store.delete(tmp_id); } catch (e) {}
+            }
+        };
+
+        const tmpReq = store.get(tmp_id);
+        tmpReq.onsuccess = () => {
+            tmpRecord = tmpReq.result || null;
+            finalize();
+        };
+        tmpReq.onerror = () => finalize();
+
+        const serverReq = store.get(server_id);
+        serverReq.onsuccess = () => {
+            serverRecord = serverReq.result || null;
+            finalize();
+        };
+        serverReq.onerror = () => finalize();
+
+        tx.oncomplete = () => {
+            try {
+                const current = localStorage.getItem('ada_current_pet_id');
+                if (current === String(tmp_id)) {
+                    localStorage.setItem('ada_current_pet_id', String(server_id));
+                }
+            } catch (e) {}
+            resolve(true);
+        };
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+    });
 }
 
 async function getAllPets() {
@@ -293,36 +405,62 @@ async function applyRemotePets(items) {
     if (!Array.isArray(items) || items.length === 0) return;
     // Upsert into pets store; support soft-delete
     if (!petsDB) await initPetsDB();
+    const normalizedItems = [];
+    for (const item of items) {
+        if (!item) continue;
+        let entry = item;
+        let id = item.id;
+        let isDelete = item.deleted === true || item.is_deleted === true;
+
+        if (item.type === 'pet.delete' || item.type === 'pet.upsert') {
+            id = item.pet_id;
+            if (item.type === 'pet.delete') {
+                isDelete = true;
+            } else {
+                entry = item.record && typeof item.record === 'object'
+                    ? { ...item.record, id: item.pet_id ?? item.record.id }
+                    : { id: item.pet_id };
+            }
+        } else if ((id === undefined || id === null) && item.pet_id != null) {
+            id = item.pet_id;
+            if (item.record && typeof item.record === 'object') {
+                entry = { ...item.record, id };
+            }
+        }
+
+        if (id === undefined || id === null) continue;
+        normalizedItems.push({ id, entry, isDelete });
+    }
+
+    if (normalizedItems.length === 0) return;
+
+    try {
+        const localPets = await getAllPets();
+        const tmpIds = new Set(
+            localPets
+                .map(pet => pet && pet.id)
+                .filter(id => typeof id === 'string' && id.startsWith('tmp_'))
+        );
+        for (const item of normalizedItems) {
+            const id = item.id;
+            if (typeof id === 'string' && isUuidString(id)) {
+                const tmpId = `tmp_${id}`;
+                if (tmpIds.has(tmpId)) {
+                    await persistIdMapping(tmpId, id);
+                    await migratePetId(tmpId, id);
+                }
+            }
+        }
+    } catch (e) {}
+
     await new Promise((resolve, reject) => {
         const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
         const store = tx.objectStore(PETS_STORE_NAME);
-        for (const item of items) {
-            if (!item) continue;
-            let entry = item;
-            let id = item.id;
-            let isDelete = item.deleted === true || item.is_deleted === true;
-
-            if (item.type === 'pet.delete' || item.type === 'pet.upsert') {
-                id = item.pet_id;
-                if (item.type === 'pet.delete') {
-                    isDelete = true;
-                } else {
-                    entry = item.record && typeof item.record === 'object'
-                        ? { ...item.record, id: item.pet_id ?? item.record.id }
-                        : { id: item.pet_id };
-                }
-            } else if ((id === undefined || id === null) && item.pet_id != null) {
-                id = item.pet_id;
-                if (item.record && typeof item.record === 'object') {
-                    entry = { ...item.record, id };
-                }
-            }
-
-            if (id === undefined || id === null) continue;
-            if (isDelete) {
-                store.delete(id);
+        for (const item of normalizedItems) {
+            if (item.isDelete) {
+                store.delete(item.id);
             } else {
-                store.put({ ...entry, id });
+                store.put({ ...item.entry, id: item.id });
             }
         }
         tx.oncomplete = () => resolve(true);
@@ -387,7 +525,7 @@ async function pullPetsIfOnline() {
 
 async function refreshPetsFromServer() {
     try { await pullPetsIfOnline(); } catch (e) {}
-    const selectedId = getCurrentPetId();
+    const selectedId = await resolveCurrentPetId();
     try { await rebuildPetSelector(selectedId); } catch (e) {}
     try { await updateSelectedPetHeaders(); } catch (e) {}
 }
@@ -878,13 +1016,20 @@ async function initMultiPetSystem() {
     const lastPetId = localStorage.getItem('ada_current_pet_id');
     if (lastPetId) {
         const normalizedLastPetId = normalizePetId(lastPetId);
-        const pet = await getPetById(normalizedLastPetId);
+        let resolvedLastPetId = normalizedLastPetId;
+        if (typeof normalizedLastPetId === 'string') {
+            resolvedLastPetId = await getMappedServerId(normalizedLastPetId);
+            if (resolvedLastPetId && resolvedLastPetId !== normalizedLastPetId) {
+                try { localStorage.setItem('ada_current_pet_id', String(resolvedLastPetId)); } catch (e) {}
+            }
+        }
+        const pet = await getPetById(resolvedLastPetId);
         if (pet) {
-            currentPetId = normalizedLastPetId;
+            currentPetId = resolvedLastPetId;
             loadPetIntoMainFields(pet);
             await updateSelectedPetHeaders();
             const selector = document.getElementById('petSelector');
-            if (selector) selector.value = lastPetId;
+            if (selector) selector.value = String(resolvedLastPetId);
         }
     }
 
@@ -903,7 +1048,7 @@ async function updateSelectedPetHeaders() {
     if (!els || els.length === 0) return;
 
     let pet = null;
-    const petId = getCurrentPetId();
+    const petId = await resolveCurrentPetId();
     if (petId) {
         try {
             pet = await getPetById(petId);
