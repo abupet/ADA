@@ -1,3 +1,4 @@
+// app-pets.js v6.16.3
 // ADA v6.16.2 - Multi-Pet Management System
 
 // ============================================
@@ -1074,4 +1075,16 @@ async function updateSelectedPetHeaders() {
         el.textContent = '🐾 ' + parts.join(' • ');
         el.classList.add('selected-pet-header--visible');
     });
+}
+// expose pull helpers for bootstrap (silent if not available)
+try {
+    window.ADA_PetsSync = window.ADA_PetsSync || {};
+    if (typeof window.ADA_PetsSync.pullPetsIfOnline !== 'function') {
+        window.ADA_PetsSync.pullPetsIfOnline = pullPetsIfOnline;
+    }
+    if (typeof window.ADA_PetsSync.refreshPetsFromServer !== 'function') {
+        window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
+    }
+} catch (e) {
+    // silent
 }
