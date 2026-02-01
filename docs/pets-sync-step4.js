@@ -1,6 +1,6 @@
-// pets-sync-step4.js v5
+// pets-sync-step4.js v6
 /**
- * pets-sync-step4.js v5
+ * pets-sync-step4.js v6
  * STEP 4 — Push Outbox (pets) to backend /api/sync/pets/push
  *
  * Backend contract (see backend/src/pets.sync.routes.js):
@@ -68,12 +68,13 @@ async function pushOutboxIfOnline() {
   if (typeof openPetsDB !== "function") return;
 
   const db = await openPetsDB();
-  const tx = db.transaction(["outbox"], "readwrite");
-  const store = tx.objectStore("outbox");
-  const ops = [];
 
+  // 1) Read outbox in a short-lived *readonly* transaction (IDB tx becomes inactive across awaits)
+  const ops = [];
   await new Promise((resolve) => {
-    store.openCursor().onsuccess = (e) => {
+    const txRead = db.transaction(["outbox"], "readonly");
+    const storeRead = txRead.objectStore("outbox");
+    storeRead.openCursor().onsuccess = (e) => {
       const c = e.target.result;
       if (!c) return resolve();
       ops.push({ key: c.primaryKey, value: c.value });
@@ -148,17 +149,24 @@ async function pushOutboxIfOnline() {
   }
 
   // Backend returns: { accepted: [op_id, ...], rejected: [{op_id,...}, ...] }
-  if (Array.isArray(data.accepted)) {
-    for (const acc of data.accepted) {
-      const opid = typeof acc === "string" ? acc : acc && acc.op_id;
-      const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
-      if (typeof localKey === "number") {
-        try { store.delete(localKey); } catch {}
-      }
-    }
-  }
+  if (Array.isArray(data.accepted) && data.accepted.length) {
+    // 2) Delete accepted ops in a fresh *readwrite* transaction
+    await new Promise((resolve) => {
+      const txWrite = db.transaction(["outbox"], "readwrite");
+      const storeWrite = txWrite.objectStore("outbox");
 
-  if (tx.done) await tx.done;
+      for (const acc of data.accepted) {
+        const opid = typeof acc === "string" ? acc : acc && acc.op_id;
+        const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
+        if (localKey !== undefined && localKey !== null) {
+          try { storeWrite.delete(localKey); } catch {}
+        }
+      }
+
+      txWrite.oncomplete = () => resolve();
+      txWrite.onabort = () => resolve();
+    });
+  }
 }
 
 // expose
