@@ -439,20 +439,11 @@ async function applyRemotePets(items) {
 
     try {
         const localPets = await getAllPets();
-        const localById = new Map(
-            Array.isArray(localPets)
-                ? localPets
-                    .filter(p => p && p.id != null)
-                    .map(p => [String(p.id), p])
-                : []
-        );
-
         const tmpIds = new Set(
             localPets
                 .map(pet => pet && pet.id)
                 .filter(id => typeof id === 'string' && id.startsWith('tmp_'))
         );
-
         for (const item of normalizedItems) {
             const id = item.id;
             if (typeof id === 'string' && isUuidString(id)) {
@@ -463,11 +454,6 @@ async function applyRemotePets(items) {
                 }
             }
         }
-
-        // Attach local snapshots for merge during upsert (avoid overwriting rich local structure with flat server records)
-        for (const item of normalizedItems) {
-            try { item._local = localById.get(String(item.id)) || null; } catch (e) { item._local = null; }
-        }
     } catch (e) {}
 
     await new Promise((resolve, reject) => {
@@ -477,47 +463,7 @@ async function applyRemotePets(items) {
             if (item.isDelete) {
                 store.delete(item.id);
             } else {
-                // Merge strategy:
-                // - Server record is flat (name/species/...) while local UI expects patient.petName/petSpecies/...
-                // - Never overwrite an existing rich local structure with a flat server record.
-                let entry = item.entry || {};
-                const local = item._local || null;
-
-                const hasPatient = entry && typeof entry === 'object' && entry.patient && typeof entry.patient === 'object';
-                const looksLikeServerFlat = entry && typeof entry === 'object' && !hasPatient && (
-                    typeof entry.name === 'string' ||
-                    typeof entry.species === 'string' ||
-                    typeof entry.breed === 'string' ||
-                    typeof entry.sex === 'string' ||
-                    typeof entry.weight_kg === 'number' ||
-                    typeof entry.weight_kg === 'string'
-                );
-
-                if (looksLikeServerFlat) {
-                    const patient = (local && local.patient && typeof local.patient === 'object')
-                        ? { ...local.patient }
-                        : {};
-                    if (typeof entry.name === 'string') patient.petName = entry.name;
-                    if (typeof entry.species === 'string') patient.petSpecies = entry.species;
-                    if (typeof entry.breed === 'string') patient.petBreed = entry.breed;
-                    if (typeof entry.sex === 'string') patient.petSex = entry.sex;
-                    if (typeof entry.weight_kg === 'number' || typeof entry.weight_kg === 'string') patient.petWeight = entry.weight_kg;
-
-                    // Keep/merge other local fields; update base_version if present
-                    entry = {
-                        ...(local && typeof local === 'object' ? local : {}),
-                        ...entry,
-                        patient,
-                        base_version: (typeof entry.version === 'number' ? entry.version : (local ? local.base_version : undefined)),
-                    };
-                } else if (local && typeof local === 'object') {
-                    // If both are in local shape, still prefer preserving existing patient fields if server entry omits them.
-                    if (entry && typeof entry === 'object' && (!entry.patient || typeof entry.patient !== 'object') && local.patient) {
-                        entry = { ...local, ...entry, patient: local.patient };
-                    }
-                }
-
-                store.put({ ...entry, id: item.id });
+                store.put({ ...item.entry, id: item.id });
             }
         }
         tx.oncomplete = () => resolve(true);
@@ -525,7 +471,34 @@ async function applyRemotePets(items) {
     });
 }
 
-async function pullPetsIfOnline() {
+
+// -------------------------------
+// PULL THROTTLE (auto vs. manual)
+// - Automatic triggers should be throttled
+// - Manual "Sync" must be able to force a pull immediately
+// -------------------------------
+let __petsPullInFlight = false;
+let __petsLastPullAt = 0;
+const __PETS_PULL_THROTTLE_MS = 30_000;
+
+function __shouldSkipPull(force) {
+    if (force) return false;
+    const now = Date.now();
+    return (now - __petsLastPullAt) < __PETS_PULL_THROTTLE_MS;
+}
+
+async function pullPetsIfOnline(opts = {
+    } finally {
+        __petsPullInFlight = false;
+    }
+}) {
+    const force = !!(opts && (opts.force === true));
+    if (__petsPullInFlight) return;
+    if (__shouldSkipPull(force)) return;
+    __petsPullInFlight = true;
+    __petsLastPullAt = Date.now();
+    try {
+
     // Avoid side-effects if not authenticated (prevents smoke-test flakiness)
     try {
         if (typeof getAuthToken === 'function') {
@@ -580,8 +553,8 @@ async function pullPetsIfOnline() {
     if (nextCursor) await setLastPetsCursor(nextCursor);
 }
 
-async function refreshPetsFromServer() {
-    try { await pullPetsIfOnline(); } catch (e) {}
+async function refreshPetsFromServer(force = false) {
+    try { await pullPetsIfOnline({ force: !!force }); } catch (e) {}
     const selectedId = await resolveCurrentPetId();
     try { await rebuildPetSelector(selectedId); } catch (e) {}
     try { await updateSelectedPetHeaders(); } catch (e) {}
@@ -1128,4 +1101,15 @@ async function updateSelectedPetHeaders() {
         el.textContent = '🐾 ' + parts.join(' • ');
         el.classList.add('selected-pet-header--visible');
     });
+}
+
+
+// expose sync helpers for bootstrap + UI (silent if not available)
+try {
+    window.ADA_PetsSync = window.ADA_PetsSync || {};
+    window.ADA_PetsSync.pullPetsIfOnline = pullPetsIfOnline;
+    window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
+    window.ADA_PetsSync.forcePullNow = () => pullPetsIfOnline({ force: true });
+} catch (e) {
+    // silent
 }
