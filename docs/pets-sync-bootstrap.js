@@ -1,22 +1,18 @@
-// pets-sync-bootstrap.js v4
-// Automatic sync triggers (push + pull) with safe guards.
+// pets-sync-bootstrap.js v2
+// STEP 5/6 — Automatic sync triggers (push + pull)
+// - online: push then pull
+// - interval: push (guarded)
+// - startup: if token present -> push then pull; else short token poll to detect "login" then pull once
+// - foreground/resume: pull (throttled in app-pets)
 //
-// Triggers:
-// - online event: push then pull
-// - interval: push (debounced)
-// - startup: if token present -> push then pull; else poll token up to 30s then pull once
-// - foreground/resume: pull (throttled)
-//
-// Notes:
-// - silent behavior: never throw, no noisy logs
-// - guards: single bootstrap, single interval
+// Notes: silent behavior, no noisy logs, single init.
 
 (function initPetsSyncAuto() {
   try {
     if (window.__petsSyncBootstrapped) return;
     window.__petsSyncBootstrapped = true;
   } catch (e) {
-    // continue even if guard can't be set
+    // continue anyway
   }
 
   var PUSH_DEBOUNCE_MS = 10000;
@@ -32,100 +28,84 @@
     return false;
   }
 
-  function nowMs() {
-    try { return Date.now(); } catch (e) { return 0; }
-  }
-
-  function safeCall(fn) {
-    try {
-      if (typeof fn === "function") return fn();
-    } catch (e) {}
-  }
-
-  function safeCallAsync(fn) {
-    try {
-      if (typeof fn === "function") return Promise.resolve(fn());
-    } catch (e) {}
-    return Promise.resolve();
-  }
-
   function safePush() {
-    var now = nowMs();
-    if (now && now - lastPushAt < PUSH_DEBOUNCE_MS) return Promise.resolve();
-    lastPushAt = now;
+    try {
+      var now = Date.now();
+      if (now - lastPushAt < PUSH_DEBOUNCE_MS) return;
+      lastPushAt = now;
 
-    if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === "function") {
-      return safeCallAsync(window.ADA_PetsSync.pushOutboxIfOnline);
+      if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === "function") {
+        window.ADA_PetsSync.pushOutboxIfOnline();
+      }
+    } catch (e) {
+      // silent
     }
-    return Promise.resolve();
   }
 
-  function safePullThrottled() {
-    if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === "function") {
-      // pullPetsIfOnline handles its own throttling/inFlight; we pass force:false explicitly
-      return safeCallAsync(function () { return window.ADA_PetsSync.pullPetsIfOnline({ force: false }); });
+  function safePull(force) {
+    try {
+      if (!hasAuthToken()) return;
+      if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === "function") {
+        window.ADA_PetsSync.pullPetsIfOnline({ force: !!force });
+      }
+    } catch (e) {
+      // silent
     }
-    return Promise.resolve();
   }
 
   function safePushThenPull() {
-    return safePush()
-      .catch(function () {})
-      .then(function () { return safePullThrottled(); })
-      .catch(function () {});
+    try { safePush(); } catch (e) {}
+    // Pull after a short delay to let push begin (push has its own mutex)
+    try { setTimeout(function(){ safePull(false); }, 250); } catch (e) {}
   }
 
-  // online event: push then pull
+  // online: push then pull
   try {
-    window.addEventListener("online", function () {
+    window.addEventListener("online", function() {
       safePushThenPull();
     });
   } catch (e) {}
 
-  // foreground/resume: pull (throttled)
+  // foreground/resume: pull (throttled in app-pets)
   try {
-    document.addEventListener("visibilitychange", function () {
+    document.addEventListener("visibilitychange", function() {
       try {
-        if (document.visibilityState === "visible") safePullThrottled();
+        if (document.visibilityState === "visible") safePull(false);
       } catch (e) {}
     });
   } catch (e) {}
 
   try {
-    window.addEventListener("focus", function () {
-      safePullThrottled();
+    window.addEventListener("focus", function() {
+      safePull(false);
     });
   } catch (e) {}
 
   // interval push (guarded)
   try {
     if (!window.__petsSyncIntervalId) {
-      window.__petsSyncIntervalId = setInterval(function () {
+      window.__petsSyncIntervalId = setInterval(function() {
         safePush();
       }, 60000);
     }
   } catch (e) {}
 
-  // startup:
-  // - if token already present: push then pull
-  // - otherwise poll token up to 30s; once present, pull once
+  // startup / login detection
   try {
     if (hasAuthToken()) {
       safePushThenPull();
     } else {
-      var start = nowMs();
-      var timer = setInterval(function () {
+      var start = Date.now();
+      var timer = setInterval(function() {
         try {
           if (hasAuthToken()) {
-            try { clearInterval(timer); } catch (e) {}
-            safePullThrottled();
+            clearInterval(timer);
+            safePull(false);
             return;
           }
-          if (nowMs() - start > TOKEN_POLL_MAX_MS) {
-            try { clearInterval(timer); } catch (e) {}
-          }
+          if (Date.now() - start > TOKEN_POLL_MAX_MS) clearInterval(timer);
         } catch (e) {
-          try { clearInterval(timer); } catch (e2) {}
+          try { clearInterval(timer); } catch (_) {}
         }
       }, TOKEN_POLL_MS);
     }
