@@ -90,6 +90,7 @@ async function pushOutboxIfOnline() {
     if (!ops.length) return;
 
     const opIdToLocalKey = new Map();
+    const opIdToLocalOp = new Map();
 
     const needsUuid = ops.filter(({ value }) => !value || !value.op_uuid);
     if (needsUuid.length) {
@@ -118,6 +119,7 @@ async function pushOutboxIfOnline() {
         const op_id = o.op_uuid;
         if (!op_id) return null;
         opIdToLocalKey.set(op_id, key);
+        opIdToLocalOp.set(op_id, o);
         const client_ts = o.created_at || new Date().toISOString();
 
         if (o.op_type === "delete") {
@@ -189,6 +191,22 @@ async function pushOutboxIfOnline() {
         txWrite.oncomplete = () => resolve();
         txWrite.onabort = () => resolve();
       });
+
+      if (typeof persistIdMapping === "function" && typeof migratePetId === "function") {
+        for (const acc of data.accepted) {
+          const opid = typeof acc === "string" ? acc : acc && acc.op_id;
+          if (!opid) continue;
+          const localOp = opIdToLocalOp.get(opid);
+          const localPetId = localOp && (localOp.pet_local_id || (localOp.payload && localOp.payload.id));
+          if (typeof localPetId === "string" && localPetId.startsWith("tmp_")) {
+            const serverId = _normalizeUuid(localOp && localOp.payload && localOp.payload.id);
+            if (serverId && serverId !== localPetId) {
+              try { await persistIdMapping(localPetId, serverId); } catch {}
+              try { await migratePetId(localPetId, serverId); } catch {}
+            }
+          }
+        }
+      }
     }
   } finally {
     inFlightPush = false;
