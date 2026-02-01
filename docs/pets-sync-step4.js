@@ -7,6 +7,8 @@
  *   op = { op_id, type: 'pet.upsert'|'pet.delete', pet_id, base_version?, patch?, client_ts? }
  */
 
+let inFlightPush = false;
+
 function _normalizeUuid(id) {
   if (!id || typeof id !== "string") return id;
   if (id.startsWith("tmp_")) {
@@ -65,107 +67,113 @@ function _petToPatch(petLike) {
 async function pushOutboxIfOnline() {
   if (!navigator.onLine) return;
   if (typeof getAuthToken !== "function" || !getAuthToken()) return;
+  if (inFlightPush) return;
   if (typeof openPetsDB !== "function") return;
 
-  const db = await openPetsDB();
-
-  // 1) Read outbox in a short-lived *readonly* transaction (IDB tx becomes inactive across awaits)
-  const ops = [];
-  await new Promise((resolve) => {
-    const txRead = db.transaction(["outbox"], "readonly");
-    const storeRead = txRead.objectStore("outbox");
-    storeRead.openCursor().onsuccess = (e) => {
-      const c = e.target.result;
-      if (!c) return resolve();
-      ops.push({ key: c.primaryKey, value: c.value });
-      c.continue();
-    };
-  });
-
-  if (!ops.length) return;
-
-  const opIdToLocalKey = new Map();
-
-  const mappedOps = ops
-    .map(({ key, value }) => {
-      const o = value || {};
-      const payload = o.payload || {};
-      const pet_id = _normalizeUuid(payload.id);
-      if (!pet_id) return null;
-
-      const op_id = _uuidv4();
-      opIdToLocalKey.set(op_id, key);
-      const client_ts = o.created_at || new Date().toISOString();
-
-      if (o.op_type === "delete") {
-        return {
-          op_id,
-          type: "pet.delete",
-          pet_id,
-          base_version: payload.base_version ?? null,
-          client_ts,
-        };
-      }
-
-      if (o.op_type === "create" || o.op_type === "update") {
-        const patch = _petToPatch(payload);
-        return {
-          op_id,
-          type: "pet.upsert",
-          pet_id,
-          base_version: payload.base_version ?? null,
-          patch,
-          client_ts,
-        };
-      }
-
-      return null;
-    })
-    .filter(Boolean);
-
-  if (!mappedOps.length) return;
-
-  let res;
+  inFlightPush = true;
   try {
-    res = await fetchApi("/api/sync/pets/push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        device_id: localStorage.getItem("ada_device_id") || "debug",
-        ops: mappedOps,
-      }),
-    });
-  } catch {
-    return;
-  }
+    const db = await openPetsDB();
 
-  if (!res || !res.ok) return;
-
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    return;
-  }
-
-  // Backend returns: { accepted: [op_id, ...], rejected: [{op_id,...}, ...] }
-  if (Array.isArray(data.accepted) && data.accepted.length) {
-    // 2) Delete accepted ops in a fresh *readwrite* transaction
+    // 1) Read outbox in a short-lived *readonly* transaction (IDB tx becomes inactive across awaits)
+    const ops = [];
     await new Promise((resolve) => {
-      const txWrite = db.transaction(["outbox"], "readwrite");
-      const storeWrite = txWrite.objectStore("outbox");
-
-      for (const acc of data.accepted) {
-        const opid = typeof acc === "string" ? acc : acc && acc.op_id;
-        const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
-        if (localKey !== undefined && localKey !== null) {
-          try { storeWrite.delete(localKey); } catch {}
-        }
-      }
-
-      txWrite.oncomplete = () => resolve();
-      txWrite.onabort = () => resolve();
+      const txRead = db.transaction(["outbox"], "readonly");
+      const storeRead = txRead.objectStore("outbox");
+      storeRead.openCursor().onsuccess = (e) => {
+        const c = e.target.result;
+        if (!c) return resolve();
+        ops.push({ key: c.primaryKey, value: c.value });
+        c.continue();
+      };
     });
+
+    if (!ops.length) return;
+
+    const opIdToLocalKey = new Map();
+
+    const mappedOps = ops
+      .map(({ key, value }) => {
+        const o = value || {};
+        const payload = o.payload || {};
+        const pet_id = _normalizeUuid(payload.id);
+        if (!pet_id) return null;
+
+        const op_id = _uuidv4();
+        opIdToLocalKey.set(op_id, key);
+        const client_ts = o.created_at || new Date().toISOString();
+
+        if (o.op_type === "delete") {
+          return {
+            op_id,
+            type: "pet.delete",
+            pet_id,
+            base_version: payload.base_version ?? null,
+            client_ts,
+          };
+        }
+
+        if (o.op_type === "create" || o.op_type === "update") {
+          const patch = _petToPatch(payload);
+          return {
+            op_id,
+            type: "pet.upsert",
+            pet_id,
+            base_version: payload.base_version ?? null,
+            patch,
+            client_ts,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    if (!mappedOps.length) return;
+
+    let res;
+    try {
+      res = await fetchApi("/api/sync/pets/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          device_id: localStorage.getItem("ada_device_id") || "debug",
+          ops: mappedOps,
+        }),
+      });
+    } catch {
+      return;
+    }
+
+    if (!res || !res.ok) return;
+
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      return;
+    }
+
+    // Backend returns: { accepted: [op_id, ...], rejected: [{op_id,...}, ...] }
+    if (Array.isArray(data.accepted) && data.accepted.length) {
+      // 2) Delete accepted ops in a fresh *readwrite* transaction
+      await new Promise((resolve) => {
+        const txWrite = db.transaction(["outbox"], "readwrite");
+        const storeWrite = txWrite.objectStore("outbox");
+
+        for (const acc of data.accepted) {
+          const opid = typeof acc === "string" ? acc : acc && acc.op_id;
+          const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
+          if (localKey !== undefined && localKey !== null) {
+            try { storeWrite.delete(localKey); } catch {}
+          }
+        }
+
+        txWrite.oncomplete = () => resolve();
+        txWrite.onabort = () => resolve();
+      });
+    }
+  } finally {
+    inFlightPush = false;
   }
 }
 
