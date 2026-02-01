@@ -54,23 +54,26 @@ test("@smoke Pets sync: offline create -> online push clears outbox + migrates t
 
   await login(page);
 
-  // Go to "Pets" page where new pet form exists
-  // Use app navigation function if present; fallback to clicking the menu tab.
+  // Go to "Add Pet" page (the form is inside #page-addpet, but it exists in DOM even when hidden).
+  // Wait until the navigation function is available, then activate the page explicitly.
+  await expect.poll(async () => {
+    return await page.evaluate(() => typeof (window as any).navigateToPage);
+  }, { timeout: 10_000 }).toBe("function");
+
   await page.evaluate(() => {
     // @ts-ignore
-    if (typeof (window as any).navigateToPage === "function") (window as any).navigateToPage("addpet");
+    (window as any).navigateToPage("addpet");
   });
 
-  await expect(page.locator("#page-addpet.active")).toBeVisible();
-
-  await expect(page.locator("#newPetName")).toBeVisible();
+  await expect(page.locator("#page-addpet.active")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#page-addpet.active #newPetName")).toBeVisible({ timeout: 10_000 });
 
   // Force offline to ensure outbox write path is used
   await context.setOffline(true);
 
   // Create a new pet (required fields)
-  await page.locator("#newPetName").fill("SmokePet");
-  await page.locator("#newPetSpecies").selectOption({ index: 1 }); // pick first available option
+  await page.locator("#page-addpet.active #newPetName").fill("SmokePet");
+  await page.locator("#page-addpet.active #newPetSpecies").selectOption({ index: 1 }); // pick first available option
   await page.locator('button[onclick="saveNewPet()"]').click();
 
   // Outbox should have at least 1 item
