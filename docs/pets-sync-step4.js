@@ -7,6 +7,8 @@
  *   op = { op_id, type: 'pet.upsert'|'pet.delete', pet_id, base_version?, patch?, client_ts? }
  */
 
+let inFlightPush = false;
+
 function _normalizeUuid(id) {
   if (!id || typeof id !== "string") return id;
   if (id.startsWith("tmp_")) {
