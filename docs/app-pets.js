@@ -61,6 +61,12 @@ async function initPetsDB() {
     });
 }
 
+// Helper for STEP4 script (pets-sync-step4.js)
+async function openPetsDB() {
+  if (petsDB) return petsDB;
+  return await initPetsDB();
+}
+
 async function getAllPets() {
     if (!petsDB) await initPetsDB();
     return new Promise((resolve, reject) => {
