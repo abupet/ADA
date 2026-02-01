@@ -209,7 +209,7 @@ async function enqueueOutbox(op_type, payload) {
                             store.put({
                                 ...item.value,
                                 payload: { ...item.value.payload, ...payload },
-                                op_uuid: item.value.op_uuid,
+                                op_uuid: item.value.op_uuid || opUuid,
                                 pet_local_id: item.value.pet_local_id || petId
                             });
                             return;
@@ -219,7 +219,7 @@ async function enqueueOutbox(op_type, payload) {
                             store.put({
                                 ...item.value,
                                 payload,
-                                op_uuid: item.value.op_uuid,
+                                op_uuid: item.value.op_uuid || opUuid,
                                 pet_local_id: item.value.pet_local_id || petId
                             });
                             return;
@@ -235,7 +235,7 @@ async function enqueueOutbox(op_type, payload) {
                                 ...item.value,
                                 op_type: 'delete',
                                 payload,
-                                op_uuid: item.value.op_uuid,
+                                op_uuid: item.value.op_uuid || opUuid,
                                 pet_local_id: item.value.pet_local_id || petId
                             });
                             return;
