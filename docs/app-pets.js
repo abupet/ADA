@@ -1,3 +1,4 @@
+// app-pets.js v6.16.4
 // ADA v6.16.2 - Multi-Pet Management System
 
 // ============================================
@@ -9,6 +10,12 @@ const PETS_STORE_NAME = 'pets';
 const OUTBOX_STORE_NAME = 'outbox';
 const META_STORE_NAME = 'meta';
 const ID_MAP_STORE_NAME = 'id_map';
+
+// pull throttling / in-flight (used by auto triggers and forced manual sync)
+let __petsPullLastAt = 0;
+let __petsPullInFlight = false;
+const __PETS_PULL_THROTTLE_MS = 30_000;
+
 
 function generateTmpPetId() {
     let id = '';
@@ -471,33 +478,18 @@ async function applyRemotePets(items) {
     });
 }
 
+async function pullPetsIfOnline(options) {
+    const force = !!(options && options.force);
 
-// -------------------------------
-// PULL THROTTLE (auto vs. manual)
-// - Automatic triggers should be throttled
-// - Manual "Sync" must be able to force a pull immediately
-// -------------------------------
-let __petsPullInFlight = false;
-let __petsLastPullAt = 0;
-const __PETS_PULL_THROTTLE_MS = 30_000;
-
-function __shouldSkipPull(force) {
-    if (force) return false;
-    const now = Date.now();
-    return (now - __petsLastPullAt) < __PETS_PULL_THROTTLE_MS;
-}
-
-async function pullPetsIfOnline(opts = {
-    } finally {
-        __petsPullInFlight = false;
-    }
-}) {
-    const force = !!(opts && (opts.force === true));
-    if (__petsPullInFlight) return;
-    if (__shouldSkipPull(force)) return;
-    __petsPullInFlight = true;
-    __petsLastPullAt = Date.now();
     try {
+        if (__petsPullInFlight) return;
+        const now = Date.now();
+        if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return;
+        __petsPullLastAt = now;
+        __petsPullInFlight = true;
+    } catch (e) {
+        // silent
+    }
 
     // Avoid side-effects if not authenticated (prevents smoke-test flakiness)
     try {
@@ -551,10 +543,16 @@ async function pullPetsIfOnline(opts = {
 
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
+
+    try {
+        __petsPullInFlight = false;
+    } catch (e) {
+        // silent
+    }
 }
 
-async function refreshPetsFromServer(force = false) {
-    try { await pullPetsIfOnline({ force: !!force }); } catch (e) {}
+async function refreshPetsFromServer() {
+    try { await pullPetsIfOnline({ force: true }); } catch (e) {}
     const selectedId = await resolveCurrentPetId();
     try { await rebuildPetSelector(selectedId); } catch (e) {}
     try { await updateSelectedPetHeaders(); } catch (e) {}
@@ -1041,7 +1039,7 @@ async function initMultiPetSystem() {
     await rebuildPetSelector();
     
     // Step 2: non-blocking pull (updates local DB when online)
-    try { pullPetsIfOnline(); } catch (e) {}
+    try { pullPetsIfOnline({ force: true }); } catch (e) {}
     // Restore last selected pet
     const lastPetId = localStorage.getItem('ada_current_pet_id');
     if (lastPetId) {
@@ -1102,14 +1100,15 @@ async function updateSelectedPetHeaders() {
         el.classList.add('selected-pet-header--visible');
     });
 }
-
-
-// expose sync helpers for bootstrap + UI (silent if not available)
+// Expose pets sync helpers (used by bootstrap). Keep silent.
 try {
     window.ADA_PetsSync = window.ADA_PetsSync || {};
-    window.ADA_PetsSync.pullPetsIfOnline = pullPetsIfOnline;
-    window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
-    window.ADA_PetsSync.forcePullNow = () => pullPetsIfOnline({ force: true });
+    if (typeof window.ADA_PetsSync.pullPetsIfOnline !== 'function') {
+        window.ADA_PetsSync.pullPetsIfOnline = pullPetsIfOnline;
+    }
+    if (typeof window.ADA_PetsSync.refreshPetsFromServer !== 'function') {
+        window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
+    }
 } catch (e) {
     // silent
 }
