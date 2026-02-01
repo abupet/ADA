@@ -1,44 +1,98 @@
-// pets-sync-step4.js v2
+// pets-sync-step4.js v3
 /**
- * pets-sync-step4.js v2
- * STEP 4 — Push Outbox + tmp_id mapping (minimal, smoke-safe)
+ * pets-sync-step4.js v3
+ * STEP 4 — Push Outbox (pets) to backend /api/sync/pets/push
+ *
+ * Backend contract (see backend/src/pets.sync.routes.js):
+ *   op = { op_id, type: 'pet.upsert'|'pet.delete', pet_id, base_version?, patch?, client_ts? }
  */
+
+function _petToPatch(petLike) {
+  // petLike may be: full pet record, or {record}, or {patch}
+  const r = petLike && (petLike.record || petLike.patch || petLike);
+  const patient = r && r.patient;
+  if (!patient) return {};
+
+  const patch = {};
+
+  if (typeof patient.petName === "string") patch.name = patient.petName;
+  if (typeof patient.petSpecies === "string") patch.species = patient.petSpecies;
+  if (typeof patient.petBreed === "string") patch.breed = patient.petBreed;
+  if (typeof patient.petSex === "string") patch.sex = patient.petSex;
+
+  // weight_kg: accept numbers or numeric strings
+  const w = patient.petWeight;
+  if (typeof w === "number" && Number.isFinite(w)) patch.weight_kg = w;
+  if (typeof w === "string") {
+    const n = parseFloat(w.replace(",", "."));
+    if (!Number.isNaN(n) && Number.isFinite(n)) patch.weight_kg = n;
+  }
+
+  // notes: best-effort (diary is a free text)
+  if (typeof r.diary === "string" && r.diary.trim()) patch.notes = r.diary.trim();
+
+  // birthdate is not present in your UI record (you have petAge), so we omit it.
+  return patch;
+}
 
 async function pushOutboxIfOnline() {
   if (!navigator.onLine) return;
   if (typeof getAuthToken !== "function" || !getAuthToken()) return;
+  if (typeof openPetsDB !== "function") return;
 
   const db = await openPetsDB();
   const tx = db.transaction(["outbox"], "readwrite");
   const store = tx.objectStore("outbox");
   const ops = [];
 
-  await new Promise(resolve => {
-    store.openCursor().onsuccess = e => {
+  await new Promise((resolve) => {
+    store.openCursor().onsuccess = (e) => {
       const c = e.target.result;
       if (!c) return resolve();
-      ops.push({ id: c.primaryKey, ...c.value });
+      ops.push({ key: c.primaryKey, value: c.value });
       c.continue();
     };
   });
 
   if (!ops.length) return;
 
-const mappedOps = ops.map(op => {
-  const o = op.value || op;
-  if (o.op_type === "create" && o.payload && o.payload.record) {
-    return {
-      op_id: `local-${op.id}`,
-      type: "create",
-      pet_id: o.payload.id,
-      record: o.payload.record,
-      client_ts: o.created_at || new Date().toISOString()
-    };
-  }
-  return null; // ignore other op types in STEP4 minimal
-}).filter(Boolean);
+  const mappedOps = ops
+    .map(({ key, value }) => {
+      const o = value || {};
+      const payload = o.payload || {};
+      const pet_id = payload.id;
+      if (!pet_id) return null;
 
-if (!mappedOps.length) return;
+      const op_id = `local-${key}`;
+      const client_ts = o.created_at || new Date().toISOString();
+
+      if (o.op_type === "delete") {
+        return {
+          op_id,
+          type: "pet.delete",
+          pet_id,
+          base_version: payload.base_version ?? null,
+          client_ts,
+        };
+      }
+
+      if (o.op_type === "create" || o.op_type === "update") {
+        const patch = _petToPatch(payload);
+        return {
+          op_id,
+          type: "pet.upsert",
+          pet_id,
+          base_version: payload.base_version ?? null,
+          patch,
+          client_ts,
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+
+  if (!mappedOps.length) return;
 
   let res;
   try {
@@ -46,9 +100,9 @@ if (!mappedOps.length) return;
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        device_id: localStorage.getItem("device_id") || "debug",
-        ops: mappedOps
-      })
+        device_id: localStorage.getItem("ada_device_id") || "debug",
+        ops: mappedOps,
+      }),
     });
   } catch {
     return;
@@ -57,24 +111,23 @@ if (!mappedOps.length) return;
   if (!res || !res.ok) return;
 
   let data;
-  try { data = await res.json(); } catch { return; }
+  try {
+    data = await res.json();
+  } catch {
+    return;
+  }
 
-  // remove accepted ops
+  // Backend returns: { accepted: [op_id, ...], rejected: [{op_id,...}, ...] }
   if (Array.isArray(data.accepted)) {
     for (const acc of data.accepted) {
-      let key = null;
-
-      // Back-compat if backend returns numeric id
-      if (acc && acc.id != null) key = acc.id;
-
-      // Preferred: parse local op_id like "local-10"
-      if (key == null && acc && typeof acc.op_id === "string" && acc.op_id.startsWith("local-")) {
-        const n = parseInt(acc.op_id.slice("local-".length), 10);
-        if (!Number.isNaN(n)) key = n;
-      }
-
-      if (key != null) {
-        try { store.delete(key); } catch {}
+      const opid = typeof acc === "string" ? acc : acc && acc.op_id;
+      if (typeof opid === "string" && opid.startsWith("local-")) {
+        const n = parseInt(opid.slice("local-".length), 10);
+        if (!Number.isNaN(n)) {
+          try {
+            store.delete(n);
+          } catch {}
+        }
       }
     }
   }
