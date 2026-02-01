@@ -1,6 +1,6 @@
-// pets-sync-step4.js v4
+// pets-sync-step4.js v5
 /**
- * pets-sync-step4.js v4
+ * pets-sync-step4.js v5
  * STEP 4 — Push Outbox (pets) to backend /api/sync/pets/push
  *
  * Backend contract (see backend/src/pets.sync.routes.js):
@@ -15,6 +15,22 @@ function _normalizeUuid(id) {
   }
   return id;
 }
+
+
+function _uuidv4() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+
 
 
 
@@ -67,6 +83,8 @@ async function pushOutboxIfOnline() {
 
   if (!ops.length) return;
 
+  const opIdToLocalKey = new Map();
+
   const mappedOps = ops
     .map(({ key, value }) => {
       const o = value || {};
@@ -74,7 +92,8 @@ async function pushOutboxIfOnline() {
       const pet_id = _normalizeUuid(payload.id);
       if (!pet_id) return null;
 
-      const op_id = `local-${key}`;
+      const op_id = _uuidv4();
+      opIdToLocalKey.set(op_id, key);
       const client_ts = o.created_at || new Date().toISOString();
 
       if (o.op_type === "delete") {
@@ -132,13 +151,9 @@ async function pushOutboxIfOnline() {
   if (Array.isArray(data.accepted)) {
     for (const acc of data.accepted) {
       const opid = typeof acc === "string" ? acc : acc && acc.op_id;
-      if (typeof opid === "string" && opid.startsWith("local-")) {
-        const n = parseInt(opid.slice("local-".length), 10);
-        if (!Number.isNaN(n)) {
-          try {
-            store.delete(n);
-          } catch {}
-        }
+      const localKey = typeof opid === "string" ? opIdToLocalKey.get(opid) : undefined;
+      if (typeof localKey === "number") {
+        try { store.delete(localKey); } catch {}
       }
     }
   }
