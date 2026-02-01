@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ada-tests.sh v1
+# ada-tests.sh v2
 #
 # Location (new):
 #   ./ada/tests/ada-tests.sh
@@ -352,6 +352,27 @@ install_all() {
   say "Done."
 }
 
+# ---------------------- Levels ----------------------
+# Level 1: fastest + most useful checks for day-to-day work
+# Level 2: broader/longer checks (run when preparing release / after big changes)
+
+run_level1() {
+  # Policy checks are fast and catch secrets/network issues early
+  run_policy
+  # Local smoke (requires local server) — will run the @smoke suite
+  run_smoke_local
+}
+
+run_level2() {
+  # Full local regression
+  run_regression_local
+  # Deployed smoke (published app)
+  run_deployed
+  # Long tests (audio uploads etc.)
+  run_long_local
+}
+# ----------------------------------------------------
+
 open_report() {
   say "Opening Playwright report..."
   npx playwright show-report
@@ -401,9 +422,13 @@ run_cmd() {
     serve) serve_foreground ;;
     start-server-bg) start_server_background_and_wait ;;
 
+    level1) run_level1 ;;
+
     smoke) run_smoke_local ;;
     smoke-headed) run_smoke_local_headed ;;
     smoke-strict) run_smoke_strict_local ;;
+    level2) run_level2 ;;
+
     regression) run_regression_local ;;
     regression-strict) run_regression_strict_local ;;
     long) run_long_local ;;
@@ -563,6 +588,10 @@ print_help() {
   echo "  - s : toggle STRICT_NETWORK ON/OFF"
   echo ""
   echo -e "${CLR_BOLD}LOG${CLR_RESET}"
+  echo ""
+  echo -e "${CLR_BOLD}LIVELLI${CLR_RESET}"
+  echo "  - Level 1 suite: policy + smoke locale (rapido, consigliato)"
+  echo "  - Level 2 suite: regression + deployed + long (più lento)"
   echo "  - Header/footer sempre in: $LOG_FILE (append)"
   echo "  - Output completo:"
   echo "      * se c'è 'script' -> appeso direttamente nel log"
@@ -593,21 +622,23 @@ print_header() {
   echo "--------------------------------------------------------"
 
   if [[ $menu_level -eq 1 ]]; then
-    echo -e "${CLR_BOLD}MENU LIVELLO 1 (flusso normale)${CLR_RESET}"
-    echo "1) Status"
+    echo -e "${CLR_BOLD}MENU LIVELLO 1 (test più utili)${CLR_RESET}"
+    echo "1) Level 1 suite (Policy + Smoke local)  [consigliato]"
     echo "2) Smoke (local, $(mode_label), STRICT=$(strict_label))"
-    echo "3) Regression (local, $(mode_label), STRICT=$(strict_label))"
-    echo "4) Policy checks"
-    echo "5) Deployed ($(mode_label), STRICT=$(strict_label))"
-    echo "6) Open report"
-    echo "7) Clean artifacts"
+    echo "3) Policy checks"
+    echo "4) Status"
+    echo "5) Open report"
+    echo "6) Clean artifacts"
     echo "0) Vai a MENU LIVELLO 2"
   else
-    echo -e "${CLR_BOLD}MENU LIVELLO 2 (setup / varianti)${CLR_RESET}"
-    echo "1) Install (npm ci + playwright install)"
-    echo "2) Smoke headed (local, $(mode_label), STRICT=$(strict_label))"
-    echo "3) Long tests @long (local, $(mode_label), STRICT=$(strict_label))"
-    echo "4) Start server in other terminal (background)"
+    echo -e "${CLR_BOLD}MENU LIVELLO 2 (test aggiuntivi / setup)${CLR_RESET}"
+    echo "1) Level 2 suite (Regression + Deployed + Long)"
+    echo "2) Regression (local, $(mode_label), STRICT=$(strict_label))"
+    echo "3) Deployed ($(mode_label), STRICT=$(strict_label))"
+    echo "4) Long tests @long (local, $(mode_label), STRICT=$(strict_label))"
+    echo "5) Install (npm ci + playwright install)"
+    echo "6) Smoke headed (local, $(mode_label), STRICT=$(strict_label))"
+    echo "7) Start server in other terminal (background)"
     echo "0) Torna a MENU LIVELLO 1"
   fi
 
@@ -642,21 +673,23 @@ menu_loop() {
     # Never exit menu on failures (set -e)
     if [[ $menu_level -eq 1 ]]; then
       case "$choice" in
-        1) run_cmd_safe status || true; wait_space_to_menu ;;
+        1) run_cmd_safe level1 || true; wait_space_to_menu ;;
         2) run_cmd_safe smoke || true; wait_space_to_menu ;;
-        3) run_cmd_safe regression || true; wait_space_to_menu ;;
-        4) run_cmd_safe policy || true; wait_space_to_menu ;;
-        5) run_cmd_safe deployed || true; wait_space_to_menu ;;
-        6) run_cmd_safe report || true; wait_space_to_menu ;;
-        7) run_cmd_safe clean || true; wait_space_to_menu ;;
+        3) run_cmd_safe policy || true; wait_space_to_menu ;;
+        4) run_cmd_safe status || true; wait_space_to_menu ;;
+        5) run_cmd_safe report || true; wait_space_to_menu ;;
+        6) run_cmd_safe clean || true; wait_space_to_menu ;;
         *) warn "Scelta non valida."; wait_space_to_menu ;;
       esac
     else
       case "$choice" in
-        1) run_cmd_safe install || true; wait_space_to_menu ;;
-        2) run_cmd_safe smoke-headed || true; wait_space_to_menu ;;
-        3) run_cmd_safe long || true; wait_space_to_menu ;;
-        4) run_cmd_safe start-server-bg || true; wait_space_to_menu ;;
+        1) run_cmd_safe level2 || true; wait_space_to_menu ;;
+        2) run_cmd_safe regression || true; wait_space_to_menu ;;
+        3) run_cmd_safe deployed || true; wait_space_to_menu ;;
+        4) run_cmd_safe long || true; wait_space_to_menu ;;
+        5) run_cmd_safe install || true; wait_space_to_menu ;;
+        6) run_cmd_safe smoke-headed || true; wait_space_to_menu ;;
+        7) run_cmd_safe start-server-bg || true; wait_space_to_menu ;;
         *) warn "Scelta non valida."; wait_space_to_menu ;;
       esac
     fi
