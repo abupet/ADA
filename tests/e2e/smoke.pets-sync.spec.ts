@@ -27,7 +27,7 @@ async function countOutbox(page: any): Promise<number> {
 test("@smoke Pets sync: offline create -> online push clears outbox + migrates tmp_id", async ({ page, context }) => {
   const errors = captureHardErrors(page);
 
-  // Mock backend push/pull endpoints so test is deterministic in local environment
+  // Mock backend push/pull endpoints so test is deterministic in CI/local
   let lastAccepted: string[] = [];
 
   await page.route("**/api/sync/pets/push", async (route) => {
@@ -37,6 +37,7 @@ test("@smoke Pets sync: offline create -> online push clears outbox + migrates t
     const ops = Array.isArray(body.ops) ? body.ops : [];
     const accepted = ops.map((o: any) => o.op_id).filter(Boolean);
     lastAccepted = accepted;
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -54,24 +55,27 @@ test("@smoke Pets sync: offline create -> online push clears outbox + migrates t
 
   await login(page);
 
-  // Go to "Pets" page where new pet form exists
-  // Use app navigation function if present; fallback to clicking the menu tab.
+  // IMPORTANT:
+  // The new-pet form lives on page "addpet" (#page-addpet). If we don't navigate there,
+  // #newPetName exists but is hidden, causing flaky failures in CI.
   await page.evaluate(() => {
     // @ts-ignore
-    if (typeof (window as any).navigateToPage === "function") (window as any).navigateToPage("pets");
+    if (typeof (window as any).navigateToPage === "function") (window as any).navigateToPage("addpet");
   });
 
-  await expect(page.locator("#newPetName")).toBeVisible();
+  await expect(page.locator("#page-addpet")).toHaveClass(/active/, { timeout: 10_000 });
+  await expect(page.locator("#newPetName")).toBeVisible({ timeout: 10_000 });
 
   // Force offline to ensure outbox write path is used
   await context.setOffline(true);
 
   // Create a new pet (required fields)
   await page.locator("#newPetName").fill("SmokePet");
-  await page.locator("#newPetSpecies").selectOption({ index: 1 }); // pick first available option
+  await page.locator("#newPetSpecies").selectOption({ index: 1 }); // first available option
   await page.getByTestId("save-new-pet-button").click();
 
-  await expect(page.getByTestId("toast")).toContainText("✅ Nuovo pet aggiunto!", { timeout: 10_000 });
+  // Toast is #toast (id), not a data-testid
+  await expect(page.locator("#toast")).toContainText("✅ Nuovo pet aggiunto!", { timeout: 10_000 });
 
   // Outbox should have at least 1 item
   await expect.poll(async () => await countOutbox(page), { timeout: 5_000 }).toBeGreaterThan(0);
