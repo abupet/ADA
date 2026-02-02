@@ -497,7 +497,14 @@ async function pullPetsIfOnline({ force = false } = {}) {
     if (__petsPullInFlight) return;
 
     // Basic preconditions (do NOT lock inFlight if we can't run)
-    const token = localStorage.getItem('token');
+    // IMPORTANT: Pets sync must rely on getAuthToken() (not localStorage) because
+    // auth can be stored in-memory or under a different persistence strategy.
+    let token = null;
+    try {
+        token = (typeof getAuthToken === 'function') ? getAuthToken() : null;
+    } catch (e) {
+        token = null;
+    }
     if (!token) return;
     if (!navigator.onLine) return;
     if (typeof fetchApi !== 'function') return;
