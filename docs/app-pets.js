@@ -669,6 +669,17 @@ async function restorePetsFromLocalStorageIfNeeded() {
 // DROPDOWN MANAGEMENT
 // ============================================
 
+
+function getPetDisplayLabel(p) {
+  if (!p) return "Seleziona un pet";
+  const pid = p.pet_id || p.id || "";
+  const name = (p.patient && p.patient.petName && p.patient.petName.trim()) || (p.name && p.name.trim()) || "";
+  const species = (p.patient && p.patient.petSpecies && p.patient.petSpecies.trim()) || (p.species && (""+p.species).trim()) || "";
+  if (name && species) return `${name} (${species})`;
+  if (name) return name;
+  return `${getPetDisplayLabel(pet)}`;
+}
+
 async function rebuildPetSelector(selectId = null) {
     const selector = document.getElementById('petSelector');
     if (!selector) return;
