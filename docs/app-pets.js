@@ -1,3 +1,51 @@
+
+// --- Pets Sync: pull response unwrapping (changes[] -> record[] + deletes) ---
+function unwrapPetsPullResponse(data) {
+    // returns { upserts: PetRecord[], deletes: string[], nextCursor?: string }
+    const res = { upserts: [], deletes: [], nextCursor: "" };
+
+    if (!data) return res;
+
+    res.nextCursor = (data.next_cursor || data.cursor || data.last_cursor || "") + "";
+
+    // Array direct: treat as pets
+    if (Array.isArray(data)) {
+        res.upserts = data;
+        return res;
+    }
+
+    if (Array.isArray(data.pets)) {
+        res.upserts = data.pets;
+        return res;
+    }
+    if (Array.isArray(data.items)) {
+        res.upserts = data.items;
+        return res;
+    }
+
+    if (Array.isArray(data.changes)) {
+        const changes = data.changes;
+        for (const ch of changes) {
+            if (!ch || !ch.type) continue;
+            if (ch.type === "pet.delete") {
+                if (ch.pet_id) res.deletes.push(ch.pet_id);
+                continue;
+            }
+            if (ch.type === "pet.upsert" || ch.type === "pet.create" || ch.type === "pet.update") {
+                const rec = ch.record || ch.patch || null;
+                if (!rec) continue;
+                if (!rec.pet_id && ch.pet_id) rec.pet_id = ch.pet_id;
+                if (!rec.id) rec.id = rec.pet_id || ch.pet_id;
+                res.upserts.push(rec);
+            }
+        }
+        return res;
+    }
+
+    return res;
+}
+// --- /Pets Sync: pull response unwrapping ---
+
 // app-pets.js v6.16.4
 // ADA v6.16.2 - Multi-Pet Management System
 
@@ -17,27 +65,13 @@ let __petsPullInFlight = false;
 const __PETS_PULL_THROTTLE_MS = 30_000;
 
 
-function uuidv4Fallback() {
-    const bytes = new Uint8Array(16);
-    try {
-        if (crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
-        else for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-    } catch (e) {
-        for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-    }
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-}
-
 function generateTmpPetId() {
-    let u = '';
+    let id = '';
     try {
-        if (crypto && crypto.randomUUID) u = crypto.randomUUID();
+        if (crypto && crypto.randomUUID) id = crypto.randomUUID();
     } catch (e) {}
-    if (!u) u = uuidv4Fallback();
-    return 'tmp_' + u;
+    if (!id) id = Math.random().toString(16).slice(2) + '_' + Date.now();
+    return 'tmp_' + id;
 }
 
 let petsDB = null;
@@ -492,47 +526,78 @@ async function applyRemotePets(items) {
     });
 }
 
-async function pullPetsIfOnline({ force = false } = {}) {
-    // Prevent overlapping pulls
-    if (__petsPullInFlight) return;
+async function pullPetsIfOnline(options) {
+    const force = !!(options && options.force);
 
-    // Basic preconditions (do NOT lock inFlight if we can't run)
-    // IMPORTANT: Pets sync must rely on getAuthToken() (not localStorage) because
-    // auth can be stored in-memory or under a different persistence strategy.
-    let token = null;
     try {
-        token = (typeof getAuthToken === 'function') ? getAuthToken() : null;
+        if (__petsPullInFlight) return;
+        const now = Date.now();
+        if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return;
+        __petsPullLastAt = now;
+        __petsPullInFlight = true;
     } catch (e) {
-        token = null;
+        // silent
     }
-    if (!token) return;
+
+    // Avoid side-effects if not authenticated (prevents smoke-test flakiness)
+    try {
+        if (typeof getAuthToken === 'function') {
+            const t = getAuthToken();
+            if (!t) return;
+        }
+    } catch (e) { return; }
+
     if (!navigator.onLine) return;
     if (typeof fetchApi !== 'function') return;
 
-    // Throttle (unless forced)
-    const now = Date.now();
-    if (!force && (now - __petsPullLastAt) < __petsPullThrottleMs) return;
+    const device_id = await getOrCreateDeviceId();
+    const cursor = await getLastPetsCursor();
 
-    __petsPullInFlight = true;
+    // Be tolerant to backend response shapes
+    const qs = new URLSearchParams();
+    if (cursor) qs.set('since', cursor);
+    qs.set('device_id', device_id);
+
+    const qsString = qs.toString();
+    const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
+    const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
+
+    let resp = null;
     try {
-        __petsPullLastAt = now;
-
-        const resp = await fetchApi('/api/sync/pets/pull', { method: 'GET' });
-        if (!resp || !resp.ok) {
-            console.warn('Pets pull failed', resp?.status);
-            return;
-        }
-        const payload = await resp.json();
-        if (!payload) return;
-
-        // Apply remote pets (non-destructive merge)
-        if (payload.changes && Array.isArray(payload.changes)) {
-            await applyRemotePets(payload.changes);
-        }
+        resp = await fetchApi(primaryUrl, { method: 'GET' });
     } catch (e) {
-        console.error('Pets pull error', e);
-    } finally {
+        resp = null;
+    }
+    if (!resp || !resp.ok) {
+        try {
+            resp = await fetchApi(fallbackUrl, { method: 'GET' });
+        } catch (e) {
+            return; // silent
+        }
+        if (!resp || !resp.ok) return;
+    }
+
+    let data = null;
+    try { data = await resp.json(); } catch (e) { return; }
+
+    const items =
+        Array.isArray(data) ? data :
+        Array.isArray(data?.pets) ? data.pets :
+        Array.isArray(data?.items) ? data.items :
+        Array.isArray(data?.changes) ? data.changes :
+        [];
+
+    const pulled = unwrapPetsPullResponse(data);
+    if (pulled.deletes && pulled.deletes.length) { for (const delId of pulled.deletes) { try { await deletePetById(delId); } catch(e) {} } }
+    await applyRemotePets(pulled.upserts);
+
+    const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
+    if (nextCursor) await setLastPetsCursor(nextCursor);
+
+    try {
         __petsPullInFlight = false;
+    } catch (e) {
+        // silent
     }
 }
 
@@ -552,7 +617,7 @@ function createEmptyPet() {
         id: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        patient: { petName: '', petSpecies: '', petBreed: '', petBirthdate: '', petSex: '', petWeight: '', petMicrochip: '', ownerName: '', ownerPhone: '', visitDate: '' },
+        patient: { petName: '', petSpecies: '', petBreed: '', petAge: '', petSex: '', petWeight: '', petMicrochip: '', ownerName: '', ownerPhone: '', visitDate: '' },
         lifestyle: { lifestyle: '', household: '', activityLevel: '', dietType: '', dietPreferences: '', knownConditions: '', currentMeds: '', behaviorNotes: '', seasonContext: '', location: '' },
         photos: [],
         vitalsData: [],
@@ -828,7 +893,6 @@ async function saveNewPet() {
     localStorage.setItem('ada_current_pet_id', String(newId));
     const savedPet = await getPetById(newId);
     loadPetIntoMainFields(savedPet);
-        await updateSelectedPetHeaders();
     
     showToast('✅ Nuovo pet aggiunto!', 'success');
 }
@@ -895,7 +959,7 @@ function loadPetIntoMainFields(pet) {
 // ============================================
 
 function clearNewPetFields() {
-    const fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetBirthdate', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerPhone', 'newVisitDate',
+    const fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetAge', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerPhone', 'newVisitDate',
                     'newPetLifestyle', 'newPetActivityLevel', 'newPetDietType', 'newPetDietPreferences', 'newPetKnownConditions', 'newPetCurrentMeds', 'newPetBehaviorNotes', 'newPetSeasonContext', 'newPetLocation'];
     fields.forEach(id => {
         const el = document.getElementById(id);
@@ -914,7 +978,7 @@ function getNewPetPatientData() {
         petName: document.getElementById('newPetName')?.value || '',
         petSpecies: document.getElementById('newPetSpecies')?.value || '',
         petBreed: document.getElementById('newPetBreed')?.value || '',
-        petAge: document.getElementById('newPetBirthdate')?.value || '',
+        petAge: document.getElementById('newPetAge')?.value || '',
         petSex: document.getElementById('newPetSex')?.value || '',
         petWeight: document.getElementById('newPetWeight')?.value || '',
         petMicrochip: document.getElementById('newPetMicrochip')?.value || '',
