@@ -42,29 +42,34 @@ function _petToPatch(petLike) {
   const patient = r && r.patient;
   if (!patient) return {};
 
+  const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
+
   const patch = {};
 
-  if (typeof patient.petName === "string") patch.name = patient.petName;
-  if (typeof patient.petSpecies === "string") patch.species = patient.petSpecies;
-  if (typeof patient.petBreed === "string") patch.breed = patient.petBreed;
-  if (typeof patient.petSex === "string") patch.sex = patient.petSex;
+  // Strings: only send if non-empty. Empty strings would otherwise become invalid values (e.g., weight_kg numeric).
+  if (isNonEmptyString(patient.petName)) patch.name = patient.petName.trim();
+  if (isNonEmptyString(patient.petSpecies)) patch.species = patient.petSpecies.trim();
+  if (isNonEmptyString(patient.petBreed)) patch.breed = patient.petBreed.trim();
+  if (isNonEmptyString(patient.petSex)) patch.sex = patient.petSex.trim();
 
-  // weight_kg: accept numbers or numeric strings
-  const w = patient.petWeight;
-  if (typeof w === "number" && Number.isFinite(w)) patch.weight_kg = w;
-  if (typeof w === "string") {
-    const n = parseFloat(w.replace(",", "."));
-    if (!Number.isNaN(n) && Number.isFinite(n)) patch.weight_kg = n;
+  // birthdate: source of truth (YYYY-MM-DD or ISO). Only send if non-empty.
+  const bd = patient.petBirthdate ?? patient.petBirthDate ?? patient.birthdate ?? r.birthdate;
+  if (isNonEmptyString(bd)) patch.birthdate = bd.trim();
+
+  // weight_kg: accept numbers or numeric strings from either petWeightKg or petWeight
+  const wRaw = patient.petWeightKg ?? patient.petWeight;
+  if (typeof wRaw === "number" && Number.isFinite(wRaw)) {
+    patch.weight_kg = wRaw;
+  } else if (typeof wRaw === "string") {
+    const s = wRaw.trim();
+    if (s) {
+      const n = parseFloat(s.replace(",", "."));
+      if (!Number.isNaN(n) && Number.isFinite(n)) patch.weight_kg = n;
+    }
   }
 
   // notes: best-effort (diary is a free text)
   if (typeof r.diary === "string" && r.diary.trim()) patch.notes = r.diary.trim();
-
-  if (r.birthdate) patch.birthdate = r.birthdate;
-  if (r.patient && r.patient.petBirthdate) patch.birthdate = r.patient.petBirthdate;
-
-  // Weight aliases
-  if (!patch.weight_kg && r.patient) patch.weight_kg = r.patient.petWeightKg || r.patient.petWeight;
 
   return patch;
 }
