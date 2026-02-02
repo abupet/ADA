@@ -937,6 +937,8 @@ function clearMainPetFields() {
 }
 
 function loadPetIntoMainFields(pet) {
+  const _p = (pet && pet.patient) ? pet.patient : {};
+  const _pick = (a, b) => (typeof a === 'string' && a.trim()) ? a : (typeof b === 'string' && b.trim()) ? b : (b ?? '');
     setPatientData(pet.patient || {});
     setLifestyleData(pet.lifestyle || {});
     photos = pet.photos || [];
