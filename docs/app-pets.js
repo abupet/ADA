@@ -26,16 +26,20 @@ function unwrapPetsPullResponse(data) {
     if (Array.isArray(data.changes)) {
         const changes = data.changes;
         for (const ch of changes) {
-            if (!ch || !ch.type) continue;
-            if (ch.type === "pet.delete") {
-                if (ch.pet_id) res.deletes.push(ch.pet_id);
+            if (!ch) continue;
+            const changeId = ch.pet_id || ch.id;
+            const hasRecord = ch.record || ch.patch;
+            const isDelete = ch.type === "pet.delete"
+                || (!ch.type && (ch.record === null || ch.record === undefined) && changeId);
+            if (isDelete) {
+                if (changeId) res.deletes.push(changeId);
                 continue;
             }
-            if (ch.type === "pet.upsert" || ch.type === "pet.create" || ch.type === "pet.update") {
+            if (ch.type === "pet.upsert" || ch.type === "pet.create" || ch.type === "pet.update" || hasRecord) {
                 const rec = ch.record || ch.patch || null;
                 if (!rec) continue;
-                if (!rec.pet_id && ch.pet_id) rec.pet_id = ch.pet_id;
-                if (!rec.id) rec.id = rec.pet_id || ch.pet_id;
+                if (!rec.pet_id && changeId) rec.pet_id = changeId;
+                if (!rec.id) rec.id = rec.pet_id || changeId;
                 res.upserts.push(rec);
             }
         }
@@ -287,6 +291,15 @@ async function deletePetFromDB(id) {
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
+}
+
+async function deletePetById(id) {
+    const normalizedId = normalizePetId(id);
+    if (normalizedId === null || normalizedId === undefined) return;
+    await deletePetFromDB(normalizedId);
+    if (currentPetId !== null && String(currentPetId) === String(normalizedId)) {
+        await clearCurrentPetSelection();
+    }
 }
 
 function hasMeaningfulValue(value) {
@@ -605,6 +618,14 @@ async function applyRemotePets(items) {
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => reject(tx.error || new Error('applyRemotePets failed'));
     });
+
+    const deletedIds = mergedItems.filter((item) => item.isDelete).map((item) => item.id);
+    if (deletedIds.length && currentPetId !== null && currentPetId !== undefined) {
+        const matches = deletedIds.some((id) => String(id) === String(currentPetId));
+        if (matches) {
+            await clearCurrentPetSelection();
+        }
+    }
 }
 
 async function pullPetsIfOnline(options) {
@@ -674,6 +695,7 @@ async function pullPetsIfOnline(options) {
 
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
+    try { await reconcileSelectedPetAfterPull(); } catch (e) {}
 
     try {
         __petsPullInFlight = false;
@@ -684,9 +706,7 @@ async function pullPetsIfOnline(options) {
 
 async function refreshPetsFromServer() {
     try { await pullPetsIfOnline({ force: true }); } catch (e) {}
-    const selectedId = await resolveCurrentPetId();
-    try { await rebuildPetSelector(selectedId); } catch (e) {}
-    try { await updateSelectedPetHeaders(); } catch (e) {}
+    try { await reconcileSelectedPetAfterPull(); } catch (e) {}
 }
 
 // ============================================
@@ -754,7 +774,7 @@ async function restorePetsFromLocalStorageIfNeeded() {
 function getPetDisplayLabel(p) {
   if (!p) return "Seleziona un pet";
   const pid = p.pet_id || p.id || "";
-  const name = (p.patient && p.patient.petName && p.patient.petName.trim()) || (p.name && p.name.trim()) || "";
+  const name = getPetDisplayName(p);
   const species = (p.patient && p.patient.petSpecies && p.patient.petSpecies.trim()) || (p.species && (""+p.species).trim()) || "";
   if (name && species) return `${name} (${species})`;
   if (name) return name;
@@ -768,16 +788,40 @@ async function rebuildPetSelector(selectId = null) {
     if (!selector) return;
     
     const pets = await getAllPets();
-    
+    const collator = new Intl.Collator('it-IT', { sensitivity: 'base' });
+    const sortedPets = [...pets].sort((a, b) => {
+        const nameA = getPetDisplayName(a);
+        const nameB = getPetDisplayName(b);
+        const byName = collator.compare(nameA, nameB);
+        if (byName !== 0) return byName;
+        const idA = String(a?.id ?? '');
+        const idB = String(b?.id ?? '');
+        return collator.compare(idA, idB);
+    });
+
     let html = '<option value="">-- Seleziona Pet --</option>';
-    pets.forEach(pet => {
+    sortedPets.forEach(pet => {
         const label = getPetDisplayLabel(pet);
         html += `<option value="${pet.id}">${label}</option>`;
     });
     selector.innerHTML = html;
-    
-    if (selectId !== null) {
-        selector.value = String(selectId);
+
+    let desiredId = selectId;
+    if (desiredId === null || desiredId === undefined) {
+        desiredId = await resolveCurrentPetId();
+    }
+    if (desiredId !== null && desiredId !== undefined) {
+        const normalizedDesiredId = normalizePetId(desiredId);
+        if (normalizedDesiredId === null || normalizedDesiredId === undefined) {
+            selector.value = '';
+        } else {
+            const hasDesired = sortedPets.some((pet) => String(pet?.id) === String(normalizedDesiredId));
+            if (hasDesired) {
+                selector.value = String(normalizedDesiredId);
+            } else {
+                await clearCurrentPetSelection();
+            }
+        }
     }
     
     updateSaveButtonState();
@@ -914,10 +958,7 @@ async function deleteCurrentPet() {
     
     await deletePetFromDB(petId);
         await enqueueOutbox('delete', { id: petId, base_version: null });
-        currentPetId = null;
-    localStorage.removeItem('ada_current_pet_id');
-    clearMainPetFields();
-    await rebuildPetSelector('');
+        await clearCurrentPetSelection();
     
     showToast('✅ Pet eliminato', 'success');
 }
@@ -986,6 +1027,7 @@ async function saveNewPet() {
     localStorage.setItem('ada_current_pet_id', String(newId));
     const savedPet = await getPetById(newId);
     loadPetIntoMainFields(savedPet);
+    await updateSelectedPetHeaders();
     
     showToast('✅ Nuovo pet aggiunto!', 'success');
 }
@@ -1211,6 +1253,15 @@ async function initMultiPetSystem() {
     updateSaveButtonState();
 }
 
+function getPetDisplayName(p) {
+  if (!p) return "";
+  const name = (p.patient && p.patient.petName && p.patient.petName.trim()) || (p.name && p.name.trim()) || "";
+  if (name) return name;
+  const pid = p.pet_id || p.id;
+  if (pid !== null && pid !== undefined && String(pid).trim()) return `Pet ${pid}`;
+  return "";
+}
+
 
 // ============================================
 // SELECTED PET HEADER
@@ -1244,6 +1295,31 @@ async function updateSelectedPetHeaders() {
         el.textContent = '🐾 ' + parts.join(' • ');
         el.classList.add('selected-pet-header--visible');
     });
+}
+
+async function clearCurrentPetSelection() {
+    currentPetId = null;
+    try { localStorage.removeItem('ada_current_pet_id'); } catch (e) {}
+    clearMainPetFields();
+    try { await rebuildPetSelector(''); } catch (e) {}
+    try { await updateSelectedPetHeaders(); } catch (e) {}
+    updateSaveButtonState();
+}
+
+async function reconcileSelectedPetAfterPull() {
+    const selectedId = await resolveCurrentPetId();
+    if (selectedId === null || selectedId === undefined) {
+        await rebuildPetSelector('');
+        await updateSelectedPetHeaders();
+        return;
+    }
+    const pet = await getPetById(selectedId);
+    if (!pet) {
+        await clearCurrentPetSelection();
+        return;
+    }
+    await rebuildPetSelector(selectedId);
+    await updateSelectedPetHeaders();
 }
 // Expose pets sync helpers (used by bootstrap). Keep silent.
 try {
