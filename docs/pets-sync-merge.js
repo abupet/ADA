@@ -35,106 +35,77 @@ function pickNonEmptyString(...vals) {
     return `${y} ${m}`;
   }
 
-  function normalizePetFromServer(remote) {
-    if (!remote || typeof remote !== "object") return remote;
-    const r = { ...remote };
-    const pid = r.pet_id || r.id;
-    const patient = { ...(r.patient || {}) };
+  function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim().length > 0;
+}
+function pickNonEmptyString(...vals) {
+  for (const v of vals) {
+    if (isNonEmptyString(v)) return v.trim();
+  }
+  return undefined;
+}
+function isMeaningfulValue(v) {
+  if (v === undefined || v === null) return false;
+  if (typeof v === "string") return v.trim().length > 0;
+  return true;
+}
 
-    // Map flat -> nested (do not overwrite nested with undefined/null)
-    if (isDefined(r.name) && !isDefined(patient.petName)) patient.petName = pickNonEmptyString(patient.petName, r.name, r.petName);
-    if (isDefined(r.species) && !isDefined(patient.petSpecies)) patient.petSpecies = pickNonEmptyString(patient.petSpecies, r.species, r.petSpecies);
-    if (isDefined(r.breed) && !isDefined(patient.petBreed)) patient.petBreed = pickNonEmptyString(patient.petBreed, r.breed, r.petBreed);
-    if (isDefined(r.sex) && !isDefined(patient.petSex)) patient.petSex = pickNonEmptyString(patient.petSex, r.sex, r.petSex);
+function normalizePetFromServer(petLike) {
+  // Accept: change wrapper, record, patch, or pet object
+  const r0 = petLike && (petLike.record || petLike.patch || petLike);
+  const r = r0 ? { ...r0 } : {};
+  const patient0 = r.patient && typeof r.patient === "object" ? { ...r.patient } : {};
+  const patient = { ...patient0 };
 
-    // Weight: keep BOTH aliases aligned
-    const flatW = r.weight_kg;
-    const nestedWkg = patient.petWeightKg;
-    const nestedW = patient.petWeight;
-    const w = isDefined(flatW) ? flatW : (isDefined(nestedWkg) ? nestedWkg : nestedW);
-    if (isDefined(w)) {
-      patient.petWeightKg = w;
-      patient.petWeight = w;
-      r.weight_kg = w;
-    }
-
-    // Birthdate (source of truth). Allow both flat birthdate or nested petBirthdate.
-    const bd = isDefined(r.birthdate) ? r.birthdate : patient.petBirthdate;
-    if (isDefined(bd)) {
-      r.birthdate = bd;
-      patient.petBirthdate = bd;
-      // Optional derived field for prompts/UI compatibility
-      if (!isDefined(patient.petAge)) patient.petAge = computeAgeFromBirthdate(bd);
-    }
-
-    if (pid && !isDefined(patient.pet_id)) patient.pet_id = pid;
-
-    r.patient = patient;
-
-    // Align name <-> patient.petName bidirectionally
-    if (!isDefined(r.name) && isDefined(patient.petName)) r.name = patient.petName;
-    if (!isDefined(patient.petName) && isDefined(r.name)) r.patient.petName = pickNonEmptyString(patient.petName, r.name, r.petName);
-
-    // Ensure id alias
-    if (!isDefined(r.id) && isDefined(pid)) r.id = pid;
-
-    return r;
+  // Primary identifiers
+  const pid = r.pet_id || r.id || petLike?.pet_id || petLike?.id;
+  if (pid) {
+    r.pet_id = r.pet_id || pid;
+    r.id = r.id || pid;
   }
 
-  function mergePetLocalWithRemote(local, remoteNorm) {
-  function isMeaningfulValue(v) {
-    if (v === undefined || v === null) return false;
-    if (typeof v === "string") return v.trim().length > 0;
-    return true;
+  // Fill patient fields from flat fields whenever patient values are missing/empty
+  const petName = pickNonEmptyString(patient.petName, r.name, r.petName);
+  if (petName) patient.petName = petName;
+
+  const petSpecies = pickNonEmptyString(patient.petSpecies, r.species, r.petSpecies);
+  if (petSpecies) patient.petSpecies = petSpecies;
+
+  const petBreed = pickNonEmptyString(patient.petBreed, r.breed, r.petBreed);
+  if (petBreed) patient.petBreed = petBreed;
+
+  const petSex = pickNonEmptyString(patient.petSex, r.sex, r.petSex);
+  if (petSex) patient.petSex = petSex;
+
+  // Birthdate: only set if non-empty
+  const bd = pickNonEmptyString(patient.petBirthdate, patient.petBirthDate, r.birthdate);
+  if (bd) patient.petBirthdate = bd;
+
+  // Weight: accept numeric or numeric string; only set if meaningful
+  const wRaw = patient.petWeightKg ?? patient.petWeight ?? r.weight_kg ?? r.weightKg;
+  let wNum = null;
+  if (typeof wRaw === "number" && Number.isFinite(wRaw)) wNum = wRaw;
+  else if (typeof wRaw === "string") {
+    const s = wRaw.trim();
+    if (s) {
+      const n = parseFloat(s.replace(",", "."));
+      if (!Number.isNaN(n) && Number.isFinite(n)) wNum = n;
+    }
+  }
+  if (wNum !== null) {
+    // Keep both for UI compatibility
+    patient.petWeightKg = String(wNum.toFixed(2));
+    patient.petWeight = String(wNum);
+    r.weight_kg = wNum; // server-friendly
   }
 
-    if (!local) return remoteNorm;
-    if (!remoteNorm) return local;
+  // Align flat fields from patient (if flat missing/empty)
+  if (!isNonEmptyString(r.name) && isNonEmptyString(patient.petName)) r.name = patient.petName.trim();
+  if (!isNonEmptyString(r.species) && isNonEmptyString(patient.petSpecies)) r.species = patient.petSpecies.trim();
+  if (!isNonEmptyString(r.breed) && isNonEmptyString(patient.petBreed)) r.breed = patient.petBreed.trim();
+  if (!isNonEmptyString(r.sex) && isNonEmptyString(patient.petSex)) r.sex = patient.petSex.trim();
+  if (!isNonEmptyString(r.birthdate) && isNonEmptyString(patient.petBirthdate)) r.birthdate = patient.petBirthdate.trim();
 
-    const merged = { ...local };
-
-    // Merge top-level fields non-destructively: prefer remote only if defined
-    const fields = ["name", "species", "breed", "sex", "weight_kg", "birthdate", "version", "updated_at", "created_at", "owner_user_id", "notes"];
-    for (const f of fields) {
-      const rv = remoteNorm[f];
-      if (isDefined(rv)) merged[f] = rv;
-    }
-
-    // patient nested merge
-    merged.patient = { ...(local.patient || {}) };
-    const rp = (remoteNorm.patient || {});
-    const pFields = ["petName", "petSpecies", "petBreed", "petSex", "petWeight", "petWeightKg", "petMicrochip", "petBirthdate", "petAge", "ownerName", "ownerPhone", "visitDate", "pet_id"];
-    for (const f of pFields) {
-      const rv = rp[f];
-      if (isDefined(rv)) merged.patient[f] = rv;
-    }
-
-    // Align name
-    if (isDefined(merged.patient.petName)) merged.name = merged.patient.petName;
-    else if (isDefined(merged.name)) merged.patient.petName = pickNonEmptyString(patient.petName, r.name, r.petName);
-
-    // Align weight aliases
-    const w = isDefined(merged.weight_kg) ? merged.weight_kg : (isDefined(merged.patient.petWeightKg) ? merged.patient.petWeightKg : merged.patient.petWeight);
-    if (isDefined(w)) {
-      merged.weight_kg = w;
-      merged.patient.petWeightKg = w;
-      merged.patient.petWeight = w;
-    }
-
-    // Align birthdate & derived age
-    const bd = isDefined(merged.birthdate) ? merged.birthdate : merged.patient.petBirthdate;
-    if (isDefined(bd)) {
-      merged.birthdate = bd;
-      merged.patient.petBirthdate = bd;
-      merged.patient.petAge = computeAgeFromBirthdate(bd); // keep derived age fresh
-    }
-
-    // Id aliases
-    merged.id = merged.id || merged.pet_id || remoteNorm.id || remoteNorm.pet_id;
-    merged.pet_id = merged.pet_id || merged.id;
-
-    return merged;
-  }
-
-  window.PetsSyncMerge = { normalizePetFromServer, mergePetLocalWithRemote, computeAgeFromBirthdate };
+  r.patient = patient;
+  return r;
 })();
