@@ -1,3 +1,14 @@
+
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim().length > 0;
+}
+function pickNonEmptyString(...vals) {
+  for (const v of vals) {
+    if (isNonEmptyString(v)) return v.trim();
+  }
+  return undefined;
+}
+
 /* pets-sync-merge.js v1
    Normalizzazione record pet dal pull + merge non distruttivo.
    Espone window.PetsSyncMerge.{ normalizePetFromServer, mergePetLocalWithRemote, computeAgeFromBirthdate }
@@ -31,10 +42,10 @@
     const patient = { ...(r.patient || {}) };
 
     // Map flat -> nested (do not overwrite nested with undefined/null)
-    if (isDefined(r.name) && !isDefined(patient.petName)) patient.petName = r.name;
-    if (isDefined(r.species) && !isDefined(patient.petSpecies)) patient.petSpecies = r.species;
-    if (isDefined(r.breed) && !isDefined(patient.petBreed)) patient.petBreed = r.breed;
-    if (isDefined(r.sex) && !isDefined(patient.petSex)) patient.petSex = r.sex;
+    if (isDefined(r.name) && !isDefined(patient.petName)) patient.petName = pickNonEmptyString(patient.petName, r.name, r.petName);
+    if (isDefined(r.species) && !isDefined(patient.petSpecies)) patient.petSpecies = pickNonEmptyString(patient.petSpecies, r.species, r.petSpecies);
+    if (isDefined(r.breed) && !isDefined(patient.petBreed)) patient.petBreed = pickNonEmptyString(patient.petBreed, r.breed, r.petBreed);
+    if (isDefined(r.sex) && !isDefined(patient.petSex)) patient.petSex = pickNonEmptyString(patient.petSex, r.sex, r.petSex);
 
     // Weight: keep BOTH aliases aligned
     const flatW = r.weight_kg;
@@ -62,7 +73,7 @@
 
     // Align name <-> patient.petName bidirectionally
     if (!isDefined(r.name) && isDefined(patient.petName)) r.name = patient.petName;
-    if (!isDefined(patient.petName) && isDefined(r.name)) r.patient.petName = r.name;
+    if (!isDefined(patient.petName) && isDefined(r.name)) r.patient.petName = pickNonEmptyString(patient.petName, r.name, r.petName);
 
     // Ensure id alias
     if (!isDefined(r.id) && isDefined(pid)) r.id = pid;
@@ -71,6 +82,12 @@
   }
 
   function mergePetLocalWithRemote(local, remoteNorm) {
+  function isMeaningfulValue(v) {
+    if (v === undefined || v === null) return false;
+    if (typeof v === "string") return v.trim().length > 0;
+    return true;
+  }
+
     if (!local) return remoteNorm;
     if (!remoteNorm) return local;
 
@@ -94,7 +111,7 @@
 
     // Align name
     if (isDefined(merged.patient.petName)) merged.name = merged.patient.petName;
-    else if (isDefined(merged.name)) merged.patient.petName = merged.name;
+    else if (isDefined(merged.name)) merged.patient.petName = pickNonEmptyString(patient.petName, r.name, r.petName);
 
     // Align weight aliases
     const w = isDefined(merged.weight_kg) ? merged.weight_kg : (isDefined(merged.patient.petWeightKg) ? merged.patient.petWeightKg : merged.patient.petWeight);
