@@ -289,6 +289,75 @@ async function deletePetFromDB(id) {
     });
 }
 
+function hasMeaningfulValue(value) {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return true;
+}
+
+function filterMeaningfulFields(obj) {
+    if (!obj || typeof obj !== 'object') return {};
+    const filtered = {};
+    for (const [key, value] of Object.entries(obj)) {
+        if (hasMeaningfulValue(value)) filtered[key] = value;
+    }
+    return filtered;
+}
+
+function normalizePetFromBackend(record, existing) {
+    const safeRecord = record && typeof record === 'object' ? record : {};
+    const safeExisting = existing && typeof existing === 'object' ? existing : {};
+    const id = safeRecord.pet_id || safeRecord.id || safeExisting.id || null;
+
+    const existingPatient = safeExisting.patient && typeof safeExisting.patient === 'object' ? safeExisting.patient : {};
+    const incomingPatient = safeRecord.patient && typeof safeRecord.patient === 'object' ? safeRecord.patient : {};
+
+    const fallbackName = existingPatient.petName || '';
+    const fallbackSpecies = existingPatient.petSpecies || '';
+    const normalizedName = hasMeaningfulValue(safeRecord.name) ? safeRecord.name : fallbackName;
+    const normalizedSpecies = hasMeaningfulValue(safeRecord.species) ? safeRecord.species : fallbackSpecies;
+
+    return {
+        ...safeRecord,
+        id,
+        name: normalizedName,
+        species: normalizedSpecies,
+        patient: {
+            ...existingPatient,
+            ...incomingPatient,
+            petName: hasMeaningfulValue(normalizedName) ? normalizedName : '',
+            petSpecies: hasMeaningfulValue(normalizedSpecies) ? normalizedSpecies : ''
+        }
+    };
+}
+
+function mergePetsForPull(existing, incoming) {
+    const safeExisting = existing && typeof existing === 'object' ? existing : {};
+    const safeIncoming = incoming && typeof incoming === 'object' ? incoming : {};
+    const merged = {
+        ...safeExisting,
+        ...filterMeaningfulFields(safeIncoming)
+    };
+
+    const existingPatient = safeExisting.patient && typeof safeExisting.patient === 'object' ? safeExisting.patient : {};
+    const incomingPatient = filterMeaningfulFields(safeIncoming.patient || {});
+    const mergedPatient = { ...existingPatient, ...incomingPatient };
+    const normalizedName = safeIncoming.patient && safeIncoming.patient.petName !== undefined
+        ? safeIncoming.patient.petName
+        : existingPatient.petName;
+    const normalizedSpecies = safeIncoming.patient && safeIncoming.patient.petSpecies !== undefined
+        ? safeIncoming.patient.petSpecies
+        : existingPatient.petSpecies;
+    mergedPatient.petName = hasMeaningfulValue(normalizedName) ? normalizedName : (existingPatient.petName || '');
+    mergedPatient.petSpecies = hasMeaningfulValue(normalizedSpecies) ? normalizedSpecies : (existingPatient.petSpecies || '');
+    if (mergedPatient.petName === undefined) mergedPatient.petName = '';
+    if (mergedPatient.petSpecies === undefined) mergedPatient.petSpecies = '';
+    merged.patient = mergedPatient;
+    return merged;
+}
+
 // ============================================
 // META / OUTBOX (offline-first scaffolding)
 // ============================================
@@ -511,10 +580,22 @@ async function applyRemotePets(items) {
         }
     } catch (e) {}
 
+    const mergedItems = [];
+    for (const item of normalizedItems) {
+        if (item.isDelete) {
+            mergedItems.push(item);
+            continue;
+        }
+        const existing = await getPetById(item.id);
+        const incoming = normalizePetFromBackend(item.entry, existing);
+        const merged = mergePetsForPull(existing, incoming);
+        mergedItems.push({ ...item, entry: merged });
+    }
+
     await new Promise((resolve, reject) => {
         const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
         const store = tx.objectStore(PETS_STORE_NAME);
-        for (const item of normalizedItems) {
+        for (const item of mergedItems) {
             if (item.isDelete) {
                 store.delete(item.id);
             } else {
@@ -677,7 +758,9 @@ function getPetDisplayLabel(p) {
   const species = (p.patient && p.patient.petSpecies && p.patient.petSpecies.trim()) || (p.species && (""+p.species).trim()) || "";
   if (name && species) return `${name} (${species})`;
   if (name) return name;
-  return `${getPetDisplayLabel(pet)}`;
+  if (species) return species;
+  if (pid) return `Pet ${pid} (N/D)`;
+  return "Seleziona un pet";
 }
 
 async function rebuildPetSelector(selectId = null) {
@@ -688,9 +771,8 @@ async function rebuildPetSelector(selectId = null) {
     
     let html = '<option value="">-- Seleziona Pet --</option>';
     pets.forEach(pet => {
-        const name = pet.patient?.petName || 'Pet ' + pet.id;
-        const species = pet.patient?.petSpecies || 'N/D';
-        html += `<option value="${pet.id}">${name} (${species})</option>`;
+        const label = getPetDisplayLabel(pet);
+        html += `<option value="${pet.id}">${label}</option>`;
     });
     selector.innerHTML = html;
     
