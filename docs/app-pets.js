@@ -1,3 +1,4 @@
+// app-pets.js v6.16.5
 
 // --- Pets Sync: pull response unwrapping (changes[] -> record[] + deletes) ---
 function unwrapPetsPullResponse(data) {
@@ -26,17 +27,32 @@ function unwrapPetsPullResponse(data) {
     if (Array.isArray(data.changes)) {
         const changes = data.changes;
         for (const ch of changes) {
-            if (!ch || !ch.type) continue;
-            if (ch.type === "pet.delete") {
-                if (ch.pet_id) res.deletes.push(ch.pet_id);
+            if (!ch) continue;
+
+            const tRaw = (ch.type == null ? "" : String(ch.type));
+            const t = tRaw.trim();
+
+            const rec = (ch.record && typeof ch.record === 'object')
+                ? ch.record
+                : (ch.patch && typeof ch.patch === 'object')
+                    ? ch.patch
+                    : null;
+
+            const pid = ch.pet_id || (rec && rec.pet_id) || (rec && rec.id) || ch.id || null;
+
+            // DELETE: explicit type OR missing record/patch with a pet id
+            if (t === "pet.delete" || ((t === "" || t === "delete") && !rec && pid)) {
+                if (pid) res.deletes.push(pid);
                 continue;
             }
-            if (ch.type === "pet.upsert" || ch.type === "pet.create" || ch.type === "pet.update") {
-                const rec = ch.record || ch.patch || null;
+
+            // UPSERT: explicit type OR presence of record/patch
+            if (t === "pet.upsert" || t === "pet.create" || t === "pet.update" || rec) {
                 if (!rec) continue;
-                if (!rec.pet_id && ch.pet_id) rec.pet_id = ch.pet_id;
-                if (!rec.id) rec.id = rec.pet_id || ch.pet_id;
+                if (!rec.pet_id && pid) rec.pet_id = pid;
+                if (!rec.id) rec.id = rec.pet_id || pid;
                 res.upserts.push(rec);
+                continue;
             }
         }
         return res;
@@ -287,6 +303,42 @@ async function deletePetFromDB(id) {
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
+}
+
+async function deletePetById(rawId) {
+    // Used for remote deletes (pull). Must not enqueue outbox.
+    if (rawId === null || rawId === undefined) return;
+    let id = normalizePetId(rawId);
+    if (id === null || id === undefined || id === '') return;
+
+    try {
+        if (typeof id === 'string') {
+            const mapped = await getMappedServerId(id);
+            if (mapped) id = mapped;
+        }
+    } catch (e) {}
+
+    try { await deletePetFromDB(id); } catch (e) {}
+
+    // If the deleted pet is currently selected, clear selection and fields
+    try {
+        const cur = await resolveCurrentPetId();
+        if (cur != null && String(cur) === String(id)) {
+            currentPetId = null;
+            try { localStorage.removeItem('ada_current_pet_id'); } catch (e) {}
+            try { clearMainPetFields(); } catch (e) {}
+        }
+    } catch (e) {}
+
+    // Refresh UI if selector exists
+    try {
+        const selectedId = await resolveCurrentPetId();
+        await rebuildPetSelector(selectedId ?? null);
+        const selector = document.getElementById('petSelector');
+        if (selector && selectedId) selector.value = String(selectedId);
+    } catch (e) {}
+
+    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch (e) {}
 }
 
 function hasMeaningfulValue(value) {
@@ -675,6 +727,19 @@ async function pullPetsIfOnline(options) {
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
 
+    // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
+    try {
+        const selectedId = await resolveCurrentPetId();
+        const selector = document.getElementById('petSelector');
+        if (selector) {
+            await rebuildPetSelector(selectedId ?? null);
+            if (selectedId) selector.value = String(selectedId);
+        }
+        if (typeof updateSelectedPetHeaders === 'function') {
+            await updateSelectedPetHeaders();
+        }
+    } catch (e) {}
+
     try {
         __petsPullInFlight = false;
     } catch (e) {
@@ -768,7 +833,10 @@ async function rebuildPetSelector(selectId = null) {
     if (!selector) return;
     
     const pets = await getAllPets();
-    
+
+    // Sort alphabetically by display label (case-insensitive, Italian locale)
+    pets.sort((a, b) => getPetDisplayLabel(a).localeCompare(getPetDisplayLabel(b), 'it', { sensitivity: 'base' }));
+
     let html = '<option value="">-- Seleziona Pet --</option>';
     pets.forEach(pet => {
         const label = getPetDisplayLabel(pet);
@@ -776,8 +844,15 @@ async function rebuildPetSelector(selectId = null) {
     });
     selector.innerHTML = html;
     
-    if (selectId !== null) {
-        selector.value = String(selectId);
+    // Preserve current selection unless explicitly cleared
+    let desired = selectId;
+    if (desired === null || desired === undefined) {
+        try { desired = await resolveCurrentPetId(); } catch (e) { desired = null; }
+    }
+    if (desired !== null && desired !== undefined) {
+        selector.value = String(desired);
+        // If the desired value is not present in options, keep placeholder
+        if (selector.value !== String(desired)) selector.value = '';
     }
     
     updateSaveButtonState();
@@ -987,6 +1062,8 @@ async function saveNewPet() {
     const savedPet = await getPetById(newId);
     loadPetIntoMainFields(savedPet);
     
+    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch(e) {}
+
     showToast('✅ Nuovo pet aggiunto!', 'success');
 }
 
