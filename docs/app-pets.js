@@ -86,7 +86,15 @@ function generateTmpPetId() {
     try {
         if (crypto && crypto.randomUUID) id = crypto.randomUUID();
     } catch (e) {}
-    if (!id) id = Math.random().toString(16).slice(2) + '_' + Date.now();
+    if (!id) {
+        // Fallback: generate a valid UUID v4 format for server compatibility
+        const hex = () => Math.floor(Math.random() * 16).toString(16);
+        id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.floor(Math.random() * 16);
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
     return 'tmp_' + id;
 }
 
@@ -722,10 +730,15 @@ async function pullPetsIfOnline(options) {
 
         const pulled = unwrapPetsPullResponse(data);
         if (pulled.deletes && pulled.deletes.length) { for (const delId of pulled.deletes) { try { await deletePetById(delId); } catch(e) {} } }
-        await applyRemotePets(pulled.upserts);
 
-        const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
-        if (nextCursor) await setLastPetsCursor(nextCursor);
+        // Only update cursor after successful apply to avoid data loss on partial failure
+        try {
+            await applyRemotePets(pulled.upserts);
+            const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
+            if (nextCursor) await setLastPetsCursor(nextCursor);
+        } catch (applyError) {
+            console.warn('pullPetsIfOnline: applyRemotePets failed, cursor not updated', applyError);
+        }
 
         // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
         try {
