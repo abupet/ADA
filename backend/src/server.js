@@ -105,8 +105,6 @@ app.post("/auth/login", (req, res) => {
 });
 
 function requireJwt(req, res, next) {
-  if (req.path === "/health") return next();
-
   const authHeader = req.headers.authorization || "";
   const [scheme, token] = authHeader.split(" ");
   if (scheme !== "Bearer" || !token) {
@@ -291,6 +289,14 @@ app.post("/api/tts", async (req, res) => {
   const audioBuffer = Buffer.from(await response.arrayBuffer());
   res.setHeader("Content-Type", response.headers.get("content-type") || "audio/mpeg");
   return res.status(200).send(audioBuffer);
+});
+
+// Global error handler — catch unhandled errors from async routes
+app.use((err, _req, res, _next) => {
+  console.error("Unhandled error:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: "server_error" });
+  }
 });
 
 app.listen(Number.parseInt(PORT, 10) || 3000, () => {

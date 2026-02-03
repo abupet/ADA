@@ -16,61 +16,76 @@ function petsRouter({ requireAuth }) {
 
   // List pets for current user
   router.get("/api/pets", requireAuth, async (req, res) => {
-    const owner_user_id = req.user?.sub;
-    const { rows } = await pool.query(
-      "SELECT * FROM pets WHERE owner_user_id = $1 ORDER BY updated_at DESC",
-      [owner_user_id]
-    );
-    res.json({ pets: rows });
+    try {
+      const owner_user_id = req.user?.sub;
+      const { rows } = await pool.query(
+        "SELECT * FROM pets WHERE owner_user_id = $1 ORDER BY updated_at DESC",
+        [owner_user_id]
+      );
+      res.json({ pets: rows });
+    } catch (e) {
+      console.error("GET /api/pets error", e);
+      res.status(500).json({ error: "server_error" });
+    }
   });
 
   // Get single pet
   router.get("/api/pets/:pet_id", requireAuth, async (req, res) => {
-    const owner_user_id = req.user?.sub;
-    const { pet_id } = req.params;
-    if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
-    const { rows } = await pool.query(
-      "SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 LIMIT 1",
-      [owner_user_id, pet_id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: "not_found" });
-    res.json(rows[0]);
+    try {
+      const owner_user_id = req.user?.sub;
+      const { pet_id } = req.params;
+      if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
+      const { rows } = await pool.query(
+        "SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 LIMIT 1",
+        [owner_user_id, pet_id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: "not_found" });
+      res.json(rows[0]);
+    } catch (e) {
+      console.error("GET /api/pets/:pet_id error", e);
+      res.status(500).json({ error: "server_error" });
+    }
   });
 
   // Create pet
   router.post("/api/pets", requireAuth, async (req, res) => {
-    const owner_user_id = req.user?.sub;
-    const pet_id = req.body.pet_id || randomUUID();
-    const {
-      name,
-      species,
-      breed = null,
-      sex = null,
-      birthdate = null,
-      weight_kg = null,
-      notes = null,
-    } = req.body || {};
+    try {
+      const owner_user_id = req.user?.sub;
+      const pet_id = req.body.pet_id || randomUUID();
+      const {
+        name,
+        species,
+        breed = null,
+        sex = null,
+        birthdate = null,
+        weight_kg = null,
+        notes = null,
+      } = req.body || {};
 
-    if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
-    if (!name || !species) return res.status(400).json({ error: "name_and_species_required" });
+      if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
+      if (!name || !species) return res.status(400).json({ error: "name_and_species_required" });
 
-    const { rows } = await pool.query(
-      `INSERT INTO pets
-        (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
-       VALUES
-        ($1,$2,$3,$4,$5,$6,$7,$8,$9,1)
-       RETURNING *`,
-      [pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes]
-    );
+      const { rows } = await pool.query(
+        `INSERT INTO pets
+          (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
+         VALUES
+          ($1,$2,$3,$4,$5,$6,$7,$8,$9,1)
+         RETURNING *`,
+        [pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes]
+      );
 
-    // change log
-    await pool.query(
-      `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version)
-       VALUES ($1,$2,'pet.upsert',$3,$4)`,
-      [owner_user_id, pet_id, rows[0], rows[0].version]
-    );
+      // change log
+      await pool.query(
+        `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version)
+         VALUES ($1,$2,'pet.upsert',$3,$4)`,
+        [owner_user_id, pet_id, rows[0], rows[0].version]
+      );
 
-    res.status(201).json(rows[0]);
+      res.status(201).json(rows[0]);
+    } catch (e) {
+      console.error("POST /api/pets error", e);
+      res.status(500).json({ error: "server_error" });
+    }
   });
 
   // Update pet (optimistic concurrency via base_version)
@@ -81,7 +96,13 @@ function petsRouter({ requireAuth }) {
     const { base_version, patch } = req.body || {};
     if (!patch || typeof patch !== "object") return res.status(400).json({ error: "patch_required" });
 
-    const client = await pool.connect();
+    let client;
+    try {
+      client = await pool.connect();
+    } catch (e) {
+      console.error("PATCH /api/pets pool.connect error", e);
+      return res.status(500).json({ error: "server_error" });
+    }
     try {
       await client.query("BEGIN");
       const cur = await client.query(
@@ -124,7 +145,7 @@ function petsRouter({ requireAuth }) {
       await client.query("COMMIT");
       return res.json(upd.rows[0]);
     } catch (e) {
-      await client.query("ROLLBACK");
+      try { await client.query("ROLLBACK"); } catch (_rb) { /* connection may be broken */ }
       console.error("PATCH /api/pets error", e);
       return res.status(500).json({ error: "server_error" });
     } finally {
@@ -138,7 +159,13 @@ function petsRouter({ requireAuth }) {
     const { pet_id } = req.params;
     if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
 
-    const client = await pool.connect();
+    let client;
+    try {
+      client = await pool.connect();
+    } catch (e) {
+      console.error("DELETE /api/pets pool.connect error", e);
+      return res.status(500).json({ error: "server_error" });
+    }
     try {
       await client.query("BEGIN");
       const cur = await client.query(
@@ -160,7 +187,7 @@ function petsRouter({ requireAuth }) {
       await client.query("COMMIT");
       return res.status(204).send();
     } catch (e) {
-      await client.query("ROLLBACK");
+      try { await client.query("ROLLBACK"); } catch (_rb) { /* connection may be broken */ }
       console.error("DELETE /api/pets error", e);
       return res.status(500).json({ error: "server_error" });
     } finally {

@@ -22,35 +22,40 @@ function petsSyncRouter({ requireAuth }) {
 
   // PULL changes since cursor
   router.get("/api/sync/pets/pull", requireAuth, async (req, res) => {
-    const owner_user_id = req.user?.sub;
-    const since = Number(req.query.since || 0);
-    const device_id = String(req.query.device_id || "unknown");
+    try {
+      const owner_user_id = req.user?.sub;
+      const since = Number(req.query.since || 0);
+      const device_id = String(req.query.device_id || "unknown");
 
-    const { rows } = await pool.query(
-      `SELECT change_id, change_type, pet_id, record, version
-       FROM pet_changes
-       WHERE owner_user_id = $1 AND change_id > $2
-       ORDER BY change_id ASC
-       LIMIT 500`,
-      [owner_user_id, since]
-    );
+      const { rows } = await pool.query(
+        `SELECT change_id, change_type, pet_id, record, version
+         FROM pet_changes
+         WHERE owner_user_id = $1 AND change_id > $2
+         ORDER BY change_id ASC
+         LIMIT 500`,
+        [owner_user_id, since]
+      );
 
-    const next_cursor = rows.length ? rows[rows.length - 1].change_id : since;
+      const next_cursor = rows.length ? rows[rows.length - 1].change_id : since;
 
-    const changes = rows.map((r) => {
-      if (r.change_type === "pet.delete") {
-        return { change_id: r.change_id, type: "pet.delete", pet_id: r.pet_id };
-      }
-      return {
-        change_id: r.change_id,
-        type: "pet.upsert",
-        pet_id: r.pet_id,
-        record: r.record,
-        version: r.version,
-      };
-    });
+      const changes = rows.map((r) => {
+        if (r.change_type === "pet.delete") {
+          return { change_id: r.change_id, type: "pet.delete", pet_id: r.pet_id };
+        }
+        return {
+          change_id: r.change_id,
+          type: "pet.upsert",
+          pet_id: r.pet_id,
+          record: r.record,
+          version: r.version,
+        };
+      });
 
-    res.json({ next_cursor, device_id, changes });
+      res.json({ next_cursor, device_id, changes });
+    } catch (e) {
+      console.error("GET /api/sync/pets/pull error", e);
+      res.status(500).json({ error: "server_error" });
+    }
   });
 
   // PUSH ops
@@ -75,12 +80,25 @@ function petsSyncRouter({ requireAuth }) {
         continue;
       }
 
+      // Validate op_id is a valid UUID (pet_changes.op_id is UUID type)
+      if (!isValidUuid(op_id)) {
+        rejected.push({ op_id, reason: "invalid_op_id" });
+        continue;
+      }
+
       if (type !== "pet.upsert" && type !== "pet.delete") {
         rejected.push({ op_id, reason: "unsupported_type" });
         continue;
       }
 
-      const client = await pool.connect();
+      let client;
+      try {
+        client = await pool.connect();
+      } catch (connErr) {
+        console.error("sync push pool.connect error", connErr);
+        rejected.push({ op_id, reason: "server_error" });
+        continue;
+      }
       try {
         await client.query("BEGIN");
 
@@ -91,14 +109,14 @@ function petsSyncRouter({ requireAuth }) {
 
         if (type === "pet.delete") {
           if (!cur.rows[0]) {
-            // idempotent delete: accept
-            accepted.push(op_id);
+            // idempotent delete: accept (push after INSERT to avoid dual accept+reject)
             await client.query(
               `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, client_ts, device_id, op_id)
                VALUES ($1,$2,'pet.delete',NULL,NULL,$3,$4,$5)`,
               [owner_user_id, pet_id, client_ts || null, device_id, op_id]
             );
             await client.query("COMMIT");
+            accepted.push(op_id);
             continue;
           }
 
@@ -179,7 +197,7 @@ function petsSyncRouter({ requireAuth }) {
           accepted.push(op_id);
         }
       } catch (e) {
-        await client.query("ROLLBACK");
+        try { await client.query("ROLLBACK"); } catch (_rb) { /* connection may be broken */ }
         console.error("sync push op error", e);
         rejected.push({ op_id: op_id || null, reason: "server_error" });
       } finally {

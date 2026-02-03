@@ -67,8 +67,8 @@
     }
     if (wNum !== null) {
       patient.petWeightKg = String(wNum.toFixed(2));
-      patient.petWeight = String(wNum);
-      r.weight_kg = wNum;
+      patient.petWeight = String(wNum.toFixed(2));
+      r.weight_kg = String(wNum.toFixed(2));
     }
 
     // Align flat from patient (only if flat missing/empty)
