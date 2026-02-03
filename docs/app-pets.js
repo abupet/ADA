@@ -662,17 +662,12 @@ async function applyRemotePets(items) {
 async function pullPetsIfOnline(options) {
     const force = !!(options && options.force);
 
-    try {
-        if (__petsPullInFlight) return;
-        const now = Date.now();
-        if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return;
-        __petsPullLastAt = now;
-        __petsPullInFlight = true;
-    } catch (e) {
-        // silent
-    }
+    // Early exit checks (before setting in-flight flag)
+    if (__petsPullInFlight) return;
+    const now = Date.now();
+    if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return;
 
-    // Avoid side-effects if not authenticated (prevents smoke-test flakiness)
+    // Check auth before setting flag (prevents smoke-test flakiness)
     try {
         if (typeof getAuthToken === 'function') {
             const t = getAuthToken();
@@ -683,67 +678,69 @@ async function pullPetsIfOnline(options) {
     if (!navigator.onLine) return;
     if (typeof fetchApi !== 'function') return;
 
-    const device_id = await getOrCreateDeviceId();
-    const cursor = await getLastPetsCursor();
+    // Set flag and use try/finally to guarantee reset
+    __petsPullLastAt = now;
+    __petsPullInFlight = true;
 
-    // Be tolerant to backend response shapes
-    const qs = new URLSearchParams();
-    if (cursor) qs.set('since', cursor);
-    qs.set('device_id', device_id);
-
-    const qsString = qs.toString();
-    const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
-    const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
-
-    let resp = null;
     try {
-        resp = await fetchApi(primaryUrl, { method: 'GET' });
-    } catch (e) {
-        resp = null;
-    }
-    if (!resp || !resp.ok) {
+        const device_id = await getOrCreateDeviceId();
+        const cursor = await getLastPetsCursor();
+
+        // Be tolerant to backend response shapes
+        const qs = new URLSearchParams();
+        if (cursor) qs.set('since', cursor);
+        qs.set('device_id', device_id);
+
+        const qsString = qs.toString();
+        const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
+        const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
+
+        let resp = null;
         try {
-            resp = await fetchApi(fallbackUrl, { method: 'GET' });
+            resp = await fetchApi(primaryUrl, { method: 'GET' });
         } catch (e) {
-            return; // silent
+            resp = null;
         }
-        if (!resp || !resp.ok) return;
-    }
-
-    let data = null;
-    try { data = await resp.json(); } catch (e) { return; }
-
-    const items =
-        Array.isArray(data) ? data :
-        Array.isArray(data?.pets) ? data.pets :
-        Array.isArray(data?.items) ? data.items :
-        Array.isArray(data?.changes) ? data.changes :
-        [];
-
-    const pulled = unwrapPetsPullResponse(data);
-    if (pulled.deletes && pulled.deletes.length) { for (const delId of pulled.deletes) { try { await deletePetById(delId); } catch(e) {} } }
-    await applyRemotePets(pulled.upserts);
-
-    const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
-    if (nextCursor) await setLastPetsCursor(nextCursor);
-
-    // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
-    try {
-        const selectedId = await resolveCurrentPetId();
-        const selector = document.getElementById('petSelector');
-        if (selector) {
-            await rebuildPetSelector(selectedId ?? null);
-            if (selectedId) selector.value = String(selectedId);
+        if (!resp || !resp.ok) {
+            try {
+                resp = await fetchApi(fallbackUrl, { method: 'GET' });
+            } catch (e) {
+                return; // silent
+            }
+            if (!resp || !resp.ok) return;
         }
-        if (typeof updateSelectedPetHeaders === 'function') {
-            await updateSelectedPetHeaders();
-        }
-    } catch (e) {}
 
-    try {
+        let data = null;
+        try { data = await resp.json(); } catch (e) { return; }
+
+        const items =
+            Array.isArray(data) ? data :
+            Array.isArray(data?.pets) ? data.pets :
+            Array.isArray(data?.items) ? data.items :
+            Array.isArray(data?.changes) ? data.changes :
+            [];
+
+        const pulled = unwrapPetsPullResponse(data);
+        if (pulled.deletes && pulled.deletes.length) { for (const delId of pulled.deletes) { try { await deletePetById(delId); } catch(e) {} } }
+        await applyRemotePets(pulled.upserts);
+
+        const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
+        if (nextCursor) await setLastPetsCursor(nextCursor);
+
+        // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
+        try {
+            const selectedId = await resolveCurrentPetId();
+            const selector = document.getElementById('petSelector');
+            if (selector) {
+                await rebuildPetSelector(selectedId ?? null);
+                if (selectedId) selector.value = String(selectedId);
+            }
+            if (typeof updateSelectedPetHeaders === 'function') {
+                await updateSelectedPetHeaders();
+            }
+        } catch (e) {}
+    } finally {
         __petsPullInFlight = false;
-    } catch (e) {
-        // silent
     }
 }
 
@@ -961,7 +958,7 @@ async function saveCurrentPet() {
         pet.diary = document.getElementById('diaryText')?.value || '';
         
         await savePetToDB(pet);
-    await enqueueOutbox('update', { id: normalizePetId(selector.value), patch: pet, base_version: null });
+    await enqueueOutbox('update', { id: normalizePetId(selector.value), patch: pet, base_version: pet.version ?? null });
     await rebuildPetSelector(petId);
         
         showToast('✅ Dati salvati!', 'success');
@@ -987,8 +984,9 @@ async function deleteCurrentPet() {
         return;
     }
     
+    const petVersion = pet?.version ?? null;
     await deletePetFromDB(petId);
-        await enqueueOutbox('delete', { id: petId, base_version: null });
+    await enqueueOutbox('delete', { id: petId, base_version: petVersion });
         currentPetId = null;
     localStorage.removeItem('ada_current_pet_id');
     clearMainPetFields();

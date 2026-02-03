@@ -1,6 +1,13 @@
-// backend/src/pets.sync.routes.js v1
+// backend/src/pets.sync.routes.js v2
 const express = require("express");
 const { getPool } = require("./db");
+
+// UUID v4 validation regex
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+function isValidUuid(value) {
+  return typeof value === "string" && UUID_REGEX.test(value);
+}
 
 /**
  * Offline-first sync:
@@ -59,6 +66,12 @@ function petsSyncRouter({ requireAuth }) {
       const { op_id, type, pet_id, base_version, patch, client_ts } = op || {};
       if (!op_id || !type || !pet_id) {
         rejected.push({ op_id: op_id || null, reason: "invalid_op" });
+        continue;
+      }
+
+      // Validate pet_id is a valid UUID to prevent injection
+      if (!isValidUuid(pet_id)) {
+        rejected.push({ op_id, reason: "invalid_pet_id" });
         continue;
       }
 
