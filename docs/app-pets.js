@@ -1,4 +1,11 @@
 // app-pets.js v6.16.5
+function __petsSyncDebugEnabled() {
+    try { return localStorage.getItem('ada_debug_pets_sync') === '1'; } catch (e) { return false; }
+}
+function __petsSyncLog(...args) {
+    if (!__petsSyncDebugEnabled()) return;
+    try { console.log('[pets-sync]', ...args); } catch (e) {}
+}
 
 // --- Pets Sync: pull response unwrapping (changes[] -> record[] + deletes) ---
 function unwrapPetsPullResponse(data) {
@@ -29,28 +36,28 @@ function unwrapPetsPullResponse(data) {
         for (const ch of changes) {
             if (!ch) continue;
 
-            const tRaw = (ch.type == null ? "" : String(ch.type));
-            const t = tRaw.trim();
+            // Tolerate weird/blank types (observed: " " or missing).
+            const t = (typeof ch.type === "string" ? ch.type.trim() : "");
+            const rec = ch.record || ch.patch || null;
 
-            const rec = (ch.record && typeof ch.record === 'object')
-                ? ch.record
-                : (ch.patch && typeof ch.patch === 'object')
-                    ? ch.patch
-                    : null;
+            const petId = ch.pet_id || (rec && (rec.pet_id || rec.id)) || null;
 
-            const pid = ch.pet_id || (rec && rec.pet_id) || (rec && rec.id) || ch.id || null;
-
-            // DELETE: explicit type OR missing record/patch with a pet id
-            if (t === "pet.delete" || ((t === "" || t === "delete") && !rec && pid)) {
-                if (pid) res.deletes.push(pid);
+            // Heuristic: if no record present => treat as delete when we have an id
+            if (!rec && petId) {
+                res.deletes.push(petId);
                 continue;
             }
 
-            // UPSERT: explicit type OR presence of record/patch
-            if (t === "pet.upsert" || t === "pet.create" || t === "pet.update" || rec) {
-                if (!rec) continue;
-                if (!rec.pet_id && pid) rec.pet_id = pid;
-                if (!rec.id) rec.id = rec.pet_id || pid;
+            // Explicit delete type
+            if (t === "pet.delete") {
+                if (petId) res.deletes.push(petId);
+                continue;
+            }
+
+            // Upsert types or unknown-but-has-record => upsert
+            if (rec) {
+                if (!rec.pet_id && petId) rec.pet_id = petId;
+                if (!rec.id) rec.id = rec.pet_id || petId;
                 res.upserts.push(rec);
                 continue;
             }
@@ -62,7 +69,7 @@ function unwrapPetsPullResponse(data) {
 }
 // --- /Pets Sync: pull response unwrapping ---
 
-// app-pets.js v6.16.4
+// app-pets.js v6.16.5
 // ADA v6.16.2 - Multi-Pet Management System
 
 // ============================================
@@ -305,42 +312,6 @@ async function deletePetFromDB(id) {
     });
 }
 
-async function deletePetById(rawId) {
-    // Used for remote deletes (pull). Must not enqueue outbox.
-    if (rawId === null || rawId === undefined) return;
-    let id = normalizePetId(rawId);
-    if (id === null || id === undefined || id === '') return;
-
-    try {
-        if (typeof id === 'string') {
-            const mapped = await getMappedServerId(id);
-            if (mapped) id = mapped;
-        }
-    } catch (e) {}
-
-    try { await deletePetFromDB(id); } catch (e) {}
-
-    // If the deleted pet is currently selected, clear selection and fields
-    try {
-        const cur = await resolveCurrentPetId();
-        if (cur != null && String(cur) === String(id)) {
-            currentPetId = null;
-            try { localStorage.removeItem('ada_current_pet_id'); } catch (e) {}
-            try { clearMainPetFields(); } catch (e) {}
-        }
-    } catch (e) {}
-
-    // Refresh UI if selector exists
-    try {
-        const selectedId = await resolveCurrentPetId();
-        await rebuildPetSelector(selectedId ?? null);
-        const selector = document.getElementById('petSelector');
-        if (selector && selectedId) selector.value = String(selectedId);
-    } catch (e) {}
-
-    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch (e) {}
-}
-
 function hasMeaningfulValue(value) {
     if (value === null || value === undefined) return false;
     if (typeof value === 'string') return value.trim().length > 0;
@@ -580,6 +551,64 @@ async function enqueueOutbox(op_type, payload) {
 // STEP 2 — PULL (safe, non-blocking)
 // ============================================
 
+
+async function deletePetById(petIdRaw) {
+    const petId = normalizePetId(petIdRaw);
+    if (!petId) return;
+
+    if (!petsDB) await initPetsDB();
+
+    __petsSyncLog('apply delete', petId);
+
+    // Delete pet record
+    await new Promise((resolve) => {
+        const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(PETS_STORE_NAME);
+        try { store.delete(petId); } catch (e) {}
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+
+    // Clean id_map entries:
+    // - if deleting tmp_id, remove direct mapping
+    // - if deleting server id, remove any tmp_id mapping pointing to it
+    await new Promise((resolve) => {
+        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(ID_MAP_STORE_NAME);
+
+        try {
+            if (typeof petId === 'string' && petId.startsWith('tmp_')) {
+                store.delete(petId);
+            }
+        } catch (e) {}
+
+        try {
+            const req = store.openCursor();
+            req.onsuccess = (ev) => {
+                const cursor = ev.target.result;
+                if (!cursor) return;
+                const v = cursor.value;
+                if (v && v.server_id && String(v.server_id) === String(petId)) {
+                    try { store.delete(cursor.key); } catch (e) {}
+                }
+                cursor.continue();
+            };
+        } catch (e) {}
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+
+    // If the deleted pet was selected, clear selection
+    try {
+        const cur = await resolveCurrentPetId();
+        if (cur && String(cur) === String(petId)) {
+            currentPetId = null;
+            try { localStorage.removeItem('ada_current_pet_id'); } catch (e) {}
+        }
+    } catch (e) {}
+}
+
 async function applyRemotePets(items) {
     if (!Array.isArray(items) || items.length === 0) return;
     // Upsert into pets store; support soft-delete
@@ -713,32 +742,19 @@ async function pullPetsIfOnline(options) {
     let data = null;
     try { data = await resp.json(); } catch (e) { return; }
 
-    const items =
-        Array.isArray(data) ? data :
-        Array.isArray(data?.pets) ? data.pets :
-        Array.isArray(data?.items) ? data.items :
-        Array.isArray(data?.changes) ? data.changes :
-        [];
-
     const pulled = unwrapPetsPullResponse(data);
     if (pulled.deletes && pulled.deletes.length) { for (const delId of pulled.deletes) { try { await deletePetById(delId); } catch(e) {} } }
     await applyRemotePets(pulled.upserts);
 
     const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
     if (nextCursor) await setLastPetsCursor(nextCursor);
+// Refresh selector/header if Pets UI is mounted; preserve current selection.
+try {
+    const selectedId = await resolveCurrentPetId();
+    await rebuildPetSelector(selectedId);
+    await updateSelectedPetHeaders();
+} catch (e) {}
 
-    // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
-    try {
-        const selectedId = await resolveCurrentPetId();
-        const selector = document.getElementById('petSelector');
-        if (selector) {
-            await rebuildPetSelector(selectedId ?? null);
-            if (selectedId) selector.value = String(selectedId);
-        }
-        if (typeof updateSelectedPetHeaders === 'function') {
-            await updateSelectedPetHeaders();
-        }
-    } catch (e) {}
 
     try {
         __petsPullInFlight = false;
@@ -831,30 +847,32 @@ function getPetDisplayLabel(p) {
 async function rebuildPetSelector(selectId = null) {
     const selector = document.getElementById('petSelector');
     if (!selector) return;
-    
+
     const pets = await getAllPets();
 
-    // Sort alphabetically by display label (case-insensitive, Italian locale)
-    pets.sort((a, b) => getPetDisplayLabel(a).localeCompare(getPetDisplayLabel(b), 'it', { sensitivity: 'base' }));
+    const selected = (selectId !== null && selectId !== undefined)
+        ? selectId
+        : await resolveCurrentPetId();
+
+    const sorted = [...pets].sort((a, b) => {
+        const la = getPetDisplayLabel(a) || '';
+        const lb = getPetDisplayLabel(b) || '';
+        return la.localeCompare(lb, 'it', { sensitivity: 'base' });
+    });
 
     let html = '<option value="">-- Seleziona Pet --</option>';
-    pets.forEach(pet => {
+    sorted.forEach(pet => {
         const label = getPetDisplayLabel(pet);
         html += `<option value="${pet.id}">${label}</option>`;
     });
+
     selector.innerHTML = html;
-    
-    // Preserve current selection unless explicitly cleared
-    let desired = selectId;
-    if (desired === null || desired === undefined) {
-        try { desired = await resolveCurrentPetId(); } catch (e) { desired = null; }
+
+    if (selected !== null && selected !== undefined) {
+        selector.value = String(selected);
+        if (selector.value !== String(selected)) selector.value = '';
     }
-    if (desired !== null && desired !== undefined) {
-        selector.value = String(desired);
-        // If the desired value is not present in options, keep placeholder
-        if (selector.value !== String(desired)) selector.value = '';
-    }
-    
+
     updateSaveButtonState();
 }
 
@@ -1062,8 +1080,6 @@ async function saveNewPet() {
     const savedPet = await getPetById(newId);
     loadPetIntoMainFields(savedPet);
     
-    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch(e) {}
-
     showToast('✅ Nuovo pet aggiunto!', 'success');
 }
 
