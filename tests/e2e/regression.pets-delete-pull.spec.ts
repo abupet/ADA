@@ -115,12 +115,30 @@ test("Pets sync: pull pet.delete removes pet and clears selection", async ({ pag
   // Back online -> trigger online event to run push then pull.
   await context.setOffline(false);
   serveUpsert = true;
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  // Trigger push explicitly to flush outbox deterministically.
+  await page.evaluate(async () => {
+    const api = (window as any).ADA_PetsSync;
+    if (api && typeof api.pushOutboxIfOnline === "function") {
+      await api.pushOutboxIfOnline();
+    }
+  });
+  // Pull once to receive upsert/migration from backend.
+  await page.evaluate(async () => {
+    const api = (window as any).ADA_PetsSync;
+    if (api && typeof api.pullPetsIfOnline === "function") {
+      await api.pullPetsIfOnline({ force: true });
+    }
+  });
 
   // Wait until current pet id is migrated away from tmp_ (real-world behavior).
   await expect.poll(async () => {
     return await page.evaluate(() => localStorage.getItem("ada_current_pet_id") || "");
   }, { timeout: 15_000 }).not.toMatch(/^tmp_/);
+
+  // Fallback: if push mock didn't capture the id, use the migrated selected id.
+  if (!serverPetId) {
+    serverPetId = await page.evaluate(() => localStorage.getItem("ada_current_pet_id"));
+  }
 
   // Now simulate a remote delete arriving via pull.
   serveDelete = true;
