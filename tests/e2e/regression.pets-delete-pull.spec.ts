@@ -1,49 +1,97 @@
-// ada/tests/e2e/regression.pets-delete-pull.spec.ts
-// v3 - robust: handle conditional UI (new pet button may be hidden/disabled)
+import { test, expect } from "./helpers/test-base";
+import { login } from "./helpers/login";
+import { captureHardErrors } from "./helpers/console";
+import { createPetOffline, goOnlineAndTriggerSync, forcePetsPull } from "./helpers/pets";
 
-import { test, expect } from '@playwright/test';
-import { login } from './helpers/login';
+test("Pets sync: pull pet.delete removes pet and clears selection", async ({ page, context }) => {
+  const errors = captureHardErrors(page);
 
-test('Pets sync: pull pet.delete removes pet and clears selection', async ({ page }) => {
+  // Deterministic routing:
+  // - push accepts everything
+  // - pull returns a delete for the created pet
+  let lastAccepted: string[] = [];
+  let deletePetId = "";
+
+  await page.route("**/api/sync/pets/push", async (route) => {
+    const req = route.request();
+    let body: any = {};
+    try { body = JSON.parse(req.postData() || "{}"); } catch {}
+    const ops = Array.isArray(body.ops) ? body.ops : [];
+    const accepted = ops.map((o: any) => o.op_id).filter(Boolean);
+    lastAccepted = accepted;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ accepted, rejected: [] }),
+    });
+  });
+
+  await page.route("**/api/sync/pets/pull**", async (route) => {
+    // Before we know the pet id, return empty changes.
+    if (!deletePetId) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ next_cursor: null, changes: [] }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        next_cursor: "1",
+        device_id: "test-device",
+        changes: [
+          {
+            change_id: "1",
+            type: "pet.delete",
+            pet_id: deletePetId,
+            record: null,
+            version: 2
+          }
+        ],
+      }),
+    });
+  });
+
   await login(page);
-  await page.goto('/#/dati-pet');
-  await page.waitForLoadState('networkidle');
 
-  // Ensure page is ready
-  const petSelector = page.locator('#petSelector');
-  await expect(petSelector).toHaveCount(1);
+  // Create pet offline (stable path)
+  deletePetId = await createPetOffline(page, context, "DeleteMe");
 
-  // Create pet only if button exists (some envs auto-create none)
-  const newPetBtn = page.locator('#btnNewPet');
-  await expect(newPetBtn).toHaveCount(1);
-  await newPetBtn.click();
+  // Back online -> push should run and clear outbox
+  await goOnlineAndTriggerSync(page, context);
+  await expect.poll(() => lastAccepted.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
-  // Fill form
-  await page.waitForSelector('#petName');
-  await page.fill('#petName', 'TestDelete');
-  await page.selectOption('#petSpecies', 'Cane');
-  await page.click('#btnSavePet');
+  // Force pull which returns pet.delete
+  await forcePetsPull(page);
 
-  // Ensure pet appears in selector (not necessarily visible)
-  await expect(petSelector).toContainText('TestDelete');
+  // Verify selected pet cleared
+  const currentId = await page.evaluate(() => localStorage.getItem("ada_current_pet_id") || "");
+  expect(currentId === "" || currentId === null).toBeTruthy();
 
-  // Sync to persist
-  await page.click('#btnSync');
-  await page.waitForLoadState('networkidle');
+  // Verify pet removed from DB
+  const stillThere = await page.evaluate(async (id) => {
+    const dbName = "ADA_Pets";
+    const storeName = "pets";
+    function open(): Promise<IDBDatabase> {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(dbName);
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => resolve(req.result);
+      });
+    }
+    const db = await open();
+    return await new Promise<boolean>((resolve) => {
+      const tx = db.transaction(storeName, "readonly");
+      const store = tx.objectStore(storeName);
+      const req = store.get(id);
+      req.onsuccess = () => resolve(!!req.result);
+      req.onerror = () => resolve(false);
+    });
+  }, deletePetId);
+  expect(stillThere).toBeFalsy();
 
-  // Delete pet via UI
-  const deleteBtn = page.locator('#btnDeletePet');
-  await expect(deleteBtn).toHaveCount(1);
-  await deleteBtn.click();
-
-  const confirmBtn = page.locator('#confirmDeletePet');
-  await expect(confirmBtn).toHaveCount(1);
-  await confirmBtn.click();
-
-  // Sync again to propagate delete
-  await page.click('#btnSync');
-  await page.waitForLoadState('networkidle');
-
-  // Pet should be gone
-  await expect(petSelector).not.toContainText('TestDelete');
+  expect(errors, errors.join("\n")).toHaveLength(0);
 });
