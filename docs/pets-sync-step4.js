@@ -1,6 +1,6 @@
-// pets-sync-step4.js v6
+// pets-sync-step4.js v7
 /**
- * pets-sync-step4.js v6
+ * pets-sync-step4.js v7
  * STEP 4 — Push Outbox (pets) to backend /api/sync/pets/push
  *
  * Backend contract (see backend/src/pets.sync.routes.js):
@@ -8,6 +8,27 @@
  */
 
 let inFlightPush = false;
+
+// Retry helper with exponential backoff (max 3 retries: 1s, 2s, 4s)
+async function _fetchWithRetry(url, options, maxRetries = 3) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetchApi(url, options);
+      if (res && res.ok) return res;
+      // Non-retryable HTTP errors (4xx)
+      if (res && res.status >= 400 && res.status < 500) return res;
+      lastError = new Error(`HTTP ${res?.status || 'unknown'}`);
+    } catch (e) {
+      lastError = e;
+    }
+    if (attempt < maxRetries) {
+      const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  return null;
+}
 
 function _normalizeUuid(id) {
   if (!id || typeof id !== "string") return id;
@@ -160,19 +181,15 @@ async function pushOutboxIfOnline() {
 
     if (!mappedOps.length) return;
 
-    let res;
-    try {
-      res = await fetchApi("/api/sync/pets/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          device_id: localStorage.getItem("ada_device_id") || "debug",
-          ops: mappedOps,
-        }),
-      });
-    } catch {
-      return;
-    }
+    // Use retry with exponential backoff for network resilience
+    const res = await _fetchWithRetry("/api/sync/pets/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_id: localStorage.getItem("ada_device_id") || "debug",
+        ops: mappedOps,
+      }),
+    });
 
     if (!res || !res.ok) return;
 
