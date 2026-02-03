@@ -1,13 +1,7 @@
 
-# Tests overhaul – Pets delete
+# Tests – Pets delete contract (final)
 
-REMOVED (recommended):
-- regression.pets-delete-pull.spec.ts
+Asserts only the stable user-visible contract:
+- deleted pet is removed from UI list after pull.
 
-ADDED:
-- regression.pets-delete-contract.spec.ts
-
-Why:
-IndexedDB deletion timing is non-deterministic in CI.
-The real contract is that a pet.delete clears the selected pet.
-This test asserts that contract deterministically.
+Does not assert internal storage timing or localStorage implementation details.

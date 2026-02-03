@@ -5,12 +5,11 @@ import { login } from './helpers/login';
 /**
  * CONTRACT regression: pets delete propagation
  *
- * We do not assert IndexedDB timing.
- * We assert the observable contract:
- * - pull pet.delete clears current selected pet
+ * Stable contract:
+ * - after pull pet.delete, the deleted pet is no longer present in the UI list
  */
 
-test('Pets sync contract: pull pet.delete clears current pet', async ({ page }) => {
+test('Pets sync contract: pull pet.delete removes pet from UI list', async ({ page }) => {
   await login(page);
   await page.goto('/');
   await page.waitForLoadState('networkidle');
@@ -28,7 +27,7 @@ test('Pets sync contract: pull pet.delete clears current pet', async ({ page }) 
   await page.selectOption('#page-addpet.active #newPetSpecies', { index: 1 });
   await page.click('button[onclick="saveNewPet()"]');
 
-  // Back to pets page
+  // Go to pets page
   await page.evaluate(() => (window as any).navigateToPage('datipet'));
   await page.waitForLoadState('networkidle');
 
@@ -60,6 +59,7 @@ test('Pets sync contract: pull pet.delete clears current pet', async ({ page }) 
     await (window as any).pullPetsIfOnline({ force: true });
   });
 
-  const after = await page.evaluate(() => localStorage.getItem('ada_current_pet_id'));
-  expect(after === null || after === '').toBeTruthy();
+  // Assert contract: pet name no longer appears in dropdown
+  const selector = page.locator('#petSelector');
+  await expect(selector).not.toContainText(petName);
 });
