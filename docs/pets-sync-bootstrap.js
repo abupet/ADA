@@ -1,4 +1,4 @@
-// pets-sync-bootstrap.js v3
+// pets-sync-bootstrap.js v2
 // STEP 5/6 — Automatic sync triggers (push + pull)
 // - online: push then pull
 // - interval: push (guarded)
