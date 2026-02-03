@@ -1,7 +1,14 @@
-// backend/src/pets.routes.js v1
+// backend/src/pets.routes.js v2
 const express = require("express");
 const { getPool } = require("./db");
 const { randomUUID } = require("crypto");
+
+// UUID v4 validation regex
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+function isValidUuid(value) {
+  return typeof value === "string" && UUID_REGEX.test(value);
+}
 
 function petsRouter({ requireAuth }) {
   const router = express.Router();
@@ -21,6 +28,7 @@ function petsRouter({ requireAuth }) {
   router.get("/api/pets/:pet_id", requireAuth, async (req, res) => {
     const owner_user_id = req.user?.sub;
     const { pet_id } = req.params;
+    if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
     const { rows } = await pool.query(
       "SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 LIMIT 1",
       [owner_user_id, pet_id]
@@ -43,6 +51,7 @@ function petsRouter({ requireAuth }) {
       notes = null,
     } = req.body || {};
 
+    if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
     if (!name || !species) return res.status(400).json({ error: "name_and_species_required" });
 
     const { rows } = await pool.query(
@@ -68,6 +77,7 @@ function petsRouter({ requireAuth }) {
   router.patch("/api/pets/:pet_id", requireAuth, async (req, res) => {
     const owner_user_id = req.user?.sub;
     const { pet_id } = req.params;
+    if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
     const { base_version, patch } = req.body || {};
     if (!patch || typeof patch !== "object") return res.status(400).json({ error: "patch_required" });
 
@@ -126,6 +136,7 @@ function petsRouter({ requireAuth }) {
   router.delete("/api/pets/:pet_id", requireAuth, async (req, res) => {
     const owner_user_id = req.user?.sub;
     const { pet_id } = req.params;
+    if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
 
     const client = await pool.connect();
     try {
