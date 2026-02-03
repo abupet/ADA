@@ -1,4 +1,4 @@
-// pets-sync-bootstrap.js v2
+// pets-sync-bootstrap.js v3
 // STEP 5/6 — Automatic sync triggers (push + pull)
 // - online: push then pull
 // - interval: push (guarded)
@@ -85,7 +85,7 @@
   try {
     if (!window.__petsSyncIntervalId) {
       window.__petsSyncIntervalId = setInterval(function() {
-        safePush();
+        safePushThenPull();
       }, 60000);
     }
   } catch (e) {}
@@ -100,7 +100,7 @@
         try {
           if (hasAuthToken()) {
             clearInterval(timer);
-            safePull(false);
+            safePushThenPull();
             return;
           }
           if (Date.now() - start > TOKEN_POLL_MAX_MS) clearInterval(timer);

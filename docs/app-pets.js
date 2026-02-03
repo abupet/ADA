@@ -1,4 +1,4 @@
-// app-pets.js v6.16.5
+// app-pets.js v6.16.6
 
 // --- Pets Sync: pull response unwrapping (changes[] -> record[] + deletes) ---
 function unwrapPetsPullResponse(data) {
@@ -747,11 +747,23 @@ async function pullPetsIfOnline(options) {
     }
 }
 
-async function refreshPetsFromServer() {
+async function refreshPetsFromServer(pushFirst = false) {
+    // Manual refresh button should behave like a real "sync":
+    // - push pending outbox ops (create/update/delete)
+    // - then pull remote changes
+    try {
+        if (pushFirst && window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+            await window.ADA_PetsSync.pushOutboxIfOnline();
+        }
+    } catch (e) {}
+
     try { await pullPetsIfOnline({ force: true }); } catch (e) {}
-    const selectedId = await resolveCurrentPetId();
-    try { await rebuildPetSelector(selectedId); } catch (e) {}
-    try { await updateSelectedPetHeaders(); } catch (e) {}
+
+    let selectedId = null;
+    try { selectedId = await resolveCurrentPetId(); } catch (e) { selectedId = null; }
+
+    try { await rebuildPetSelector(selectedId ?? null); } catch (e) {}
+    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch (e) {}
 }
 
 // ============================================
@@ -989,6 +1001,14 @@ async function deleteCurrentPet() {
     
     await deletePetFromDB(petId);
         await enqueueOutbox('delete', { id: petId, base_version: null });
+
+    // If online, push delete quickly (pull will happen via bootstrap/refresh).
+    try {
+        if (navigator.onLine && window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+            window.ADA_PetsSync.pushOutboxIfOnline();
+        }
+    } catch (e) {}
+
         currentPetId = null;
     localStorage.removeItem('ada_current_pet_id');
     clearMainPetFields();
@@ -1047,6 +1067,14 @@ async function saveNewPet() {
     
     const newId = await savePetToDB(newPet);
     await enqueueOutbox('create', { id: newId, record: newPet });
+
+    // If online, push create quickly so other devices see the new pet sooner.
+    try {
+        if (navigator.onLine && window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+            window.ADA_PetsSync.pushOutboxIfOnline();
+        }
+    } catch (e) {}
+
     // Clear the add pet form
     clearNewPetFields();
     
