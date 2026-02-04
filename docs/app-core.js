@@ -136,6 +136,12 @@ async function initApp() {
     await initSpeakersDB();
     await initMultiPetSystem(); // Initialize multi-pet system
 
+    // Initialize role system (PR 4)
+    initRoleSystem();
+
+    // Initialize documents module (PR 8)
+    try { if (typeof initDocuments === 'function') initDocuments(); } catch(e) {}
+
     // Restore any draft content (transcription/SOAP/notes) saved when the tab lost focus
     restoreTextDrafts();
     syncLangSelectorsForCurrentDoc();
@@ -199,7 +205,20 @@ function initNavigation() {
 }
 
 function navigateToPage(page) {
-    if (page === 'debug' && !debugLogEnabled) page = 'recording';
+    // PR 3: Redirect appointment to home
+    if (page === 'appointment') page = getDefaultPageForRole();
+
+    if (page === 'debug' && !debugLogEnabled) page = getDefaultPageForRole();
+
+    // PR 5: Route guard — check role permissions
+    if (typeof isPageAllowedForRole === 'function' && !isPageAllowedForRole(page)) {
+        const defaultPage = getDefaultPageForRole();
+        if (page !== defaultPage) {
+            showToast('Pagina non disponibile per il ruolo attuale', 'error');
+            page = defaultPage;
+        }
+    }
+
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
@@ -207,10 +226,10 @@ function navigateToPage(page) {
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
     if (window.innerWidth < 800) setSidebarOpen(false);
-    
+
     // Save current page
     localStorage.setItem('ada_current_page', page);
-    
+
     if (page === 'costs') updateCostDisplay();
     if (page === 'vitals') setTimeout(() => { try { if (!vitalsChart) initVitalsChart(); } catch(e) {} try { updateVitalsChart(); } catch(e) {} }, 100);
     if (page === 'photos') renderPhotos();
@@ -221,7 +240,71 @@ function navigateToPage(page) {
         try { if (typeof updateTipsMeta === 'function') updateTipsMeta(); } catch(e) {}
         try { if (typeof renderTips === 'function') renderTips(); } catch(e) {}
     }
+    if (page === 'history') {
+        try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch(e) {}
+    }
     syncLangSelectorsForCurrentDoc();
+
+    // Update document AI buttons based on role
+    try { updateDocumentButtonsByRole(); } catch(e) {}
+}
+
+// ============================================
+// ROLE SWITCHING (PR 4 + PR 5)
+// ============================================
+
+function toggleActiveRole() {
+    const currentRole = getActiveRole();
+    const newRole = (currentRole === ROLE_VETERINARIO) ? ROLE_PROPRIETARIO : ROLE_VETERINARIO;
+    setActiveRole(newRole);
+    applyRoleUI(newRole);
+    const defaultPage = getDefaultPageForRole(newRole);
+    navigateToPage(defaultPage);
+    showToast('Ruolo: ' + (newRole === ROLE_VETERINARIO ? 'Veterinario' : 'Proprietario'), 'success');
+}
+
+function applyRoleUI(role) {
+    const r = role || getActiveRole();
+
+    // Update sidebar sections
+    const vetSection = document.getElementById('sidebar-vet');
+    const ownerSection = document.getElementById('sidebar-owner');
+    if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
+    if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
+
+    // Update toggle button
+    const icon = document.getElementById('roleToggleIcon');
+    const label = document.getElementById('roleToggleLabel');
+    if (icon) icon.textContent = (r === ROLE_VETERINARIO) ? '🩺' : '🐾';
+    if (label) label.textContent = (r === ROLE_VETERINARIO) ? 'Veterinario' : 'Proprietario';
+
+    // Re-init nav items for the new sidebar section
+    document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+        item.onclick = null;
+        item.addEventListener('click', () => navigateToPage(item.dataset.page));
+    });
+
+    // Update debug visibility
+    try { updateDebugToolsVisibility(); } catch(e) {}
+
+    // Update history badge in owner section
+    try { updateHistoryBadge(); } catch(e) {}
+
+    // Update document AI buttons based on role
+    try { updateDocumentButtonsByRole(); } catch(e) {}
+}
+
+function updateDocumentButtonsByRole() {
+    const role = getActiveRole();
+    const readBtn = document.getElementById('btnDocRead');
+    const explainBtn = document.getElementById('btnDocExplain');
+    if (readBtn) readBtn.disabled = (role !== ROLE_VETERINARIO);
+    if (explainBtn) explainBtn.disabled = false; // both roles can generate explanation
+}
+
+function initRoleSystem() {
+    const role = getActiveRole();
+    applyRoleUI(role);
 }
 
 function saveCurrentPageState() {

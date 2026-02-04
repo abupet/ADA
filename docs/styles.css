@@ -1431,3 +1431,136 @@ textarea.readonly-transcription:focus {
 
 
 .tips-meta{color:#666;font-size:12px;margin-top:6px;line-height:1.35;}
+
+/* ============================================
+   ROLE TOGGLE (PR 4)
+   ============================================ */
+
+.role-toggle-container {
+    display: flex;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.role-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 2px solid var(--primary);
+    background: white;
+    color: var(--primary);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.role-toggle-btn:hover {
+    background: var(--primary);
+    color: white;
+}
+
+.role-toggle-btn:active {
+    transform: scale(0.97);
+}
+
+/* ============================================
+   INLINE LOADER (PR 1 - CSS in styles.css)
+   ============================================ */
+
+.inline-loader {
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    text-align: center;
+}
+
+.inline-loader .il-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #e0e0e0;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: il-spin 0.8s linear infinite;
+}
+
+@keyframes il-spin { to { transform: rotate(360deg); } }
+
+.inline-loader .il-text {
+    font-size: 13px;
+    color: #666;
+    min-height: 1.3em;
+}
+
+/* ============================================
+   PROMO CARD (PR 10)
+   ============================================ */
+
+.promo-slot {
+    margin-top: 15px;
+}
+
+.promo-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f0f9ff 0%, #fff 100%);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.promo-card h4 {
+    color: var(--primary);
+    margin-bottom: 8px;
+}
+
+.promo-card p {
+    color: #555;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.promo-card .button-row {
+    gap: 8px;
+}
+
+/* ============================================
+   DOCUMENT VIEWER (PR 8)
+   ============================================ */
+
+.document-viewer-img {
+    max-width: 100%;
+    border-radius: 8px;
+    cursor: zoom-in;
+}
+
+.document-viewer-pdf {
+    width: 100%;
+    min-height: 400px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.document-history-item {
+    border-left: 3px solid var(--accent);
+}
+
+.document-history-item .history-info h4::before {
+    content: '📄 ';
+}
+
+/* ============================================
+   SIDEBAR ROLE SECTIONS (PR 5)
+   ============================================ */
+
+.sidebar-role-section {
+    /* Smooth transitions when switching roles */
+    transition: opacity 0.15s ease;
+}

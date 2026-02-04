@@ -1,4 +1,4 @@
-// backend/src/server.js v2
+// backend/src/server.js v4
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
@@ -8,6 +8,9 @@ const multer = require("multer");
 
 const { petsRouter } = require("./pets.routes");
 const { petsSyncRouter } = require("./pets.sync.routes");
+const { syncRouter } = require("./sync.routes");
+const { documentsRouter } = require("./documents.routes");
+const { promoRouter } = require("./promo.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -21,6 +24,7 @@ const {
   TOKEN_TTL_SECONDS = "14400",
   RATE_LIMIT_PER_MIN = "60",
   PORT = "3000",
+  DOCUMENT_STORAGE_PATH,
   MODE,
   CI,
 } = process.env;
@@ -62,13 +66,14 @@ const corsOptions = {
     }
     return callback(null, origin === FRONTEND_ORIGIN);
   },
+  credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -83,6 +88,16 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
+
+// --- Security headers middleware (PR 11) ---
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
@@ -129,13 +144,67 @@ app.use("/api", requireJwt);
 
 const requireAuth = requireJwt;
 
+// --- Audit logging middleware (PR 11) ---
+// Logs mutating API requests to the audit_log table when DATABASE_URL is available.
+function auditLogMiddleware(req, res, next) {
+  // Only log mutating methods on /api paths
+  if (!["POST", "PATCH", "PUT", "DELETE"].includes(req.method)) return next();
+  if (!req.path.startsWith("/api")) return next();
+
+  // Skip health and auth endpoints
+  if (req.path === "/api/health") return next();
+
+  const startTime = Date.now();
+  const originalEnd = res.end;
+
+  res.end = function (...args) {
+    res.end = originalEnd;
+    res.end(...args);
+
+    // Fire-and-forget audit log write
+    if (process.env.DATABASE_URL) {
+      try {
+        const { getPool } = require("./db");
+        const pool = getPool();
+        const who = req.user?.sub || "anonymous";
+        const action = `${req.method} ${req.path}`;
+        const outcome = res.statusCode < 400 ? "success" : "failure";
+        const details = {
+          status: res.statusCode,
+          duration_ms: Date.now() - startTime,
+          ip: req.ip,
+          user_agent: req.headers["user-agent"],
+        };
+
+        pool.query(
+          `INSERT INTO audit_log (who, action, entity_id, entity_type, outcome, details)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [who, action, req.params?.id || req.params?.pet_id || null, null, outcome, JSON.stringify(details)]
+        ).catch((err) => {
+          console.warn("audit log write failed:", err.message);
+        });
+      } catch (_e) {
+        // DB not available; skip audit
+      }
+    }
+  };
+
+  return next();
+}
+
+app.use(auditLogMiddleware);
 
 // --- Pets routes (offline sync + CRUD) ---
 // CI may run without DATABASE_URL; avoid crashing the server in that case.
 if (process.env.DATABASE_URL) {
   app.use(petsRouter({ requireAuth }));
   app.use(petsSyncRouter({ requireAuth }));
+  app.use(syncRouter({ requireAuth }));
+  app.use(documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest }));
 }
+
+// --- Promo routes (PR 10) - supports mock mode without DATABASE_URL ---
+app.use(promoRouter({ requireAuth }));
 
 function getOpenAiKey() {
   const oaKey = process.env[openaiKeyName];
