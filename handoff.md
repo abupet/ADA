@@ -1,232 +1,139 @@
-# HANDOFF – ADA Development & Automated Testing
+# HANDOFF — ADA Development & Automated Testing
 
-Questo documento definisce **come Codex deve lavorare su ADA**, includendo sviluppo, test locali e test automatizzati via GitHub Actions. È pensato come guida operativa unica e vincolante.
+Questo documento definisce **come lavorare su ADA**, includendo sviluppo, test locali e test automatizzati via GitHub Actions. È la guida operativa unica e vincolante.
 
 ---
 
-## 1. Obiettivi dell’handoff
+## 1. Obiettivi
 
-- Sviluppare le feature descritte in `specs/PROMPT.md` in modo incrementale e verificabile
+- Sviluppare feature in modo incrementale e verificabile
 - Garantire che **nessuna modifica entri in `main` senza CI verde**
 - Usare correttamente i **due livelli di test**:
   - CI (PR) → MOCK, veloce, gate di merge
-  - CI (REAL) → rete stretta + OpenAI reale, on‑demand e nightly
+  - CI (REAL) → rete stretta + OpenAI reale, on-demand e nightly
 - Fornire tracciabilità chiara (commit, PR, artifacts, commenti automatici)
-- Mantenere il baseline stabile (ADA v6.17.5) e le funzionalità critiche integre
+- Mantenere il baseline stabile (ADA v7.0.0) e le funzionalità critiche integre
 
 ---
 
-## 2. Regole generali di sviluppo
+## 2. Stato attuale (v7.0.0)
 
-### 2.1 Branching
+### Nuove funzionalità rispetto a v6.x
+- **Sistema ruoli**: Veterinario / Proprietario con sidebar e permessi differenziati
+- **Documenti**: upload, viewer (PDF + immagini), AI read/explain
+- **Sync engine generico**: outbox unificato, push/pull multi-entity, last-write-wins
+- **InlineLoader**: componente di loading unificato (ADR-007)
+- **Promo**: raccomandazioni backend + slot UI + analytics
+- **Hardening**: security headers, audit log, validazione input
+- **Osservabilità**: error capture, page view tracking, API metrics
 
+### Architettura
+- **Frontend**: vanilla JS SPA in `docs/`, IIFE pattern, nessun bundler
+- **Backend**: Express 4 in `backend/src/`, JWT, PostgreSQL, multer
+- **SQL**: migrazioni in `sql/` (001–005)
+- **Test**: Playwright E2E in `tests/`
+
+---
+
+## 3. Regole generali di sviluppo
+
+### 3.1 Branching
 - Ogni attività → **branch dedicata**
-- Naming consigliato:
-  - `feat/<descrizione>`
-  - `fix/<descrizione>`
-  - `ci/<descrizione>`
+- Naming: `feat/<descrizione>`, `fix/<descrizione>`, `ci/<descrizione>`
+- Non lavorare mai direttamente su `main`
 
-Non lavorare mai direttamente su `main`.
-
-### 2.2 Commit
-
+### 3.2 Commit
 - Commit piccoli e mirati
 - Messaggi chiari e descrittivi
-- Evitare commit “miscellaneous”
+- Evitare commit "miscellaneous"
 
 ---
 
-## 2.3 Note di baseline (v6.17.5)
-
-- Il repository include già il fix per il bug critico su `app-recording.js`.
-- In questa versione i pulsanti della pagina **Visita** devono rimanere operativi.
-
----
-
-## 2.4 Regole funzionali non negoziabili
+## 4. Regole funzionali non negoziabili
 
 ### Release notes
+- Deve esistere **un solo** file `RELEASE_NOTES.md` (cumulativo)
+- Ogni release aggiunge una nuova sezione `## vX.Y.Z`
+- Non creare file di release notes separati
 
-- Deve esistere **un solo** file `RELEASE_NOTES.md` (cumulativo).
-- Ogni release aggiunge una nuova sezione `## vX.Y.Z`.
-- Non creare file di release notes separati.
-
-### Pagina Visita – pulsanti obbligatori
-
+### Pagina Registrazione — pulsanti obbligatori
 Devono funzionare sempre:
-- 🎤 Microfono (`toggleRecording`)
-- 📁 Carica audio
-- 🧪 Carica audio lungo (test chunking)
-- 🧪 Carica testo lungo (test append)
-- 📄 Carica testo
+- Microfono (`toggleRecording`)
+- Carica audio
+- Carica audio lungo (test chunking)
+- Carica testo lungo (test append)
+- Carica testo
 
 ### Caricamento script
+- `app-recording.js` deve caricarsi senza errori di sintassi
+- Se fallisce, i pulsanti Registrazione non funzionano
 
-- `app-recording.js` deve caricarsi senza errori di sintassi.
-- Se fallisce, i pulsanti Visita non funzionano.
-- Verificare che esistano funzioni come:
-  `toggleRecording`, `triggerAudioUpload`, `triggerLongAudioTestUpload`, `triggerLongTextTestUpload`.
+### Sistema ruoli
+- Toggle nell'header, due ruoli: `veterinario` / `proprietario`
+- Route guard attivo in `navigateToPage()`
+- `ROLE_PERMISSIONS` in `config.js` definisce pagine/azioni per ruolo
 
-### Audio lungo
-
-- Limite upload OpenAI: 25MB per richiesta.
-- Non spezzare WebM/MP4 a byte nudi.
-- Usare chunking temporale su audio decodificato (es. WAV/PCM 16kHz mono).
-
-### Debug mode
-
-Quando “Debug attivo (per i test)” è abilitato:
-- `ADA.log` deve essere verboso.
-- Le funzionalità di debug/test devono essere visibili.
-- Gli errori devono essere loggati chiaramente.
+### Documenti
+- Upload max 10 MB, formati PDF/JPG/PNG/WebP
+- Validazione MIME magic bytes server-side
+- AI: "Leggi" solo vet, "Spiega" solo proprietario
 
 ---
 
-## 3. Specifiche di versione
+## 5. Testing locale (obbligatorio prima della PR)
 
-- Le specifiche **iniziali** della versione si trovano in:
-  
-  `specs/PROMPT.md`
-
-- Codex deve:
-  1. Implementare **tutte** le specifiche richieste
-  2. Verificare che CI (PR) sia verde
-  3. Solo a sviluppo completato:
-     - rinominare il file in `PROMPT+<numero_versione>.md`
-     - spostarlo in `specs/archive/`
-
-⚠️ Il file **non va spostato prima** del completamento della versione.
-
----
-
-## 4. Testing locale (obbligatorio prima della PR)
-
-### 4.1 Setup
-
+### 5.1 Setup
 ```bash
 npm ci
 ```
 
-### 4.2 Avvio applicazione
-
+### 5.2 Avvio applicazione
 ```bash
 npm run serve
 ```
+- L'app gira su `http://localhost:4173`
 
-- L’app gira su `http://localhost:4173`
-
-### 4.3 Test Playwright
-
+### 5.3 Test Playwright
 - Smoke test:
-
 ```bash
 npx playwright test --grep "@smoke"
 ```
-
 - Suite completa:
-
 ```bash
 npx playwright test
 ```
 
-### 4.4 Variabili ambiente locali
-
+### 5.4 Variabili ambiente locali
 In locale possono essere usati `.env` (non committati):
-
 - `ADA_TEST_PASSWORD`
 - `OPENAI_API_KEY`
 
 ---
 
-## 5. CI su GitHub – panoramica
+## 6. CI su GitHub
 
-### 5.1 CI (PR)
-
+### 6.1 CI (PR)
 - File: `.github/workflows/ci.yml`
 - Trigger: ogni Pull Request
-- Modalità:
-  - `MODE=MOCK`
-  - `STRICT_NETWORK=0`
+- Modalità: `MODE=MOCK`, `STRICT_NETWORK=0`
+- È il **gate di merge** (branch protection)
 
-È il **gate di merge** (branch protection).
-
-### 5.2 CI (REAL)
-
+### 6.2 CI (REAL)
 Due modalità:
+1. **Nightly automatica** (`ci-real.yml`)
+2. **On-label su PR** (`real-on-label.yml`, label `run-real`)
 
-1. **Nightly automatica**
-   - File: `ci-real.yml`
-   - Trigger: schedule + manuale
-
-2. **On‑label su PR**
-   - File: `real-on-label.yml`
-   - Trigger: label `run-real`
-
-Configurazione comune:
-
-- `MODE=REAL`
-- `STRICT_NETWORK=1`
-- `ALLOW_OPENAI=1`
-- `STRICT_ALLOW_HOSTS=cdnjs.cloudflare.com`
+Configurazione: `MODE=REAL`, `STRICT_NETWORK=1`, `ALLOW_OPENAI=1`
 
 ---
 
-## 6. Labeling automatico e strategia REAL
-
-### 6.1 Label automatiche
-
-Il workflow `PR Labeler` applica automaticamente label in base ai file modificati:
-
-- `ci`
-- `tests`
-- `docs`
-- `backend`
-- `docs`
-
-### 6.2 Auto‑aggiunta `run-real`
-
-Il workflow `auto-run-real-label.yml` aggiunge automaticamente la label `run-real` quando la PR modifica file considerati **rischiosi**, tra cui:
-
-- `.github/workflows/**`
-- `tests/e2e/**`
-- `tests/policy/**`
-- `strict-network.ts`
-- `helpers/login.ts`
-
-Quando `run-real` è presente:
-- parte automaticamente **CI (REAL on label)**
-
----
-
-## 7. Diagnostica automatica dei fallimenti
+## 7. Diagnostica fallimenti
 
 ### 7.1 Artifacts
+Su fallimento: `playwright-report`, `test-results`, `server-log`
 
-Su fallimento, vengono sempre caricati:
-
-- `playwright-report`
-- `test-results`
-- `server-log`
-
-### 7.2 Job Summary
-
-Ogni workflow scrive un **Summary** con:
-
-- MODE / STRICT_NETWORK / ALLOW_OPENAI
-- Host consentiti
-- Comandi utili per il debug locale
-
-### 7.3 Commento automatico su PR
-
-Se **CI (PR)** fallisce:
-
-- il workflow `ci-pr-failure-comment.yml`
-- posta automaticamente un commento nella PR con:
-  - link al run
-  - commit SHA
-  - next steps di debug
-
-Codex deve usare **quel commento come guida operativa**.
+### 7.2 Commento automatico su PR
+Se CI (PR) fallisce, un commento automatico indica: link al run, commit SHA, next steps.
 
 ---
 
@@ -244,31 +151,30 @@ Non aggirare mai i test.
 
 ## 9. Divieti espliciti
 
-- ❌ Non usare `ada-tests.sh` in CI GitHub
-- ❌ Non disabilitare test per “far passare la build”
-- ❌ Non committare secrets
-- ❌ Non mergiare senza CI (PR) verde
+- Non usare `ada-tests.sh` in CI GitHub
+- Non disabilitare test per "far passare la build"
+- Non committare secrets
+- Non mergiare senza CI (PR) verde
 
 ---
 
-## 9.1 Cosa fare per primo
+## 10. Cosa fare per primo
 
 - Leggere `AGENTS.md`
 - Leggere `RELEASE_NOTES.md`
-- Verificare manualmente i pulsanti della pagina Visita
-- Segnalare immediatamente eventuali errori di caricamento script
+- Verificare che i test passino (`npm run test:ci`)
+- Segnalare immediatamente eventuali errori
 
 ---
 
-## 10. Stato finale atteso
+## 11. Stato finale atteso
 
 Una versione è considerata **completata** solo quando:
-
-- Tutte le specifiche di `PROMPT.md` sono implementate
+- Tutti i requisiti sono implementati
 - CI (PR) è verde
 - Eventuali CI (REAL) sono verdi
-- `PROMPT.md` è stato archiviato correttamente in `specs/archive/`
+- `RELEASE_NOTES.md` è aggiornato
 
 ---
 
-**Questo file è la fonte di verità per Codex.**
+**Questo file è la fonte di verità operativa.**

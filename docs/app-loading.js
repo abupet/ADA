@@ -54,10 +54,7 @@
                 return t.text.replace('{s}', String(seconds));
             }
         }
-        // Beyond last threshold but before hard timeout
-        if (seconds <= HARD_TIMEOUT) {
-            return TIMEOUT_TEXT;
-        }
+        // Beyond last threshold — show timeout text
         return TIMEOUT_TEXT;
     }
 
@@ -396,6 +393,7 @@
     InlineLoader.prototype._handleError = function (err) {
         // Treat any fetch error the same as a timeout from the user's perspective
         this._cancelTimers();
+        this._abortSafe();
         this._running = false;
 
         _activeLoaders.delete(this);

@@ -1,5 +1,8 @@
 # ADA — Piano PR per prompt_8 (v1.1)
 
+> **STATO: COMPLETATO** — Tutte le 12 PR sono state implementate e integrate in v7.0.0 (2026-02-04).
+> Questo file è mantenuto come riferimento storico.
+
 **Data:** 2026-02-04
 **Base:** `origin/main` (v6.17.9)
 **Destinatario:** Claude Code

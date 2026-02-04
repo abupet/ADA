@@ -64,6 +64,7 @@ function syncRouter({ requireAuth }) {
 
   // PUSH ops (multi-entity)
   router.post("/api/sync/push", requireAuth, async (req, res) => {
+    try {
     const owner_user_id = req.user?.sub;
     const device_id = String(req.body.device_id || "unknown");
     const ops = Array.isArray(req.body.ops) ? req.body.ops : [];
@@ -183,6 +184,10 @@ function syncRouter({ requireAuth }) {
     }
 
     res.json({ accepted, rejected });
+    } catch (e) {
+      console.error("POST /api/sync/push error", e);
+      res.status(500).json({ error: "server_error" });
+    }
   });
 
   return router;

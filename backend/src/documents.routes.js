@@ -109,7 +109,8 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
 
       // Store file on disk
       const storageDir = ensureStorageDir();
-      const storage_key = `${document_id}_${req.file.originalname || "file"}`;
+      const safeName = path.basename(req.file.originalname || "file").replace(/[\/\\]/g, "");
+      const storage_key = `${document_id}_${safeName}`;
       const filePath = path.join(storageDir, storage_key);
       fs.writeFileSync(filePath, req.file.buffer);
 
@@ -181,7 +182,8 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       }
 
       res.setHeader("Content-Type", doc.mime_type);
-      res.setHeader("Content-Disposition", `attachment; filename="${doc.original_filename}"`);
+      const safeFilename = doc.original_filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"`);
       const stream = fs.createReadStream(filePath);
       stream.pipe(res);
     } catch (e) {

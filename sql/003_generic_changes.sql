@@ -14,3 +14,4 @@ CREATE TABLE IF NOT EXISTS changes (
 );
 CREATE INDEX IF NOT EXISTS idx_changes_owner_cursor ON changes(owner_user_id, change_id);
 CREATE INDEX IF NOT EXISTS idx_changes_entity ON changes(entity_type, entity_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_changes_op_id ON changes(op_id) WHERE op_id IS NOT NULL;
