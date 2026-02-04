@@ -39,7 +39,64 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '6.17.9';
+const ADA_VERSION = '7.0.0';
+
+// ============================================
+// ROLE SYSTEM (PR 4)
+// ============================================
+
+const ROLE_VETERINARIO = 'veterinario';
+const ROLE_PROPRIETARIO = 'proprietario';
+const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
+
+const ROLE_PERMISSIONS = {
+    veterinario: {
+        pages: ['patient', 'recording', 'soap', 'history', 'settings', 'debug', 'costs', 'owner', 'document'],
+        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
+    },
+    proprietario: {
+        pages: ['patient', 'diary', 'vitals', 'medications', 'history', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document'],
+        actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
+    }
+};
+
+function getActiveRole() {
+    try {
+        const stored = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
+        if (stored === ROLE_PROPRIETARIO) return ROLE_PROPRIETARIO;
+        return ROLE_VETERINARIO;
+    } catch (e) {
+        return ROLE_VETERINARIO;
+    }
+}
+
+function setActiveRole(role) {
+    const validRole = (role === ROLE_PROPRIETARIO) ? ROLE_PROPRIETARIO : ROLE_VETERINARIO;
+    try {
+        localStorage.setItem(ADA_ACTIVE_ROLE_KEY, validRole);
+    } catch (e) {}
+    return validRole;
+}
+
+function isPageAllowedForRole(pageId, role) {
+    const r = role || getActiveRole();
+    const perms = ROLE_PERMISSIONS[r];
+    if (!perms) return false;
+    return perms.pages.indexOf(pageId) !== -1;
+}
+
+function isActionAllowedForRole(action, role) {
+    const r = role || getActiveRole();
+    const perms = ROLE_PERMISSIONS[r];
+    if (!perms) return false;
+    return perms.actions.indexOf(action) !== -1;
+}
+
+function getDefaultPageForRole(role) {
+    const r = role || getActiveRole();
+    if (r === ROLE_PROPRIETARIO) return 'patient';
+    return 'recording';
+}
 
 // Template titles
 const templateTitles = {
