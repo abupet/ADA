@@ -183,6 +183,16 @@ async function generateSOAP(options = {}) {
     let createdAbortScope = false;
     let signal = signalFromOpts;
 
+    // TC-ROLE-003: Block SOAP generation if no recording/transcription was produced in this session
+    if (!auto) {
+        const hasTranscription = !!(document.getElementById('transcriptionText')?.value || '').trim();
+        const hadRecording = !!(typeof lastTranscriptionResult !== 'undefined' && lastTranscriptionResult);
+        if (!hasTranscription && !hadRecording) {
+            showToast('Registra o incolla un colloquio prima di generare il referto', 'error');
+            return;
+        }
+    }
+
     // For manual generation, create an abort scope so the Visita 'Annulla' button can stop the request
     if (!auto && !signal && typeof beginVisitAbortScope === 'function') {
         const c = beginVisitAbortScope();

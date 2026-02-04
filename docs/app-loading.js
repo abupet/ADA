@@ -123,23 +123,26 @@
      * @param {string}   options.containerId - id of an existing DOM element
      * @param {Function} [options.onRetry]   - called when user clicks Retry
      * @param {Function} [options.onAbort]   - called when request is aborted
+     * @param {string}   [options.watchInputId] - if set, abort on input change in this element
      */
     function InlineLoader(options) {
         if (!options || !options.containerId) {
             throw new Error('InlineLoader: containerId is required');
         }
 
-        this._containerId = options.containerId;
-        this._onRetry     = typeof options.onRetry === 'function' ? options.onRetry : null;
-        this._onAbort     = typeof options.onAbort === 'function' ? options.onAbort : null;
+        this._containerId  = options.containerId;
+        this._onRetry      = typeof options.onRetry === 'function' ? options.onRetry : null;
+        this._onAbort      = typeof options.onAbort === 'function' ? options.onAbort : null;
+        this._watchInputId = typeof options.watchInputId === 'string' ? options.watchInputId : null;
 
         // Internal state
-        this._abortController = null;
-        this._tickInterval    = null;
-        this._elapsed         = 0;
-        this._running         = false;
-        this._fetchFn         = null; // stored for retry
-        this._destroyed       = false;
+        this._abortController    = null;
+        this._tickInterval       = null;
+        this._elapsed            = 0;
+        this._running            = false;
+        this._fetchFn            = null; // stored for retry
+        this._destroyed          = false;
+        this._inputChangeHandler = null;
 
         // DOM references (created lazily on first start)
         this._wrapper    = null;
@@ -232,6 +235,21 @@
         // Create AbortController
         this._abortController = new AbortController();
 
+        // Watch for input changes (abort operation if user modifies the source input)
+        this._unwatchInput();
+        if (this._watchInputId) {
+            var watchEl = document.getElementById(this._watchInputId);
+            if (watchEl) {
+                this._inputChangeHandler = function () {
+                    if (self._running) {
+                        self._abort(false);
+                        self.stop();
+                    }
+                };
+                watchEl.addEventListener('input', this._inputChangeHandler);
+            }
+        }
+
         // Execute fetch
         var signal = this._abortController.signal;
         var promise;
@@ -261,6 +279,19 @@
     };
 
     /**
+     * Remove the input-change listener if active.
+     */
+    InlineLoader.prototype._unwatchInput = function () {
+        if (this._inputChangeHandler && this._watchInputId) {
+            var watchEl = document.getElementById(this._watchInputId);
+            if (watchEl) {
+                watchEl.removeEventListener('input', this._inputChangeHandler);
+            }
+            this._inputChangeHandler = null;
+        }
+    };
+
+    /**
      * Stop the loader gracefully (success path or external stop).
      */
     InlineLoader.prototype.stop = function () {
@@ -268,6 +299,7 @@
 
         this._cancelTimers();
         this._abortSafe();
+        this._unwatchInput();
         this._running = false;
 
         _activeLoaders.delete(this);
@@ -282,6 +314,7 @@
      */
     InlineLoader.prototype.destroy = function () {
         this.stop();
+        this._unwatchInput();
         this._destroyed = true;
         this._fetchFn   = null;
         this._onRetry   = null;

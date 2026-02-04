@@ -142,20 +142,30 @@ function petsSyncRouter({ requireAuth }) {
             continue;
           }
 
-          const allowed = ["name","species","breed","sex","birthdate","weight_kg","notes"];
+          const allowed = ["name","species","breed","sex","birthdate","weight_kg","notes","owner_name","owner_phone","microchip"];
           const next = { ...current };
           for (const k of allowed) {
             if (patch && Object.prototype.hasOwnProperty.call(patch, k)) next[k] = patch[k];
           }
 
+          // Rich data: store as JSONB in extra_data column
+          let extraData = current.extra_data || {};
+          if (typeof extraData === 'string') try { extraData = JSON.parse(extraData); } catch (_) { extraData = {}; }
+          const richFields = ["vitals_data","medications","history_data","lifestyle","photos_count"];
+          for (const k of richFields) {
+            if (patch && patch[k] !== undefined) extraData[k] = patch[k];
+          }
+          if (patch && patch.updated_at) extraData.updated_at = patch.updated_at;
+
           const upd = await client.query(
             `UPDATE pets SET
               name=$3, species=$4, breed=$5, sex=$6, birthdate=$7, weight_kg=$8, notes=$9,
+              extra_data=$10,
               version = version + 1,
               updated_at = NOW()
              WHERE owner_user_id=$1 AND pet_id=$2
              RETURNING *`,
-            [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes]
+            [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes, JSON.stringify(extraData)]
           );
 
           await client.query(
@@ -168,6 +178,13 @@ function petsSyncRouter({ requireAuth }) {
           accepted.push(op_id);
         } else {
           // create
+          const createExtraData = {};
+          const createRichFields = ["vitals_data","medications","history_data","lifestyle","photos_count"];
+          for (const k of createRichFields) {
+            if (patch && patch[k] !== undefined) createExtraData[k] = patch[k];
+          }
+          if (patch && patch.updated_at) createExtraData.updated_at = patch.updated_at;
+
           const record = {
             pet_id,
             owner_user_id,
@@ -178,13 +195,14 @@ function petsSyncRouter({ requireAuth }) {
             birthdate: patch?.birthdate ?? null,
             weight_kg: patch?.weight_kg ?? null,
             notes: patch?.notes ?? null,
+            extra_data: Object.keys(createExtraData).length > 0 ? JSON.stringify(createExtraData) : null,
           };
 
           const ins = await client.query(
-            `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1)
+            `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, extra_data, version)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1)
              RETURNING *`,
-            [record.pet_id, owner_user_id, record.name, record.species, record.breed, record.sex, record.birthdate, record.weight_kg, record.notes]
+            [record.pet_id, owner_user_id, record.name, record.species, record.breed, record.sex, record.birthdate, record.weight_kg, record.notes, record.extra_data]
           );
 
           await client.query(
