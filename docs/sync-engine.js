@@ -536,31 +536,36 @@
       return Promise.resolve({ pulled: 0, reason: 'offline' });
     }
 
-    return metaGet('pull_cursor')
-      .then(function (cursor) {
-        var since = cursor || 0;
-        return fetchApi(PULL_ENDPOINT + '?since=' + encodeURIComponent(since));
-      })
-      .then(function (response) {
-        if (!response || !response.ok) {
-          var code = response ? response.status : 'network_error';
-          throw new Error('Pull failed: HTTP ' + code);
-        }
-        return response.json();
-      })
-      .then(function (data) {
+    var totalPulled = 0;
+    var MAX_PAGES = 10;
+
+    function fetchPage(since) {
+      return fetchApi(PULL_ENDPOINT + '?since=' + encodeURIComponent(since))
+        .then(function (response) {
+          if (!response || !response.ok) {
+            var code = response ? response.status : 'network_error';
+            throw new Error('Pull failed: HTTP ' + code);
+          }
+          return response.json();
+        });
+    }
+
+    function pullLoop(since, page) {
+      if (page >= MAX_PAGES) {
+        // Safety limit reached; stop paginating
+        return Promise.resolve();
+      }
+
+      return fetchPage(since).then(function (data) {
         var changes = Array.isArray(data.changes) ? data.changes : [];
         var newCursor = data.cursor;
 
         if (changes.length === 0) {
-          // Nothing new, but still update lastSync timestamp
-          _lastSyncTime = new Date().toISOString();
-          return metaSet('last_sync', _lastSyncTime).then(function () {
-            return { pulled: 0, cursor: newCursor };
-          });
+          return Promise.resolve();
         }
 
-        // Resolve conflicts and apply changes
+        totalPulled += changes.length;
+
         return resolveConflictsAndApply(changes).then(function () {
           // Persist new cursor
           var cursorPromise = (newCursor !== undefined && newCursor !== null)
@@ -568,12 +573,27 @@
             : Promise.resolve();
 
           return cursorPromise.then(function () {
-            _lastSyncTime = new Date().toISOString();
-            return metaSet('last_sync', _lastSyncTime);
-          }).then(function () {
-            return { pulled: changes.length, cursor: newCursor };
+            // Check if there may be more pages
+            if (data.has_more || changes.length >= 500) {
+              var nextSince = (newCursor !== undefined && newCursor !== null) ? newCursor : since;
+              return pullLoop(nextSince, page + 1);
+            }
           });
         });
+      });
+    }
+
+    return metaGet('pull_cursor')
+      .then(function (cursor) {
+        var since = cursor || 0;
+        return pullLoop(since, 0);
+      })
+      .then(function () {
+        _lastSyncTime = new Date().toISOString();
+        return metaSet('last_sync', _lastSyncTime);
+      })
+      .then(function () {
+        return { pulled: totalPulled, cursor: null };
       })
       .catch(function (err) {
         var msg = err && err.message ? err.message : 'Pull error';
@@ -620,6 +640,7 @@
 
         var entityKey = change.entity_type + ':' + change.entity_id;
         var conflicting = localByEntity[entityKey];
+        var localWon = false;
 
         if (conflicting && conflicting.length > 0) {
           var remoteTs = resolveTimestamp(change.client_ts, change.created_at);
@@ -638,6 +659,7 @@
               opsToRemove.push(local.op_id);
             } else {
               // Local wins: keep local op; it will be pushed on next cycle
+              localWon = true;
               console.warn(
                 '[syncEngine] Conflict resolved (last-write-wins): local wins for ' +
                 change.entity_type + '/' + change.entity_id +
@@ -649,7 +671,10 @@
         }
 
         // Dispatch event so entity-specific code can apply the change to its own store
-        dispatchChangeEvent(change);
+        // Skip dispatch when the local operation won the conflict
+        if (!localWon) {
+          dispatchChangeEvent(change);
+        }
       });
 
       // Remove ops that lost the conflict
@@ -818,9 +843,9 @@
         }
       };
 
-      // If onupgradeneeded fires, the DB didn't exist; just let onsuccess handle it.
-      legacyReq.onupgradeneeded = function () {
-        // Do not create stores in the legacy DB
+      // If onupgradeneeded fires, the DB didn't exist; abort to prevent creating a phantom empty DB.
+      legacyReq.onupgradeneeded = function (event) {
+        event.target.transaction.abort();
       };
     });
   }
@@ -915,9 +940,10 @@
         var hasPending = records.some(function (r) {
           return r.status === 'pending' || r.status === 'failed';
         });
-        if (hasPending) {
-          pushAll().catch(function () { /* silent */ });
-        }
+        var pushPromise = hasPending ? pushAll() : Promise.resolve();
+        return pushPromise.then(function () {
+          return pull();
+        });
       })
       .catch(function () { /* silent */ });
   }

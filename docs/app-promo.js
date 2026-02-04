@@ -257,9 +257,12 @@
                     return _pickMockProduct(petId);
                 }
 
-                // Valid recommendation
-                if (data.productId && data.name) {
-                    return data;
+                // Valid recommendation - backend returns { pet_id, recommendations: [...] }
+                if (Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+                    var rec = data.recommendations[0];
+                    if (rec.productId && rec.name) {
+                        return rec;
+                    }
                 }
 
                 // No recommendation available
@@ -284,9 +287,9 @@
         if (validTypes.indexOf(eventType) === -1) return;
 
         var payload = {
-            eventType: eventType,
-            productId: productId || null,
-            petId: petId !== undefined && petId !== null ? String(petId) : null,
+            event_type: eventType,
+            product_id: productId || null,
+            pet_id: petId !== undefined && petId !== null ? String(petId) : null,
             metadata: metadata || {},
             timestamp: new Date().toISOString()
         };

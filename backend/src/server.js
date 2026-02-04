@@ -77,7 +77,7 @@ app.use(express.json({ limit: "2mb" }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 const limiter = rateLimit({

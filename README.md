@@ -1,6 +1,8 @@
-# ADA – AbuPet AI 
+# ADA – AbuPet AI
 
-Repository dell’app ADA (AbuPet AI).
+Repository dell'app ADA (AbuPet AI) — assistente veterinario con AI.
+
+**Versione corrente:** 7.0.0
 
 ---
 
@@ -9,6 +11,7 @@ Repository dell’app ADA (AbuPet AI).
 - Node.js (consigliato LTS)
 - npm
 - Playwright (installato come dev dependency nel repo)
+- PostgreSQL (per il backend, opzionale in modalità MOCK)
 
 ---
 
@@ -27,32 +30,56 @@ npx playwright install
 
 I file `.env` contengono configurazioni locali e/o segreti e **non devono essere committati**.
 
-1. Crea il file `.env` partendo dall’esempio:
+1. Crea il file `.env` partendo dall'esempio:
 
 ```bash
-# Windows PowerShell
-Copy-Item .env.example .env
+cp .env.example .env
 ```
 
 2. Modifica `.env` secondo le tue esigenze locali.
 
+Variabili principali:
+- `ADA_LOGIN_PASSWORD` — password di login
+- `JWT_SECRET` — segreto per token JWT
+- `FRONTEND_ORIGIN` — URL del frontend (per CORS)
+- `DATABASE_URL` — stringa di connessione PostgreSQL
+- `DOCUMENT_STORAGE_PATH` — percorso storage documenti (default: `uploads/`)
+
 ---
 
-## Avvio server locale
-
-I test E2E si aspettano l’app disponibile a:
+## Architettura
 
 ```
-http://localhost:4173/index.html
+docs/           Frontend (vanilla JS SPA, servito da GitHub Pages o http-server)
+backend/src/    Backend Express (JWT auth, PostgreSQL, OpenAI proxy)
+sql/            Migrazioni SQL (001–005)
+tests/          Test E2E Playwright (smoke, regression, policy)
 ```
 
-Avvia il server in **un terminale**:
+**Frontend:** nessun bundler, tutti i file JS caricati via `<script>` in `index.html`, pattern IIFE.
+
+**Backend:** Express 4, autenticazione JWT, PostgreSQL via `pg`, multer per upload, proxy OpenAI.
+
+---
+
+## Avvio
+
+### Frontend (server locale)
 
 ```bash
 npm run serve
 ```
 
-⚠️ Lascia questo terminale aperto mentre esegui i test.
+L'app sarà disponibile a `http://localhost:4173/index.html`.
+
+### Backend
+
+```bash
+cd backend && npm start
+```
+
+Richiede `DATABASE_URL` nel `.env` per le funzionalità di sync, documenti e promo.
+In modalità MOCK (`MODE=MOCK`), il backend funziona senza database.
 
 ---
 
@@ -66,45 +93,29 @@ Per generare `ENCRYPTED_KEY` e `SALT` da inserire in `config.js`, apri:
 tools/configuratore.html
 ```
 
-È una pagina standalone: aprila nel browser, compila i campi richiesti e copia i valori generati.
-
 ---
 
 ## Test E2E (Playwright)
 
 ### Smoke tests
 
-In **un secondo terminale** (con il server già avviato):
-
 ```bash
 npm run test:smoke
 ```
 
----
-
 ### Smoke tests con STRICT_NETWORK
-
-Questa modalità blocca **tutte le richieste di rete esterne**, eccetto quelle esplicitamente consentite.
-Serve per verificare che l’app e i test non dipendano implicitamente da internet.
 
 ```bash
 npm run test:smoke:strict
 ```
 
-Allowlist attuale necessaria per il corretto funzionamento dei test:
-
-- `cdnjs.cloudflare.com`  
-  (Chart.js, jszip, jspdf)
-
----
+Allowlist: `cdnjs.cloudflare.com` (Chart.js, jszip, jspdf)
 
 ### Regression tests
 
 ```bash
 npm run test:regression
 ```
-
----
 
 ### Suite CI (policy + smoke + regression)
 
@@ -124,8 +135,6 @@ npm run test:ci:real
 npm run test:ci:long
 ```
 
----
-
 ### Smoke su app deployata
 
 ```bash
@@ -138,12 +147,10 @@ npm run test:deployed
 
 Playwright genera automaticamente:
 
-- `test-results/`  
-  (screenshot, video e trace per i test falliti)
-- `playwright-report/`  
-  (report HTML interattivo)
+- `test-results/` (screenshot, video e trace per i test falliti)
+- `playwright-report/` (report HTML interattivo)
 
-Per aprire l’ultimo report:
+Per aprire l'ultimo report:
 
 ```bash
 npx playwright show-report
@@ -151,14 +158,21 @@ npx playwright show-report
 
 ---
 
-## Note su Windows
+## Funzionalità principali (v7.0.0)
 
-- In passato, lavorare in cartelle sincronizzate (es. OneDrive) può causare errori `EPERM`
-  durante la creazione/cancellazione di `test-results/`.
-- Il repository è ora posizionato in:
-  ```
-  C:\MyRepo\ada
-  ```
-  per evitare questi problemi.
+- **Sistema ruoli**: Veterinario / Proprietario con sidebar e permessi differenziati
+- **Documenti**: upload PDF/JPG/PNG/WebP, viewer, AI read/explain
+- **Sync engine**: outbox unificato offline-first, push/pull multi-entity
+- **Inline Loading**: componente di caricamento unificato con timer e abort
+- **Promo**: raccomandazioni personalizzate per pet
+- **Registrazione audio**: chunking automatico, trascrizione parallela
+- **SOAP**: generazione referto da trascrizione via GPT-4o
+- **Q&A**: domande e risposte con AI sul pet
+- **Tips & Tricks**: consigli AI personalizzati
 
 ---
+
+## Note su Windows
+
+- Evitare cartelle sincronizzate (es. OneDrive) per evitare errori `EPERM`.
+- Consigliato: `C:\MyRepo\ada`
