@@ -214,9 +214,7 @@ async function generateSOAP(options = {}) {
     showProgress(true);
     const statusEl = document.getElementById('recordingStatus');
     if (statusEl) {
-        statusEl.textContent = auto
-            ? 'Ho completato la trascrizione della registrazione. Sto generando il referto.'
-            : '⏳ Generazione SOAP...';
+        statusEl.textContent = '⏳ Sto generando il referto...';
     }
 
     try {
@@ -252,7 +250,7 @@ async function generateSOAP(options = {}) {
             console.warn('8B extractor failed:', e);
         }
 
-        if (auto && statusEl) statusEl.textContent = 'Ho completato la generazione del referto';
+        if (statusEl) statusEl.textContent = '✅ Referto generato';
 
         // Navigate to SOAP page when generation completes
         if (typeof navigateToPage === 'function') navigateToPage('soap');
@@ -1346,9 +1344,10 @@ Scrivi la spiegazione per il proprietario:`;
         trackChatUsageOrEstimate('gpt-4o', prompt, explanation, data.usage);
 
         // Persist into history record if requested
-        if (opts.saveToHistoryId) {
+        const persistId = opts.saveToHistoryId || (typeof currentEditingHistoryId !== 'undefined' ? currentEditingHistoryId : null);
+        if (persistId) {
             try {
-                const idx = (historyData || []).findIndex(r => r && r.id === opts.saveToHistoryId);
+                const idx = (historyData || []).findIndex(r => r && r.id === persistId);
                 if (idx >= 0) {
                     historyData[idx].ownerExplanation = explanation;
                     saveData();

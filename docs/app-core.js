@@ -159,7 +159,7 @@ function applyVersionInfo() {
     const loginVersionEl = document.getElementById('loginVersion');
     if (versionEl) versionEl.textContent = ADA_VERSION;
     if (releaseNotesEl) releaseNotesEl.textContent = ADA_VERSION;
-    if (loginVersionEl) loginVersionEl.textContent = ADA_VERSION;
+    if (loginVersionEl) loginVersionEl.textContent = 'v' + ADA_VERSION;
     if (document && document.title) {
         document.title = `ADA v${ADA_VERSION} - AI Driven Abupet`;
     }

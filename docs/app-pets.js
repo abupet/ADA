@@ -870,9 +870,14 @@ async function rebuildPetSelector(selectId = null) {
 
 function updateSaveButtonState() {
     const saveBtn = document.getElementById('btnSavePet');
+    const deleteBtn = document.getElementById('btnDeletePet');
     const selector = document.getElementById('petSelector');
-    if (!saveBtn || !selector) return;
-    saveBtn.disabled = (selector.value === '');
+    const fieldsCard = document.getElementById('petFieldsCard');
+    if (!selector) return;
+    const noPet = (selector.value === '');
+    if (saveBtn) saveBtn.disabled = noPet;
+    if (deleteBtn) deleteBtn.disabled = noPet;
+    if (fieldsCard) fieldsCard.style.display = noPet ? 'none' : '';
 }
 
 // ============================================
@@ -1072,8 +1077,19 @@ async function saveNewPet() {
     localStorage.setItem('ada_current_pet_id', String(newId));
     const savedPet = await getPetById(newId);
     loadPetIntoMainFields(savedPet);
-    
-    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch(e) {}
+
+    // Update sidebar header immediately from known data (avoids IDB timing issues)
+    try {
+        const headerEls = document.querySelectorAll('[data-selected-pet-header]');
+        const hName = (petName || 'Paziente').trim();
+        const hSpecies = (petSpecies || '').trim();
+        const hParts = [hName];
+        if (hSpecies) hParts.push(hSpecies);
+        headerEls.forEach(el => {
+            el.textContent = '🐾 ' + hParts.join(' • ');
+            el.classList.add('selected-pet-header--visible');
+        });
+    } catch(e) {}
 
     showToast('✅ Nuovo pet aggiunto!', 'success');
 }
