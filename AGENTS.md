@@ -1,157 +1,180 @@
-# AGENTS.md v2
-# Operational rules for AI agents on ADA
+# AGENTS.md v3
+# Guida operativa per lo sviluppo di ADA
 
-This file defines **how AI agents must operate** when developing ADA.
-It is aligned with `handoff.md` and is **mandatory**.
+Questo file è la **fonte di verità operativa** per chiunque lavori su ADA (umano o agente AI).
+È **obbligatorio** seguirlo.
 
 ---
 
-## 1. Source of truth
+## 1. Fonti di riferimento
 
-Agents must follow, in this order:
+In ordine di priorità:
 
-1. `handoff.md` (primary operational guide)
-2. Existing codebase and tests
+1. Questo file (`AGENTS.md`)
+2. Codebase e test esistenti
 3. CI feedback (GitHub Actions)
-4. `RELEASE_NOTES.md` for version history
+4. `RELEASE_NOTES.md` per storico versioni
+5. `README.md` per setup e avvio
 
 ---
 
-## 2. Architecture overview
+## 2. Architettura
 
-ADA is a vanilla JS single-page application with an Express backend.
+ADA è una SPA vanilla JS con backend Express.
 
 **Frontend** (`docs/`):
-- No modules/bundlers; all files loaded via `<script>` tags in `index.html`
-- IIFE pattern: `(function(global) { ... })(window)`
-- Key modules: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `sync-engine.js`, `app-promo.js`, `app-observability.js`
+- No moduli/bundler; tutti i file caricati via `<script>` in `index.html`
+- Pattern IIFE: `(function(global) { ... })(window)`
+- Moduli principali: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `sync-engine.js`, `app-promo.js`, `app-observability.js`
 
 **Backend** (`backend/src/`):
-- Express 4, JWT auth, PostgreSQL via `pg`, multer for uploads
-- Routes: `pets.routes.js`, `pets.sync.routes.js`, `sync.routes.js`, `documents.routes.js`, `promo.routes.js`
+- Express 4, JWT auth, PostgreSQL via `pg`, multer per upload
+- Route: `pets.routes.js`, `pets.sync.routes.js`, `sync.routes.js`, `documents.routes.js`, `promo.routes.js`
 
 **SQL migrations** (`sql/`): 001–005
 
-**Tests** (`tests/`): Playwright E2E (smoke, regression), policy checks
+**Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Current version**: 7.0.0
+**Versione corrente:** 7.0.0
 
 ---
 
-## 3. Development rules
+## 3. Regole di sviluppo
 
 ### 3.1 Branching
-- Never work on `main`
-- Always create a dedicated branch
-- Naming:
-  - `feat/<short-description>`
-  - `fix/<short-description>`
-  - `ci/<short-description>`
+- Non lavorare mai su `main`
+- Branch dedicato per ogni attività
+- Naming: `feat/<descrizione>`, `fix/<descrizione>`, `ci/<descrizione>`
 
-### 3.2 Commits
-- Small, focused commits
-- Clear messages
-- No unrelated changes
+### 3.2 Commit
+- Piccoli e mirati
+- Messaggi chiari e descrittivi
+- Non includere modifiche non correlate
 
 ---
 
-## 4. Key systems (v7.0.0)
+## 4. Sistemi chiave (v7.0.0)
 
-### Role system
-- Two roles: `veterinario`, `proprietario`
-- `ROLE_PERMISSIONS` in `config.js` defines pages/actions per role
-- Toggle in header, persisted in `localStorage` (`ada_active_role`)
-- Route guard in `navigateToPage()` enforces permissions
+### Sistema ruoli
+- Due ruoli: `veterinario`, `proprietario`
+- `ROLE_PERMISSIONS` in `config.js` definisce pagine/azioni per ruolo
+- Toggle nell'header, persistito in `localStorage` (`ada_active_role`)
+- Route guard in `navigateToPage()` applica i permessi
 
-### Sync engine
-- Unified outbox in IndexedDB (`ada_sync`)
-- Multi-entity push/pull via `/api/sync/push` and `/api/sync/pull`
-- Conflict resolution: last-write-wins with logging
-- Idempotency via `op_id` (UUID, UNIQUE index in DB)
+### Sync pets
+- Due sistemi separati:
+  - **Pet sync**: outbox in IndexedDB `ADA_Pets` → `pushOutboxIfOnline()` → `/api/sync/pets/push`
+  - **Sync engine generico**: outbox in IndexedDB `ada_sync` → `pushAll()` → `/api/sync/push`
+- Auto-sync in `pets-sync-bootstrap.js`: online → push+pull, interval 60s, startup
+- Pull skips merge per pet con outbox pending (local wins)
+- ADR di riferimento: `docs/decisions/ADR-PETS-PULL-MERGE.md`
 
-### Document management
+### Documenti
 - Upload: PDF, JPG, PNG, WebP (max 10 MB)
-- MIME validation via magic bytes (server-side)
-- AI: "Read" (vet only, GPT-4o vision) and "Explain" (owner only)
-- IndexedDB offline storage with sync
+- Validazione MIME magic bytes server-side
+- AI: "Leggi" (solo vet, GPT-4o vision), "Spiegami il documento" (solo proprietario)
+- Storage offline IndexedDB con sync
+
+### SOAP
+- Generazione referto da trascrizione via GPT-4o
+- Campi: S, O, A, P + "Note interne (non stampate)" (solo vet, non esportate)
+- Read-only view per proprietario (`page-soap-readonly`)
+- Esportazione PDF/TXT (note interne escluse)
+- Spiegazione owner: tono "il team Abupet"
 
 ### InlineLoader
-- Reusable loading component with AbortController
+- Componente di loading riutilizzabile con AbortController
 - Timer thresholds, hard timeout 45s, retry
-- Applied to async operations app-wide
+- Applicato a tutte le operazioni async
 
 ---
 
-## 5. Local testing (required)
+## 5. Regole funzionali non negoziabili
 
+### Release notes
+- Deve esistere **un solo** file `RELEASE_NOTES.md` (cumulativo)
+- Ogni release aggiunge una nuova sezione `## vX.Y.Z`
+- Non creare file di release notes separati
+
+### Pagina Registrazione — pulsanti obbligatori
+Devono funzionare sempre:
+- Microfono (`toggleRecording`)
+- Carica audio
+- Carica audio lungo (test chunking)
+- Carica testo lungo (test append)
+- Carica testo
+
+### Caricamento script
+- `app-recording.js` deve caricarsi senza errori di sintassi
+- Se fallisce, i pulsanti Registrazione non funzionano
+
+---
+
+## 6. Testing
+
+### 6.1 Test locali (obbligatori prima della PR)
 ```bash
 npm ci
 npm run serve          # http://localhost:4173
 npx playwright test --grep "@smoke"
 ```
 
-Full suite if needed:
+Suite completa:
 ```bash
 npx playwright test
 ```
 
-Local `.env` may be used but never committed.
+`.env` locali ammessi ma mai committati.
+
+### 6.2 Piano test manuale
+Vedi `TEST_PLAN.md` per test step-by-step.
 
 ---
 
-## 6. CI on GitHub
+## 7. CI su GitHub
 
-### 6.1 CI (PR) — mandatory
-- Runs on every PR
-- MODE=MOCK
-- STRICT_NETWORK=0
-- Must be green to merge
+### 7.1 CI (PR) — obbligatoria
+- Trigger: ogni Pull Request
+- MODE=MOCK, STRICT_NETWORK=0
+- **Gate di merge** (branch protection)
 
-### 6.2 CI (REAL)
-Triggered by:
-- Nightly schedule
-- Label `run-real`
-- Automatic labeling for risky paths
+### 7.2 CI (REAL)
+Trigger:
+- Nightly automatica
+- Label `run-real` su PR
+- Auto-labeling per path rischiosi
 
-REAL configuration:
-- MODE=REAL
-- STRICT_NETWORK=1
-- ALLOW_OPENAI=1
-- STRICT_ALLOW_HOSTS=cdnjs.cloudflare.com
+Configurazione: MODE=REAL, STRICT_NETWORK=1, ALLOW_OPENAI=1, STRICT_ALLOW_HOSTS=cdnjs.cloudflare.com
 
----
+### 7.3 Gestione fallimenti CI
+1. Leggere il commento automatico sulla PR
+2. Aprire il run linkato
+3. Identificare la causa (primo errore reale)
+4. Scaricare artifacts se Playwright fallisce
+5. Correggere e pushare
 
-## 7. Handling CI failures
-
-When CI (PR) fails:
-1. Read the automatic PR comment
-2. Open the linked run
-3. Identify root cause
-4. Use artifacts if Playwright failed
-5. Fix and push
-
-Never bypass tests.
+Non aggirare mai i test.
 
 ---
 
-## 8. Explicit prohibitions
+## 8. Divieti espliciti
 
-- Do not use `ada-tests.sh` in GitHub CI
-- Do not disable or skip tests
-- Do not commit secrets
-- Do not merge without CI (PR) green
-- Do not change workflows without understanding impact
+- Non usare `ada-tests.sh` in CI GitHub
+- Non disabilitare o saltare test per "far passare la build"
+- Non committare secrets
+- Non mergiare senza CI (PR) verde
+- Non modificare workflow senza capirne l'impatto
 
 ---
 
 ## 9. Definition of done
 
-A change is complete only when:
-- Requirements are implemented
-- CI (PR) is green
-- Any triggered CI (REAL) is green
-- `RELEASE_NOTES.md` is updated
+Un cambiamento è completo solo quando:
+- Requisiti implementati
+- CI (PR) verde
+- Eventuali CI (REAL) verdi
+- `RELEASE_NOTES.md` aggiornato (se cambiamento user-facing)
 
 ---
 
-Agents must operate as if CI enforcement were absolute.
+Questo file è la fonte di verità operativa.
