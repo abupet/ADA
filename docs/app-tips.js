@@ -247,6 +247,7 @@ VINCOLI IMPORTANTI:
 7. DEDUP: NON ripetere temi gia suggeriti; proporre nuove aree; NON fare parafrasi molto simili
 8. DIVERSITA FONTI: NON usare piu del 50% delle fonti dallo stesso sito web. Distribuisci le fonti equamente.
 9. FONTI: sourceUrl deve essere UNA delle fonti autorizzate qui sotto (esattamente).
+10. RAZZA: Usa SOLO la razza indicata nel profilo pet. Se la razza e "N/D" o vuota, NON inventarne una: parla in termini generici della specie. NON aggiungere dettagli sulla razza che non siano nel profilo.
 
 CATEGORIE DA COPRIRE (almeno 5 categorie diverse):
 - Curiosita sulla razza/specie

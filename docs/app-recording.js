@@ -328,7 +328,7 @@ async function runAudioAutoPipeline() {
 
         // Auto-generate SOAP
         if (btnGenerateRow) btnGenerateRow.style.display = 'none';
-        if (statusEl) statusEl.textContent = 'Ho completato la trascrizione della registrazione. Sto generando il referto.';
+        if (statusEl) statusEl.textContent = '⏳ Sto generando il referto...';
 
         if (typeof generateSOAP === 'function') {
             await generateSOAP({ auto: true, signal: getVisitSignal() });
@@ -339,8 +339,8 @@ async function runAudioAutoPipeline() {
         if (titleEl) titleEl.textContent = '✅ Referto completato';
         if (btnAutoRow) btnAutoRow.style.display = 'flex';
 
-        if (statusEl) statusEl.textContent = 'Ho completato la generazione del referto';
-        showToast('✅ Referto completato', 'success');
+        if (statusEl) statusEl.textContent = '✅ Referto generato';
+        showToast('✅ Referto generato', 'success');
 
     } catch (error) {
         if (error && (error.name === 'AbortError' || ('' + error.message).toLowerCase().includes('abort'))) {
@@ -842,15 +842,15 @@ async function waitForChunkQueueToDrain({ force = false } = {}) {
     const btnGenerateRow = document.getElementById('generateSoapRow');
 
     if (!ok) {
-        if (statusEl) statusEl.textContent = '✅ Trascrizione pronta — premi “Genera referto”';
+        if (statusEl) statusEl.textContent = '✅ Trascrizione pronta — premi "Genera referto"';
         if (btnGenerateRow) btnGenerateRow.style.display = 'flex';
     } else {
         if (btnGenerateRow) btnGenerateRow.style.display = 'none';
-        if (statusEl) statusEl.textContent = 'Ho completato la trascrizione della registrazione. Sto generando il referto.';
+        if (statusEl) statusEl.textContent = '⏳ Sto generando il referto...';
         if (typeof generateSOAP === 'function') {
             try {
                 await generateSOAP({ auto: true, signal: getVisitSignal() });
-                if (statusEl) statusEl.textContent = 'Ho completato la generazione del referto';
+                if (statusEl) statusEl.textContent = '✅ Referto generato';
             } catch (e) {
                 if (statusEl) statusEl.textContent = '❌ Errore generazione';
                 if (btnGenerateRow) btnGenerateRow.style.display = 'flex';

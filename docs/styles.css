@@ -43,6 +43,14 @@ body {
 .login-logo { width: 100px; margin-bottom: 20px; }
 .login-card h1 { color: var(--primary); margin-bottom: 5px; }
 .login-card p { color: #666; margin-bottom: 25px; }
+.login-version {
+    position: fixed;
+    bottom: 12px;
+    right: 16px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+    margin: 0;
+}
 .login-card input {
     width: 100%;
     padding: 14px;
@@ -1069,6 +1077,13 @@ body {
     gap: 5px;
     flex-shrink: 0;
 }
+
+.btn-add-pet {
+    background: var(--accent) !important;
+    color: white !important;
+    font-weight: bold;
+}
+.btn-add-pet:hover { opacity: 0.85; }
 
 .btn-small {
     padding: 10px 14px !important;
