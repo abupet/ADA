@@ -1222,9 +1222,27 @@ async function exportSavedAudioChunks() {
 
         const zip = new JSZip();
         rows.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+        // Get patient name for filenames
+        let petName = '';
+        try {
+            const nameEl = document.getElementById('petName');
+            if (nameEl) petName = (nameEl.value || '').trim();
+        } catch (e) {}
+        if (!petName) petName = 'paziente';
+        // Sanitize name for filename
+        petName = petName.replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ_-]/g, '_');
+
+        // Use first chunk's createdAt as session start datetime
+        const sessionStart = rows.length && rows[0].createdAt
+            ? new Date(rows[0].createdAt)
+            : new Date();
+        const dateStr = sessionStart.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
         rows.forEach(r => {
             const ext = (r.mimeType && r.mimeType.includes('mp4')) ? 'mp4' : 'webm';
-            const name = `audio_chunks/${r.sessionId || 'sess'}_chunk_${String(r.chunkIndex).padStart(4, '0')}.${ext}`;
+            const chunkNum = String(r.chunkIndex).padStart(4, '0');
+            const name = `audio_chunks/${petName}+${dateStr}+chunk_${chunkNum}.${ext}`;
             zip.file(name, r.blob);
         });
 
@@ -1232,7 +1250,7 @@ async function exportSavedAudioChunks() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ADA_audio_chunks_${Date.now()}.zip`;
+        a.download = `${petName}_audio_${dateStr}.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

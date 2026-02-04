@@ -235,21 +235,26 @@
                         </div>
                     </div>
 
-                    <!-- Template-specific extra fields (8B) -->
-                    <div id="extrasSection" class="extras-section">
-                        <h4 style="margin: 10px 0 8px;">🧩 Dati clinici specialistici</h4>
+                    <!-- Note interne (non stampate, non visibili al proprietario) -->
+                    <div class="soap-internal-notes" id="internalNotesSection">
+                        <button class="soap-internal-toggle" onclick="toggleInternalNotes()" data-testid="toggle-internal-notes-button">
+                            📝 Note interne (non stampate) <span class="toggle-icon" id="internalNotesToggleIcon">▼</span>
+                        </button>
+                        <div class="soap-internal-body" id="internalNotesBody">
+                            <div class="textarea-wrapper">
+                                <textarea id="soap-internal-notes" rows="6" placeholder="Note ad uso interno: informazioni dalla trascrizione non incluse nel referto, appunti, promemoria..."></textarea>
+                                <button class="expand-btn" onclick="expandTextarea('soap-internal-notes', 'Note interne')" data-testid="expand-internal-notes-button">⛶</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hidden containers for backward compat (extras/checklist data preserved in memory) -->
+                    <div id="extrasSection" class="extras-section" style="display:none;">
                         <div id="extrasFields"></div>
                     </div>
-                    
-                    <!-- Checklist Esame -->
-                    <div class="checklist-collapsible" id="checklistCollapsible">
-                        <button class="checklist-toggle" onclick="toggleChecklist()" data-testid="toggle-checklist-button">
-                            ✅ Checklist (template) <span class="toggle-icon">▼</span>
-                        </button>
+                    <div id="checklistCollapsible" style="display:none;">
                         <div class="checklist-content">
-                            <p style="margin:0 0 10px;color:#666;font-size:12px;">Clicca un item per ciclare: <strong>non deducibile</strong> → <strong>sì</strong> → <strong>no</strong>.</p>
                             <div class="checklist-grid" id="checklistGrid"></div>
-                            <button class="btn btn-secondary btn-small" onclick="resetChecklist()" data-testid="reset-checklist-button">🔄 Reset</button>
                         </div>
                     </div>
                     
@@ -268,7 +273,22 @@
                         </div>
                     </div>
                     
-                    <button class="btn btn-primary btn-inline" style="margin-top: 15px;" onclick="generateOwnerExplanation()" data-testid="generate-owner-explanation-button">👤 Genera Spiegazione Proprietario</button>
+                    <button class="btn btn-primary btn-inline" id="btnGenerateOwnerExplanation" style="margin-top: 15px;" onclick="generateOwnerExplanation()" data-testid="generate-owner-explanation-button">📖 Spiegami il documento</button>
+                </div>
+            </div>
+
+            <!-- Page: SOAP Read-Only (for owner viewing archived reports) -->
+            <div id="page-soap-readonly" class="page">
+                <div class="page-header">
+                    <h2>📋 Referto</h2>
+                </div>
+                <div class="card" id="soapReadonlyCard">
+                    <div id="soapReadonlyContent" class="soap-readonly-content">
+                        <p style="color:#888; text-align:center; padding:20px;">Seleziona un referto dall'Archivio Sanitario.</p>
+                    </div>
+                    <div class="soap-actions" style="margin-top:15px;">
+                        <button class="btn btn-primary btn-inline" id="btnExplainFromReadonly" onclick="generateOwnerExplanationFromReadonly()" data-testid="explain-from-readonly-button">📖 Spiegami il documento</button>
+                    </div>
                 </div>
             </div>
 

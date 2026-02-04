@@ -247,6 +247,20 @@ function navigateToPage(page) {
 
     // Update document AI buttons based on role
     try { updateDocumentButtonsByRole(); } catch(e) {}
+
+    // Hide internal notes from proprietario (only vet sees them on SOAP page)
+    try {
+        const internalNotesSection = document.getElementById('internalNotesSection');
+        if (internalNotesSection) internalNotesSection.style.display = (page === 'soap' && getActiveRole() !== ROLE_PROPRIETARIO) ? '' : 'none';
+    } catch(e) {}
+}
+
+function toggleInternalNotes() {
+    const body = document.getElementById('internalNotesBody');
+    const icon = document.getElementById('internalNotesToggleIcon');
+    if (!body) return;
+    body.classList.toggle('open');
+    if (icon) icon.textContent = body.classList.contains('open') ? '▲' : '▼';
 }
 
 // ============================================
@@ -292,6 +306,18 @@ function applyRoleUI(role) {
 
     // Update document AI buttons based on role
     try { updateDocumentButtonsByRole(); } catch(e) {}
+
+    // Show "Spiegami il documento" on SOAP page only for proprietario
+    try {
+        const explainSoapBtn = document.getElementById('btnGenerateOwnerExplanation');
+        if (explainSoapBtn) explainSoapBtn.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
+    } catch(e) {}
+
+    // Internal notes: only visible to vet
+    try {
+        const internalNotesSection = document.getElementById('internalNotesSection');
+        if (internalNotesSection) internalNotesSection.style.display = (r === ROLE_PROPRIETARIO) ? 'none' : '';
+    } catch(e) {}
 }
 
 function updateDocumentButtonsByRole() {
@@ -2328,6 +2354,12 @@ function loadHistoryById(id) {
         localStorage.setItem('ada_draft_ownerExplanation', item.ownerExplanation || '');
     } catch (e) {}
 
+    // Internal notes (if stored)
+    try {
+        const inEl = document.getElementById('soap-internal-notes');
+        if (inEl) inEl.value = item.internalNotes || '';
+    } catch (e) {}
+
     setPatientData(item.patient || {});
 
     currentTemplate = _getTemplateKeyFromRecord(item);
@@ -2352,7 +2384,15 @@ currentSOAPChecklist = item.checklist || {};
     renderTemplateExtras();
     renderChecklistInSOAP();
     applyHideEmptyVisibility();
-    navigateToPage('soap');
+
+    // Owner sees read-only view; vet sees editable SOAP
+    const role = getActiveRole();
+    if (role === ROLE_PROPRIETARIO) {
+        renderSoapReadonly(item);
+        navigateToPage('soap-readonly');
+    } else {
+        navigateToPage('soap');
+    }
     showToast('Referto caricato', 'success');
 }
 
@@ -2379,12 +2419,92 @@ function deleteHistoryById(id) {
     }
 }
 
-function updateHistoryBadge() { 
+function updateHistoryBadge() {
     const badge = document.getElementById('historyBadge');
-    if (badge) badge.textContent = (historyData || []).length; 
+    if (badge) badge.textContent = (historyData || []).length;
+    const badgeOwner = document.getElementById('historyBadgeOwner');
+    if (badgeOwner) badgeOwner.textContent = (historyData || []).length;
 }
 
+// ============================================
+// SOAP READ-ONLY VIEW (for owner)
+// ============================================
 
+function renderSoapReadonly(item) {
+    const container = document.getElementById('soapReadonlyContent');
+    if (!container) return;
+
+    const soap = _getSoapFromRecord(item);
+    const title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Referto');
+    const patient = item.patient || {};
+    const date = new Date(_getCreatedAtFromRecord(item));
+    const dateStr = date.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const metaParts = [];
+    if (patient.petName) metaParts.push('Paziente: ' + _escapeHtml(patient.petName));
+    if (patient.petSpecies) metaParts.push('Specie: ' + _escapeHtml(patient.petSpecies));
+    if (patient.ownerName) metaParts.push('Proprietario: ' + _escapeHtml(patient.ownerName));
+    metaParts.push('Data: ' + dateStr);
+
+    const sections = [
+        { key: 's', letter: 'S', title: 'Soggettivo', cls: 'soap-ro-s' },
+        { key: 'o', letter: 'O', title: 'Oggettivo', cls: 'soap-ro-o' },
+        { key: 'a', letter: 'A', title: 'Analisi clinica', cls: 'soap-ro-a' },
+        { key: 'p', letter: 'P', title: 'Piano', cls: 'soap-ro-p' }
+    ];
+
+    let html = '';
+    html += '<div class="soap-ro-header">';
+    html += '<h3>' + _escapeHtml(title) + '</h3>';
+    html += '<div class="soap-ro-meta">' + metaParts.join(' &middot; ') + '</div>';
+    html += '</div>';
+
+    for (const sec of sections) {
+        const text = (soap[sec.key] || '').trim();
+        if (!text) continue;
+        html += '<div class="soap-ro-section ' + sec.cls + '">';
+        html += '<span class="soap-ro-letter">' + sec.letter + '</span>';
+        html += '<span class="soap-ro-title">' + sec.title + '</span>';
+        html += '<div class="soap-ro-body">' + _escapeHtml(text) + '</div>';
+        html += '</div>';
+    }
+
+    // Owner explanation if already generated
+    if (item.ownerExplanation && item.ownerExplanation.trim()) {
+        html += '<div class="soap-ro-section" style="border-left-color:#4caf50;">';
+        html += '<span class="soap-ro-letter" style="background:#4caf50;">&#x1f4d6;</span>';
+        html += '<span class="soap-ro-title">Spiegazione</span>';
+        html += '<div class="soap-ro-body">' + _escapeHtml(item.ownerExplanation.trim()) + '</div>';
+        html += '</div>';
+    }
+
+    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.0.0') + ' - AI Driven Abupet</div>';
+
+    container.innerHTML = html;
+
+    // Show/hide explain button depending on role
+    const explainBtn = document.getElementById('btnExplainFromReadonly');
+    if (explainBtn) {
+        explainBtn.style.display = (getActiveRole() === ROLE_PROPRIETARIO) ? '' : 'none';
+    }
+}
+
+function generateOwnerExplanationFromReadonly() {
+    // Use the currently loaded SOAP data (already in textareas from loadHistoryById)
+    const soap = {
+        s: document.getElementById('soap-s')?.value || '',
+        o: document.getElementById('soap-o')?.value || '',
+        a: document.getElementById('soap-a')?.value || '',
+        p: document.getElementById('soap-p')?.value || ''
+    };
+
+    if (!soap.a && !soap.p) {
+        showToast('Nessun referto caricato', 'error');
+        return;
+    }
+
+    generateOwnerExplanation(soap, { navigate: true });
+}
 
 // ============================================
 // MEDICATIONS

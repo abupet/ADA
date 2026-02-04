@@ -640,10 +640,32 @@ async function applyRemotePets(items) {
         }
     } catch (e) {}
 
+    // Collect pet IDs that have pending outbox ops (unsent local changes take priority)
+    const pendingOutboxIds = new Set();
+    try {
+        const txOutbox = petsDB.transaction(OUTBOX_STORE_NAME, 'readonly');
+        const storeOutbox = txOutbox.objectStore(OUTBOX_STORE_NAME);
+        await new Promise((resolve) => {
+            storeOutbox.openCursor().onsuccess = (e) => {
+                const c = e.target.result;
+                if (!c) return resolve();
+                const val = c.value;
+                if (val && val.payload && val.payload.id) {
+                    pendingOutboxIds.add(String(val.payload.id));
+                }
+                c.continue();
+            };
+        });
+    } catch (e) {}
+
     const mergedItems = [];
     for (const item of normalizedItems) {
         if (item.isDelete) {
             mergedItems.push(item);
+            continue;
+        }
+        // Skip merge for pets with pending local changes (outbox wins)
+        if (pendingOutboxIds.has(String(item.id))) {
             continue;
         }
         const existing = await getPetById(item.id);

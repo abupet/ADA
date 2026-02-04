@@ -509,6 +509,9 @@
             separator.innerHTML =
                 '<h3 style="margin:20px 0 10px; font-size:15px; color:#555;">Documenti Caricati</h3>' +
                 html;
+
+            // Update sidebar badge to include document count
+            _updateHistoryBadgeWithDocs(documents.length);
         }).catch(function () {
             // Silent failure - documents section simply not shown
         });
@@ -1058,6 +1061,22 @@
                 console.warn('app-documents: IndexedDB init failed', err);
             }
         });
+    }
+
+    // =========================================================================
+    // Badge helper: update sidebar count = SOAP reports + documents
+    // =========================================================================
+
+    function _updateHistoryBadgeWithDocs(docCount) {
+        var soapCount = 0;
+        try { soapCount = (typeof historyData !== 'undefined' && Array.isArray(historyData)) ? historyData.length : 0; } catch (e) {}
+        var total = soapCount + (docCount || 0);
+        try {
+            var badge = document.getElementById('historyBadge');
+            if (badge) badge.textContent = String(total);
+            var badgeOwner = document.getElementById('historyBadgeOwner');
+            if (badgeOwner) badgeOwner.textContent = String(total);
+        } catch (e) {}
     }
 
     // =========================================================================

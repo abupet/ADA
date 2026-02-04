@@ -55,8 +55,8 @@
 
   function safePushThenPull() {
     try { safePush(); } catch (e) {}
-    // Pull after a short delay to let push begin (push has its own mutex)
-    try { setTimeout(function(){ safePull(false); }, 250); } catch (e) {}
+    // Pull after push has time to complete (push is async with retries up to ~7s)
+    try { setTimeout(function(){ safePull(false); }, 5000); } catch (e) {}
   }
 
   // online: push then pull

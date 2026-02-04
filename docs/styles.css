@@ -1564,3 +1564,108 @@ textarea.readonly-transcription:focus {
     /* Smooth transitions when switching roles */
     transition: opacity 0.15s ease;
 }
+
+/* ============================================
+   SOAP READ-ONLY VIEW (owner)
+   ============================================ */
+
+.soap-readonly-content {
+    padding: 10px 0;
+}
+
+.soap-ro-header {
+    background: var(--primary);
+    color: #fff;
+    padding: 18px 20px;
+    border-radius: 10px 10px 0 0;
+    margin: 0 -15px;
+}
+.soap-ro-header h3 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    font-weight: 700;
+}
+.soap-ro-header .soap-ro-meta {
+    font-size: 13px;
+    opacity: 0.85;
+}
+
+.soap-ro-section {
+    border-left: 4px solid #ccc;
+    padding: 14px 18px;
+    margin: 14px 0;
+    background: #fafafa;
+    border-radius: 0 8px 8px 0;
+    position: relative;
+}
+.soap-ro-section .soap-ro-letter {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 10px;
+    vertical-align: middle;
+}
+.soap-ro-section .soap-ro-title {
+    font-weight: 700;
+    font-size: 15px;
+    display: inline;
+    vertical-align: middle;
+}
+.soap-ro-section .soap-ro-body {
+    margin-top: 10px;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #333;
+}
+.soap-ro-section.soap-ro-s { border-left-color: var(--primary); }
+.soap-ro-section.soap-ro-s .soap-ro-letter { background: var(--primary); }
+.soap-ro-section.soap-ro-o { border-left-color: var(--primary-light); }
+.soap-ro-section.soap-ro-o .soap-ro-letter { background: var(--primary-light); }
+.soap-ro-section.soap-ro-a { border-left-color: var(--accent); }
+.soap-ro-section.soap-ro-a .soap-ro-letter { background: var(--accent); }
+.soap-ro-section.soap-ro-p { border-left-color: var(--accent-light); }
+.soap-ro-section.soap-ro-p .soap-ro-letter { background: var(--accent-light); }
+
+.soap-ro-footer {
+    text-align: center;
+    color: #999;
+    font-size: 12px;
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+}
+
+/* Note interne (non stampate) */
+.soap-internal-notes {
+    margin-top: 14px;
+}
+.soap-internal-toggle {
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 14px;
+    width: 100%;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.soap-internal-toggle:hover {
+    background: #e8e8e8;
+}
+.soap-internal-body {
+    display: none;
+    padding: 10px 0;
+}
+.soap-internal-body.open {
+    display: block;
+}
