@@ -983,6 +983,8 @@ function saveSOAP() {
         else titleDisplay = baseTitle;
     }
 
+    const internalNotes = (document.getElementById('soap-internal-notes')?.value || '').toString();
+
     const record = {
         id: recordId,
         titleDisplay,
@@ -996,7 +998,8 @@ function saveSOAP() {
         patient: getPatientData(),
         diarized: lastTranscriptionDiarized,
         structuredResult: lastSOAPResult,
-        ownerExplanation: ownerExplanation.trim() ? ownerExplanation : ''
+        ownerExplanation: ownerExplanation.trim() ? ownerExplanation : '',
+        internalNotes: internalNotes.trim() ? internalNotes : ''
     };
 
     // Back-compat fields
@@ -1300,12 +1303,14 @@ async function generateOwnerExplanation(soapOverride, options) {
     const vetName = (typeof getVetName === 'function') ? getVetName() : '';
     const signatureHint = vetName ? `
 
-Chiudi con una riga finale: "Firmato: ${vetName}".` : '';
+Chiudi con: "Il team Abupet — in collaborazione con il Dott./Dott.ssa ${vetName}"` : `
 
-    const prompt = `Sei un veterinario che deve spiegare la situazione al proprietario di un animale.
-Basandoti su questo referto SOAP, scrivi una spiegazione CHIARA e RASSICURANTE in italiano.
-Usa un linguaggio semplice, evita termini tecnici complessi.
-Includi: cosa abbiamo trovato, cosa significa, cosa faremo, cosa deve fare il proprietario.${signatureHint}
+Chiudi con: "Il team Abupet"`;
+
+    const prompt = `Scrivi una spiegazione semplice e professionale per il proprietario di un animale, basandoti sul referto SOAP seguente.
+Il tono deve essere rassicurante e chiaro, come se a parlare fosse "il team Abupet" — non il veterinario in prima persona né la clinica.
+Usa un linguaggio comprensibile, evita termini tecnici complessi (o spiegali brevemente).
+Includi: cosa è stato riscontrato, cosa significa, cosa si farà e cosa deve fare il proprietario a casa.${signatureHint}
 
 REFERTO:
 Diagnosi/Analisi clinica: ${soap.a}
@@ -1313,7 +1318,7 @@ Piano: ${soap.p}
 Sintomi riferiti: ${soap.s}
 Esame obiettivo: ${soap.o}
 
-Scrivi la spiegazione per il proprietario:`;
+Scrivi la spiegazione:`;
 
     try {
         const response = await fetchApi('/api/chat', {

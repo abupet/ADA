@@ -51,11 +51,11 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'owner', 'history', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'diary', 'qna', 'qna-pet', 'qna-report', 'tips'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
+        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
     }
 };
