@@ -41,15 +41,18 @@
                 <div id="sidebar-vet" class="sidebar-role-section">
                     <div class="nav-section">VISITA</div>
                     <div class="nav-item" data-page="patient">🐾 Dati Pet</div>
+                    <div class="nav-item" data-page="addpet">➕ Aggiungi Pet</div>
                     <div class="nav-item active" data-page="recording">🎙️ Registrazione</div>
                     <div class="nav-item" data-page="soap">📋 Referto</div>
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
+                    <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
                 <div id="sidebar-owner" class="sidebar-role-section" style="display:none;">
                     <div class="nav-section">I MIEI AMICI ANIMALI</div>
                     <div class="nav-item" data-page="patient">🐾 Dati Pet</div>
+                    <div class="nav-item" data-page="addpet">➕ Aggiungi Pet</div>
                     <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
                     <div class="nav-item" data-page="vitals">📊 Parametri Vitali</div>
                     <div class="nav-item" data-page="medications">💊 Farmaci</div>
@@ -711,10 +714,10 @@
                     </div>
                     
                     <div class="button-row" style="margin-top: 15px;">
-                        <button class="btn btn-primary" onclick="generateDiary()" data-testid="generate-diary-button">🤖 Genera</button>
-                        <button class="btn btn-success" onclick="saveDiary()" data-testid="save-diary-button">💾 Salva</button>
-                        <button class="btn btn-secondary" onclick="exportDiaryTXT()" data-testid="export-diary-txt-button">📄 TXT</button>
-                        <button class="btn btn-secondary" onclick="exportDiaryPDF()" data-testid="export-diary-pdf-button">📑 PDF</button>
+                        <button id="btnGenerateDiary" class="btn btn-primary" onclick="generateDiary()" data-testid="generate-diary-button">🤖 Genera</button>
+                        <button id="btnSaveDiary" class="btn btn-success" onclick="saveDiary()" data-testid="save-diary-button">💾 Salva</button>
+                        <button id="btnExportDiaryTXT" class="btn btn-secondary" onclick="exportDiaryTXT()" data-testid="export-diary-txt-button">📄 TXT</button>
+                        <button id="btnExportDiaryPDF" class="btn btn-secondary" onclick="exportDiaryPDF()" data-testid="export-diary-pdf-button">📑 PDF</button>
                     </div>
                 </div>
             </div>

@@ -7,7 +7,7 @@ let photos = [];
 let vitalsData = [];
 let historyData = [];
 let medications = [];
-let appointments = [];
+let appointments = []; // Legacy - feature removed in v7, kept for data compat
 let checklist = {};
 let currentSOAPChecklist = {};
 let currentTemplateExtras = {};
@@ -151,7 +151,6 @@ async function initApp() {
     renderPhotos();
     renderHistory();
     renderMedications();
-    renderAppointments();
     renderSpeakersSettings();
     restoreSpeakersSectionState();
     updateHistoryBadge();
@@ -253,6 +252,31 @@ function navigateToPage(page) {
         const internalNotesSection = document.getElementById('internalNotesSection');
         if (internalNotesSection) internalNotesSection.style.display = (page === 'soap' && getActiveRole() !== ROLE_PROPRIETARIO) ? '' : 'none';
     } catch(e) {}
+
+    // Diary page: vet sees it read-only, owner can edit/generate
+    if (page === 'diary') {
+        try {
+            const isVet = getActiveRole() === ROLE_VETERINARIO;
+            const diaryTextEl = document.getElementById('diaryText');
+            if (diaryTextEl) diaryTextEl.readOnly = isVet;
+            // Hide generate/save/export buttons for vet
+            ['btnGenerateDiary', 'btnSaveDiary', 'btnExportDiaryTXT', 'btnExportDiaryPDF', 'diaryLangSelector', 'btnSpeakDiary'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = isVet ? 'none' : '';
+            });
+            // Show a read-only notice for vet
+            var roNotice = document.getElementById('diaryVetReadonlyNotice');
+            if (!roNotice && isVet) {
+                roNotice = document.createElement('p');
+                roNotice.id = 'diaryVetReadonlyNotice';
+                roNotice.style.cssText = 'color:#888;font-size:13px;font-style:italic;margin-bottom:10px;';
+                roNotice.textContent = 'Profilo sanitario generato dal proprietario (sola lettura)';
+                var diaryPage = document.getElementById('page-diary');
+                if (diaryPage) diaryPage.insertBefore(roNotice, diaryPage.querySelector('.card') || diaryPage.firstChild.nextSibling);
+            }
+            if (roNotice) roNotice.style.display = isVet ? '' : 'none';
+        } catch(e) {}
+    }
 }
 
 function toggleInternalNotes() {
@@ -357,7 +381,6 @@ const ADA_DRAFT_FIELD_IDS = [
     'soap-s', 'soap-o', 'soap-a', 'soap-p',
     'ownerExplanation',
     'qnaQuestion', 'qnaAnswer',
-    'appointmentDate', 'appointmentTime', 'appointmentReason', 'appointmentNotes',
     'medName', 'medDosage', 'medFrequency', 'medDuration', 'medInstructions'
 ];
 
@@ -2614,131 +2637,8 @@ function deleteMedication(index) {
 }
 
 // ============================================
-// APPOINTMENTS
+// APPOINTMENTS (removed in v7 — redirect only, no UI)
 // ============================================
-
-let editingAppointmentId = null;
-
-function editAppointment(id) {
-    const apt = appointments.find(a => a.id === id);
-    if (!apt) return;
-
-    editingAppointmentId = id;
-    document.getElementById('appointmentDate').value = apt.date || '';
-    document.getElementById('appointmentTime').value = apt.time || '';
-    document.getElementById('appointmentReason').value = apt.reason || '';
-    document.getElementById('appointmentNotes').value = apt.notes || '';
-
-    const cancelBtn = document.getElementById('btnCancelAppointmentEdit');
-    if (cancelBtn) cancelBtn.style.display = '';
-    const saveBtn = document.getElementById('btnSaveAppointment');
-    if (saveBtn) saveBtn.textContent = '💾 Aggiorna';
-
-    showToast('Modifica appuntamento attiva', 'success');
-}
-
-function cancelAppointmentEdit() {
-    editingAppointmentId = null;
-    document.getElementById('appointmentDate').value = '';
-    document.getElementById('appointmentTime').value = '';
-    document.getElementById('appointmentReason').value = '';
-    document.getElementById('appointmentNotes').value = '';
-    const cancelBtn = document.getElementById('btnCancelAppointmentEdit');
-    if (cancelBtn) cancelBtn.style.display = 'none';
-    const saveBtn = document.getElementById('btnSaveAppointment');
-    if (saveBtn) saveBtn.textContent = '💾 Salva';
-}
-
-function saveAppointment() {
-    const date = document.getElementById('appointmentDate').value;
-    const time = document.getElementById('appointmentTime').value;
-    const reason = document.getElementById('appointmentReason').value;
-    const notes = document.getElementById('appointmentNotes').value;
-
-    const apt = {
-        id: editingAppointmentId || Date.now(),
-        date,
-        time,
-        reason,
-        notes
-    };
-    if (!apt.date || !apt.time) { showToast('Inserisci data e ora', 'error'); return; }
-
-    if (editingAppointmentId) {
-        const idx = appointments.findIndex(a => a.id === editingAppointmentId);
-        if (idx >= 0) appointments[idx] = apt;
-        else appointments.push(apt);
-    } else {
-        appointments.push(apt);
-    }
-
-    saveData();
-    renderAppointments();
-    document.getElementById('appointmentDate').value = '';
-    document.getElementById('appointmentTime').value = '';
-    document.getElementById('appointmentReason').value = '';
-    document.getElementById('appointmentNotes').value = '';
-
-    const wasEditing = !!editingAppointmentId;
-    cancelAppointmentEdit();
-    showToast(wasEditing ? 'Appuntamento aggiornato' : 'Appuntamento salvato', 'success');
-}
-
-function renderAppointments() {
-    const list = document.getElementById('appointmentList');
-    if (!list) return;
-    if (appointments.length === 0) {
-        list.innerHTML = '<p style="color:#888;text-align:center;padding:20px;">Nessun appuntamento</p>';
-        return;
-    }
-    const months = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
-    const sorted = [...appointments].sort((a, b) => new Date(a.date + 'T' + a.time) - new Date(b.date + 'T' + b.time));
-    list.innerHTML = sorted.map((apt) => {
-        const date = new Date(apt.date);
-        const originalIndex = appointments.findIndex(a => a.id === apt.id);
-        return `
-            <div class="history-item" style="cursor:default;">
-                <div class="history-date">
-                    <div class="day">${date.getDate()}</div>
-                    <div class="month">${months[date.getMonth()]}</div>
-                </div>
-                <div class="history-info">
-                    <h4>${apt.time} - ${apt.reason || 'Controllo'}</h4>
-                    <p>${apt.notes || ''}</p>
-                </div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="history-delete" onclick="editAppointment(${apt.id})" title="Modifica" style="opacity:1; background:#f0f0f0; color:#333;">✏️</button>
-                    <button class="history-delete" onclick="deleteAppointment(${originalIndex})" title="Elimina" style="opacity:1;">×</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-function deleteAppointment(index) {
-    if (confirm('Eliminare questo appuntamento?')) {
-        appointments.splice(index, 1);
-        saveData();
-        renderAppointments();
-        showToast('Appuntamento eliminato', 'success');
-    }
-}
-
-function addToCalendar() {
-    const apt = {
-        date: document.getElementById('appointmentDate').value,
-        time: document.getElementById('appointmentTime').value,
-        reason: document.getElementById('appointmentReason').value,
-        notes: document.getElementById('appointmentNotes').value
-    };
-    if (!apt.date || !apt.time) { showToast('Inserisci data e ora', 'error'); return; }
-    const patient = getPatientData();
-    const startDate = new Date(apt.date + 'T' + apt.time);
-    const endDate = new Date(startDate.getTime() + 30 * 60000);
-    const formatDate = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Visita - ' + (patient.petName || 'Paziente'))}&dates=${formatDate(startDate)}/${formatDate(endDate)}&details=${encodeURIComponent(apt.reason + '\n' + apt.notes)}`;
-    window.open(url, '_blank');
-}
 
 function openCostsPage() {
     navigateToPage('costs');

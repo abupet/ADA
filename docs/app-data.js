@@ -217,7 +217,8 @@ function loadData() {
     vitalsData = JSON.parse(localStorage.getItem('ada_vitals') || '[]');
     historyData = JSON.parse(localStorage.getItem('ada_history') || '[]');
     medications = JSON.parse(localStorage.getItem('ada_medications') || '[]');
-    appointments = JSON.parse(localStorage.getItem('ada_appointments') || '[]');
+    // appointments removed in v7 — kept for backward compat if stored
+    try { appointments = JSON.parse(localStorage.getItem('ada_appointments') || '[]'); } catch(e) {}
     
     setPatientData(JSON.parse(localStorage.getItem('ada_patient') || '{}'));
     setLifestyleData(JSON.parse(localStorage.getItem('ada_lifestyle') || '{}'));
@@ -246,8 +247,12 @@ async function generateDiary() {
     const historyText = (historyData || []).map(h => {
         const d = new Date(h.createdAt || h.date || Date.now()).toLocaleDateString('it-IT');
         const tk = h.templateKey || h.template || 'generale';
+        const titleRef = (typeof templateTitles !== 'undefined' && templateTitles[tk]) ? templateTitles[tk] : 'Visita';
         const a = ((h.soapData && h.soapData.a) ? h.soapData.a : (h.a || '')).toString();
-        return `${d} - ${templateTitles[tk] || 'Visita'}: ${(a.substring(0, 100) || 'N/D')}`;
+        const p = ((h.soapData && h.soapData.p) ? h.soapData.p : (h.p || '')).toString();
+        const aSnippet = a.substring(0, 200) || 'N/D';
+        const pSnippet = p.substring(0, 100);
+        return `[${d}] ${titleRef}: Analisi: ${aSnippet}` + (pSnippet ? ` | Piano: ${pSnippet}` : '');
     }).join('\n') || 'Nessuno';
     const vitalsText = vitalsData.map(v => `${new Date(v.date).toLocaleDateString('it-IT')}: Peso ${v.weight}kg, T ${v.temp}°C`).join('\n') || 'Nessuno';
     const medsText = medications.map(m => `${m.name} ${m.dosage} ${m.frequency}`).join('\n') || 'Nessuno';
@@ -261,9 +266,14 @@ CONDIZIONI NOTE: ${lifestyle.knownConditions || 'Nessuna'}
 
 PARAMETRI VITALI: ${vitalsText}
 FARMACI: ${medsText}
-STORICO: ${historyText}
+STORICO REFERTI: ${historyText}
 
+ISTRUZIONI:
 Scrivi un profilo sanitario professionale e sintetico.
+Per OGNI informazione clinica rilevante (diagnosi, trattamenti, parametri vitali anomali), indica tra parentesi quadre la FONTE e la DATA da cui è tratta, nel formato [Fonte: <tipo referto>, Data: <gg/mm/aaaa>].
+Esempio: "Il paziente presenta dermatite atopica [Fonte: Visita dermatologica, Data: 15/01/2026]."
+Se un dato proviene dai Parametri Vitali, indica [Fonte: Parametri Vitali, Data: <data>].
+Se un dato proviene dai Farmaci attivi, indica [Fonte: Farmaci in corso].
 Se inserisci una firma, usa il nome veterinario "${vetName || '[Nome del Veterinario]'}" e la data "${generatedDate}".`;
 
     try {

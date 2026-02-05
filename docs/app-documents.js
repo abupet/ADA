@@ -24,7 +24,7 @@
     // =========================================================================
 
     var DB_NAME          = 'ADA_Documents';
-    var DB_VERSION       = 1;
+    var DB_VERSION       = 2;
     var STORE_NAME       = 'documents';
     var BLOBS_STORE_NAME = 'document_blobs'; // offline binary storage
 
@@ -36,9 +36,13 @@
     ];
 
     var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+    var MAX_PDF_PAGES      = 5;
 
     var ROLE_VET   = 'veterinario';
     var ROLE_OWNER = 'proprietario';
+
+    // Offline upload queue store
+    var UPLOAD_QUEUE_STORE = 'upload_queue';
 
     // =========================================================================
     // State
@@ -80,6 +84,10 @@
 
                 if (!db.objectStoreNames.contains(BLOBS_STORE_NAME)) {
                     db.createObjectStore(BLOBS_STORE_NAME, { keyPath: 'document_id' });
+                }
+
+                if (!db.objectStoreNames.contains(UPLOAD_QUEUE_STORE)) {
+                    db.createObjectStore(UPLOAD_QUEUE_STORE, { keyPath: 'document_id' });
                 }
             };
         });
@@ -196,6 +204,137 @@
         }
         return btoa(binary);
     }
+
+    // =========================================================================
+    // PDF page count (lightweight, no external library)
+    // =========================================================================
+
+    /**
+     * Estimate the number of pages in a PDF from its raw bytes.
+     * Counts occurrences of "/Type /Page" (excluding "/Type /Pages") and
+     * falls back to the /Count value in the /Pages dictionary.
+     */
+    function _countPdfPages(arrayBuffer) {
+        try {
+            var bytes = new Uint8Array(arrayBuffer);
+            // Convert a window of bytes to string (PDF internals are ASCII)
+            var text = '';
+            for (var i = 0; i < bytes.length; i++) {
+                text += String.fromCharCode(bytes[i]);
+            }
+            // Method 1: count "/Type /Page" but not "/Type /Pages"
+            var pageMatches = text.match(/\/Type\s*\/Page(?!s)/g);
+            if (pageMatches && pageMatches.length > 0) {
+                return pageMatches.length;
+            }
+            // Method 2: look for /Count in /Pages dict
+            var countMatch = text.match(/\/Count\s+(\d+)/);
+            if (countMatch) {
+                return parseInt(countMatch[1], 10) || 0;
+            }
+        } catch (_) { /* ignore */ }
+        return 0; // unknown
+    }
+
+    // =========================================================================
+    // Offline upload queue
+    // =========================================================================
+
+    function _enqueueForUpload(metadata, base64Data, fileName) {
+        return _openDB().then(function () {
+            return _idbPut(UPLOAD_QUEUE_STORE, {
+                document_id: metadata.document_id,
+                metadata: metadata,
+                base64Data: base64Data,
+                fileName: fileName,
+                queued_at: new Date().toISOString()
+            });
+        });
+    }
+
+    function _dequeueUpload(documentId) {
+        return _openDB().then(function () {
+            return new Promise(function (resolve) {
+                try {
+                    var ref = _txStore(UPLOAD_QUEUE_STORE, 'readwrite');
+                    ref.store.delete(documentId);
+                    ref.tx.oncomplete = function () { resolve(true); };
+                    ref.tx.onerror = function () { resolve(false); };
+                } catch (_) { resolve(false); }
+            });
+        });
+    }
+
+    function _getAllPendingUploads() {
+        return _openDB().then(function () {
+            return new Promise(function (resolve) {
+                try {
+                    var ref = _txStore(UPLOAD_QUEUE_STORE, 'readonly');
+                    var req = ref.store.getAll();
+                    req.onsuccess = function () { resolve(req.result || []); };
+                    req.onerror = function () { resolve([]); };
+                } catch (_) { resolve([]); }
+            });
+        });
+    }
+
+    /**
+     * Process the offline upload queue: attempt to upload each queued document.
+     * Called on 'online' event and after successful uploads.
+     */
+    function _flushUploadQueue() {
+        if (!navigator.onLine) return;
+        if (typeof fetchApi !== 'function') return;
+
+        _getAllPendingUploads().then(function (items) {
+            if (!items || items.length === 0) return;
+
+            // Process sequentially to avoid overloading
+            var chain = Promise.resolve();
+            items.forEach(function (item) {
+                chain = chain.then(function () {
+                    // Reconstruct a File-like Blob from base64
+                    var binaryStr = atob(item.base64Data);
+                    var bytes = new Uint8Array(binaryStr.length);
+                    for (var i = 0; i < binaryStr.length; i++) {
+                        bytes[i] = binaryStr.charCodeAt(i);
+                    }
+                    var blob = new Blob([bytes], { type: item.metadata.mime_type });
+
+                    var formData = new FormData();
+                    formData.append('file', blob, item.fileName || item.metadata.original_filename);
+                    formData.append('document_id', item.metadata.document_id);
+                    formData.append('pet_id', String(item.metadata.pet_id));
+                    formData.append('original_filename', item.metadata.original_filename);
+                    formData.append('mime_type', item.metadata.mime_type);
+                    formData.append('size_bytes', String(item.metadata.size_bytes));
+                    formData.append('hash_sha256', item.metadata.hash_sha256 || '');
+
+                    return fetchApi('/api/documents/upload', {
+                        method: 'POST',
+                        body: formData
+                    }).then(function (response) {
+                        if (response && response.ok) {
+                            return _dequeueUpload(item.document_id).then(function () {
+                                if (typeof showToast === 'function') {
+                                    showToast('Documento in coda caricato: ' + _escapeHtml(item.metadata.original_filename), 'success');
+                                }
+                            });
+                        }
+                    }).catch(function () {
+                        // Still offline or error — keep in queue
+                    });
+                });
+            });
+        }).catch(function () { /* silent */ });
+    }
+
+    // Listen for online event to flush upload queue
+    try {
+        window.addEventListener('online', function () {
+            setTimeout(_flushUploadQueue, 2000);
+        });
+    } catch (_) {}
 
     // =========================================================================
     // HTML escape (matches _escapeHtml in app-core.js)
@@ -348,6 +487,15 @@
         // Read the file as ArrayBuffer for hashing, then as DataURL for storage
         _readFileAsArrayBuffer(file).then(function (arrayBuffer) {
             arrayBufferRef = arrayBuffer;
+
+            // PDF page count validation
+            if (file.type === 'application/pdf') {
+                var pageCount = _countPdfPages(arrayBuffer);
+                if (pageCount > MAX_PDF_PAGES) {
+                    throw new Error('Il PDF ha ' + pageCount + ' pagine. Il limite è ' + MAX_PDF_PAGES + ' pagine.');
+                }
+            }
+
             return _computeSHA256(arrayBuffer);
         }).then(function (hash) {
             // Build metadata record
@@ -400,8 +548,15 @@
                 }
                 return result.metadata;
             }).catch(function () {
-                // Offline or error - document is stored locally, will sync later
-                return result.metadata;
+                // Offline or error — enqueue for later upload
+                return _enqueueForUpload(result.metadata, result.base64Data, file.name || result.metadata.original_filename)
+                    .then(function () {
+                        if (typeof showToast === 'function') {
+                            showToast('Offline: documento salvato in coda. Verrà caricato automaticamente.', 'info');
+                        }
+                        return result.metadata;
+                    })
+                    .catch(function () { return result.metadata; });
             });
         }).then(function (metadata) {
             if (typeof showProgress === 'function') showProgress(false);
@@ -1098,6 +1253,9 @@
 
     // Cleanup hook
     global._cleanupDocumentLoaders = _cleanupDocumentLoaders;
+
+    // Offline upload queue
+    global.flushDocumentUploadQueue = _flushUploadQueue;
 
     // Auto-init when DOM is ready
     if (document.readyState === 'loading') {

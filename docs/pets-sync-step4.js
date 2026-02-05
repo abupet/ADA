@@ -60,37 +60,51 @@ function _uuidv4() {
 function _petToPatch(petLike) {
   // petLike may be: full pet record, or {record}, or {patch}
   const r = petLike && (petLike.record || petLike.patch || petLike);
-  const patient = r && r.patient;
-  if (!patient) return {};
+  if (!r) return {};
+  const patient = r.patient;
 
   const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
 
   const patch = {};
 
-  // Strings: only send if non-empty. Empty strings would otherwise become invalid values (e.g., weight_kg numeric).
-  if (isNonEmptyString(patient.petName)) patch.name = patient.petName.trim();
-  if (isNonEmptyString(patient.petSpecies)) patch.species = patient.petSpecies.trim();
-  if (isNonEmptyString(patient.petBreed)) patch.breed = patient.petBreed.trim();
-  if (isNonEmptyString(patient.petSex)) patch.sex = patient.petSex.trim();
+  if (patient && typeof patient === "object") {
+    // Basic patient fields
+    if (isNonEmptyString(patient.petName)) patch.name = patient.petName.trim();
+    if (isNonEmptyString(patient.petSpecies)) patch.species = patient.petSpecies.trim();
+    if (isNonEmptyString(patient.petBreed)) patch.breed = patient.petBreed.trim();
+    if (isNonEmptyString(patient.petSex)) patch.sex = patient.petSex.trim();
+    if (isNonEmptyString(patient.ownerName)) patch.owner_name = patient.ownerName.trim();
+    if (isNonEmptyString(patient.ownerPhone)) patch.owner_phone = patient.ownerPhone.trim();
+    if (isNonEmptyString(patient.petMicrochip)) patch.microchip = patient.petMicrochip.trim();
 
-  // birthdate: source of truth (YYYY-MM-DD or ISO). Only send if non-empty.
-  const bd = patient.petBirthdate ?? patient.petBirthDate ?? patient.birthdate ?? r.birthdate;
-  if (isNonEmptyString(bd)) patch.birthdate = bd.trim();
+    // birthdate
+    const bd = patient.petBirthdate ?? patient.petBirthDate ?? patient.birthdate ?? r.birthdate;
+    if (isNonEmptyString(bd)) patch.birthdate = bd.trim();
 
-  // weight_kg: accept numbers or numeric strings from either petWeightKg or petWeight
-  const wRaw = patient.petWeightKg ?? patient.petWeight;
-  if (typeof wRaw === "number" && Number.isFinite(wRaw)) {
-    patch.weight_kg = wRaw;
-  } else if (typeof wRaw === "string") {
-    const s = wRaw.trim();
-    if (s) {
-      const n = parseFloat(s.replace(",", "."));
-      if (!Number.isNaN(n) && Number.isFinite(n)) patch.weight_kg = n;
+    // weight_kg
+    const wRaw = patient.petWeightKg ?? patient.petWeight;
+    if (typeof wRaw === "number" && Number.isFinite(wRaw)) {
+      patch.weight_kg = wRaw;
+    } else if (typeof wRaw === "string") {
+      const s = wRaw.trim();
+      if (s) {
+        const n = parseFloat(s.replace(",", "."));
+        if (!Number.isNaN(n) && Number.isFinite(n)) patch.weight_kg = n;
+      }
     }
   }
 
-  // notes: best-effort (diary is a free text)
-  if (typeof r.diary === "string" && r.diary.trim()) patch.notes = r.diary.trim();
+  // Rich data fields — full pet data sync
+  if (typeof r.diary === "string") patch.notes = r.diary;
+  if (r.lifestyle && typeof r.lifestyle === "object") patch.lifestyle = r.lifestyle;
+  if (Array.isArray(r.vitalsData)) patch.vitals_data = r.vitalsData;
+  if (Array.isArray(r.medications)) patch.medications = r.medications;
+  if (Array.isArray(r.historyData)) patch.history_data = r.historyData;
+  // Photos: sync as array (only metadata/URLs, not base64 to limit payload size)
+  if (Array.isArray(r.photos)) patch.photos_count = r.photos.length;
+
+  // Timestamp for last-write-wins
+  if (r.updatedAt) patch.updated_at = r.updatedAt;
 
   return patch;
 }

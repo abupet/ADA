@@ -379,7 +379,9 @@ function normalizePetFromBackend(record, existing) {
     const normalizedName = hasMeaningfulValue(safeRecord.name) ? safeRecord.name : fallbackName;
     const normalizedSpecies = hasMeaningfulValue(safeRecord.species) ? safeRecord.species : fallbackSpecies;
 
-    return {
+    // Map backend field names to local field names
+    const patch = safeRecord.patch || safeRecord;
+    const result = {
         ...safeRecord,
         id,
         name: normalizedName,
@@ -391,11 +393,40 @@ function normalizePetFromBackend(record, existing) {
             petSpecies: hasMeaningfulValue(normalizedSpecies) ? normalizedSpecies : ''
         }
     };
+
+    // Reverse-map backend field names to local field names for rich data
+    if (patch.owner_name && !result.patient.ownerName) result.patient.ownerName = patch.owner_name;
+    if (patch.owner_phone && !result.patient.ownerPhone) result.patient.ownerPhone = patch.owner_phone;
+    if (patch.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = patch.microchip;
+    if (patch.notes !== undefined && !result.diary) result.diary = patch.notes;
+    if (patch.lifestyle && typeof patch.lifestyle === 'object' && !result.lifestyle) result.lifestyle = patch.lifestyle;
+    if (Array.isArray(patch.vitals_data) && !result.vitalsData) result.vitalsData = patch.vitals_data;
+    if (Array.isArray(patch.medications) && !result.medications) result.medications = patch.medications;
+    if (Array.isArray(patch.history_data) && !result.historyData) result.historyData = patch.history_data;
+    if (patch.updated_at) result.updatedAt = patch.updated_at;
+
+    // Extract extra_data from backend record (JSONB column)
+    const extra = patch.extra_data || safeRecord.extra_data;
+    if (extra && typeof extra === 'object') {
+        if (Array.isArray(extra.vitals_data) && !result.vitalsData) result.vitalsData = extra.vitals_data;
+        if (Array.isArray(extra.medications) && !result.medications) result.medications = extra.medications;
+        if (Array.isArray(extra.history_data) && !result.historyData) result.historyData = extra.history_data;
+        if (extra.lifestyle && typeof extra.lifestyle === 'object' && !result.lifestyle) result.lifestyle = extra.lifestyle;
+        if (extra.updated_at && !result.updatedAt) result.updatedAt = extra.updated_at;
+    }
+
+    return result;
 }
 
 function mergePetsForPull(existing, incoming) {
     const safeExisting = existing && typeof existing === 'object' ? existing : {};
     const safeIncoming = incoming && typeof incoming === 'object' ? incoming : {};
+
+    // Last-write-wins: if incoming has a newer updatedAt, its rich data takes priority
+    const existingTs = safeExisting.updatedAt ? new Date(safeExisting.updatedAt).getTime() : 0;
+    const incomingTs = safeIncoming.updatedAt ? new Date(safeIncoming.updatedAt).getTime() : 0;
+    const incomingIsNewer = incomingTs > existingTs;
+
     const merged = {
         ...safeExisting,
         ...filterMeaningfulFields(safeIncoming)
@@ -415,6 +446,22 @@ function mergePetsForPull(existing, incoming) {
     if (mergedPatient.petName === undefined) mergedPatient.petName = '';
     if (mergedPatient.petSpecies === undefined) mergedPatient.petSpecies = '';
     merged.patient = mergedPatient;
+
+    // Rich data merge: last-write-wins for arrays
+    const richFields = ['vitalsData', 'medications', 'historyData', 'diary', 'lifestyle'];
+    for (const field of richFields) {
+        if (safeIncoming[field] !== undefined && incomingIsNewer) {
+            merged[field] = safeIncoming[field];
+        } else if (safeExisting[field] !== undefined) {
+            merged[field] = safeExisting[field];
+        }
+    }
+
+    // Preserve updatedAt (newest wins)
+    if (incomingIsNewer && safeIncoming.updatedAt) {
+        merged.updatedAt = safeIncoming.updatedAt;
+    }
+
     return merged;
 }
 
@@ -691,11 +738,13 @@ async function applyRemotePets(items) {
 
 async function pullPetsIfOnline(options) {
     const force = !!(options && options.force);
+    const returnStats = !!(options && options._returnStats);
+    const stats = { upserted: 0, deleted: 0 };
 
     // Early exit checks (before setting in-flight flag)
-    if (__petsPullInFlight) return;
+    if (__petsPullInFlight) return returnStats ? stats : undefined;
     const now = Date.now();
-    if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return;
+    if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return returnStats ? stats : undefined;
 
     // Check auth before setting flag (prevents smoke-test flakiness)
     try {
@@ -751,15 +800,19 @@ async function pullPetsIfOnline(options) {
             [];
 
         const pulled = unwrapPetsPullResponse(data);
-        if (pulled.deletes && pulled.deletes.length) { for (const delId of pulled.deletes) { try { await deletePetById(delId); } catch(e) {} } }
+        if (pulled.deletes && pulled.deletes.length) {
+            for (const delId of pulled.deletes) { try { await deletePetById(delId); stats.deleted++; } catch(e) {} }
+        }
 
         // Only update cursor after successful apply to avoid data loss on partial failure
         try {
+            stats.upserted = (pulled.upserts || []).length;
             await applyRemotePets(pulled.upserts);
             const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
             if (nextCursor) await setLastPetsCursor(nextCursor);
         } catch (applyError) {
             console.warn('pullPetsIfOnline: applyRemotePets failed, cursor not updated', applyError);
+            stats.upserted = 0;
         }
 
         // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
@@ -777,13 +830,64 @@ async function pullPetsIfOnline(options) {
     } finally {
         __petsPullInFlight = false;
     }
+    return returnStats ? stats : undefined;
 }
 
-async function refreshPetsFromServer() {
-    try { await pullPetsIfOnline({ force: true }); } catch (e) {}
+async function refreshPetsFromServer(showFeedback) {
+    const feedback = showFeedback !== false; // default true
+    let result = { pushed: 0, pulled: 0, errors: 0 };
+
+    // Step 1: Push first (send local changes)
+    try {
+        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+            await window.ADA_PetsSync.pushOutboxIfOnline();
+        }
+    } catch (e) { result.errors++; }
+
+    // Step 2: Count outbox before pull to detect how many were pushed
+    let outboxCountBefore = 0;
+    try {
+        if (petsDB) {
+            await new Promise((resolve) => {
+                const tx = petsDB.transaction(OUTBOX_STORE_NAME, 'readonly');
+                const req = tx.objectStore(OUTBOX_STORE_NAME).count();
+                req.onsuccess = () => { outboxCountBefore = req.result || 0; resolve(); };
+                req.onerror = () => resolve();
+            });
+        }
+    } catch (e) {}
+
+    // Step 3: Pull (receive remote changes)
+    let pullResult = null;
+    try {
+        pullResult = await pullPetsIfOnline({ force: true, _returnStats: true });
+    } catch (e) { result.errors++; }
+
+    if (pullResult) {
+        result.pulled = pullResult.upserted || 0;
+    }
+
     const selectedId = await resolveCurrentPetId();
     try { await rebuildPetSelector(selectedId); } catch (e) {}
     try { await updateSelectedPetHeaders(); } catch (e) {}
+
+    // Step 4: Show toast feedback
+    if (feedback && typeof showToast === 'function') {
+        if (!navigator.onLine) {
+            showToast('Sync: offline, impossibile sincronizzare', 'error');
+        } else if (result.errors > 0) {
+            showToast('Sync: completato con errori', 'error');
+        } else if (result.pulled > 0) {
+            showToast('Sync: ' + result.pulled + ' pet aggiornati dal server', 'success');
+        } else {
+            showToast('Sync: tutto aggiornato, nessuna modifica', 'success');
+        }
+    }
+
+    // Also flush document upload queue
+    try { if (typeof flushDocumentUploadQueue === 'function') flushDocumentUploadQueue(); } catch (e) {}
+
+    return result;
 }
 
 // ============================================
@@ -1136,7 +1240,6 @@ function clearMainPetFields() {
     try { if (typeof initVitalsChart === 'function' && !vitalsChart) initVitalsChart(); } catch (e) {}
     try { if (typeof updateVitalsChart === 'function') updateVitalsChart(); } catch (e) {}
     renderMedications();
-    renderAppointments();
     renderTips();
     updateHistoryBadge();
     // Clear vitals chart
@@ -1166,7 +1269,6 @@ function loadPetIntoMainFields(pet) {
     renderPhotos();
     renderHistory();
     renderMedications();
-    renderAppointments();
     renderTips();
     updateHistoryBadge();
     // Ensure vitals UI always reflects the selected pet (including when empty)
