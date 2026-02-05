@@ -194,6 +194,11 @@ function auditLogMiddleware(req, res, next) {
 
 app.use(auditLogMiddleware);
 
+// --- Telemetry endpoint (accepts & discards frontend observability events) ---
+app.post("/api/telemetry/events", (_req, res) => {
+  res.status(204).end();
+});
+
 // --- Pets routes (offline sync + CRUD) ---
 // CI may run without DATABASE_URL; avoid crashing the server in that case.
 if (process.env.DATABASE_URL) {

@@ -261,7 +261,9 @@
         eventBuffer = [];
 
         try {
-            var url = (global.ADA_API_BASE_URL || '') + TELEMETRY_ENDPOINT;
+            var baseUrl = (typeof API_BASE_URL !== 'undefined') ? API_BASE_URL : (global.ADA_API_BASE_URL || '');
+            if (!baseUrl) return; // No backend configured — skip flush
+            var url = baseUrl + TELEMETRY_ENDPOINT;
             var token = '';
             if (typeof global.getAuthToken === 'function') {
                 token = global.getAuthToken();
