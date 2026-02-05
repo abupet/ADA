@@ -1,4 +1,4 @@
-# ci.yml v4
+# ci.yml v5
 name: CI (PR)
 
 on:
@@ -13,6 +13,8 @@ jobs:
       MODE: MOCK
       STRICT_NETWORK: "0"
       FRONTEND_ORIGIN: "http://localhost:4173"
+      ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+      DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
 
     steps:
       - name: Checkout
