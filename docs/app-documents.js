@@ -404,6 +404,33 @@
         return null;
     }
 
+    /**
+     * Resolve the local pet ID to the server UUID.
+     * Local pets use numeric IDs (IndexedDB autoIncrement), but the backend
+     * requires the UUID pet_id assigned during sync.
+     */
+    function _resolveServerPetId(localPetId) {
+        if (!localPetId) return Promise.resolve(null);
+
+        // Already a UUID string — return as-is
+        if (typeof localPetId === 'string' && /^[0-9a-fA-F]{8}-/.test(localPetId)) {
+            return Promise.resolve(localPetId);
+        }
+
+        // Try to get the pet record and extract server pet_id
+        if (typeof getPetById === 'function') {
+            return getPetById(localPetId).then(function (pet) {
+                if (pet && pet.pet_id) return pet.pet_id;
+                // Fallback: return string version of local ID
+                return String(localPetId);
+            }).catch(function () {
+                return String(localPetId);
+            });
+        }
+
+        return Promise.resolve(String(localPetId));
+    }
+
     // =========================================================================
     // Upload: trigger file input
     // =========================================================================
@@ -466,6 +493,16 @@
 
     function _processUpload(file, petId) {
         if (typeof showProgress === 'function') showProgress(true);
+
+        // Resolve local numeric pet ID to server UUID before proceeding
+        _resolveServerPetId(petId).then(function (resolvedPetId) {
+            _processUploadWithResolvedId(file, resolvedPetId || petId);
+        }).catch(function () {
+            _processUploadWithResolvedId(file, petId);
+        });
+    }
+
+    function _processUploadWithResolvedId(file, petId) {
 
         // Ensure upload loader
         if (!_uploadLoader) {
