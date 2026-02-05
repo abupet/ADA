@@ -1240,7 +1240,6 @@ function clearMainPetFields() {
     try { if (typeof initVitalsChart === 'function' && !vitalsChart) initVitalsChart(); } catch (e) {}
     try { if (typeof updateVitalsChart === 'function') updateVitalsChart(); } catch (e) {}
     renderMedications();
-    renderAppointments();
     renderTips();
     updateHistoryBadge();
     // Clear vitals chart
@@ -1270,7 +1269,6 @@ function loadPetIntoMainFields(pet) {
     renderPhotos();
     renderHistory();
     renderMedications();
-    renderAppointments();
     renderTips();
     updateHistoryBadge();
     // Ensure vitals UI always reflects the selected pet (including when empty)

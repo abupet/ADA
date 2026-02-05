@@ -151,7 +151,6 @@ async function initApp() {
     renderPhotos();
     renderHistory();
     renderMedications();
-    renderAppointments();
     renderSpeakersSettings();
     restoreSpeakersSectionState();
     updateHistoryBadge();
