@@ -1,5 +1,6 @@
-// backend/src/documents.routes.js v1
+// backend/src/documents.routes.js v2
 // Document upload, metadata, download, AI read/explain (PR 8/9)
+// v2: fix document_id mismatch, synchronous read/explain, mock mode support
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -60,7 +61,7 @@ function ensureStorageDir() {
  * Documents router: upload, metadata, download, AI read/explain.
  * Requires multer upload middleware from server.js.
  */
-function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest }) {
+function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest, isMockEnv }) {
   const router = express.Router();
   const pool = getPool();
 
@@ -103,8 +104,10 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
         return res.status(404).json({ error: "pet_not_found" });
       }
 
-      // Generate document ID and hash
-      const document_id = crypto.randomUUID();
+      // Use client-provided document_id if valid UUID, otherwise generate
+      const clientDocId = req.body.document_id;
+      const document_id = (clientDocId && isValidUuid(clientDocId)) ? clientDocId : crypto.randomUUID();
+
       const hash_sha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
 
       // Store file on disk
@@ -114,12 +117,16 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       const filePath = path.join(storageDir, storage_key);
       fs.writeFileSync(filePath, req.file.buffer);
 
-      // Insert DB record
+      // Insert DB record (ON CONFLICT to handle re-uploads of queued documents)
       const { rows } = await pool.query(
         `INSERT INTO documents
           (document_id, pet_id, owner_user_id, original_filename, mime_type,
            size_bytes, storage_key, hash_sha256, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (document_id) DO UPDATE SET
+           storage_key = EXCLUDED.storage_key,
+           hash_sha256 = EXCLUDED.hash_sha256,
+           size_bytes = EXCLUDED.size_bytes
          RETURNING *`,
         [
           document_id,
@@ -192,7 +199,7 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
     }
   });
 
-  // POST /api/documents/:id/read - start AI read job (PR 9)
+  // POST /api/documents/:id/read - synchronous AI read (waits for OpenAI result)
   router.post("/api/documents/:id/read", requireAuth, async (req, res) => {
     try {
       const owner_user_id = req.user?.sub;
@@ -213,19 +220,24 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
         [id]
       );
 
-      // Fire-and-forget AI read
-      processDocumentRead(pool, doc, getOpenAiKey).catch((err) => {
-        console.error("AI read job failed for document", id, err);
-      });
+      // Synchronous AI read — waits for result before responding
+      const result = await processDocumentRead(pool, doc, getOpenAiKey, isMockEnv);
 
-      res.json({ status: "reading", document_id: id });
+      if (result.error) {
+        return res.status(result.statusCode || 500).json({
+          error: result.error,
+          message: result.message,
+        });
+      }
+
+      res.json({ status: "read_complete", document_id: id, read_text: result.text });
     } catch (e) {
       console.error("POST /api/documents/:id/read error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // POST /api/documents/:id/explain - start AI explain job (PR 9)
+  // POST /api/documents/:id/explain - synchronous AI explain (waits for OpenAI result)
   router.post("/api/documents/:id/explain", requireAuth, async (req, res) => {
     try {
       const owner_user_id = req.user?.sub;
@@ -250,12 +262,17 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
         [id]
       );
 
-      // Fire-and-forget AI explain
-      processDocumentExplain(pool, doc, getOpenAiKey).catch((err) => {
-        console.error("AI explain job failed for document", id, err);
-      });
+      // Synchronous AI explain — waits for result before responding
+      const result = await processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv);
 
-      res.json({ status: "explaining", document_id: id });
+      if (result.error) {
+        return res.status(result.statusCode || 500).json({
+          error: result.error,
+          message: result.message,
+        });
+      }
+
+      res.json({ status: "complete", document_id: id, owner_explanation: result.text });
     } catch (e) {
       console.error("POST /api/documents/:id/explain error", e);
       res.status(500).json({ error: "server_error" });
@@ -288,24 +305,132 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
 }
 
 /**
- * Background AI read: extracts text from a document image/PDF via OpenAI vision.
+ * Synchronous AI read: extracts text from a document image/PDF via OpenAI vision.
+ * Returns { text } on success, { error, message, statusCode } on failure.
  */
-async function processDocumentRead(pool, doc, getOpenAiKey) {
+async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
   const oaKey = getOpenAiKey();
+
   if (!oaKey) {
+    // MOCK mode: return mock read text
+    if (isMockEnv) {
+      const mockText = `[MOCK] Testo estratto dal documento "${doc.original_filename}".\n\nQuesto è un referto veterinario di esempio contenente informazioni cliniche sul paziente.`;
+      await pool.query(
+        "UPDATE documents SET read_text = $2, ai_status = 'read_complete', ai_error = NULL, ai_updated_at = NOW() WHERE document_id = $1",
+        [doc.document_id, mockText]
+      );
+      return { text: mockText };
+    }
+
     await pool.query(
       "UPDATE documents SET ai_status = 'error', ai_error = 'openai_key_not_configured', ai_updated_at = NOW() WHERE document_id = $1",
       [doc.document_id]
     );
-    return;
+    return { error: "openai_key_not_configured", message: "OpenAI API key not configured", statusCode: 500 };
   }
 
   try {
     const filePath = path.join(getStoragePath(), doc.storage_key);
+    if (!fs.existsSync(filePath)) {
+      await pool.query(
+        "UPDATE documents SET ai_status = 'error', ai_error = 'file_not_found', ai_updated_at = NOW() WHERE document_id = $1",
+        [doc.document_id]
+      );
+      return { error: "file_not_found", message: "Document file not found on disk", statusCode: 404 };
+    }
+
     const fileBuffer = fs.readFileSync(filePath);
     const base64 = fileBuffer.toString("base64");
-    const dataUri = `data:${doc.mime_type};base64,${base64}`;
 
+    // Build the content parts based on MIME type
+    const contentParts = [
+      { type: "text", text: "Please read and extract all text from this veterinary document. Return only the extracted text, preserving structure where possible." },
+    ];
+
+    if (doc.mime_type === "application/pdf") {
+      // For PDFs: use the file content type (supported by GPT-4o)
+      contentParts.push({
+        type: "file",
+        file: {
+          filename: doc.original_filename || "document.pdf",
+          file_data: `data:application/pdf;base64,${base64}`,
+        },
+      });
+    } else {
+      // For images: use image_url
+      contentParts.push({
+        type: "image_url",
+        image_url: { url: `data:${doc.mime_type};base64,${base64}` },
+      });
+    }
+
+    const payload = {
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a veterinary document reader. Extract all text content from this document. Return only the extracted text, preserving structure where possible.",
+        },
+        {
+          role: "user",
+          content: contentParts,
+        },
+      ],
+      max_tokens: 4096,
+    };
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${oaKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      const errMsg = `OpenAI API error ${response.status}: ${errText}`;
+      console.error("processDocumentRead OpenAI error:", errMsg);
+
+      // If the file content type isn't supported, retry with image_url for PDFs
+      if (doc.mime_type === "application/pdf" && response.status === 400) {
+        console.log("Retrying PDF as image_url fallback...");
+        return await processDocumentReadFallback(pool, doc, oaKey, base64);
+      }
+
+      await pool.query(
+        "UPDATE documents SET ai_status = 'error', ai_error = $2, ai_updated_at = NOW() WHERE document_id = $1",
+        [doc.document_id, errMsg.slice(0, 1000)]
+      );
+      return { error: "openai_error", message: errMsg, statusCode: 502 };
+    }
+
+    const data = await response.json();
+    const readText = data.choices?.[0]?.message?.content || "";
+
+    await pool.query(
+      "UPDATE documents SET read_text = $2, ai_status = 'read_complete', ai_error = NULL, ai_updated_at = NOW() WHERE document_id = $1",
+      [doc.document_id, readText]
+    );
+
+    return { text: readText };
+  } catch (err) {
+    console.error("processDocumentRead error", err);
+    const errMsg = String(err.message || err).slice(0, 1000);
+    await pool.query(
+      "UPDATE documents SET ai_status = 'error', ai_error = $2, ai_updated_at = NOW() WHERE document_id = $1",
+      [doc.document_id, errMsg]
+    );
+    return { error: "read_failed", message: errMsg, statusCode: 500 };
+  }
+}
+
+/**
+ * Fallback for PDFs: try sending as image_url (some OpenAI API versions accept this).
+ */
+async function processDocumentReadFallback(pool, doc, oaKey, base64) {
+  try {
     const payload = {
       model: "gpt-4o",
       messages: [
@@ -317,7 +442,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey) {
           role: "user",
           content: [
             { type: "text", text: "Please read and extract all text from this veterinary document." },
-            { type: "image_url", image_url: { url: dataUri } },
+            { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
           ],
         },
       ],
@@ -335,7 +460,12 @@ async function processDocumentRead(pool, doc, getOpenAiKey) {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${errText}`);
+      const errMsg = `OpenAI fallback error ${response.status}: ${errText}`;
+      await pool.query(
+        "UPDATE documents SET ai_status = 'error', ai_error = $2, ai_updated_at = NOW() WHERE document_id = $1",
+        [doc.document_id, errMsg.slice(0, 1000)]
+      );
+      return { error: "openai_error", message: errMsg, statusCode: 502 };
     }
 
     const data = await response.json();
@@ -345,26 +475,41 @@ async function processDocumentRead(pool, doc, getOpenAiKey) {
       "UPDATE documents SET read_text = $2, ai_status = 'read_complete', ai_error = NULL, ai_updated_at = NOW() WHERE document_id = $1",
       [doc.document_id, readText]
     );
+
+    return { text: readText };
   } catch (err) {
-    console.error("processDocumentRead error", err);
+    const errMsg = String(err.message || err).slice(0, 1000);
     await pool.query(
       "UPDATE documents SET ai_status = 'error', ai_error = $2, ai_updated_at = NOW() WHERE document_id = $1",
-      [doc.document_id, String(err.message || err).slice(0, 1000)]
+      [doc.document_id, errMsg]
     );
+    return { error: "read_failed", message: errMsg, statusCode: 500 };
   }
 }
 
 /**
- * Background AI explain: generates a pet-owner-friendly explanation of extracted text.
+ * Synchronous AI explain: generates a pet-owner-friendly explanation of extracted text.
+ * Returns { text } on success, { error, message, statusCode } on failure.
  */
-async function processDocumentExplain(pool, doc, getOpenAiKey) {
+async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
   const oaKey = getOpenAiKey();
+
   if (!oaKey) {
+    // MOCK mode: return mock explanation
+    if (isMockEnv) {
+      const mockText = `[MOCK] Spiegazione semplificata del documento "${doc.original_filename}".\n\nIl documento contiene informazioni sulla salute del tuo animale. Non sono state riscontrate criticità urgenti.`;
+      await pool.query(
+        "UPDATE documents SET owner_explanation = $2, ai_status = 'complete', ai_error = NULL, ai_updated_at = NOW() WHERE document_id = $1",
+        [doc.document_id, mockText]
+      );
+      return { text: mockText };
+    }
+
     await pool.query(
       "UPDATE documents SET ai_status = 'error', ai_error = 'openai_key_not_configured', ai_updated_at = NOW() WHERE document_id = $1",
       [doc.document_id]
     );
-    return;
+    return { error: "openai_key_not_configured", message: "OpenAI API key not configured", statusCode: 500 };
   }
 
   try {
@@ -394,7 +539,12 @@ async function processDocumentExplain(pool, doc, getOpenAiKey) {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${errText}`);
+      const errMsg = `OpenAI API error ${response.status}: ${errText}`;
+      await pool.query(
+        "UPDATE documents SET ai_status = 'error', ai_error = $2, ai_updated_at = NOW() WHERE document_id = $1",
+        [doc.document_id, errMsg.slice(0, 1000)]
+      );
+      return { error: "openai_error", message: errMsg, statusCode: 502 };
     }
 
     const data = await response.json();
@@ -404,12 +554,16 @@ async function processDocumentExplain(pool, doc, getOpenAiKey) {
       "UPDATE documents SET owner_explanation = $2, ai_status = 'complete', ai_error = NULL, ai_updated_at = NOW() WHERE document_id = $1",
       [doc.document_id, explanation]
     );
+
+    return { text: explanation };
   } catch (err) {
     console.error("processDocumentExplain error", err);
+    const errMsg = String(err.message || err).slice(0, 1000);
     await pool.query(
       "UPDATE documents SET ai_status = 'error', ai_error = $2, ai_updated_at = NOW() WHERE document_id = $1",
-      [doc.document_id, String(err.message || err).slice(0, 1000)]
+      [doc.document_id, errMsg]
     );
+    return { error: "explain_failed", message: errMsg, statusCode: 500 };
   }
 }
 

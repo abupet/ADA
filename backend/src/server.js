@@ -200,7 +200,7 @@ if (process.env.DATABASE_URL) {
   app.use(petsRouter({ requireAuth }));
   app.use(petsSyncRouter({ requireAuth }));
   app.use(syncRouter({ requireAuth }));
-  app.use(documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest }));
+  app.use(documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest, isMockEnv }));
 }
 
 // --- Promo routes (PR 10) - supports mock mode without DATABASE_URL ---
