@@ -379,6 +379,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       max_tokens: 4096,
     };
 
+    console.log("processDocumentRead: calling OpenAI for doc", doc.document_id, "mime:", doc.mime_type);
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -386,7 +387,9 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90_000),
     });
+    console.log("processDocumentRead: OpenAI responded with status", response.status);
 
     if (!response.ok) {
       const errText = await response.text();
@@ -456,6 +459,7 @@ async function processDocumentReadFallback(pool, doc, oaKey, base64) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90_000),
     });
 
     if (!response.ok) {
@@ -535,6 +539,7 @@ async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(90_000),
     });
 
     if (!response.ok) {
