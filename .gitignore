@@ -10,5 +10,8 @@ node_modules/
 test-results/
 playwright-report/
 
+# uploaded files (local server storage)
+uploads/
+
 # gh token for claude
 .claude/settings.local.json
