@@ -56,13 +56,14 @@ const openaiBaseUrl = "https://api.openai.com/v1";
 
 const corsOptions = {
   origin(origin, callback) {
-    // In production, reject requests without Origin header (except in mock/test mode)
+    // Requests without Origin header (same-origin, non-browser clients, or
+    // local dev where the browser may omit Origin for loopback addresses).
+    // Security is enforced by JWT authentication, not by Origin checks.
     if (!origin) {
-      if (isMockEnv) return callback(null, true);
-      return callback(new Error("Origin header required"), false);
+      return callback(null, true);
     }
     if (!FRONTEND_ORIGIN) {
-      return callback(new Error("FRONTEND_ORIGIN is not set"), false);
+      return callback(null, false);
     }
     return callback(null, origin === FRONTEND_ORIGIN);
   },
