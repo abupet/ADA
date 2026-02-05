@@ -309,7 +309,7 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
  * Returns { text } on success, { error, message, statusCode } on failure.
  */
 async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
-  const oaKey = getOpenAiKey();
+  const oaKey = safeGetOpenAiKey(getOpenAiKey);
 
   if (!oaKey) {
     // MOCK mode: return mock read text
@@ -492,7 +492,7 @@ async function processDocumentReadFallback(pool, doc, oaKey, base64) {
  * Returns { text } on success, { error, message, statusCode } on failure.
  */
 async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
-  const oaKey = getOpenAiKey();
+  const oaKey = safeGetOpenAiKey(getOpenAiKey);
 
   if (!oaKey) {
     // MOCK mode: return mock explanation
@@ -564,6 +564,20 @@ async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
       [doc.document_id, errMsg]
     );
     return { error: "explain_failed", message: errMsg, statusCode: 500 };
+  }
+}
+
+/**
+ * Defensive getter for OpenAI key.
+ * Prevents hard failures when router wiring changes and getOpenAiKey is missing.
+ */
+function safeGetOpenAiKey(getOpenAiKey) {
+  try {
+    if (typeof getOpenAiKey !== "function") return null;
+    return getOpenAiKey();
+  } catch (err) {
+    console.error("safeGetOpenAiKey error", err);
+    return null;
   }
 }
 
