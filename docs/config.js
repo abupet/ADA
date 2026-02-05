@@ -39,7 +39,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.0.0';
+const ADA_VERSION = '7.1.0';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -55,7 +55,7 @@ const ROLE_PERMISSIONS = {
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
+        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
     }
 };

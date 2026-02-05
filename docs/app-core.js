@@ -253,28 +253,22 @@ function navigateToPage(page) {
         if (internalNotesSection) internalNotesSection.style.display = (page === 'soap' && getActiveRole() !== ROLE_PROPRIETARIO) ? '' : 'none';
     } catch(e) {}
 
-    // Diary page: vet sees it read-only, owner can edit/generate
+    // Diary page: v7.1.0 dual mode — both vet and owner can generate/save their own profiles
     if (page === 'diary') {
         try {
             const isVet = getActiveRole() === ROLE_VETERINARIO;
             const diaryTextEl = document.getElementById('diaryText');
-            if (diaryTextEl) diaryTextEl.readOnly = isVet;
-            // Hide generate/save/export buttons for vet
+            if (diaryTextEl) diaryTextEl.readOnly = false;
+            // Both roles can use all diary buttons
             ['btnGenerateDiary', 'btnSaveDiary', 'btnExportDiaryTXT', 'btnExportDiaryPDF', 'diaryLangSelector', 'btnSpeakDiary'].forEach(function (id) {
                 var el = document.getElementById(id);
-                if (el) el.style.display = isVet ? 'none' : '';
+                if (el) el.style.display = '';
             });
-            // Show a read-only notice for vet
+            // Load the correct diary content for the current role
+            try { if (typeof loadDiaryForCurrentRole === 'function') loadDiaryForCurrentRole(); } catch(e) {}
+            // Remove legacy read-only notice
             var roNotice = document.getElementById('diaryVetReadonlyNotice');
-            if (!roNotice && isVet) {
-                roNotice = document.createElement('p');
-                roNotice.id = 'diaryVetReadonlyNotice';
-                roNotice.style.cssText = 'color:#888;font-size:13px;font-style:italic;margin-bottom:10px;';
-                roNotice.textContent = 'Profilo sanitario generato dal proprietario (sola lettura)';
-                var diaryPage = document.getElementById('page-diary');
-                if (diaryPage) diaryPage.insertBefore(roNotice, diaryPage.querySelector('.card') || diaryPage.firstChild.nextSibling);
-            }
-            if (roNotice) roNotice.style.display = isVet ? '' : 'none';
+            if (roNotice) roNotice.style.display = 'none';
         } catch(e) {}
     }
 }
@@ -348,8 +342,10 @@ function updateDocumentButtonsByRole() {
     const role = getActiveRole();
     const readBtn = document.getElementById('btnDocRead');
     const explainBtn = document.getElementById('btnDocExplain');
-    if (readBtn) readBtn.disabled = (role !== ROLE_VETERINARIO);
-    if (explainBtn) explainBtn.disabled = false; // both roles can generate explanation
+    // Vet: "Trascrivi" visible, "Spiegami" hidden
+    // Owner: "Trascrivi" hidden, "Spiegami" visible
+    if (readBtn) readBtn.style.display = (role === ROLE_VETERINARIO) ? '' : 'none';
+    if (explainBtn) explainBtn.style.display = (role === ROLE_PROPRIETARIO) ? '' : 'none';
 }
 
 function initRoleSystem() {
@@ -2071,6 +2067,56 @@ function resetSoapDraftLink() {
       localStorage.removeItem('ada_draft_ownerExplanation');
   } catch (e) {}
 
+}
+
+// v7.1.0: "Nuova" button — clear recording + report fields for a fresh visit
+function resetRecordingAndReport() {
+    // Cancel any in-progress transcription / SOAP generation
+    try { if (typeof visitAbortController !== 'undefined' && visitAbortController) visitAbortController.abort(); } catch (e) {}
+
+    // Reset SOAP draft link (editing index, checklist, extras, languages)
+    resetSoapDraftLink();
+
+    // Clear transcription
+    const tt = document.getElementById('transcriptionText');
+    if (tt) tt.value = '';
+    const titleEl = document.getElementById('transcriptionTitle');
+    if (titleEl) titleEl.textContent = '';
+    const statusEl = document.getElementById('recordingStatus');
+    if (statusEl) statusEl.textContent = '';
+
+    // Hide generate / auto-complete rows
+    const genRow = document.getElementById('generateSoapRow');
+    if (genRow) genRow.style.display = 'none';
+    const autoRow = document.getElementById('autoSoapCompleteRow');
+    if (autoRow) autoRow.style.display = 'none';
+
+    // Reset template selector to default
+    const tplSel = document.getElementById('templateSelector');
+    if (tplSel) tplSel.selectedIndex = 0;
+
+    // Clear SOAP fields
+    ['soap-s', 'soap-o', 'soap-a', 'soap-p', 'soap-internal-notes'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    // Reset recording state
+    try {
+        if (typeof audioBlob !== 'undefined') audioBlob = null;
+        if (typeof audioChunks !== 'undefined') audioChunks = [];
+        if (typeof lastTranscriptionResult !== 'undefined') lastTranscriptionResult = null;
+        if (typeof transcriptionSegments !== 'undefined') transcriptionSegments = [];
+    } catch (e) {}
+
+    // Reset record button
+    const rb = document.getElementById('recordBtn');
+    if (rb) { rb.disabled = false; rb.textContent = '🎤'; rb.classList.remove('recording', 'paused'); }
+
+    // Clear draft from IndexedDB
+    try { if (typeof clearVisitDraft === 'function') clearVisitDraft(); } catch (e) {}
+
+    showToast('Nuova visita pronta', 'success');
 }
 
 function _escapeHtml(str) {

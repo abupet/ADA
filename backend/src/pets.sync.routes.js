@@ -142,7 +142,7 @@ function petsSyncRouter({ requireAuth }) {
             continue;
           }
 
-          const allowed = ["name","species","breed","sex","birthdate","weight_kg","notes","owner_name","owner_phone","microchip"];
+          const allowed = ["name","species","breed","sex","birthdate","weight_kg","notes"];
           const next = { ...current };
           for (const k of allowed) {
             if (patch && Object.prototype.hasOwnProperty.call(patch, k)) next[k] = patch[k];
@@ -151,7 +151,7 @@ function petsSyncRouter({ requireAuth }) {
           // Rich data: store as JSONB in extra_data column
           let extraData = current.extra_data || {};
           if (typeof extraData === 'string') try { extraData = JSON.parse(extraData); } catch (_) { extraData = {}; }
-          const richFields = ["vitals_data","medications","history_data","lifestyle","photos_count"];
+          const richFields = ["vitals_data","medications","history_data","lifestyle","photos_count","owner_name","owner_phone","microchip","visit_date","owner_diary"];
           for (const k of richFields) {
             if (patch && patch[k] !== undefined) extraData[k] = patch[k];
           }
@@ -179,7 +179,7 @@ function petsSyncRouter({ requireAuth }) {
         } else {
           // create
           const createExtraData = {};
-          const createRichFields = ["vitals_data","medications","history_data","lifestyle","photos_count"];
+          const createRichFields = ["vitals_data","medications","history_data","lifestyle","photos_count","owner_name","owner_phone","microchip","visit_date","owner_diary"];
           for (const k of createRichFields) {
             if (patch && patch[k] !== undefined) createExtraData[k] = patch[k];
           }

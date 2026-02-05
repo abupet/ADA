@@ -413,6 +413,12 @@ function normalizePetFromBackend(record, existing) {
         if (Array.isArray(extra.history_data) && !result.historyData) result.historyData = extra.history_data;
         if (extra.lifestyle && typeof extra.lifestyle === 'object' && !result.lifestyle) result.lifestyle = extra.lifestyle;
         if (extra.updated_at && !result.updatedAt) result.updatedAt = extra.updated_at;
+        // Fields stored in extra_data (no dedicated SQL column)
+        if (extra.owner_name && !result.patient.ownerName) result.patient.ownerName = extra.owner_name;
+        if (extra.owner_phone && !result.patient.ownerPhone) result.patient.ownerPhone = extra.owner_phone;
+        if (extra.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = extra.microchip;
+        if (extra.visit_date && !result.patient.visitDate) result.patient.visitDate = extra.visit_date;
+        if (extra.owner_diary && !result.ownerDiary) result.ownerDiary = extra.owner_diary;
     }
 
     return result;
@@ -1034,6 +1040,11 @@ async function onPetSelectorChange(selectElement) {
         }
     }
 
+    // v7.1.0: Clear recording and report fields when switching pets
+    try {
+        if (typeof resetRecordingAndReport === 'function') resetRecordingAndReport();
+    } catch (e) {}
+
     // Update header pet indicator across pages
     if (typeof updateSelectedPetHeaders === 'function') {
         await updateSelectedPetHeaders();
@@ -1056,7 +1067,10 @@ async function saveCurrentPetDataSilent() {
         pet.historyData = historyData;
         pet.medications = medications;
         pet.appointments = appointments;
-        pet.diary = document.getElementById('diaryText')?.value || '';
+        // v7.1.0: Save diary to the correct field based on current role
+        const diaryVal = document.getElementById('diaryText')?.value || '';
+        const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+        if (isVet) { pet.diary = diaryVal; } else { pet.ownerDiary = diaryVal; }
         await savePetToDB(pet);
     }
 }
@@ -1099,8 +1113,11 @@ async function saveCurrentPet() {
         pet.historyData = historyData;
         pet.medications = medications;
         pet.appointments = appointments;
-        pet.diary = document.getElementById('diaryText')?.value || '';
-        
+        // v7.1.0: Save diary to the correct field based on current role
+        const diaryVal2 = document.getElementById('diaryText')?.value || '';
+        const isVet2 = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+        if (isVet2) { pet.diary = diaryVal2; } else { pet.ownerDiary = diaryVal2; }
+
         await savePetToDB(pet);
     await enqueueOutbox('update', { id: normalizePetId(selector.value), patch: pet, base_version: pet.version ?? null });
     await rebuildPetSelector(petId);
@@ -1264,8 +1281,12 @@ function loadPetIntoMainFields(pet) {
     // v6.16.4: Tips sono persistiti per pet (lista mostrata)
     try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
     try { if (typeof updateTipsMeta === 'function') updateTipsMeta(); } catch(e) {}
+    // v7.1.0: Load diary based on current role (vet vs owner)
     const diaryEl = document.getElementById('diaryText');
-    if (diaryEl) diaryEl.value = pet.diary || '';
+    if (diaryEl) {
+        const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+        diaryEl.value = isVet ? (pet.diary || '') : (pet.ownerDiary || '');
+    }
     renderPhotos();
     renderHistory();
     renderMedications();
@@ -1357,12 +1378,14 @@ async function saveData() {
 
 async function saveDiary() {
     const diaryText = document.getElementById('diaryText')?.value || '';
+    const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+    const field = isVet ? 'diary' : 'ownerDiary';
     localStorage.setItem('ada_diary', diaryText);
-    
+
     if (currentPetId) {
         const pet = await getPetById(currentPetId);
         if (pet) {
-            pet.diary = diaryText;
+            pet[field] = diaryText;
             pet.updatedAt = new Date().toISOString();
             await savePetToDB(pet);
             showToast('✅ Profilo sanitario salvato', 'success');
@@ -1370,6 +1393,21 @@ async function saveDiary() {
     } else {
         alert('⚠️ Errore: Seleziona un pet prima di salvare il profilo sanitario.');
     }
+}
+
+// v7.1.0: Load the correct diary text based on current role
+async function loadDiaryForCurrentRole() {
+    const diaryEl = document.getElementById('diaryText');
+    if (!diaryEl) return;
+    const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+    if (currentPetId) {
+        const pet = await getPetById(currentPetId);
+        if (pet) {
+            diaryEl.value = isVet ? (pet.diary || '') : (pet.ownerDiary || '');
+            return;
+        }
+    }
+    diaryEl.value = '';
 }
 
 // Keep savePatient for compatibility but redirect to saveCurrentPet
