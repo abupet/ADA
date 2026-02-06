@@ -179,7 +179,7 @@ function petsSyncRouter({ requireAuth }) {
         } else {
           // create
           const createExtraData = {};
-          const createRichFields = ["vitals_data","medications","history_data","lifestyle","photos_count","owner_name","owner_phone","microchip","visit_date","owner_diary"];
+          const createRichFields = ["vitals_data","medications","history_data","lifestyle","photos","photos_count","owner_name","owner_phone","microchip","visit_date","owner_diary"];
           for (const k of createRichFields) {
             if (patch && patch[k] !== undefined) createExtraData[k] = patch[k];
           }
