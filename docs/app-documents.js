@@ -761,7 +761,6 @@
         var readBtn  = document.getElementById('btnDocRead');
         var explBtn  = document.getElementById('btnDocExplain');
         var readRes  = document.getElementById('documentReadResult');
-        var explRes  = document.getElementById('documentExplainResult');
 
         // Reset UI
         if (viewer)  viewer.innerHTML = '<p style="color:#888;">Caricamento documento&hellip;</p>';
@@ -770,7 +769,6 @@
         if (readBtn) readBtn.disabled = true;
         if (explBtn) explBtn.disabled = true;
         if (readRes) readRes.style.display = 'none';
-        if (explRes) explRes.style.display = 'none';
 
         _openDB().then(function () {
             return _idbGet(STORE_NAME, documentId);
@@ -985,17 +983,10 @@
     function _showExistingAIResults(doc) {
         var readRes     = document.getElementById('documentReadResult');
         var readContent = document.getElementById('documentReadContent');
-        var explRes     = document.getElementById('documentExplainResult');
-        var explContent = document.getElementById('documentExplainContent');
 
         if (doc.read_text && readRes && readContent) {
             readContent.textContent = doc.read_text;
             readRes.style.display   = 'block';
-        }
-
-        if (doc.owner_explanation && explRes && explContent) {
-            explContent.textContent = doc.owner_explanation;
-            explRes.style.display   = 'block';
         }
     }
 
@@ -1150,8 +1141,6 @@
 
     function _explainDocumentGenerate(documentId) {
         var explBtn    = document.getElementById('btnDocExplain');
-        var explRes    = document.getElementById('documentExplainResult');
-        var explCont   = document.getElementById('documentExplainContent');
 
         if (explBtn) explBtn.disabled = true;
 
@@ -1203,9 +1192,6 @@
                         return _idbPut(STORE_NAME, doc);
                     }
                 }).then(function () {
-                    // Update UI
-                    if (explCont) explCont.textContent = text;
-                    if (explRes)  explRes.style.display = text ? 'block' : 'none';
                     if (explBtn)  explBtn.disabled = false;
                     if (_explainLoader) _explainLoader.stop();
                     // Save explanation to the Spiegazione Documento page and navigate there
