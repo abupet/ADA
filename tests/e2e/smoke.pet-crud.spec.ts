@@ -147,8 +147,8 @@ test.describe("Pet CRUD with sync", () => {
     }, { timeout: 10_000 }).toBe(0);
 
     // Navigate to pet data page (where delete button lives)
-    await navigateTo(page, "datipet");
-    await expect(page.locator("#page-datipet.active")).toBeVisible({ timeout: 10_000 });
+    await navigateTo(page, "patient");
+    await expect(page.locator("#page-patient.active")).toBeVisible({ timeout: 10_000 });
 
     // Handle confirmation dialog BEFORE clicking
     page.on("dialog", (dialog) => dialog.accept());
