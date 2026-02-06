@@ -267,6 +267,7 @@
                     </div>
                     
                     <button class="btn btn-primary btn-inline" id="btnGenerateOwnerExplanation" style="margin-top: 15px;" onclick="generateOwnerExplanation()" data-testid="generate-owner-explanation-button">📖 Spiegami il documento</button>
+                    <button id="btnTestSoap" class="btn btn-secondary" onclick="testFillSoap()" style="display:none; margin-top:10px;">🧪 Test</button>
                 </div>
             </div>
 
@@ -600,6 +601,7 @@
                     <div class="button-row" style="margin-top: 20px;">
                         <button class="btn btn-success" onclick="saveNewPet()" data-testid="save-new-pet-button">💾 Salva Nuovo Pet</button>
                         <button class="btn btn-danger" onclick="cancelAddPet()" data-testid="cancel-add-pet-button">❌ Annulla</button>
+                        <button id="btnTestAddPet" class="btn btn-secondary" onclick="testFillAddPet()" style="display:none;">🧪 Test</button>
                     </div>
                 </div>
             </div>
@@ -614,6 +616,7 @@
                     <div class="button-row">
                         <button class="btn btn-primary" onclick="document.getElementById('photoInput').click()" data-testid="add-photo-button">📁 Aggiungi foto</button>
                         <button class="btn btn-secondary" onclick="capturePhoto()" data-testid="capture-photo-button">📸 Scatta foto</button>
+                        <button id="btnTestPhotos" class="btn btn-secondary" onclick="testFillPhotos()" style="display:none;">🧪 Test</button>
                         <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="addPhotos(event)">
                     </div>
                     <div id="photoGrid" class="photo-grid"></div>
@@ -652,6 +655,7 @@
                     <div class="button-row" style="margin-top: 10px;">
                         <button class="btn btn-success" onclick="recordVitals()" data-testid="record-vitals-button">📊 Registra</button>
                         <button class="btn btn-danger" onclick="resetVitals()" data-testid="reset-vitals-button">🧹 Azzera</button>
+                        <button id="btnTestVitals" class="btn btn-secondary" onclick="testFillVitals()" style="display:none;">🧪 Test</button>
                     </div>
                     
                     <h3 style="margin-top: 20px;">Storico</h3>
@@ -816,6 +820,7 @@
                 <div class="card">
                     <button class="btn btn-primary" onclick="openMedicationModal()" data-testid="add-medication-button">+ Aggiungi Farmaco</button>
                     <button id="btnSpeakMeds" class="btn btn-secondary" onclick="speakMedications()" data-testid="speak-medications-button">🔊 Leggi Farmaci</button>
+                    <button id="btnTestMeds" class="btn btn-secondary" onclick="testFillMedications()" style="display:none;">🧪 Test</button>
                     <div id="medicationList" class="medication-list"></div>
                 </div>
             </div>
@@ -1126,5 +1131,6 @@
     <script src="app-promo.js"></script>
     <script src="sync-engine.js"></script>
     <script src="app-observability.js"></script>
+    <script src="app-testdata.js"></script>
 </body>
 </html>

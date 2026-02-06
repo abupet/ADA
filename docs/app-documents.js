@@ -744,6 +744,7 @@
         if (!documentId) return;
 
         _currentDocumentId = documentId;
+        if (typeof logDebug === 'function') logDebug('openDocument', 'Opening document: ' + documentId);
 
         if (typeof navigateToPage === 'function') {
             navigateToPage('document');
@@ -787,6 +788,7 @@
             }
 
             // AI buttons - role-based
+            if (typeof logDebug === 'function') logDebug('openDocument', 'ai_status=' + (doc.ai_status || 'none') + ', has_read_text=' + !!doc.read_text + ', has_explanation=' + !!doc.owner_explanation + ', ai_error=' + (doc.ai_error || 'none'));
             _updateAIButtons(doc);
 
             // Show existing AI results
@@ -1106,12 +1108,15 @@
 
     function explainDocument() {
         if (!_currentDocumentId) {
+            if (typeof logDebug === 'function') logDebug('explainDocument', 'No document selected');
             if (typeof showToast === 'function') showToast('Nessun documento selezionato', 'error');
             return;
         }
 
         var role = _getRole();
+        if (typeof logDebug === 'function') logDebug('explainDocument', 'documentId=' + _currentDocumentId + ', role=' + role);
         if (role !== ROLE_OWNER) {
+            if (typeof logDebug === 'function') logDebug('explainDocument', 'Blocked: role is not owner');
             if (typeof showToast === 'function') showToast('Funzione disponibile solo per il proprietario', 'error');
             return;
         }
@@ -1157,6 +1162,7 @@
                 return response.json();
             }).then(function (data) {
                 var text = (data && (data.owner_explanation || data.explanation || data.result)) || '';
+                if (typeof logDebug === 'function') logDebug('explainDocument', 'Success, text length=' + text.length);
 
                 // Persist result locally
                 return _openDB().then(function () {
@@ -1179,6 +1185,7 @@
                 });
             }).catch(function (err) {
                 if (err && err.name === 'AbortError') return;
+                if (typeof logError === 'function') logError('explainDocument', 'Error: ' + ((err && err.message) || 'sconosciuto'));
 
                 // Persist error
                 _openDB().then(function () {
