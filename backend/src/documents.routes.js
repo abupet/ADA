@@ -253,7 +253,26 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       const doc = rows[0];
 
       if (!doc.read_text) {
-        return res.status(400).json({ error: "document_not_read", message: "Run /read first" });
+        // Auto-read the document first (v7.1.0: explain should work even if vet hasn't read it yet)
+        console.log("POST /api/documents/:id/explain - auto-reading document first", id);
+        await pool.query(
+          "UPDATE documents SET ai_status = 'reading', ai_error = NULL, ai_updated_at = NOW() WHERE document_id = $1",
+          [id]
+        );
+        const readResult = await processDocumentRead(pool, doc, getOpenAiKey, isMockEnv);
+        if (readResult.error) {
+          return res.status(readResult.statusCode || 500).json({
+            error: readResult.error,
+            message: readResult.message,
+          });
+        }
+        // Refresh doc with the newly read text
+        const refreshed = await pool.query(
+          "SELECT * FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+          [id, owner_user_id]
+        );
+        if (!refreshed.rows[0]) return res.status(404).json({ error: "not_found" });
+        Object.assign(doc, refreshed.rows[0]);
       }
 
       // Mark as processing
@@ -344,7 +363,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
 
     // Build the content parts based on MIME type
     const contentParts = [
-      { type: "text", text: "Please read and extract all text from this veterinary document. Return only the extracted text, preserving structure where possible." },
+      { type: "text", text: "Leggi ed estrai tutto il testo da questo documento veterinario. Restituisci solo il testo estratto, preservando la struttura dove possibile." },
     ];
 
     if (doc.mime_type === "application/pdf") {
@@ -369,7 +388,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       messages: [
         {
           role: "system",
-          content: "You are a veterinary document reader. Extract all text content from this document. Return only the extracted text, preserving structure where possible.",
+          content: "Sei un lettore di documenti veterinari. Estrai tutto il contenuto testuale da questo documento. Restituisci solo il testo estratto, preservando la struttura dove possibile.",
         },
         {
           role: "user",
@@ -439,12 +458,12 @@ async function processDocumentReadFallback(pool, doc, oaKey, base64) {
       messages: [
         {
           role: "system",
-          content: "You are a veterinary document reader. Extract all text content from this document. Return only the extracted text, preserving structure where possible.",
+          content: "Sei un lettore di documenti veterinari. Estrai tutto il contenuto testuale da questo documento. Restituisci solo il testo estratto, preservando la struttura dove possibile.",
         },
         {
           role: "user",
           content: [
-            { type: "text", text: "Please read and extract all text from this veterinary document." },
+            { type: "text", text: "Leggi ed estrai tutto il testo da questo documento veterinario." },
             { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
           ],
         },

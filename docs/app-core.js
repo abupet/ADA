@@ -633,10 +633,13 @@ async function speakFullscreenText() {
 function initTemplateSelector() {
     // Restore last template
     const savedTemplate = localStorage.getItem('ada_last_template');
+    const selector = document.getElementById('templateSelector');
     if (savedTemplate) {
         currentTemplate = savedTemplate;
-        const selector = document.getElementById('templateSelector');
         if (selector) selector.value = templateTitleFromKey(savedTemplate);
+    } else {
+        currentTemplate = 'generale';
+        if (selector) selector.value = 'Visita Generale';
     }
     applyHideEmptyVisibility();
 }

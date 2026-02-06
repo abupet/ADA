@@ -795,6 +795,16 @@ function saveSOAP() {
         try { migrateLegacyHistoryDataIfNeeded(); } catch (e) {}
     }
 
+    // If Titolo is empty, default to "Visita Generale"
+    var tplSel = document.getElementById('templateSelector');
+    if (tplSel && !tplSel.value.trim()) {
+        tplSel.value = 'Visita Generale';
+        if (typeof onTemplateSelectorInput === 'function') onTemplateSelectorInput('Visita Generale');
+    }
+    if (!currentTemplate) {
+        currentTemplate = 'generale';
+    }
+
     const nowIso = new Date().toISOString();
 
     const soapData = {
