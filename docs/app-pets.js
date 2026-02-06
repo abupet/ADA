@@ -705,7 +705,9 @@ async function applyRemotePets(items) {
     } catch (e) {}
 
     // Collect pet IDs that have pending outbox ops (unsent local changes take priority)
+    // Track op_type so we can distinguish pending deletes from creates/updates
     const pendingOutboxIds = new Set();
+    const pendingDeleteIds = new Set();
     try {
         const txOutbox = petsDB.transaction(OUTBOX_STORE_NAME, 'readonly');
         const storeOutbox = txOutbox.objectStore(OUTBOX_STORE_NAME);
@@ -716,6 +718,9 @@ async function applyRemotePets(items) {
                 const val = c.value;
                 if (val && val.payload && val.payload.id) {
                     pendingOutboxIds.add(String(val.payload.id));
+                    if (val.op_type === 'delete') {
+                        pendingDeleteIds.add(String(val.payload.id));
+                    }
                 }
                 c.continue();
             };
@@ -731,11 +736,14 @@ async function applyRemotePets(items) {
         const existing = await getPetById(item.id);
         const incoming = normalizePetFromBackend(item.entry, existing);
         if (pendingOutboxIds.has(String(item.id))) {
-            // Pet has pending local changes: still merge basic identity fields
-            // (name, species, breed, etc.) from the server if local has none,
-            // but preserve all local rich data (the outbox will push it soon).
+            // If the pending op is a delete, never re-insert server data —
+            // that would resurrect a pet the user just deleted offline.
+            if (pendingDeleteIds.has(String(item.id))) {
+                continue;
+            }
+            // Pet has pending local create/update: accept server data as
+            // baseline only when no local record exists yet.
             if (!existing) {
-                // No local record at all: accept server data as baseline
                 const merged = mergePetsForPull({}, incoming);
                 mergedItems.push({ ...item, entry: merged });
             }
