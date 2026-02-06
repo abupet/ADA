@@ -161,7 +161,7 @@ function applyVersionInfo() {
     if (releaseNotesEl) releaseNotesEl.textContent = ADA_VERSION;
     if (loginVersionEl) loginVersionEl.textContent = 'v' + ADA_VERSION;
     if (document && document.title) {
-        document.title = `ADA v${ADA_VERSION} - AI Driven Abupet`;
+        document.title = `ADA v${ADA_VERSION} - AI Driven AbuPet`;
     }
 }
 
@@ -1966,25 +1966,56 @@ function renderQnaReportDropdown() {
 
     sel.innerHTML = '<option value="">-- Seleziona --</option>';
 
-    if (!Array.isArray(sorted) || sorted.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'Nessun referto in archivio';
-        sel.appendChild(opt);
-        return;
+    // Add SOAP reports
+    if (Array.isArray(sorted) && sorted.length > 0) {
+        sorted.forEach(item => {
+            if (!item || !item.id) return;
+            const date = new Date(_getCreatedAtFromRecord(item));
+            const title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Visita');
+            const patientName = item.patient?.petName || 'Paziente';
+            const diarizedBadge = item.diarized ? '✅' : '📋';
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = `${diarizedBadge} ${date.toLocaleDateString('it-IT')} — ${patientName} — ${title}`;
+            sel.appendChild(opt);
+        });
     }
 
-    sorted.forEach(item => {
-        if (!item || !item.id) return;
-        const date = new Date(_getCreatedAtFromRecord(item));
-        const title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Visita');
-        const patientName = item.patient?.petName || 'Paziente';
-        const diarizedBadge = item.diarized ? '✅' : '⚠️';
+    // Add uploaded documents from IndexedDB
+    if (typeof getDocumentsForPet === 'function' && typeof getCurrentPetId === 'function') {
+        const petId = getCurrentPetId();
+        if (petId) {
+            getDocumentsForPet(petId).then(docs => {
+                if (!Array.isArray(docs) || docs.length === 0) {
+                    if (sel.options.length <= 1) {
+                        const opt = document.createElement('option');
+                        opt.value = '';
+                        opt.textContent = 'Nessun documento in archivio';
+                        sel.appendChild(opt);
+                    }
+                    return;
+                }
+                docs.forEach(doc => {
+                    if (!doc || !doc.document_id) return;
+                    const date = new Date(doc.created_at || Date.now());
+                    const name = doc.original_filename || 'Documento';
+                    const aiIcon = doc.ai_status === 'complete' ? '✅' : '📄';
+                    const opt = document.createElement('option');
+                    opt.value = 'doc:' + doc.document_id;
+                    opt.textContent = `${aiIcon} ${date.toLocaleDateString('it-IT')} — 📎 ${name}`;
+                    sel.appendChild(opt);
+                });
+            }).catch(() => {});
+        }
+    }
+
+    // Show empty message if no SOAP reports at all (docs loaded async above)
+    if ((!Array.isArray(sorted) || sorted.length === 0) && sel.options.length <= 1) {
         const opt = document.createElement('option');
-        opt.value = item.id;
-        opt.textContent = `${diarizedBadge} ${date.toLocaleDateString('it-IT')} — ${patientName} — ${title}`;
+        opt.value = '';
+        opt.textContent = 'Nessun documento in archivio';
         sel.appendChild(opt);
-    });
+    }
 }
 
 async function openOrGenerateOwnerFromSelectedReport() {
@@ -1993,13 +2024,62 @@ async function openOrGenerateOwnerFromSelectedReport() {
     const sel = document.getElementById('qnaReportSelect');
     const id = sel ? sel.value : '';
     if (!id) {
-        showToast('Seleziona un referto', 'error');
+        showToast('Seleziona un documento', 'error');
         return;
     }
 
+    // Handle uploaded documents (prefixed with 'doc:')
+    if (id.startsWith('doc:')) {
+        const docId = id.substring(4);
+        if (typeof getDocumentById !== 'function') {
+            showToast('Modulo documenti non disponibile', 'error');
+            return;
+        }
+        try {
+            const doc = await getDocumentById(docId);
+            if (!doc) {
+                showToast('Documento non trovato', 'error');
+                return;
+            }
+
+            // Clear stale content
+            try {
+                const gc = document.getElementById('glossaryContent');
+                if (gc) gc.innerHTML = '';
+                const fl = document.getElementById('faqList');
+                if (fl) fl.innerHTML = '';
+                const oe = document.getElementById('ownerExplanation');
+                if (oe) oe.value = '';
+                localStorage.removeItem('ada_draft_ownerExplanation');
+            } catch (e) {}
+
+            // If explanation already exists, show it
+            if (doc.owner_explanation && doc.owner_explanation.trim()) {
+                const oe = document.getElementById('ownerExplanation');
+                if (oe) oe.value = doc.owner_explanation;
+                try { localStorage.setItem('ada_draft_ownerExplanation', doc.owner_explanation); } catch (e) {}
+                navigateToPage('owner');
+                showToast('Spiegazione documento aperta', 'success');
+                return;
+            }
+
+            // Need to generate explanation — open the document and trigger explain
+            if (typeof openDocument === 'function') {
+                await openDocument(docId);
+            }
+            if (typeof explainDocument === 'function') {
+                await explainDocument();
+            }
+        } catch (e) {
+            showToast('Errore: ' + e.message, 'error');
+        }
+        return;
+    }
+
+    // Handle SOAP reports
     const index = (historyData || []).findIndex(r => r && r.id === id);
     if (index < 0) {
-        showToast('Referto non trovato', 'error');
+        showToast('Documento non trovato', 'error');
         return;
     }
 
@@ -2046,7 +2126,7 @@ async function openOrGenerateOwnerFromSelectedReport() {
         if (oe) oe.value = item.ownerExplanation;
         try { localStorage.setItem('ada_draft_ownerExplanation', item.ownerExplanation); } catch (e) {}
         navigateToPage('owner');
-        showToast('Spiegazione proprietario aperta', 'success');
+        showToast('Spiegazione documento aperta', 'success');
         return;
     }
 
@@ -2081,7 +2161,7 @@ function renderHistory() {
     list.innerHTML = sorted.map((item) => {
         const id = item.id;
         const date = new Date(_getCreatedAtFromRecord(item));
-        const diarizedBadge = item.diarized ? '✅' : '⚠️';
+        const diarizedBadge = item.diarized ? '✅' : '📋';
         const title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Visita');
         const patientName = item.patient?.petName || 'Paziente';
         const aText = (item.soapData?.a || item.a || '').trim();
@@ -2187,10 +2267,25 @@ function deleteHistoryById(id) {
 }
 
 function updateHistoryBadge() {
+    const soapCount = (historyData || []).length;
     const badge = document.getElementById('historyBadge');
-    if (badge) badge.textContent = (historyData || []).length;
     const badgeOwner = document.getElementById('historyBadgeOwner');
-    if (badgeOwner) badgeOwner.textContent = (historyData || []).length;
+
+    // Set immediate count from SOAP reports
+    if (badge) badge.textContent = soapCount;
+    if (badgeOwner) badgeOwner.textContent = soapCount;
+
+    // Also count uploaded documents asynchronously
+    if (typeof getDocumentsForPet === 'function' && typeof getCurrentPetId === 'function') {
+        const petId = getCurrentPetId();
+        if (petId) {
+            getDocumentsForPet(petId).then(docs => {
+                const total = soapCount + (Array.isArray(docs) ? docs.length : 0);
+                if (badge) badge.textContent = total;
+                if (badgeOwner) badgeOwner.textContent = total;
+            }).catch(() => {});
+        }
+    }
 }
 
 // ============================================
@@ -2245,7 +2340,7 @@ function renderSoapReadonly(item) {
         html += '</div>';
     }
 
-    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.0.0') + ' - AI Driven Abupet</div>';
+    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.0.0') + ' - AI Driven AbuPet</div>';
 
     container.innerHTML = html;
 

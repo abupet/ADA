@@ -1021,7 +1021,7 @@ function exportPDF() {
     // Footer
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
-    doc.text('Trascritto con ADA v6.16.2 - AI Driven Abupet', 105, 290, { align: 'center' });
+    doc.text('Trascritto con ADA v6.16.2 - AI Driven AbuPet', 105, 290, { align: 'center' });
 
     doc.save('referto_' + (patient?.petName || 'paziente') + '.pdf');
     showToast('PDF esportato', 'success');
@@ -1058,14 +1058,17 @@ async function generateOwnerExplanation(soapOverride, options) {
     const vetName = (typeof getVetName === 'function') ? getVetName() : '';
     const signatureHint = vetName ? `
 
-Chiudi con: "Il team Abupet — in collaborazione con il Dott./Dott.ssa ${vetName}"` : `
+Chiudi con: "Il team AbuPet — in collaborazione con il Dott./Dott.ssa ${vetName}"` : `
 
-Chiudi con: "Il team Abupet"`;
+Chiudi con: "Il team AbuPet"`;
 
     const prompt = `Scrivi una spiegazione semplice e professionale per il proprietario di un animale, basandoti sul referto SOAP seguente.
-Il tono deve essere rassicurante e chiaro, come se a parlare fosse "il team Abupet" — non il veterinario in prima persona né la clinica.
-Usa un linguaggio comprensibile, evita termini tecnici complessi (o spiegali brevemente).
-Includi: cosa è stato riscontrato, cosa significa, cosa si farà e cosa deve fare il proprietario a casa.${signatureHint}
+Parla a nome del "team AbuPet": il team spiega e informa, ma NON visita, NON diagnostica, NON prescrive.
+Usa sempre la terza persona per il veterinario: "il veterinario ha notato che…", "il veterinario ha riscontrato…", "durante la visita è emerso che…".
+NON usare "abbiamo riscontrato", "abbiamo notato", "la nostra diagnosi" — il team AbuPet non è il veterinario.
+Usa espressioni come "è consigliabile…", "il veterinario consiglia…", "potrebbe essere utile…".
+Il tono deve essere rassicurante, empatico e chiaro. Evita termini tecnici complessi (o spiegali brevemente tra parentesi).
+Includi: cosa ha riscontrato il veterinario, cosa significa per l'animale, quali sono i prossimi passi e cosa deve fare il proprietario a casa.${signatureHint}
 
 REFERTO:
 Diagnosi/Analisi clinica: ${soap.a}
@@ -1202,7 +1205,7 @@ function exportOwnerPDF() {
     // Footer (versione corretta)
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
-    doc.text('Generato con ADA v6.16.2 - AI Driven Abupet', 105, 290, { align: 'center' });
+    doc.text('Generato con ADA v6.16.2 - AI Driven AbuPet', 105, 290, { align: 'center' });
 
     doc.save('spiegazione_' + (patient?.petName || 'paziente') + '.pdf');
     showToast('PDF esportato', 'success');

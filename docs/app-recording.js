@@ -34,6 +34,7 @@ let globalSegmentIndex = 0;
 let chunkQueue = []; // pending chunks to transcribe
 let chunkInFlight = 0;
 let chunkResults = new Map(); // chunkIndex -> {text, segments, minutes}
+let _lastChunkFinalizedResolve = null; // signal: onstop handler completed
 
 // Persistence (IndexedDB)
 const ADA_VISIT_DRAFT_DB = 'ADA_VisitDraft';
@@ -492,7 +493,13 @@ function resetTimer() {
     document.getElementById('timer').textContent = '00:00';
 }
 
-// Visualizer
+// Visualizer + low voice detection
+let _lowVoiceFrames = 0;
+let _normalVoiceFrames = 0;
+const LOW_VOICE_THRESHOLD = 15;       // avg amplitude below this = "too low"
+const LOW_VOICE_TRIGGER_FRAMES = 90;  // ~1.5s of low voice at 60fps
+const NORMAL_VOICE_CLEAR_FRAMES = 30; // ~0.5s of normal voice to clear warning
+
 function updateVisualizer() {
     if (!analyser) return;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -502,12 +509,44 @@ function updateVisualizer() {
         const value = dataArray[i] || 0;
         bar.style.height = Math.max(5, value / 5) + 'px';
     });
+
+    // Low voice detection (only while recording)
+    if (isRecording && !isPaused) {
+        const avg = dataArray.reduce((sum, v) => sum + v, 0) / (dataArray.length || 1);
+        const warning = document.getElementById('lowVoiceWarning');
+        if (avg < LOW_VOICE_THRESHOLD) {
+            _lowVoiceFrames++;
+            _normalVoiceFrames = 0;
+            if (_lowVoiceFrames >= LOW_VOICE_TRIGGER_FRAMES && warning) {
+                warning.style.display = 'block';
+                warning.style.opacity = '1';
+            }
+        } else {
+            _normalVoiceFrames++;
+            _lowVoiceFrames = 0;
+            if (_normalVoiceFrames >= NORMAL_VOICE_CLEAR_FRAMES && warning) {
+                warning.style.opacity = '0.3';
+                // Fully hide after fade
+                setTimeout(() => {
+                    if (_normalVoiceFrames >= NORMAL_VOICE_CLEAR_FRAMES && warning) {
+                        warning.style.display = 'none';
+                    }
+                }, 400);
+            }
+        }
+    }
+
     animationId = requestAnimationFrame(updateVisualizer);
 }
 
 function resetVisualizer() {
     const bars = document.querySelectorAll('.visualizer-bar');
     bars.forEach(bar => bar.style.height = '5px');
+    // Reset low voice warning
+    _lowVoiceFrames = 0;
+    _normalVoiceFrames = 0;
+    const warning = document.getElementById('lowVoiceWarning');
+    if (warning) { warning.style.display = 'none'; warning.style.opacity = '1'; }
 }
 
 // ============================================
@@ -703,6 +742,12 @@ async function _startNewChunkRecorder() {
         currentChunkBytes = 0;
         chunkSplitInProgress = false;
 
+        // Signal that last chunk has been finalized and enqueued
+        if (_lastChunkFinalizedResolve) {
+            _lastChunkFinalizedResolve();
+            _lastChunkFinalizedResolve = null;
+        }
+
         // If user requested stop, do not restart
         if (chunkStopRequested) {
             return;
@@ -770,9 +815,15 @@ async function stopChunkingRecording(force = false) {
     const statusEl = document.getElementById('recordingStatus');
     if (statusEl) statusEl.textContent = '⏳ Stop... chiudo ultimo chunk';
 
-    // Finalize last chunk
+    // Finalize last chunk — wait for onstop to fire and enqueue it before draining
+    let lastChunkPromise = null;
     try {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            lastChunkPromise = new Promise(resolve => {
+                _lastChunkFinalizedResolve = resolve;
+                // Safety timeout: if onstop doesn't fire within 3s, proceed anyway
+                setTimeout(() => { _lastChunkFinalizedResolve = null; resolve(); }, 3000);
+            });
             try { mediaRecorder.requestData(); } catch (e) {}
             try { mediaRecorder.stop(); } catch (e) {}
         }
@@ -787,6 +838,11 @@ async function stopChunkingRecording(force = false) {
     isRecording = false;
     isPaused = false;
     stopTimer();
+
+    // Wait for last chunk onstop to complete (enqueue) before draining the queue
+    if (lastChunkPromise) {
+        try { await lastChunkPromise; } catch (e) {}
+    }
 
     // Wait for transcription queue to drain
     await waitForChunkQueueToDrain({ force });

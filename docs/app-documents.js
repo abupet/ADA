@@ -680,9 +680,14 @@
                 var name  = _escapeHtml(doc.original_filename || 'Documento');
 
                 var aiIcon = '';
-                if (doc.ai_status === 'completed') aiIcon = '&#x2705;';       // checkmark
+                if (doc.ai_status === 'complete' || doc.ai_status === 'completed') aiIcon = '&#x2705;';       // checkmark
                 else if (doc.ai_status === 'error')  aiIcon = '&#x26A0;&#xFE0F;'; // warning
                 else                                  aiIcon = '&#x1F4C4;';    // page icon
+
+                // Debug logging for document icon state (when Debug flag is ON)
+                if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
+                    console.log('ERRORE CARICAMENTO DOCUMENTO debug:', doc.document_id, 'ai_status=' + doc.ai_status, 'ai_error=' + (doc.ai_error || 'none'));
+                }
 
                 return '<div class="history-item" onclick="openDocument(\'' + _escapeHtml(doc.document_id) + '\')">' +
                     '<div class="history-date">' +
@@ -1058,7 +1063,7 @@
                 }).then(function (doc) {
                     if (doc) {
                         doc.read_text     = text;
-                        doc.ai_status     = 'completed';
+                        doc.ai_status     = 'complete';
                         doc.ai_error      = null;
                         doc.ai_updated_at = new Date().toISOString();
                         return _idbPut(STORE_NAME, doc);
@@ -1170,7 +1175,7 @@
                 }).then(function (doc) {
                     if (doc) {
                         doc.owner_explanation = text;
-                        doc.ai_status         = 'completed';
+                        doc.ai_status         = 'complete';
                         doc.ai_error          = null;
                         doc.ai_updated_at     = new Date().toISOString();
                         return _idbPut(STORE_NAME, doc);

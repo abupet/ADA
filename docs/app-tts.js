@@ -201,12 +201,33 @@ async function playNextChunk(lang = 'IT') {
             updateSpeakButtons();
         };
         
-        // Small delay to avoid cutting the first syllable on some browsers
-        setTimeout(() => {
-            if (currentAudio) {
-                currentAudio.play().catch(() => {});
-            }
-        }, 150);
+        // Wait for audio to be fully buffered before playing, to avoid cutting the first syllable
+        await new Promise((resolve) => {
+            if (!currentAudio) { resolve(); return; }
+            const audio = currentAudio;
+            const onReady = () => {
+                audio.removeEventListener('canplaythrough', onReady);
+                clearTimeout(fallback);
+                // Additional small delay for mobile browsers
+                setTimeout(() => {
+                    if (currentAudio === audio) {
+                        audio.play().catch(() => {});
+                    }
+                    resolve();
+                }, 80);
+            };
+            audio.addEventListener('canplaythrough', onReady);
+            // Fallback if canplaythrough doesn't fire (e.g. already buffered)
+            const fallback = setTimeout(() => {
+                audio.removeEventListener('canplaythrough', onReady);
+                if (currentAudio === audio) {
+                    audio.play().catch(() => {});
+                }
+                resolve();
+            }, 500);
+            // Trigger loading
+            audio.load();
+        });
         updateSpeakButtons();
 
         // Track usage (approx. tokens)

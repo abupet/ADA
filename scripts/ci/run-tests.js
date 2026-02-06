@@ -25,7 +25,7 @@ if (!onlyLong) {
   steps.push({
     name: "Regression tests",
     command: "npx",
-    args: ["playwright", "test"],
+    args: ["playwright", "test", "--grep-invert", "@smoke|@long|@deployed"],
   });
 }
 
