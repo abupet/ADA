@@ -957,15 +957,15 @@
         var role    = _getRole();
 
         if (readBtn) {
-            // Only veterinario can trigger a read
-            readBtn.disabled = (role !== ROLE_VET);
-            readBtn.style.display = '';
+            // v7.1.0: Only vet sees "Trascrivi"
+            readBtn.disabled = false;
+            readBtn.style.display = (role === ROLE_VET) ? '' : 'none';
         }
 
         if (explBtn) {
-            // Only proprietario can trigger an explanation
-            explBtn.disabled = (role !== ROLE_OWNER);
-            explBtn.style.display = '';
+            // v7.1.0: Only owner sees "Spiegami il documento"
+            explBtn.disabled = false;
+            explBtn.style.display = (role === ROLE_OWNER) ? '' : 'none';
         }
 
         // Both roles can see existing results (handled by _showExistingAIResults)

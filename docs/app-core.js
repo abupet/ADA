@@ -2070,7 +2070,8 @@ function resetSoapDraftLink() {
 }
 
 // v7.1.0: "Nuova" button — clear recording + report fields for a fresh visit
-function resetRecordingAndReport() {
+function resetRecordingAndReport(options) {
+    var opts = options || {};
     // Cancel any in-progress transcription / SOAP generation
     try { if (typeof visitAbortController !== 'undefined' && visitAbortController) visitAbortController.abort(); } catch (e) {}
 
@@ -2116,7 +2117,7 @@ function resetRecordingAndReport() {
     // Clear draft from IndexedDB
     try { if (typeof clearVisitDraft === 'function') clearVisitDraft(); } catch (e) {}
 
-    showToast('Nuova visita pronta', 'success');
+    if (!opts.silent) showToast('Nuova visita pronta', 'success');
 }
 
 function _escapeHtml(str) {
