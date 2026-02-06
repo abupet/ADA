@@ -253,6 +253,30 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
 
 app.post("/api/chat", async (req, res) => {
   try {
+    const oaKey = getOpenAiKey();
+    if (!oaKey && isMockEnv) {
+      // Return a mock SOAP-like response so the full pipeline works in CI
+      return res.status(200).json({
+        id: "mock-chat",
+        object: "chat.completion",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: JSON.stringify({
+                S: "[MOCK] Soggettivo: il proprietario riferisce sintomi generici.",
+                O: "[MOCK] Oggettivo: visita clinica nella norma.",
+                A: "[MOCK] Assessment: nessuna patologia evidente.",
+                P: "[MOCK] Piano: controllo tra 6 mesi.",
+              }),
+            },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      });
+    }
     return await proxyOpenAiRequest(res, "chat/completions", req.body);
   } catch (error) {
     return res.status(500).json({ error: "Chat proxy failed" });

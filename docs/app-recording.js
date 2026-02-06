@@ -34,6 +34,7 @@ let globalSegmentIndex = 0;
 let chunkQueue = []; // pending chunks to transcribe
 let chunkInFlight = 0;
 let chunkResults = new Map(); // chunkIndex -> {text, segments, minutes}
+let _lastChunkFinalizedResolve = null; // signal: onstop handler completed
 
 // Persistence (IndexedDB)
 const ADA_VISIT_DRAFT_DB = 'ADA_VisitDraft';
@@ -703,6 +704,12 @@ async function _startNewChunkRecorder() {
         currentChunkBytes = 0;
         chunkSplitInProgress = false;
 
+        // Signal that last chunk has been finalized and enqueued
+        if (_lastChunkFinalizedResolve) {
+            _lastChunkFinalizedResolve();
+            _lastChunkFinalizedResolve = null;
+        }
+
         // If user requested stop, do not restart
         if (chunkStopRequested) {
             return;
@@ -770,9 +777,15 @@ async function stopChunkingRecording(force = false) {
     const statusEl = document.getElementById('recordingStatus');
     if (statusEl) statusEl.textContent = '⏳ Stop... chiudo ultimo chunk';
 
-    // Finalize last chunk
+    // Finalize last chunk — wait for onstop to fire and enqueue it before draining
+    let lastChunkPromise = null;
     try {
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            lastChunkPromise = new Promise(resolve => {
+                _lastChunkFinalizedResolve = resolve;
+                // Safety timeout: if onstop doesn't fire within 3s, proceed anyway
+                setTimeout(() => { _lastChunkFinalizedResolve = null; resolve(); }, 3000);
+            });
             try { mediaRecorder.requestData(); } catch (e) {}
             try { mediaRecorder.stop(); } catch (e) {}
         }
@@ -787,6 +800,11 @@ async function stopChunkingRecording(force = false) {
     isRecording = false;
     isPaused = false;
     stopTimer();
+
+    // Wait for last chunk onstop to complete (enqueue) before draining the queue
+    if (lastChunkPromise) {
+        try { await lastChunkPromise; } catch (e) {}
+    }
 
     // Wait for transcription queue to drain
     await waitForChunkQueueToDrain({ force });
