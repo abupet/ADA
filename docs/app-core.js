@@ -1973,7 +1973,7 @@ function renderQnaReportDropdown() {
             const date = new Date(_getCreatedAtFromRecord(item));
             const title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Visita');
             const patientName = item.patient?.petName || 'Paziente';
-            const diarizedBadge = item.diarized ? '✅' : '⚠️';
+            const diarizedBadge = item.diarized ? '✅' : '📋';
             const opt = document.createElement('option');
             opt.value = item.id;
             opt.textContent = `${diarizedBadge} ${date.toLocaleDateString('it-IT')} — ${patientName} — ${title}`;
@@ -2161,7 +2161,7 @@ function renderHistory() {
     list.innerHTML = sorted.map((item) => {
         const id = item.id;
         const date = new Date(_getCreatedAtFromRecord(item));
-        const diarizedBadge = item.diarized ? '✅' : '⚠️';
+        const diarizedBadge = item.diarized ? '✅' : '📋';
         const title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Visita');
         const patientName = item.patient?.petName || 'Paziente';
         const aText = (item.soapData?.a || item.a || '').trim();
