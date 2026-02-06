@@ -309,12 +309,15 @@ body {
 }
 .textarea-wrapper textarea {
     width: 100%;
-    padding: 12px;
-    padding-right: 40px;
+    padding: 8px;
+    padding-right: 36px;
     border: 1px solid #ddd;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 14px;
     resize: vertical;
+}
+.soap-section .textarea-wrapper textarea {
+    min-height: 80px;
 }
 .expand-btn {
     position: absolute;
@@ -418,24 +421,25 @@ body {
 
 /* SOAP */
 .soap-section {
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 15px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
     position: relative;
 }
-.soap-section label { font-weight: 600; display: block; margin-bottom: 8px; }
+.soap-section label { font-weight: 600; display: block; margin-bottom: 4px; font-size: 13px; }
 .soap-label {
     position: absolute;
-    top: 10px;
-    right: 15px;
-    width: 30px;
-    height: 30px;
+    top: 6px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
     font-weight: bold;
+    font-size: 12px;
 }
 .soap-s { background: rgba(30, 58, 95, 0.1); }
 .soap-s .soap-label { background: var(--primary); }

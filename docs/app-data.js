@@ -286,10 +286,10 @@ ${patientInfo}
 
 ISTRUZIONI:
 Scrivi un profilo sanitario comprensibile per il proprietario. Usa un linguaggio semplice e rassicurante.
-Il tono deve essere impersonale, come se a scrivere fosse "il team Abupet".
+Il tono deve essere impersonale, come se a scrivere fosse "il team AbuPet".
 Spiega in modo chiaro: stato di salute generale, eventuali condizioni in corso, farmaci e cosa deve fare il proprietario.
 Evita termini tecnici complessi (o spiegali brevemente tra parentesi).
-Chiudi con: "Il team Abupet".`;
+Chiudi con: "Il team AbuPet".`;
     }
 
     try {

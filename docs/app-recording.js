@@ -493,7 +493,13 @@ function resetTimer() {
     document.getElementById('timer').textContent = '00:00';
 }
 
-// Visualizer
+// Visualizer + low voice detection
+let _lowVoiceFrames = 0;
+let _normalVoiceFrames = 0;
+const LOW_VOICE_THRESHOLD = 15;       // avg amplitude below this = "too low"
+const LOW_VOICE_TRIGGER_FRAMES = 90;  // ~1.5s of low voice at 60fps
+const NORMAL_VOICE_CLEAR_FRAMES = 30; // ~0.5s of normal voice to clear warning
+
 function updateVisualizer() {
     if (!analyser) return;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -503,12 +509,44 @@ function updateVisualizer() {
         const value = dataArray[i] || 0;
         bar.style.height = Math.max(5, value / 5) + 'px';
     });
+
+    // Low voice detection (only while recording)
+    if (isRecording && !isPaused) {
+        const avg = dataArray.reduce((sum, v) => sum + v, 0) / (dataArray.length || 1);
+        const warning = document.getElementById('lowVoiceWarning');
+        if (avg < LOW_VOICE_THRESHOLD) {
+            _lowVoiceFrames++;
+            _normalVoiceFrames = 0;
+            if (_lowVoiceFrames >= LOW_VOICE_TRIGGER_FRAMES && warning) {
+                warning.style.display = 'block';
+                warning.style.opacity = '1';
+            }
+        } else {
+            _normalVoiceFrames++;
+            _lowVoiceFrames = 0;
+            if (_normalVoiceFrames >= NORMAL_VOICE_CLEAR_FRAMES && warning) {
+                warning.style.opacity = '0.3';
+                // Fully hide after fade
+                setTimeout(() => {
+                    if (_normalVoiceFrames >= NORMAL_VOICE_CLEAR_FRAMES && warning) {
+                        warning.style.display = 'none';
+                    }
+                }, 400);
+            }
+        }
+    }
+
     animationId = requestAnimationFrame(updateVisualizer);
 }
 
 function resetVisualizer() {
     const bars = document.querySelectorAll('.visualizer-bar');
     bars.forEach(bar => bar.style.height = '5px');
+    // Reset low voice warning
+    _lowVoiceFrames = 0;
+    _normalVoiceFrames = 0;
+    const warning = document.getElementById('lowVoiceWarning');
+    if (warning) { warning.style.display = 'none'; warning.style.opacity = '1'; }
 }
 
 // ============================================
