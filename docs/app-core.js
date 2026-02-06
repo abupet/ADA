@@ -8,9 +8,6 @@ let vitalsData = [];
 let historyData = [];
 let medications = [];
 let appointments = []; // Legacy - feature removed in v7, kept for data compat
-let checklist = {};
-let currentSOAPChecklist = {};
-let currentTemplateExtras = {};
 let hideEmptyFields = false;
 let vitalsChart = null;
 let currentEditingSOAPIndex = -1;
@@ -20,8 +17,6 @@ let fullscreenTargetId = null;
 let lastResetDate = null;
 let tipsData = [];
 let debugLogEnabled = true;
-let checklistLabelTranslations = {};
-let extraLabelTranslations = {};
 
 // ============================================
 // JSON EXTRACTION HELPERS (robust parsing from model output)
@@ -410,53 +405,9 @@ function _draftKeyForTemplate(templateKey) {
     return `ada_draft_tpl_${petKey}_${tpl}`;
 }
 
-function saveTemplateDraftState() {
-    try {
-        const key = _draftKeyForTemplate(currentTemplate);
-        const payload = {
-            extras: (currentTemplateExtras && typeof currentTemplateExtras === 'object') ? currentTemplateExtras : {},
-            checklist: (currentSOAPChecklist && typeof currentSOAPChecklist === 'object') ? currentSOAPChecklist : {},
-            savedAt: new Date().toISOString()
-        };
-        localStorage.setItem(key, JSON.stringify(payload));
-    } catch (e) {
-        // non-fatal
-    }
-}
-
-function scheduleTemplateDraftSave() {
-    try {
-        if (_templateDraftSaveTimer) clearTimeout(_templateDraftSaveTimer);
-        _templateDraftSaveTimer = setTimeout(() => {
-            saveTemplateDraftState();
-            _templateDraftSaveTimer = null;
-        }, 300);
-    } catch (e) {}
-}
-
-function restoreTemplateDraftState(options) {
-    const opts = options || {};
-    const templateKey = (opts.templateKey || currentTemplate || 'generale').toString();
-    const force = !!opts.force;
-
-    // Avoid overwriting a populated state unless forced
-    const extrasIsEmpty = !currentTemplateExtras || Object.keys(currentTemplateExtras || {}).length === 0;
-    const checklistIsEmpty = !currentSOAPChecklist || Object.keys(currentSOAPChecklist || {}).length === 0;
-    if (!force && (!extrasIsEmpty || !checklistIsEmpty)) return;
-
-    try {
-        const key = _draftKeyForTemplate(templateKey);
-        const raw = localStorage.getItem(key);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-            currentTemplateExtras = (parsed.extras && typeof parsed.extras === 'object') ? parsed.extras : {};
-            currentSOAPChecklist = (parsed.checklist && typeof parsed.checklist === 'object') ? parsed.checklist : {};
-        }
-    } catch (e) {
-        // non-fatal
-    }
-}
+function saveTemplateDraftState() {}
+function scheduleTemplateDraftSave() {}
+function restoreTemplateDraftState() {}
 
 function saveTextDrafts() {
     try {
@@ -467,8 +418,6 @@ function saveTextDrafts() {
             localStorage.setItem(`ada_draft_${id}`, el.value);
         });
 
-        // Template-specific drafts (extras/checklist)
-        saveTemplateDraftState();
     } catch (e) {
         // non-fatal
     }
@@ -496,10 +445,6 @@ function restoreTextDrafts() {
         }
         applyTranscriptionUI();
 
-        // Restore template-specific extras/checklist drafts if present
-        restoreTemplateDraftState({ force: false });
-        renderTemplateExtras();
-        renderChecklistInSOAP();
         applyHideEmptyVisibility();
     } catch (e) {
         // non-fatal
@@ -693,12 +638,6 @@ function initTemplateSelector() {
         const selector = document.getElementById('templateSelector');
         if (selector) selector.value = templateTitleFromKey(savedTemplate);
     }
-    // Restore draft extras/checklist for this template (if any)
-    restoreTemplateDraftState({ force: false });
-
-    // Render template-specific UI (extras + checklist)
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
 }
 
@@ -733,16 +672,6 @@ function onTemplateChange(value) {
     currentTemplate = value;
     localStorage.setItem('ada_last_template', value);
 
-    // Reset template-specific state (8B)
-    currentTemplateExtras = {};
-    currentSOAPChecklist = {};
-    scheduleTemplateDraftSave();
-
-    // Restore drafts for the newly selected template
-    restoreTemplateDraftState({ templateKey: value, force: true });
-
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
 }
 
@@ -1125,7 +1054,6 @@ function initHideEmptyToggle() {
         if (!el) return;
         el.addEventListener('input', () => {
             if (hideEmptyFields) applyHideEmptyVisibility();
-            else applyMissingHighlights();
         });
     });
 
@@ -1135,72 +1063,7 @@ function initHideEmptyToggle() {
 function setHideEmptyFields(enabled) {
     hideEmptyFields = !!enabled;
     try { localStorage.setItem(ADA_HIDE_EMPTY_KEY, hideEmptyFields ? 'true' : 'false'); } catch (e) {}
-    // Re-render to apply hiding and missing highlights correctly
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
-}
-
-function _getTemplateConfigSafe() {
-    try {
-        if (typeof TEMPLATE_CONFIGS !== 'undefined' && TEMPLATE_CONFIGS && TEMPLATE_CONFIGS[currentTemplate]) {
-            return TEMPLATE_CONFIGS[currentTemplate];
-        }
-    } catch (e) {}
-    return null;
-}
-
-function renderTemplateExtras() {
-    const container = document.getElementById('extrasFields');
-    const section = document.getElementById('extrasSection');
-    if (!container || !section) return;
-
-    const cfg = (typeof _get8BTemplateConfig === 'function') ? _get8BTemplateConfig() : null;
-    if (!cfg || !Array.isArray(cfg.extraFields) || cfg.extraFields.length === 0) {
-        section.style.display = 'none';
-        container.innerHTML = '';
-        return;
-    }
-
-    section.style.display = '';
-
-    container.innerHTML = cfg.extraFields.map(f => {
-        const key = (f.key || '').toString();
-        const id = `extra_${key}`;
-        const rawLabel = (f.label || key).toString();
-        const label = getTemplateLabelTranslation('extras', key, rawLabel);
-        const hint = (f.hint || '').toString();
-        const value = ((currentTemplateExtras && currentTemplateExtras[key]) ? currentTemplateExtras[key] : '').toString();
-
-        const placeholder = hint.replace(/"/g, '&quot;');
-        const labelForOnclick = label.replace(/'/g, "\\'");
-        const safeValue = value.replace(/<\/textarea/gi, '<\/textarea');
-
-        return `
-            <div class="extra-field" data-extra-field="${key}">
-                <label>${label}</label>
-                <div class="textarea-wrapper">
-                    <textarea id="${id}" rows="3" placeholder="${placeholder}"
-                        oninput="updateExtraField('${key}', this.value)">${safeValue}</textarea>
-                    <button class="expand-btn" onclick="expandTextarea('${id}', '${labelForOnclick}')">⛶</button>
-                </div>
-                ${hint ? `<span class="hint">${hint}</span>` : ''}
-            </div>
-        `;
-    }).join('');
-
-    applyMissingHighlights();
-}
-
-function applyMissingHighlights() {
-    // SOAP sections
-    ['soap-s', 'soap-o', 'soap-a', 'soap-p'].forEach(id => {
-        const ta = document.getElementById(id);
-        if (!ta) return;
-        const wrapper = ta.closest('.soap-section');
-        const empty = !String(ta.value || '').trim();
-        if (wrapper) wrapper.classList.toggle('missing', empty && !hideEmptyFields);
-    });
 }
 
 function applyHideEmptyVisibility() {
@@ -1214,113 +1077,17 @@ function applyHideEmptyVisibility() {
         wrapper.style.display = (hideEmptyFields && empty) ? 'none' : '';
         wrapper.classList.toggle('missing', empty && !hideEmptyFields);
     });
-
-    // Extras fields
-    const extrasSection = document.getElementById('extrasSection');
-    const extrasContainer = document.getElementById('extrasFields');
-    if (extrasSection && extrasContainer) {
-        const fieldDivs = Array.from(extrasContainer.querySelectorAll('[data-extra-field]'));
-        let anyVisible = false;
-        fieldDivs.forEach(div => {
-            const key = div.getAttribute('data-extra-field');
-            const ta = div.querySelector('textarea');
-            const empty = !String(ta?.value || '').trim();
-            div.style.display = (hideEmptyFields && empty) ? 'none' : '';
-            if (ta) ta.classList.toggle('missing', empty && !hideEmptyFields);
-            if (div.style.display !== 'none') anyVisible = true;
-        });
-        extrasSection.style.display = anyVisible ? '' : (hideEmptyFields ? 'none' : '');
-    }
-
-    // Checklist items are hidden/shown in renderChecklistInSOAP; ensure missing highlights consistent
-    renderChecklistInSOAP();
 }
 
-// ============================================
-// CHECKLIST (Template-specific)
-// ============================================
-
-function initChecklist() {
-    // Restore open/closed state
-    try {
-        const open = localStorage.getItem('ada_checklist_open') === 'true';
-        const el = document.getElementById('checklistCollapsible');
-        if (el) el.classList.toggle('open', open);
-    } catch (e) {}
-
-    try { renderChecklistInSOAP(); } catch (e) {}
-}
-
-function toggleChecklist() {
-    const el = document.getElementById('checklistCollapsible');
-    if (!el) return;
-    el.classList.toggle('open');
-    try { localStorage.setItem('ada_checklist_open', el.classList.contains('open') ? 'true' : 'false'); } catch (e) {}
-}
-
-function resetChecklist() {
-    currentSOAPChecklist = {};
-    try { renderChecklistInSOAP(); } catch (e) {}
-    try { scheduleTemplateDraftSave(); } catch (e) {}
-}
-
-function toggleChecklistItem(key) {
-    const k = String(key || '').trim();
-    if (!k) return;
-    const cur = currentSOAPChecklist?.[k];
-
-    // tri-state: undefined -> true -> false -> undefined
-    let next;
-    if (cur === true) next = false;
-    else if (cur === false) next = undefined;
-    else next = true;
-
-    if (next === undefined) {
-        try { delete currentSOAPChecklist[k]; } catch (e) {}
-    } else {
-        currentSOAPChecklist[k] = next;
-    }
-
-    try { renderChecklistInSOAP(); } catch (e) {}
-    try { scheduleTemplateDraftSave(); } catch (e) {}
-}
-
-function renderChecklistInSOAP() {
-    const grid = document.getElementById('checklistGrid');
-    if (!grid) return;
-
-    const cfg = _getTemplateConfigSafe();
-    const items = (cfg && Array.isArray(cfg.checklistItems)) ? cfg.checklistItems : [];
-    if (!items.length) {
-        grid.innerHTML = '<p style="color:#888;margin:0;">Nessuna checklist per questo template</p>';
-        return;
-    }
-
-    const st = (currentSOAPChecklist && typeof currentSOAPChecklist === 'object') ? currentSOAPChecklist : {};
-
-    // Build DOM with data-key to avoid inline onclick quote issues
-    grid.innerHTML = items.map(it => {
-        const key = String(it.key ?? '').trim();
-        const rawLabel = (it.label || key).toString();
-        const label = _escapeHtml(getTemplateLabelTranslation('checklist', key, rawLabel));
-        const val = st[key];
-        const cls = val === true ? 'checked' : (val === false ? 'unchecked' : '');
-        const badge = val === true ? '✓' : (val === false ? '✗' : '•');
-
-        // Escape attribute double-quotes minimally
-        const safeKey = key.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        return `<button type="button" class="checklist-item ${cls}" data-key="${safeKey}">${badge} ${label}</button>`;
-    }).join('');
-
-    // Bind click handlers
-    grid.querySelectorAll('.checklist-item').forEach(el => {
-        el.addEventListener('click', (ev) => {
-            const k = el.getAttribute('data-key') || '';
-            toggleChecklistItem(k);
-        });
-    });
-}
+// Stubs for backward compat (functions may be called from archived data)
+function renderTemplateExtras() {}
+function renderChecklistInSOAP() {}
+function applyMissingHighlights() {}
+function initChecklist() {}
+function toggleChecklist() {}
+function resetChecklist() {}
+function toggleChecklistItem() {}
+function updateExtraField() {}
 
 
 // ============================================
@@ -1923,76 +1690,6 @@ function syncLangSelectorsForCurrentDoc() {
     setActiveLangButton('diaryLangSelector', getStoredLangForSelector('diaryLangSelector'));
 }
 
-function _getTemplateTranslationStore(store, lang) {
-    const tpl = (currentTemplate || 'generale').toString();
-    if (!store[tpl]) store[tpl] = {};
-    if (!store[tpl][lang]) store[tpl][lang] = {};
-    return store[tpl][lang];
-}
-
-function getTemplateLabelTranslation(kind, key, fallback) {
-    const lang = getStoredLangForSelector('soapLangSelector');
-    if (lang === 'IT') return fallback;
-    const store = kind === 'extras' ? extraLabelTranslations : checklistLabelTranslations;
-    const tpl = (currentTemplate || 'generale').toString();
-    const translated = store?.[tpl]?.[lang]?.[key];
-    return translated || fallback;
-}
-
-async function translateExtrasValues(lang) {
-    const container = document.getElementById('extrasFields');
-    if (!container) return;
-    const fields = Array.from(container.querySelectorAll('[data-extra-field]'));
-    for (const field of fields) {
-        const key = field.getAttribute('data-extra-field');
-        const ta = field.querySelector('textarea');
-        const value = (ta?.value || '').trim();
-        if (!key || !value) continue;
-        const translated = await translateText(value, lang);
-        if (ta) ta.value = translated;
-        if (currentTemplateExtras && typeof currentTemplateExtras === 'object') {
-            currentTemplateExtras[key] = translated;
-        }
-    }
-    try { scheduleTemplateDraftSave(); } catch (e) {}
-    try { applyHideEmptyVisibility(); } catch (e) {}
-}
-
-async function translateTemplateLabels(lang) {
-    const cfg = _getTemplateConfigSafe();
-    if (!cfg) return;
-
-    if (lang === 'IT') {
-        const tpl = (currentTemplate || 'generale').toString();
-        if (extraLabelTranslations[tpl]) delete extraLabelTranslations[tpl][lang];
-        if (checklistLabelTranslations[tpl]) delete checklistLabelTranslations[tpl][lang];
-        try { renderTemplateExtras(); } catch (e) {}
-        try { renderChecklistInSOAP(); } catch (e) {}
-        return;
-    }
-
-    const extras = Array.isArray(cfg.extraFields) ? cfg.extraFields : [];
-    const checklistItems = Array.isArray(cfg.checklistItems) ? cfg.checklistItems : [];
-    const extrasStore = _getTemplateTranslationStore(extraLabelTranslations, lang);
-    const checklistStore = _getTemplateTranslationStore(checklistLabelTranslations, lang);
-
-    for (const f of extras) {
-        const key = (f.key || '').toString();
-        if (!key || extrasStore[key]) continue;
-        const label = (f.label || key).toString();
-        extrasStore[key] = await translateText(label, lang);
-    }
-
-    for (const it of checklistItems) {
-        const key = (it.key || '').toString();
-        if (!key || checklistStore[key]) continue;
-        const label = (it.label || key).toString();
-        checklistStore[key] = await translateText(label, lang);
-    }
-
-    try { renderTemplateExtras(); } catch (e) {}
-    try { renderChecklistInSOAP(); } catch (e) {}
-}
 
 function initLanguageSelectors() {
     document.querySelectorAll('.lang-selector').forEach(selector => {
@@ -2016,8 +1713,6 @@ function initLanguageSelectors() {
                             const field = document.getElementById(fieldId);
                             if (field && field.value.trim()) field.value = await translateText(field.value, lang);
                         }
-                        await translateExtrasValues(lang);
-                        await translateTemplateLabels(lang);
                     } else if (selectorId === 'ownerLangSelector') {
                         const field = document.getElementById('ownerExplanation');
                         if (field && field.value.trim()) field.value = await translateText(field.value, lang);
@@ -2075,11 +1770,6 @@ async function translateText(text, targetLang) {
 function resetSoapDraftLink() {
     currentEditingSOAPIndex = -1;
     currentEditingHistoryId = null;
-  // v6.16.3: new visit should start clean (extras + checklist)
-  currentTemplateExtras = {};
-  currentSOAPChecklist = {};
-  try { renderTemplateExtras && renderTemplateExtras(); } catch(e) {}
-  try { renderChecklistInSOAP && renderChecklistInSOAP(); } catch(e) {}
   storeLangForSelector('soapLangSelector', 'IT');
   storeLangForSelector('ownerLangSelector', 'IT');
   syncLangSelectorsForCurrentDoc();
@@ -2325,27 +2015,15 @@ async function openOrGenerateOwnerFromSelectedReport() {
     currentEditingHistoryId = id;
     syncLangSelectorsForCurrentDoc();
 
-    currentTemplateExtras = item.extras || {};
-    currentSOAPChecklist = item.checklist || {};
     lastTranscriptionDiarized = item.diarized || false;
     lastSOAPResult = item.structuredResult || null;
 
-    // Sync template selector + render template-specific UI for this archived report
+    // Sync template selector
     try {
         const selector = document.getElementById('templateSelector');
         if (selector) selector.value = templateTitleFromKey(currentTemplate);
     } catch (e) {}
-    try { renderTemplateExtras(); } catch (e) {}
-    try { renderChecklistInSOAP(); } catch (e) {}
     try { applyHideEmptyVisibility(); } catch (e) {}
-
-    try {
-        renderChecklistInSOAP();
-        // Keep template-specific extras in sync when the user later opens the SOAP page
-        if (typeof renderTemplateExtras === 'function') renderTemplateExtras();
-        if (typeof applyHideEmptyVisibility === 'function') applyHideEmptyVisibility();
-        if (typeof applyMissingHighlights === 'function') applyMissingHighlights();
-    } catch (e) {}
 
     // Clear glossary/FAQ to avoid stale content
     try {
@@ -2459,8 +2137,6 @@ function loadHistoryById(id) {
 
     
   // v6.16.3: restore per-report specialist extras
-  currentTemplateExtras = (item.extras && typeof item.extras === 'object') ? item.extras : {};
-currentSOAPChecklist = item.checklist || {};
     lastTranscriptionDiarized = item.diarized || false;
     lastSOAPResult = item.structuredResult || null;
 
@@ -2470,8 +2146,6 @@ currentSOAPChecklist = item.checklist || {};
         if (selector) selector.value = templateTitleFromKey(currentTemplate);
     } catch (e) {}
 
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
 
     // Owner sees read-only view; vet sees editable SOAP
