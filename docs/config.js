@@ -1,4 +1,4 @@
-// ADA v7.0.0 - Configuration
+// ADA v7.1.0 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 

@@ -454,7 +454,7 @@ function mergePetsForPull(existing, incoming) {
     merged.patient = mergedPatient;
 
     // Rich data merge: last-write-wins for arrays
-    const richFields = ['vitalsData', 'medications', 'historyData', 'diary', 'lifestyle'];
+    const richFields = ['vitalsData', 'medications', 'historyData', 'diary', 'ownerDiary', 'lifestyle'];
     for (const field of richFields) {
         if (safeIncoming[field] !== undefined && incomingIsNewer) {
             merged[field] = safeIncoming[field];
@@ -1042,7 +1042,7 @@ async function onPetSelectorChange(selectElement) {
 
     // v7.1.0: Clear recording and report fields when switching pets
     try {
-        if (typeof resetRecordingAndReport === 'function') resetRecordingAndReport();
+        if (typeof resetRecordingAndReport === 'function') resetRecordingAndReport({ silent: true });
     } catch (e) {}
 
     // Update header pet indicator across pages

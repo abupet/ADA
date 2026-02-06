@@ -37,7 +37,7 @@
     var THRESHOLDS = [
         { from: 0,  to: 5,  text: 'In attesa di risposta\u2026' },
         { from: 6,  to: 30, text: 'Elaborazione in corso\u2026 ({s}s)' },
-        { from: 31, to: 60, text: 'La risposta sta impiegando pi\u00f9 del previsto\u2026 ({s}s)' }
+        { from: 31, to: 89, text: 'La risposta sta impiegando pi\u00f9 del previsto\u2026 ({s}s)' }
     ];
     var TIMEOUT_TEXT  = 'Problema di comunicazione.';
     var HARD_TIMEOUT  = 120; // seconds (backend OpenAI timeout is 90s)
