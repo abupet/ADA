@@ -522,11 +522,11 @@ async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
       messages: [
         {
           role: "system",
-          content: "You are a veterinary assistant. Explain the following veterinary document content to a pet owner in clear, simple language. Highlight any important findings, diagnoses, medications, or follow-up actions.",
+          content: "Sei un assistente veterinario. Spiega il contenuto del documento veterinario al proprietario dell'animale in modo chiaro e semplice. Il tono deve essere impersonale e rassicurante, come se a parlare fosse 'il team Abupet' — non il veterinario in prima persona né la clinica. Evidenzia risultati importanti, diagnosi, farmaci e azioni da seguire. Chiudi con: 'Il team Abupet'.",
         },
         {
           role: "user",
-          content: `Please explain this veterinary document to me as a pet owner:\n\n${doc.read_text}`,
+          content: `Spiega questo documento veterinario al proprietario dell'animale:\n\n${doc.read_text}`,
         },
       ],
       max_tokens: 2048,

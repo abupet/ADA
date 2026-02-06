@@ -658,7 +658,13 @@
         _openDB().then(function () {
             return _idbGetAllByIndex(STORE_NAME, 'pet_id', petId);
         }).then(function (documents) {
-            if (!documents || documents.length === 0) return;
+            if (!documents || documents.length === 0) {
+                // Clear the documents section when no documents remain
+                var existing = document.getElementById('documentsSection');
+                if (existing) existing.innerHTML = '';
+                _updateHistoryBadgeWithDocs(0);
+                return;
+            }
 
             // Sort documents newest first
             documents.sort(function (a, b) {

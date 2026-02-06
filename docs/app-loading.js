@@ -35,13 +35,13 @@
     // Constants
     // ---------------------------------------------------------------------------
     var THRESHOLDS = [
-        { from: 0,  to: 3,  text: 'In attesa di risposta\u2026' },
-        { from: 4,  to: 10, text: 'Ci stiamo mettendo pi\u00f9 del previsto\u2026 ({s}s)' },
-        { from: 11, to: 20, text: 'La risposta sta impiegando molto tempo\u2026 ({s}s)' }
+        { from: 0,  to: 5,  text: 'In attesa di risposta\u2026' },
+        { from: 6,  to: 30, text: 'Elaborazione in corso\u2026 ({s}s)' },
+        { from: 31, to: 60, text: 'La risposta sta impiegando pi\u00f9 del previsto\u2026 ({s}s)' }
     ];
     var TIMEOUT_TEXT  = 'Problema di comunicazione.';
-    var HARD_TIMEOUT  = 45; // seconds
-    var SHOW_RETRY_AFTER = 20; // seconds
+    var HARD_TIMEOUT  = 120; // seconds (backend OpenAI timeout is 90s)
+    var SHOW_RETRY_AFTER = 90; // seconds
 
     // ---------------------------------------------------------------------------
     // Helpers
