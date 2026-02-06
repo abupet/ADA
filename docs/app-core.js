@@ -242,6 +242,30 @@ function navigateToPage(page) {
     // Update document AI buttons based on role
     try { updateDocumentButtonsByRole(); } catch(e) {}
 
+    // Render promo slots per page context (PR 3) - only for proprietario role
+    try {
+        var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
+        if (typeof renderPromoSlot === 'function' && promoRole === 'proprietario') {
+            if (page === 'patient') renderPromoSlot('patient-promo-container', 'pet_profile');
+            if (page === 'soap') renderPromoSlot('soap-promo-container', 'post_visit');
+            if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
+            if (page === 'qna') renderPromoSlot('qna-promo-container', 'faq_view');
+        }
+        if (typeof renderVetFlagButton === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
+            renderVetFlagButton('patient-vet-flag-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
+        if (typeof renderConsentBanner === 'function' && page === 'settings') {
+            renderConsentBanner('settings-consent-container');
+        }
+        // Admin pages (PR 4)
+        if (page === 'admin-dashboard' && typeof loadAdminDashboard === 'function') {
+            loadAdminDashboard('admin-dashboard-content', '30d');
+        }
+        if (page === 'admin-wizard' && typeof initCsvWizard === 'function') {
+            initCsvWizard('admin-wizard-content');
+        }
+    } catch(e) {}
+
     // Hide internal notes from proprietario (only vet sees them on SOAP page)
     try {
         const internalNotesSection = document.getElementById('internalNotesSection');
@@ -296,8 +320,11 @@ function applyRoleUI(role) {
     // Update sidebar sections
     const vetSection = document.getElementById('sidebar-vet');
     const ownerSection = document.getElementById('sidebar-owner');
+    const adminSection = document.getElementById('sidebar-admin');
+    const isAdmin = (r === 'admin_brand' || r === 'super_admin');
     if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
     if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
+    if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
 
     // Update toggle button
     const icon = document.getElementById('roleToggleIcon');

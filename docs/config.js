@@ -1,4 +1,4 @@
-// ADA v7.1.0 - Configuration
+// ADA v7.2.0 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 
@@ -39,7 +39,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.1.0';
+const ADA_VERSION = '7.2.0';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -57,11 +57,28 @@ const ROLE_PERMISSIONS = {
     proprietario: {
         pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
+    },
+    admin_brand: {
+        pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard', 'settings'],
+        actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports', 'run_wizard']
+    },
+    super_admin: {
+        pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
+                'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit', 'settings'],
+        actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
+                  'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit']
     }
 };
 
 function getActiveRole() {
     try {
+        // Check JWT v2 role first (admin_brand, super_admin)
+        if (typeof getJwtRole === 'function') {
+            var jwtRole = getJwtRole();
+            if (jwtRole === 'admin_brand' || jwtRole === 'super_admin') {
+                return jwtRole;
+            }
+        }
         const stored = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
         if (stored === ROLE_PROPRIETARIO) return ROLE_PROPRIETARIO;
         return ROLE_VETERINARIO;
@@ -71,7 +88,8 @@ function getActiveRole() {
 }
 
 function setActiveRole(role) {
-    const validRole = (role === ROLE_PROPRIETARIO) ? ROLE_PROPRIETARIO : ROLE_VETERINARIO;
+    const validRoles = [ROLE_PROPRIETARIO, ROLE_VETERINARIO, 'admin_brand', 'super_admin'];
+    const validRole = validRoles.indexOf(role) !== -1 ? role : ROLE_VETERINARIO;
     try {
         localStorage.setItem(ADA_ACTIVE_ROLE_KEY, validRole);
     } catch (e) {}
@@ -95,6 +113,7 @@ function isActionAllowedForRole(action, role) {
 function getDefaultPageForRole(role) {
     const r = role || getActiveRole();
     if (r === ROLE_PROPRIETARIO) return 'patient';
+    if (r === 'admin_brand' || r === 'super_admin') return 'admin-dashboard';
     return 'recording';
 }
 
@@ -372,6 +391,60 @@ const SOAP_SIMPLE_SCHEMA = {
         meta: { type: "object", description: "Metadati" }
     }
 };
+
+// ============================================
+// JWT V2 HELPERS (PR 1 - Multi-user auth)
+// ============================================
+
+/**
+ * Decode JWT payload (base64, no verification - verification is server-side).
+ * Returns the payload object or null.
+ */
+function decodeJwtPayload(token) {
+    try {
+        if (!token) return null;
+        var parts = token.split('.');
+        if (parts.length !== 3) return null;
+        var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        var decoded = atob(payload);
+        return JSON.parse(decoded);
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Get the role from the current JWT token.
+ * Returns 'owner', 'vet', 'admin_brand', 'super_admin', or null for legacy tokens.
+ */
+function getJwtRole() {
+    var token = getAuthToken();
+    var payload = decodeJwtPayload(token);
+    if (!payload) return null;
+    // Legacy token: sub = "ada-user", no role field
+    if (payload.sub === 'ada-user') return null;
+    return payload.role || null;
+}
+
+/**
+ * Get the tenantId from the current JWT token (v2 only).
+ */
+function getJwtTenantId() {
+    var token = getAuthToken();
+    var payload = decodeJwtPayload(token);
+    if (!payload) return null;
+    return payload.tenantId || null;
+}
+
+/**
+ * Get the userId from the current JWT token.
+ */
+function getJwtUserId() {
+    var token = getAuthToken();
+    var payload = decodeJwtPayload(token);
+    if (!payload) return null;
+    return payload.sub || null;
+}
 
 // Helper: blob to base64 data URL
 async function blobToDataURL(blob) {

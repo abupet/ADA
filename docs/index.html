@@ -59,6 +59,15 @@
                     <div class="nav-item" data-page="photos">📷 Foto</div>
                 </div>
 
+                <!-- Sidebar: Admin Brand / Super Admin -->
+                <div id="sidebar-admin" class="sidebar-role-section" style="display:none;">
+                    <div class="nav-section">ADMIN PROMO</div>
+                    <div class="nav-item" data-page="admin-dashboard">Dashboard</div>
+                    <div class="nav-item" data-page="admin-catalog">Catalogo</div>
+                    <div class="nav-item" data-page="admin-campaigns">Campagne</div>
+                    <div class="nav-item" data-page="admin-wizard">Importa CSV</div>
+                </div>
+
                 <div class="nav-section">SISTEMA</div>
                 <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
                 <div class="nav-item" onclick="refreshPetsFromServer(true); setSidebarOpen(false);">🔄 Sincronizza</div>
@@ -268,6 +277,8 @@
                     </div>
 
                     <button class="btn btn-primary btn-inline" id="btnGenerateOwnerExplanation" style="margin-top: 10px;" onclick="generateOwnerExplanation()" data-testid="generate-owner-explanation-button">📖 Spiegami il documento</button>
+                    <!-- Promo slot: post_visit (PR 3) -->
+                    <div id="soap-promo-container"></div>
                 </div>
             </div>
 
@@ -322,6 +333,8 @@
                         <button id="btnSpeakFAQ" class="btn btn-secondary" onclick="speakFAQ()" data-testid="speak-faq-button">🔊 Leggi Domande</button>
                     </div>
                     <div id="faqList" class="faq-list"></div>
+                    <!-- Promo slot: home_feed (PR 3) -->
+                    <div id="owner-promo-container"></div>
                 </div>
             </div>
 
@@ -467,6 +480,10 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Promo slot: pet_profile (PR 3) -->
+                    <div id="patient-promo-container"></div>
+                    <!-- Vet flag container (PR 3) -->
+                    <div id="patient-vet-flag-container"></div>
                 </div>
             </div>
 
@@ -721,6 +738,8 @@
                             <div class="hub-sub">Consigli personalizzati per il tuo pet</div>
                         </div>
                     </div>
+                    <!-- Promo slot: faq_view (PR 3) -->
+                    <div id="qna-promo-container"></div>
                 </div>
             </div>
 
@@ -855,6 +874,8 @@
                     <h2>⚙️ Impostazioni</h2>
 
                 </div>
+                <!-- Consent banner (PR 3) -->
+                <div id="settings-consent-container"></div>
                 <div class="card">
                     <button class="section-toggle" onclick="toggleSpeakersSection()" data-testid="toggle-speakers-section-button">
                         <span>🎤 Parlanti (Reference Clips)</span>
@@ -914,6 +935,48 @@
                     <h3 style="margin-top: 20px;">Informazioni</h3>
                         <p><strong>Versione:</strong> ADA v<span id="appVersion">--</span></p>
                     <p><strong>Novità v<span id="appReleaseNotesVersion">--</span>:</strong> Registrazione lunga a chunk con trascrizione in parallelo, profili automatici per dispositivo, UI runtime della coda, cache audio test e debug avanzato.</p>
+                </div>
+            </div>
+
+            <!-- Page: Admin Dashboard (PR 4) -->
+            <div id="page-admin-dashboard" class="page">
+                <div class="page-header">
+                    <h2>Dashboard Promo</h2>
+                </div>
+                <div class="card">
+                    <div id="admin-dashboard-content"></div>
+                </div>
+            </div>
+
+            <!-- Page: Admin Catalog (PR 4) -->
+            <div id="page-admin-catalog" class="page">
+                <div class="page-header">
+                    <h2>Catalogo Prodotti</h2>
+                </div>
+                <div class="card">
+                    <p style="color:#666;">Gestisci i prodotti promozionali dal pannello admin.</p>
+                    <div id="admin-catalog-content"></div>
+                </div>
+            </div>
+
+            <!-- Page: Admin Campaigns (PR 4) -->
+            <div id="page-admin-campaigns" class="page">
+                <div class="page-header">
+                    <h2>Campagne</h2>
+                </div>
+                <div class="card">
+                    <p style="color:#666;">Gestisci le campagne promozionali.</p>
+                    <div id="admin-campaigns-content"></div>
+                </div>
+            </div>
+
+            <!-- Page: Admin Wizard (PR 4) -->
+            <div id="page-admin-wizard" class="page">
+                <div class="page-header">
+                    <h2>Importa CSV</h2>
+                </div>
+                <div class="card">
+                    <div id="admin-wizard-content"></div>
                 </div>
             </div>
 
@@ -1126,6 +1189,7 @@
     <script src="app-tips.js"></script>
     <script src="app-documents.js"></script>
     <script src="app-promo.js"></script>
+    <script src="app-admin.js"></script>
     <script src="sync-engine.js"></script>
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
