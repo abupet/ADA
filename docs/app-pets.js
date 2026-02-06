@@ -1367,7 +1367,7 @@ async function saveData() {
     localStorage.setItem('ada_history', JSON.stringify(historyData));
     localStorage.setItem('ada_medications', JSON.stringify(medications));
     localStorage.setItem('ada_appointments', JSON.stringify(appointments));
-    
+
     if (currentPetId) {
         const pet = await getPetById(currentPetId);
         if (pet) {
@@ -1379,6 +1379,10 @@ async function saveData() {
             pet.appointments = appointments;
             pet.diary = document.getElementById('diaryText')?.value || '';
             await savePetToDB(pet);
+            // Sync to server: enqueue pet update for push
+            try {
+                await enqueueOutbox('update', { id: normalizePetId(currentPetId), patch: pet, base_version: pet.version ?? null });
+            } catch (e) { /* silent sync failure */ }
         }
     }
 }
@@ -1395,6 +1399,10 @@ async function saveDiary() {
             pet[field] = diaryText;
             pet.updatedAt = new Date().toISOString();
             await savePetToDB(pet);
+            // Sync to server: enqueue pet update for push
+            try {
+                await enqueueOutbox('update', { id: normalizePetId(currentPetId), patch: pet, base_version: pet.version ?? null });
+            } catch (e) { /* silent sync failure */ }
             showToast('✅ Profilo sanitario salvato', 'success');
         }
     } else {
