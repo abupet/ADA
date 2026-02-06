@@ -104,8 +104,11 @@ function _petToPatch(petLike) {
   if (Array.isArray(r.vitalsData)) patch.vitals_data = r.vitalsData;
   if (Array.isArray(r.medications)) patch.medications = r.medications;
   if (Array.isArray(r.historyData)) patch.history_data = r.historyData;
-  // Photos: sync as array (only metadata/URLs, not base64 to limit payload size)
-  if (Array.isArray(r.photos)) patch.photos_count = r.photos.length;
+  // Photos: sync full array (base64) + count
+  if (Array.isArray(r.photos)) {
+    patch.photos = r.photos;
+    patch.photos_count = r.photos.length;
+  }
 
   // Timestamp for last-write-wins
   if (r.updatedAt) patch.updated_at = r.updatedAt;
@@ -258,5 +261,6 @@ async function pushOutboxIfOnline() {
   }
 }
 
-// expose
-window.ADA_PetsSync = { pushOutboxIfOnline };
+// expose (merge, don't overwrite — pullPetsIfOnline is set by app-pets.js)
+window.ADA_PetsSync = window.ADA_PetsSync || {};
+window.ADA_PetsSync.pushOutboxIfOnline = pushOutboxIfOnline;

@@ -151,7 +151,7 @@ function petsSyncRouter({ requireAuth }) {
           // Rich data: store as JSONB in extra_data column
           let extraData = current.extra_data || {};
           if (typeof extraData === 'string') try { extraData = JSON.parse(extraData); } catch (_) { extraData = {}; }
-          const richFields = ["vitals_data","medications","history_data","lifestyle","photos_count","owner_name","owner_phone","microchip","visit_date","owner_diary"];
+          const richFields = ["vitals_data","medications","history_data","lifestyle","photos","photos_count","owner_name","owner_phone","microchip","visit_date","owner_diary"];
           for (const k of richFields) {
             if (patch && patch[k] !== undefined) extraData[k] = patch[k];
           }

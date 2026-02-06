@@ -1381,9 +1381,12 @@ async function saveData() {
             const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
             if (isVet) { pet.diary = diaryVal; } else { pet.ownerDiary = diaryVal; }
             await savePetToDB(pet);
-            // Sync to server: enqueue pet update for push
+            // Sync to server: enqueue pet update and push immediately
             try {
                 await enqueueOutbox('update', { id: normalizePetId(currentPetId), patch: pet, base_version: pet.version ?? null });
+                if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+                    window.ADA_PetsSync.pushOutboxIfOnline();
+                }
             } catch (e) { /* silent sync failure */ }
         }
     }
@@ -1401,9 +1404,12 @@ async function saveDiary() {
             pet[field] = diaryText;
             pet.updatedAt = new Date().toISOString();
             await savePetToDB(pet);
-            // Sync to server: enqueue pet update for push
+            // Sync to server: enqueue pet update and push immediately
             try {
                 await enqueueOutbox('update', { id: normalizePetId(currentPetId), patch: pet, base_version: pet.version ?? null });
+                if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+                    window.ADA_PetsSync.pushOutboxIfOnline();
+                }
             } catch (e) { /* silent sync failure */ }
             showToast('✅ Profilo sanitario salvato', 'success');
         }
