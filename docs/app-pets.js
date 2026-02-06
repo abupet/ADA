@@ -397,7 +397,12 @@ function normalizePetFromBackend(record, existing) {
     // Reverse-map backend SQL column names to local patient field names
     if (patch.breed && !result.patient.petBreed) result.patient.petBreed = patch.breed;
     if (patch.sex && !result.patient.petSex) result.patient.petSex = patch.sex;
-    if (patch.birthdate && !result.patient.petBirthdate) result.patient.petBirthdate = patch.birthdate;
+    // Normalize birthdate: PostgreSQL DATE serialized via JSONB becomes ISO datetime
+    // (e.g. "2023-05-15T00:00:00.000Z") but <input type="date"> requires "YYYY-MM-DD"
+    if (patch.birthdate && !result.patient.petBirthdate) {
+        var bd = String(patch.birthdate);
+        result.patient.petBirthdate = bd.length > 10 ? bd.slice(0, 10) : bd;
+    }
     if (patch.owner_name && !result.patient.ownerName) result.patient.ownerName = patch.owner_name;
     if (patch.owner_phone && !result.patient.ownerPhone) result.patient.ownerPhone = patch.owner_phone;
     if (patch.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = patch.microchip;

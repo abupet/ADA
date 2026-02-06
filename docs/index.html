@@ -93,22 +93,6 @@
                 </div>
                 <div class="card">
                     <button class="btn btn-secondary" style="margin-bottom:12px;" onclick="resetRecordingAndReport()" data-testid="new-recording-button">🆕 Nuova</button>
-                    <div class="form-group">
-                        <label>Titolo</label>
-                        <select id="templateSelector" onchange="onTemplateChange(this.value)">
-                            <option value="generale">Visita Generale</option>
-                            <option value="emergenza">Pronto Soccorso</option>
-                            <option value="cardiologia">Cardiologia</option>
-                            <option value="controllo">Controllo</option>
-                            <option value="dermatologia">Dermatologia</option>
-                            <option value="medicina_interna">Medicina interna</option>
-                            <option value="neurologia">Neurologia</option>
-                            <option value="oncologia">Oncologia</option>
-                            <option value="ortopedia">Ortopedia</option>
-                            <option value="prechirurgia">Pre-Chirurgia</option>
-                            <option value="vaccinazione">Vaccinazione</option>
-                        </select>
-                    </div>
                 </div>
                 
                 <div class="card">
@@ -184,8 +168,24 @@
                     <h2>📋 Referto</h2>
                 </div>
                 <div class="card">
-                    <h3 id="soapTemplateTitle">Visita Generale</h3>
-                    
+                    <div class="form-group" style="margin-bottom:12px;">
+                        <label>Titolo</label>
+                        <input type="text" id="templateSelector" list="templateOptions" value="Visita Generale" placeholder="Scegli o digita un titolo..." onchange="onTemplateSelectorInput(this.value)">
+                        <datalist id="templateOptions">
+                            <option value="Visita Generale">
+                            <option value="Pronto Soccorso">
+                            <option value="Cardiologia">
+                            <option value="Controllo">
+                            <option value="Dermatologia">
+                            <option value="Medicina interna">
+                            <option value="Neurologia">
+                            <option value="Oncologia">
+                            <option value="Ortopedia">
+                            <option value="Pre-Chirurgia">
+                            <option value="Vaccinazione">
+                        </datalist>
+                    </div>
+
                     <div class="lang-selector" id="soapLangSelector">
                         <button class="lang-btn" data-lang="IT" data-testid="soap-lang-it-button">IT</button>
                         <button class="lang-btn" data-lang="EN" data-testid="soap-lang-en-button">EN</button>

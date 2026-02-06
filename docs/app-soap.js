@@ -766,8 +766,11 @@ function displaySOAPResult(soap) {
     }
     document.getElementById('soap-p').value = pText.trim() || '';
     
-    // Update template title
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate] || 'Referto SOAP';
+    // Update template selector to display title
+    try {
+        var tplSel = document.getElementById('templateSelector');
+        if (tplSel) tplSel.value = templateTitleFromKey(currentTemplate);
+    } catch (e) {}
     
     // Show audit info if present
     if (soap.audit) {
