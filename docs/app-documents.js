@@ -1304,6 +1304,61 @@
     }
 
     // =========================================================================
+    // Pull document metadata from server (cross-device sync)
+    // =========================================================================
+
+    /**
+     * Fetch the document list from the server for a given pet and merge into
+     * the local IndexedDB store.  This allows documents uploaded on Device A
+     * to appear on Device B.
+     *
+     * @param {string} petId - the pet UUID
+     * @returns {Promise<number>} number of new documents discovered
+     */
+    function pullDocumentsForPet(petId) {
+        if (!petId) return Promise.resolve(0);
+        if (typeof fetchApi !== 'function') return Promise.resolve(0);
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve(0);
+
+        return fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId))
+            .then(function (response) {
+                if (!response || !response.ok) return 0;
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data || !Array.isArray(data.documents)) return 0;
+                return _openDB().then(function () {
+                    var newCount = 0;
+                    var chain = Promise.resolve();
+                    data.documents.forEach(function (doc) {
+                        chain = chain.then(function () {
+                            return _idbGet(STORE_NAME, doc.document_id).then(function (existing) {
+                                if (!existing) {
+                                    // New document discovered from server
+                                    newCount++;
+                                    return _idbPut(STORE_NAME, {
+                                        document_id: doc.document_id,
+                                        pet_id: doc.pet_id,
+                                        original_filename: doc.original_filename,
+                                        mime_type: doc.mime_type,
+                                        size_bytes: doc.size_bytes,
+                                        hash_sha256: doc.hash_sha256,
+                                        ai_status: doc.ai_status || 'none',
+                                        version: doc.version,
+                                        created_at: doc.created_at,
+                                        _synced_from_server: true
+                                    });
+                                }
+                            });
+                        });
+                    });
+                    return chain.then(function () { return newCount; });
+                });
+            })
+            .catch(function () { return 0; });
+    }
+
+    // =========================================================================
     // Expose public API on global scope (vanilla JS, no modules)
     // =========================================================================
 
@@ -1325,6 +1380,9 @@
 
     // Offline upload queue
     global.flushDocumentUploadQueue = _flushUploadQueue;
+
+    // Cross-device document sync
+    global.pullDocumentsForPet = pullDocumentsForPet;
 
     // Auto-init when DOM is ready
     if (document.readyState === 'loading') {

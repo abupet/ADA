@@ -411,6 +411,7 @@ function normalizePetFromBackend(record, existing) {
     if (Array.isArray(patch.vitals_data) && !result.vitalsData) result.vitalsData = patch.vitals_data;
     if (Array.isArray(patch.medications) && !result.medications) result.medications = patch.medications;
     if (Array.isArray(patch.history_data) && !result.historyData) result.historyData = patch.history_data;
+    if (Array.isArray(patch.photos) && !result.photos) result.photos = patch.photos;
     if (patch.updated_at) result.updatedAt = patch.updated_at;
 
     // Extract extra_data from backend record (JSONB column)
@@ -427,6 +428,8 @@ function normalizePetFromBackend(record, existing) {
         if (extra.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = extra.microchip;
         if (extra.visit_date && !result.patient.visitDate) result.patient.visitDate = extra.visit_date;
         if (extra.owner_diary && !result.ownerDiary) result.ownerDiary = extra.owner_diary;
+        if (Array.isArray(extra.photos) && !result.photos) result.photos = extra.photos;
+        if (extra.photos_count !== undefined && !result.photos_count) result.photos_count = extra.photos_count;
     }
 
     return result;
@@ -462,7 +465,7 @@ function mergePetsForPull(existing, incoming) {
     merged.patient = mergedPatient;
 
     // Rich data merge: last-write-wins for arrays
-    const richFields = ['vitalsData', 'medications', 'historyData', 'diary', 'ownerDiary', 'lifestyle'];
+    const richFields = ['vitalsData', 'medications', 'historyData', 'diary', 'ownerDiary', 'lifestyle', 'photos'];
     for (const field of richFields) {
         if (safeIncoming[field] !== undefined && incomingIsNewer) {
             merged[field] = safeIncoming[field];
@@ -704,12 +707,20 @@ async function applyRemotePets(items) {
             mergedItems.push(item);
             continue;
         }
-        // Skip merge for pets with pending local changes (outbox wins)
-        if (pendingOutboxIds.has(String(item.id))) {
-            continue;
-        }
         const existing = await getPetById(item.id);
         const incoming = normalizePetFromBackend(item.entry, existing);
+        if (pendingOutboxIds.has(String(item.id))) {
+            // Pet has pending local changes: still merge basic identity fields
+            // (name, species, breed, etc.) from the server if local has none,
+            // but preserve all local rich data (the outbox will push it soon).
+            if (!existing) {
+                // No local record at all: accept server data as baseline
+                const merged = mergePetsForPull({}, incoming);
+                mergedItems.push({ ...item, entry: merged });
+            }
+            // If local record exists, skip — outbox push will reconcile
+            continue;
+        }
         const merged = mergePetsForPull(existing, incoming);
         mergedItems.push({ ...item, entry: merged });
     }
@@ -808,6 +819,14 @@ async function pullPetsIfOnline(options) {
             stats.upserted = 0;
         }
 
+        // Pull documents for the currently selected pet (cross-device sync)
+        try {
+            const docPetId = await resolveCurrentPetId();
+            if (docPetId && typeof pullDocumentsForPet === 'function') {
+                await pullDocumentsForPet(docPetId);
+            }
+        } catch (e) {}
+
         // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
         try {
             const selectedId = await resolveCurrentPetId();
@@ -818,6 +837,17 @@ async function pullPetsIfOnline(options) {
             }
             if (typeof updateSelectedPetHeaders === 'function') {
                 await updateSelectedPetHeaders();
+            }
+        } catch (e) {}
+
+        // Refresh the current pet's data in the UI after merge
+        try {
+            const activePetId = await resolveCurrentPetId();
+            if (activePetId) {
+                const refreshedPet = await getPetById(activePetId);
+                if (refreshedPet && typeof loadPetIntoMainFields === 'function') {
+                    loadPetIntoMainFields(refreshedPet);
+                }
             }
         } catch (e) {}
     } finally {

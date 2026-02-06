@@ -401,10 +401,26 @@
         // Mark as 'pushing' so concurrent calls are aware
         return updateOutboxStatuses(opIds, 'pushing', null)
           .then(function () {
+            // Map outbox records to the server-expected format
+            var mappedOps = toPush.map(function (r) {
+              var changeType = r.operation_type;
+              if (changeType === 'create' || changeType === 'update') changeType = 'upsert';
+              return {
+                op_id: r.op_id,
+                entity_type: r.entity_type,
+                entity_id: r.entity_id,
+                change_type: changeType,
+                record: r.payload || null,
+                base_version: r.base_version || null,
+                client_ts: r.client_timestamp || null
+              };
+            });
+            var deviceId = 'unknown';
+            try { deviceId = localStorage.getItem('ada_device_id') || 'unknown'; } catch (e) {}
             return fetchApi(PUSH_ENDPOINT, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ operations: toPush })
+              body: JSON.stringify({ device_id: deviceId, ops: mappedOps })
             });
           })
           .then(function (response) {
@@ -558,7 +574,7 @@
 
       return fetchPage(since).then(function (data) {
         var changes = Array.isArray(data.changes) ? data.changes : [];
-        var newCursor = data.cursor;
+        var newCursor = data.next_cursor || data.cursor;
 
         if (changes.length === 0) {
           return Promise.resolve();
