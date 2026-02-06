@@ -1,4 +1,4 @@
-// regression.audio-upload-20s.spec.ts v4
+// regression.audio-upload-20s.spec.ts v5
 import { test, expect } from "./helpers/test-base";
 import { login } from "./helpers/login";
 import { Fixtures } from "./helpers/fixtures";
@@ -17,16 +17,13 @@ test("Upload audio breve 20s (fixture) – regression", async ({ page }) => {
   // Assert su outcome stabile post-upload
   await expect(page.locator("#toast")).toContainText("File caricato", { timeout: 10_000 });
 
+  // After transcription the pipeline auto-generates SOAP; in CI (MOCK mode) the
+  // backend returns a mock chat response, so the flow completes with "Referto generato".
   const status = page.locator("#recordingStatus");
   await expect(status).toContainText(
-    /Trascrizione pronta|Referto generato|Sto generando|Errore/i,
+    /Trascrizione pronta|Referto generato|Sto generando/i,
     { timeout: 20_000 }
   );
 
-  // In CI there is no OpenAI key, so auto-SOAP generation fails with HTTP 500.
-  // Filter out expected SOAP generation errors.
-  const unexpected = errors.filter(
-    (e) => !/OpenAI key not configured/i.test(e) && !/status of 500/i.test(e) && !/SOAP|GENERA REFERTO/i.test(e)
-  );
-  expect(unexpected, unexpected.join("\n")).toHaveLength(0);
+  expect(errors, errors.join("\n")).toHaveLength(0);
 });
