@@ -1,193 +1,210 @@
 /* outbox-coalescing.test.js
-   Unit test for outbox coalescing logic.
-   Tests the merge rules that enqueueOutbox applies.
+   Unit test for the REAL coalescing logic from pets-coalesce.js.
+   This imports the production code, not a re-implementation.
 */
 const assert = require("assert");
+const path = require("path");
+
+// Load the real production coalescing module
+const { coalesceOutboxOp } = require(path.join(__dirname, "../../docs/pets-coalesce.js"));
+
+assert.strictEqual(typeof coalesceOutboxOp, "function", "coalesceOutboxOp must be exported");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Simulate the coalescing rules from app-pets.js enqueueOutbox
+// Helpers — simulate an outbox as an array and apply coalesceOutboxOp
 // ─────────────────────────────────────────────────────────────────────────────
+
+let nextKey = 1;
 
 /**
- * Simulates the coalescing logic from enqueueOutbox.
- * Takes current outbox entries and a new (op_type, payload) and returns
- * the resulting outbox state.
- *
- * Rules:
- * - create + update => keep create, merge payload
- * - update + update => keep last update
- * - create + delete => remove both (cancel out)
- * - update + delete => keep delete
+ * Apply the real coalesceOutboxOp to a simulated outbox array.
+ * This mirrors what enqueueOutbox does in app-pets.js:
+ *   1. Find existing entry for petId
+ *   2. Call coalesceOutboxOp(existing, newOpType, newPayload, opUuid, petId)
+ *   3. Perform the returned action (put/delete/add)
  */
-function coalesce(outbox, newOpType, newPayload, petId) {
-  const existing = outbox.filter((e) => e.payload && e.payload.id === petId);
-  const rest = outbox.filter((e) => !e.payload || e.payload.id !== petId);
+function applyToOutbox(outbox, newOpType, newPayload, petId) {
+  const opUuid = "op_" + nextKey++;
+  const idx = outbox.findIndex((e) => e.payload && e.payload.id === petId);
+  const existing = idx >= 0 ? outbox[idx] : null;
 
-  if (existing.length === 0) {
-    return [...rest, { op_type: newOpType, payload: newPayload }];
+  const result = coalesceOutboxOp(existing, newOpType, newPayload, opUuid, petId);
+
+  if (result.action === "put" && idx >= 0) {
+    outbox[idx] = result.entry;
+    return outbox;
+  }
+  if (result.action === "delete" && idx >= 0) {
+    outbox.splice(idx, 1);
+    return outbox;
+  }
+  if (result.action === "add") {
+    outbox.push(result.entry);
+    return outbox;
   }
 
-  const prev = existing[0];
-
-  if (prev.op_type === "create" && newOpType === "update") {
-    // create + update => keep create, merge payload
-    return [
-      ...rest,
-      { op_type: "create", payload: { ...prev.payload, ...newPayload } },
-    ];
-  }
-
-  if (prev.op_type === "update" && newOpType === "update") {
-    // update + update => keep last update
-    return [...rest, { op_type: "update", payload: newPayload }];
-  }
-
-  if (prev.op_type === "create" && newOpType === "delete") {
-    // create + delete => remove both
-    return rest;
-  }
-
-  if (prev.op_type === "update" && newOpType === "delete") {
-    // update + delete => keep delete
-    return [...rest, { op_type: "delete", payload: newPayload }];
-  }
-
-  // Default: add new
-  return [...outbox, { op_type: newOpType, payload: newPayload }];
+  // Shouldn't reach here, but just in case
+  outbox.push(result.entry || { op_type: newOpType, payload: newPayload });
+  return outbox;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: create + update => merged create
+// Test: null existing → add
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function testNullExisting() {
+  const result = coalesceOutboxOp(null, "create", { id: "p1" }, "uuid1", "p1");
+  assert.strictEqual(result.action, "add");
+  assert.strictEqual(result.entry.op_type, "create");
+  assert.deepStrictEqual(result.entry.payload, { id: "p1" });
+  console.log("  PASS: null existing -> add");
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: create + update => put (merged create)
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function testCreatePlusUpdate() {
-  const petId = "pet-1";
-  let outbox = [];
+  const existing = { op_type: "create", payload: { id: "p1", name: "Neve" }, op_uuid: "u1", pet_local_id: "p1" };
+  const result = coalesceOutboxOp(existing, "update", { id: "p1", patch: { vitalsData: [{ w: 10 }] } }, "u2", "p1");
 
-  // Create
-  outbox = coalesce(outbox, "create", { id: petId, name: "Neve" }, petId);
-  assert.strictEqual(outbox.length, 1);
-  assert.strictEqual(outbox[0].op_type, "create");
-  assert.strictEqual(outbox[0].payload.name, "Neve");
-
-  // Update (should merge into create)
-  outbox = coalesce(
-    outbox,
-    "update",
-    { id: petId, patch: { vitalsData: [{ weight: 10 }] } },
-    petId
-  );
-  assert.strictEqual(outbox.length, 1, "Should still be 1 entry after coalesce");
-  assert.strictEqual(outbox[0].op_type, "create", "Op type should remain create");
-  assert.strictEqual(outbox[0].payload.name, "Neve", "Original name preserved");
-  assert.deepStrictEqual(
-    outbox[0].payload.patch.vitalsData,
-    [{ weight: 10 }],
-    "Update data merged into create payload"
-  );
-
-  console.log("  PASS: create + update => merged create with all data");
+  assert.strictEqual(result.action, "put");
+  assert.strictEqual(result.entry.op_type, "create", "Op type must remain 'create'");
+  assert.strictEqual(result.entry.payload.name, "Neve", "Original name preserved via merge");
+  assert.deepStrictEqual(result.entry.payload.patch.vitalsData, [{ w: 10 }], "Update data merged in");
+  assert.strictEqual(result.entry.op_uuid, "u1", "Original op_uuid preserved");
+  console.log("  PASS: create + update => put (merged create)");
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: update + update => last update wins
+// Test: update + update => put (last update wins)
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function testUpdatePlusUpdate() {
-  const petId = "pet-2";
-  let outbox = [];
+  const existing = { op_type: "update", payload: { id: "p2", v: 1 }, op_uuid: "u1", pet_local_id: "p2" };
+  const result = coalesceOutboxOp(existing, "update", { id: "p2", v: 2 }, "u2", "p2");
 
-  outbox = coalesce(outbox, "update", { id: petId, v: 1 }, petId);
-  assert.strictEqual(outbox.length, 1);
-
-  outbox = coalesce(outbox, "update", { id: petId, v: 2 }, petId);
-  assert.strictEqual(outbox.length, 1, "Should still be 1 after coalesce");
-  assert.strictEqual(outbox[0].op_type, "update");
-  assert.strictEqual(outbox[0].payload.v, 2, "Last update should win");
-
-  console.log("  PASS: update + update => last update wins");
+  assert.strictEqual(result.action, "put");
+  assert.strictEqual(result.entry.op_type, "update");
+  assert.strictEqual(result.entry.payload.v, 2, "Last update should win");
+  assert.strictEqual(result.entry.op_uuid, "u1", "Original op_uuid preserved");
+  console.log("  PASS: update + update => put (last update wins)");
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: create + delete => cancel out (empty outbox)
+// Test: create + delete => delete (cancel out)
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function testCreatePlusDelete() {
-  const petId = "pet-3";
-  let outbox = [];
+  const existing = { op_type: "create", payload: { id: "p3", name: "Temp" }, op_uuid: "u1", pet_local_id: "p3" };
+  const result = coalesceOutboxOp(existing, "delete", { id: "p3" }, "u2", "p3");
 
-  outbox = coalesce(outbox, "create", { id: petId, name: "Temp" }, petId);
-  assert.strictEqual(outbox.length, 1);
-
-  outbox = coalesce(outbox, "delete", { id: petId }, petId);
-  assert.strictEqual(outbox.length, 0, "create + delete should cancel out");
-
-  console.log("  PASS: create + delete => cancel out");
+  assert.strictEqual(result.action, "delete", "create + delete should cancel");
+  assert.strictEqual(result.entry, undefined, "No entry for delete action");
+  console.log("  PASS: create + delete => delete (cancel out)");
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: update + delete => becomes delete
+// Test: update + delete => put (becomes delete)
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function testUpdatePlusDelete() {
-  const petId = "pet-4";
-  let outbox = [];
+  const existing = { op_type: "update", payload: { id: "p4", name: "Updated" }, op_uuid: "u1", pet_local_id: "p4" };
+  const result = coalesceOutboxOp(existing, "delete", { id: "p4" }, "u2", "p4");
 
-  outbox = coalesce(outbox, "update", { id: petId, name: "Updated" }, petId);
-  assert.strictEqual(outbox.length, 1);
-
-  outbox = coalesce(outbox, "delete", { id: petId }, petId);
-  assert.strictEqual(outbox.length, 1);
-  assert.strictEqual(outbox[0].op_type, "delete", "Should become delete");
-
-  console.log("  PASS: update + delete => becomes delete");
+  assert.strictEqual(result.action, "put");
+  assert.strictEqual(result.entry.op_type, "delete", "Should become delete");
+  assert.strictEqual(result.entry.op_uuid, "u1", "Original op_uuid preserved");
+  console.log("  PASS: update + delete => put (becomes delete)");
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: multiple pets coalesce independently
+// Test: unknown combination (delete + update) => add
 // ─────────────────────────────────────────────────────────────────────────────
 
-(function testMultiplePetsIndependent() {
+(function testUnknownCombo() {
+  const existing = { op_type: "delete", payload: { id: "p5" }, op_uuid: "u1", pet_local_id: "p5" };
+  const result = coalesceOutboxOp(existing, "update", { id: "p5", v: 1 }, "u2", "p5");
+
+  assert.strictEqual(result.action, "add", "Unknown combo should add");
+  console.log("  PASS: unknown combo (delete + update) => add");
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test: op_uuid fallback — if existing has no op_uuid, new one is used
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function testOpUuidFallback() {
+  const existing = { op_type: "create", payload: { id: "p6" }, pet_local_id: "p6" };
+  const result = coalesceOutboxOp(existing, "update", { id: "p6", v: 1 }, "new-uuid", "p6");
+
+  assert.strictEqual(result.entry.op_uuid, "new-uuid", "Should use new uuid when existing has none");
+  console.log("  PASS: op_uuid fallback when existing has none");
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Integration: multi-pet outbox with real coalesceOutboxOp
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function testMultiplePetsIntegration() {
   let outbox = [];
 
-  outbox = coalesce(outbox, "create", { id: "pet-A", name: "A" }, "pet-A");
-  outbox = coalesce(outbox, "create", { id: "pet-B", name: "B" }, "pet-B");
+  outbox = applyToOutbox(outbox, "create", { id: "pet-A", name: "A" }, "pet-A");
+  outbox = applyToOutbox(outbox, "create", { id: "pet-B", name: "B" }, "pet-B");
   assert.strictEqual(outbox.length, 2, "Two different pets");
 
-  // Update only pet-A
-  outbox = coalesce(outbox, "update", { id: "pet-A", name: "A-updated" }, "pet-A");
-  assert.strictEqual(outbox.length, 2, "Still 2 entries");
+  outbox = applyToOutbox(outbox, "update", { id: "pet-A", name: "A-updated" }, "pet-A");
+  assert.strictEqual(outbox.length, 2, "Still 2 entries after coalesce");
 
   const petA = outbox.find((e) => e.payload.id === "pet-A");
   const petB = outbox.find((e) => e.payload.id === "pet-B");
 
-  assert.strictEqual(petA.op_type, "create", "pet-A should still be create (merged)");
-  assert.strictEqual(petA.payload.name, "A-updated", "pet-A name should be updated");
-  assert.strictEqual(petB.op_type, "create", "pet-B should be untouched");
-  assert.strictEqual(petB.payload.name, "B", "pet-B name should be original");
+  assert.strictEqual(petA.op_type, "create", "pet-A still create (merged)");
+  assert.strictEqual(petA.payload.name, "A-updated", "pet-A name updated via merge");
+  assert.strictEqual(petB.op_type, "create", "pet-B untouched");
+  assert.strictEqual(petB.payload.name, "B");
 
-  console.log("  PASS: multiple pets coalesce independently");
+  console.log("  PASS: multi-pet outbox integration");
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test: create + multiple updates => single merged create
+// Integration: create + multiple updates => single merged create
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function testCreatePlusMultipleUpdates() {
-  const petId = "pet-5";
   let outbox = [];
+  const petId = "pet-5";
 
-  outbox = coalesce(outbox, "create", { id: petId, name: "Rex" }, petId);
-  outbox = coalesce(outbox, "update", { id: petId, patch: { vitalsData: [{ w: 10 }] } }, petId);
-  outbox = coalesce(outbox, "update", { id: petId, patch: { medications: [{ n: "Med" }] } }, petId);
+  outbox = applyToOutbox(outbox, "create", { id: petId, name: "Rex" }, petId);
+  outbox = applyToOutbox(outbox, "update", { id: petId, patch: { vitalsData: [{ w: 10 }] } }, petId);
+  outbox = applyToOutbox(outbox, "update", { id: petId, patch: { medications: [{ n: "Med" }] } }, petId);
 
   assert.strictEqual(outbox.length, 1, "Should be single entry");
   assert.strictEqual(outbox[0].op_type, "create", "Should remain create");
-  // All data should be present (each update merges into the create)
   assert.strictEqual(outbox[0].payload.name, "Rex", "Original name preserved");
-  assert.ok(outbox[0].payload.patch, "Patch data present");
+  assert.ok(outbox[0].payload.patch, "Merged patch data present");
 
   console.log("  PASS: create + multiple updates => single merged create");
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Integration: full lifecycle — create, update, delete => empty outbox
+// ─────────────────────────────────────────────────────────────────────────────
+
+(function testFullLifecycle() {
+  let outbox = [];
+  const petId = "pet-lifecycle";
+
+  outbox = applyToOutbox(outbox, "create", { id: petId, name: "Temp" }, petId);
+  assert.strictEqual(outbox.length, 1);
+
+  outbox = applyToOutbox(outbox, "update", { id: petId, name: "TempUpdated" }, petId);
+  assert.strictEqual(outbox.length, 1, "create+update coalesced");
+
+  outbox = applyToOutbox(outbox, "delete", { id: petId }, petId);
+  assert.strictEqual(outbox.length, 0, "create+update+delete => empty (pet never reached server)");
+
+  console.log("  PASS: full lifecycle create+update+delete => empty outbox");
 })();
 
 console.log("OK outbox-coalescing.test.js");

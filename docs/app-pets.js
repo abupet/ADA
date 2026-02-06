@@ -559,57 +559,36 @@ async function enqueueOutbox(op_type, payload) {
         cursorReq.onsuccess = (e) => {
             const cursor = e.target.result;
             if (!cursor) {
-                // Apply coalescing rules
+                // Apply coalescing rules (logic lives in pets-coalesce.js)
                 try {
-                    for (const item of existing) {
-                        const prev = item.value.op_type;
+                    const _coalesce = (typeof PetsCoalesce !== 'undefined' && PetsCoalesce.coalesceOutboxOp) || null;
+                    let handled = false;
 
-                        if (prev === 'create' && op_type === 'update') {
-                            // create + update => keep create, merge payload
-                            store.put({
-                                ...item.value,
-                                payload: { ...item.value.payload, ...payload },
-                                op_uuid: item.value.op_uuid || opUuid,
-                                pet_local_id: item.value.pet_local_id || petId
-                            });
-                            return;
-                        }
-                        if (prev === 'update' && op_type === 'update') {
-                            // update + update => keep last update
-                            store.put({
-                                ...item.value,
-                                payload,
-                                op_uuid: item.value.op_uuid || opUuid,
-                                pet_local_id: item.value.pet_local_id || petId
-                            });
-                            return;
-                        }
-                        if (prev === 'create' && op_type === 'delete') {
-                            // create + delete => remove both
-                            store.delete(item.key);
-                            return;
-                        }
-                        if (prev === 'update' && op_type === 'delete') {
-                            // update + delete => keep delete
-                            store.put({
-                                ...item.value,
-                                op_type: 'delete',
-                                payload,
-                                op_uuid: item.value.op_uuid || opUuid,
-                                pet_local_id: item.value.pet_local_id || petId
-                            });
-                            return;
+                    if (_coalesce) {
+                        for (const item of existing) {
+                            const result = _coalesce(item.value, op_type, payload, opUuid, petId);
+                            if (result.action === 'put') {
+                                store.put({ ...result.entry, id: item.key });
+                                handled = true;
+                                break;
+                            }
+                            if (result.action === 'delete') {
+                                store.delete(item.key);
+                                handled = true;
+                                break;
+                            }
                         }
                     }
 
-                    // Default: add new outbox record
-                    store.add({
-                        op_type,
-                        payload,
-                        created_at: new Date().toISOString(),
-                        op_uuid: opUuid,
-                        pet_local_id: petId
-                    });
+                    if (!handled) {
+                        store.add({
+                            op_type,
+                            payload,
+                            created_at: new Date().toISOString(),
+                            op_uuid: opUuid,
+                            pet_local_id: petId
+                        });
+                    }
                 } catch (e2) {
                     // silent
                 }
