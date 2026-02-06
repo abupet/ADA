@@ -148,6 +148,43 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
     }
   });
 
+  // GET /api/documents - list documents for a pet (or all for the user)
+  router.get("/api/documents", requireAuth, async (req, res) => {
+    try {
+      const owner_user_id = req.user?.sub;
+      const pet_id = req.query.pet_id || null;
+
+      let rows;
+      if (pet_id) {
+        if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
+        const result = await pool.query(
+          `SELECT document_id, pet_id, original_filename, mime_type, size_bytes,
+                  hash_sha256, ai_status, version, created_at
+           FROM documents
+           WHERE owner_user_id = $1 AND pet_id = $2
+           ORDER BY created_at DESC`,
+          [owner_user_id, pet_id]
+        );
+        rows = result.rows;
+      } else {
+        const result = await pool.query(
+          `SELECT document_id, pet_id, original_filename, mime_type, size_bytes,
+                  hash_sha256, ai_status, version, created_at
+           FROM documents
+           WHERE owner_user_id = $1
+           ORDER BY created_at DESC`,
+          [owner_user_id]
+        );
+        rows = result.rows;
+      }
+
+      res.json({ documents: rows });
+    } catch (e) {
+      console.error("GET /api/documents error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // GET /api/documents/:id - get document metadata
   router.get("/api/documents/:id", requireAuth, async (req, res) => {
     try {
