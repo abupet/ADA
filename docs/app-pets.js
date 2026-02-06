@@ -1377,7 +1377,9 @@ async function saveData() {
             pet.historyData = historyData;
             pet.medications = medications;
             pet.appointments = appointments;
-            pet.diary = document.getElementById('diaryText')?.value || '';
+            const diaryVal = document.getElementById('diaryText')?.value || '';
+            const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+            if (isVet) { pet.diary = diaryVal; } else { pet.ownerDiary = diaryVal; }
             await savePetToDB(pet);
             // Sync to server: enqueue pet update for push
             try {
