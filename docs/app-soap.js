@@ -252,13 +252,6 @@ async function generateSOAP(options = {}) {
             }
         } catch (e) {}
 
-        // 8B: Extract template-specific fields + checklist (NO inventions)
-        try {
-            await extractTemplateExtrasAndChecklistFromText(transcriptionText, finalSoapResult, { signal });
-        } catch (e) {
-            // Non-blocking: keep SOAP even if extractor fails
-            console.warn('8B extractor failed:', e);
-        }
 
         if (statusEl) statusEl.textContent = '✅ Referto generato';
 
@@ -766,8 +759,11 @@ function displaySOAPResult(soap) {
     }
     document.getElementById('soap-p').value = pText.trim() || '';
     
-    // Update template title
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate] || 'Referto SOAP';
+    // Update template selector to display title
+    try {
+        var tplSel = document.getElementById('templateSelector');
+        if (tplSel) tplSel.value = templateTitleFromKey(currentTemplate);
+    } catch (e) {}
     
     // Show audit info if present
     if (soap.audit) {
@@ -791,169 +787,22 @@ function displaySOAPResult(soap) {
 }
 
 // ============================================
-// 8B: TEMPLATE EXTRAS + CHECKLIST EXTRACTOR (NO inventions)
-// ============================================
-
-function _get8BTemplateConfig() {
-    try {
-        if (typeof TEMPLATE_CONFIGS !== 'undefined' && TEMPLATE_CONFIGS && TEMPLATE_CONFIGS[currentTemplate]) {
-            return TEMPLATE_CONFIGS[currentTemplate];
-        }
-    } catch (e) {}
-    return null;
-}
-
-function _build8BExtractionSchema(cfg) {
-    const extrasProps = {};
-    const checklistProps = {};
-
-    const extras = Array.isArray(cfg?.extraFields) ? cfg.extraFields : [];
-    const checklistItems = Array.isArray(cfg?.checklistItems) ? cfg.checklistItems : [];
-
-    extras.forEach(f => {
-        extrasProps[f.key] = { type: 'string', description: f.label || f.key };
-    });
-    checklistItems.forEach(it => {
-        checklistProps[it.key] = { type: ['boolean', 'null'], description: it.label || it.key };
-    });
-
-    return {
-        name: 'ada_template_extractor_8b',
-        strict: true,
-        schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-                extras: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: extrasProps,
-                    required: Object.keys(extrasProps)
-                },
-                checklist: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: checklistProps,
-                    required: Object.keys(checklistProps)
-                }
-            },
-            required: ['extras', 'checklist']
-        }
-    };
-}
-
-async function extractTemplateExtrasAndChecklistFromText(transcriptionText, soapResult, options = {}) {
-    const signal = (options || {}).signal || undefined;
-    const cfg = _get8BTemplateConfig();
-    if (!cfg) return;
-
-    const extras = Array.isArray(cfg.extraFields) ? cfg.extraFields : [];
-    const checklistItems = Array.isArray(cfg.checklistItems) ? cfg.checklistItems : [];
-    if (!extras.length && !checklistItems.length) return;
-
-    const schema = _build8BExtractionSchema(cfg);
-    const templateName = (typeof templateTitles !== 'undefined' && templateTitles[currentTemplate]) ? templateTitles[currentTemplate] : String(currentTemplate);
-
-    const fieldList = extras.map(f => `- ${f.label} (key: ${f.key})`).join('\n') || '(nessuno)';
-    const checklistList = checklistItems.map(i => `- ${i.label} (key: ${i.key})`).join('\n') || '(nessuno)';
-
-    const soapPreview = soapResult ? `\n\nSOAP (solo contesto, NON inventare oltre):\nS: ${JSON.stringify(soapResult.S || soapResult.s || '')}\nO: ${JSON.stringify(soapResult.O || soapResult.o || '')}\nA: ${JSON.stringify(soapResult.A || soapResult.a || '')}\nP: ${JSON.stringify(soapResult.P || soapResult.p || '')}` : '';
-
-    const prompt = `Sei un estrattore dati per referti veterinari.
-DEVI estrarre SOLO informazioni esplicitamente presenti nel testo.
-NON inventare, NON completare con conoscenza clinica, NON dedurre.
-
-Regole:
-- Per ogni extra (stringa): se nel testo NON c'è evidenza, restituisci stringa vuota "".
-- Se una informazione è già presente nel SOAP, NON ripeterla negli extra: lascia la stringa vuota.
-- Per ogni checklist item: 
-  - true SOLO se nel testo è chiaramente indicato che è stato eseguito/rilevato.
-  - false SOLO se nel testo è chiaramente indicato che NON è stato eseguito/è negativo.
-  - null se NON è deducibile dal testo.
-
-Template: ${templateName}
-
-Extra fields:
-${fieldList}
-
-Checklist:
-${checklistList}
-
-TESTO (unica fonte):
-"""
-${transcriptionText}
-"""
-${soapPreview}
-`;
-
-    const response = await fetchApi('/api/chat', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-                { role: 'system', content: 'Rispondi SOLO con JSON conforme allo schema. Nessun testo extra.' },
-                { role: 'user', content: prompt }
-            ],
-            response_format: {
-                type: 'json_schema',
-                json_schema: schema
-            },
-            temperature: 0.0
-        }),
-        signal
-    });
-
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Extractor HTTP ${response.status}: ${errText.substring(0, 180)}`);
-    }
-
-    const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
-
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error('Risposta vuota (extractor)');
-
-    const result = JSON.parse(content);
-    const extrasOut = (result && result.extras && typeof result.extras === 'object') ? result.extras : {};
-    const checklistOut = (result && result.checklist && typeof result.checklist === 'object') ? result.checklist : {};
-
-    const normalizeText = (value) => String(value || '')
-        .toLowerCase()
-        .replace(/[\s\W_]+/g, ' ')
-        .trim();
-    const soapCombined = normalizeText(
-        `${soapResult?.S || soapResult?.s || ''} ${soapResult?.O || soapResult?.o || ''} ${soapResult?.A || soapResult?.a || ''} ${soapResult?.P || soapResult?.p || ''}`
-    );
-    Object.keys(extrasOut || {}).forEach(key => {
-        const raw = (extrasOut[key] || '').toString().trim();
-        const norm = normalizeText(raw);
-        if (!raw || norm.length < 8) return;
-        if (soapCombined.includes(norm)) {
-            extrasOut[key] = '';
-        }
-    });
-
-    // Push into UI state
-    if (typeof setTemplateExtractionResult === 'function') {
-        setTemplateExtractionResult(extrasOut, checklistOut);
-    } else {
-        // Fallback
-        try { currentTemplateExtras = extrasOut; } catch (e) {}
-        try { currentSOAPChecklist = checklistOut; } catch (e) {}
-    }
-}
-
-// ============================================
 // SAVE & EXPORT
 // ============================================
 
 function saveSOAP() {
     if (typeof migrateLegacyHistoryDataIfNeeded === 'function') {
         try { migrateLegacyHistoryDataIfNeeded(); } catch (e) {}
+    }
+
+    // If Titolo is empty, default to "Visita Generale"
+    var tplSel = document.getElementById('templateSelector');
+    if (tplSel && !tplSel.value.trim()) {
+        tplSel.value = 'Visita Generale';
+        if (typeof onTemplateSelectorInput === 'function') onTemplateSelectorInput('Visita Generale');
+    }
+    if (!currentTemplate) {
+        currentTemplate = 'generale';
     }
 
     const nowIso = new Date().toISOString();
@@ -1003,8 +852,6 @@ function saveSOAP() {
         soapData,
 
         // Additional metadata
-        extras: { ...(currentTemplateExtras || {}) },
-        checklist: { ...currentSOAPChecklist },
         patient: getPatientData(),
         diarized: lastTranscriptionDiarized,
         structuredResult: lastSOAPResult,
@@ -1062,50 +909,6 @@ function exportTXT() {
     if (vetName) out.push(`Veterinario: ${vetName}`);
     out.push(`Data: ${new Date().toLocaleDateString('it-IT')}`);
     out.push('');
-
-    // Template-specific extras + checklist
-    const cfg = (typeof _get8BTemplateConfig === 'function') ? _get8BTemplateConfig() : null;
-    const extrasObj = (typeof currentTemplateExtras === 'object' && currentTemplateExtras) ? currentTemplateExtras : {};
-    const checklistObj = (typeof currentSOAPChecklist === 'object' && currentSOAPChecklist) ? currentSOAPChecklist : {};
-
-    const extrasLines = [];
-    if (cfg && Array.isArray(cfg.extraFields) && cfg.extraFields.length) {
-        for (const f of cfg.extraFields) {
-            const v = (extrasObj?.[f.key] || '').toString().trim();
-            if (v) extrasLines.push(`${f.label}: ${v}`);
-        }
-    } else {
-        for (const [k, v0] of Object.entries(extrasObj || {})) {
-            const v = (v0 || '').toString().trim();
-            if (v) extrasLines.push(`${k}: ${v}`);
-        }
-    }
-    if (extrasLines.length) {
-        out.push('DATI CLINICI SPECIALISTICI');
-        out.push('-'.repeat(30));
-        out.push(...extrasLines);
-        out.push('');
-    }
-
-    const checklistLines = [];
-    if (cfg && Array.isArray(cfg.checklistItems) && cfg.checklistItems.length) {
-        for (const it of cfg.checklistItems) {
-            const st = checklistObj?.[it.key];
-            if (st === true) checklistLines.push(`✓ ${it.label}`);
-            else if (st === false) checklistLines.push(`✗ ${it.label}`);
-        }
-    } else {
-        for (const [k, st] of Object.entries(checklistObj || {})) {
-            if (st === true) checklistLines.push(`✓ ${k}`);
-            else if (st === false) checklistLines.push(`✗ ${k}`);
-        }
-    }
-    if (checklistLines.length) {
-        out.push('CHECKLIST');
-        out.push('-'.repeat(30));
-        out.push(...checklistLines);
-        out.push('');
-    }
 
     const blocks = [
         ['SOGGETTIVO', soap.s],
@@ -1215,65 +1018,7 @@ function exportPDF() {
         y += 6;
     }
 
-    // Template extras + checklist (omit empties always)
-    const cfg = (typeof _get8BTemplateConfig === 'function') ? _get8BTemplateConfig() : null;
-    const extrasObj = (typeof currentTemplateExtras === 'object' && currentTemplateExtras) ? currentTemplateExtras : {};
-    const checklistObj = (typeof currentSOAPChecklist === 'object' && currentSOAPChecklist) ? currentSOAPChecklist : {};
-
-    const extrasPairs = [];
-    if (cfg && Array.isArray(cfg.extraFields) && cfg.extraFields.length) {
-        for (const f of cfg.extraFields) {
-            const v = (extrasObj?.[f.key] || '').toString().trim();
-            if (v) extrasPairs.push([f.label, v]);
-        }
-    }
-
-    const checklistPairs = [];
-    if (cfg && Array.isArray(cfg.checklistItems) && cfg.checklistItems.length) {
-        for (const it of cfg.checklistItems) {
-            const st = checklistObj?.[it.key];
-            if (st === true) checklistPairs.push(['✓', it.label]);
-            else if (st === false) checklistPairs.push(['✗', it.label]);
-        }
-    }
-
-    const addHeading = (title) => {
-        if (y > 260) { doc.addPage(); y = 20; }
-        doc.setFontSize(12);
-        doc.setFont(undefined, 'bold');
-        doc.text(title, 15, y);
-        doc.setFont(undefined, 'normal');
-        y += 8;
-    };
-
-    if (extrasPairs.length) {
-        addHeading('Dati clinici specialistici');
-        doc.setFontSize(10);
-        for (const [label, value] of extrasPairs) {
-            const line = `${label}: ${value}`;
-            const lines = doc.splitTextToSize(line, 180);
-            for (const l of lines) {
-                ensurePage();
-                doc.text(l, 15, y);
-                y += 5;
-            }
-            y += 1;
-        }
-        y += 6;
-    }
-
-    if (checklistPairs.length) {
-        addHeading('Checklist');
-        doc.setFontSize(10);
-        for (const [mark, label] of checklistPairs) {
-            ensurePage();
-            doc.text(`${mark} ${label}`, 15, y);
-            y += 5;
-        }
-        y += 6;
-    }
-
-    // Footer (versione corretta)
+    // Footer
     doc.setFontSize(8);
     doc.setTextColor(128, 128, 128);
     doc.text('Trascritto con ADA v6.16.2 - AI Driven Abupet', 105, 290, { align: 'center' });
@@ -1702,9 +1447,6 @@ async function sendCorrection() {
                 a: document.getElementById('soap-a').value,
                 p: document.getElementById('soap-p').value
             };
-            const extrasObj = (typeof currentTemplateExtras === 'object' && currentTemplateExtras) ? currentTemplateExtras : {};
-            const checklistObj = (typeof currentSOAPChecklist === 'object' && currentSOAPChecklist) ? currentSOAPChecklist : {};
-
             const prompt = `Applica questa correzione vocale al referto SOAP.
 Correzione richiesta: "${correctionText}"
 
@@ -1714,13 +1456,7 @@ O: ${currentSOAP.o}
 A: ${currentSOAP.a}
 P: ${currentSOAP.p}
 
-Dati clinici specialistici (extras, JSON):
-${JSON.stringify(extrasObj)}
-
-Checklist (template, JSON con true/false/null):
-${JSON.stringify(checklistObj)}
-
-Restituisci il referto corretto in JSON: {"S": "...", "O": "...", "A": "...", "P": "...", "extras": {...}, "checklist": {...}}`;
+Restituisci il referto corretto in JSON: {"S": "...", "O": "...", "A": "...", "P": "..."}`;
 
             const response = await fetchApi('/api/chat', {
                 method: 'POST',
@@ -1749,14 +1485,6 @@ Restituisci il referto corretto in JSON: {"S": "...", "O": "...", "A": "...", "P
                 if (corrected.O) document.getElementById('soap-o').value = corrected.O;
                 if (corrected.A) document.getElementById('soap-a').value = corrected.A;
                 if (corrected.P) document.getElementById('soap-p').value = corrected.P;
-                if (corrected.extras && typeof corrected.extras === 'object') {
-                    currentTemplateExtras = { ...currentTemplateExtras, ...corrected.extras };
-                    try { renderTemplateExtras(); } catch (e) {}
-                }
-                if (corrected.checklist && typeof corrected.checklist === 'object') {
-                    currentSOAPChecklist = { ...currentSOAPChecklist, ...corrected.checklist };
-                    try { renderChecklistInSOAP(); } catch (e) {}
-                }
                 try { applyHideEmptyVisibility(); } catch (e) {}
             }
 

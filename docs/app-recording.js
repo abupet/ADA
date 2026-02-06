@@ -307,7 +307,8 @@ async function runAudioAutoPipeline() {
         } catch (e) {}
 
         const statusEl = document.getElementById('recordingStatus');
-        if (statusEl) statusEl.textContent = 'Sto trascrivendo la registrazione.';
+        if (statusEl) statusEl.textContent = '⏳ Sto trascrivendo...';
+        showProgress(true);
         await transcribeAudio();
 
         // If canceled during transcription, stop here
@@ -316,19 +317,16 @@ async function runAudioAutoPipeline() {
         }
 
         const transcriptionText = (document.getElementById('transcriptionText')?.value || '').toString();
-        const ok = transcriptionPassesQualityGate(transcriptionText);
-
-        if (!ok) {
-            if (btnGenerateRow) btnGenerateRow.style.display = 'flex';
-            if (titleEl) titleEl.textContent = 'Testo trascritto (audio corto: genera referto manualmente)';
-            if (statusEl) statusEl.textContent = '✅ Trascrizione pronta — premi “Genera referto”';
-            showToast('Trascrizione pronta. Audio corto: genera il referto manualmente.', 'success');
+        if (!transcriptionText.trim()) {
+            if (statusEl) statusEl.textContent = '❌ Nessun testo trascritto';
+            showToast('Nessun testo trascritto.', 'error');
             return;
         }
 
-        // Auto-generate SOAP
+        // Transcription done — auto-generate SOAP regardless of audio length
+        if (statusEl) statusEl.textContent = '✅ Trascrizione pronta, ora genero il Referto...';
+        showToast('Trascrizione pronta, ora genero il Referto.', 'success');
         if (btnGenerateRow) btnGenerateRow.style.display = 'none';
-        if (statusEl) statusEl.textContent = '⏳ Sto generando il referto...';
 
         if (typeof generateSOAP === 'function') {
             await generateSOAP({ auto: true, signal: getVisitSignal() });
@@ -823,7 +821,7 @@ async function waitForChunkQueueToDrain({ force = false } = {}) {
         } catch (e) {}
 
         updateChunkingRuntimeUI();
-        if (statusEl) statusEl.textContent = 'Sto trascrivendo la registrazione.';
+        if (statusEl) statusEl.textContent = '⏳ Sto trascrivendo...';
         await _delay(450);
 
         if (chunkNextAppendIndex !== lastAppendIdx) {
@@ -835,18 +833,19 @@ async function waitForChunkQueueToDrain({ force = false } = {}) {
         if (Date.now() - tStart > 60 * 60 * 1000) break;
     }
 
-    showProgress(false);
-
     const transcriptionText = (document.getElementById('transcriptionText')?.value || '').toString();
-    const ok = transcriptionPassesQualityGate(transcriptionText);
     const btnGenerateRow = document.getElementById('generateSoapRow');
 
-    if (!ok) {
-        if (statusEl) statusEl.textContent = '✅ Trascrizione pronta — premi "Genera referto"';
-        if (btnGenerateRow) btnGenerateRow.style.display = 'flex';
+    if (!transcriptionText.trim()) {
+        showProgress(false);
+        if (statusEl) statusEl.textContent = '❌ Nessun testo trascritto';
+        showToast('Nessun testo trascritto.', 'error');
     } else {
+        // Transcription done — auto-generate SOAP regardless of audio length
+        if (statusEl) statusEl.textContent = '✅ Trascrizione pronta, ora genero il Referto...';
+        showToast('Trascrizione pronta, ora genero il Referto.', 'success');
         if (btnGenerateRow) btnGenerateRow.style.display = 'none';
-        if (statusEl) statusEl.textContent = '⏳ Sto generando il referto...';
+
         if (typeof generateSOAP === 'function') {
             try {
                 await generateSOAP({ auto: true, signal: getVisitSignal() });
@@ -856,6 +855,7 @@ async function waitForChunkQueueToDrain({ force = false } = {}) {
                 if (btnGenerateRow) btnGenerateRow.style.display = 'flex';
             }
         }
+        showProgress(false);
     }
 
     // Reset UI state
@@ -1118,6 +1118,12 @@ async function restoreChunkVisitDraft() {
             const ta = document.getElementById('transcriptionText');
             if (ta) ta.value = text;
         }
+
+        // Clear the stored draft so the restore (and toast) won't repeat on next load
+        try {
+            const txDel = db.transaction(ADA_VISIT_DRAFT_STORE, 'readwrite');
+            txDel.objectStore(ADA_VISIT_DRAFT_STORE).delete('current');
+        } catch (_) {}
 
         // Inform user (recording itself cannot be resumed after refresh)
         showToast('Ripristinato testo trascritto (chunking). Nota: la registrazione non riprende dopo refresh.', 'success');
@@ -1570,7 +1576,7 @@ async function transcribeAudio() {
     const recordedMinutes = seconds > 0 ? seconds / 60 : 1;
     
     // Try diarized transcription first
-    document.getElementById('recordingStatus').textContent = 'Sto trascrivendo la registrazione.';
+    document.getElementById('recordingStatus').textContent = '⏳ Sto trascrivendo...';
     
     try {
         const result = await transcribeDiarizedOpenAI(audioBlob, 1); // attempt 1
@@ -1606,7 +1612,7 @@ async function transcribeAudio() {
         logError("TRASCRIZIONE", `Tentativo 1 fallito - ${error.message}`);
         
         // Retry once
-        document.getElementById('recordingStatus').textContent = 'Sto trascrivendo la registrazione.';
+        document.getElementById('recordingStatus').textContent = '⏳ Sto trascrivendo...';
         
         try {
             const result = await transcribeDiarizedOpenAI(audioBlob, 2); // attempt 2
@@ -2061,7 +2067,7 @@ function formatTimeShort(seconds) {
 
 // Whisper fallback (no diarization) - but WITH segments/timestamps
 async function transcribeWithWhisperFallback(recordedMinutes) {
-    document.getElementById('recordingStatus').textContent = 'Sto trascrivendo la registrazione.';
+    document.getElementById('recordingStatus').textContent = '⏳ Sto trascrivendo...';
 
     const t0 = performance.now();
 
@@ -2126,7 +2132,7 @@ async function transcribeWithWhisperFallback(recordedMinutes) {
             document.getElementById('transcriptionText').value = displayText;
         }
         const dt = ((performance.now() - t0) / 1000).toFixed(1);
-        document.getElementById('recordingStatus').textContent = 'Sto trascrivendo la registrazione.';
+        document.getElementById('recordingStatus').textContent = '⏳ Sto trascrivendo...';
 
         // Use actual duration when available
         const minutes = (result.duration ? (result.duration / 60) : recordedMinutes);

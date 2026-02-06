@@ -8,9 +8,6 @@ let vitalsData = [];
 let historyData = [];
 let medications = [];
 let appointments = []; // Legacy - feature removed in v7, kept for data compat
-let checklist = {};
-let currentSOAPChecklist = {};
-let currentTemplateExtras = {};
 let hideEmptyFields = false;
 let vitalsChart = null;
 let currentEditingSOAPIndex = -1;
@@ -20,8 +17,6 @@ let fullscreenTargetId = null;
 let lastResetDate = null;
 let tipsData = [];
 let debugLogEnabled = true;
-let checklistLabelTranslations = {};
-let extraLabelTranslations = {};
 
 // ============================================
 // JSON EXTRACTION HELPERS (robust parsing from model output)
@@ -253,28 +248,22 @@ function navigateToPage(page) {
         if (internalNotesSection) internalNotesSection.style.display = (page === 'soap' && getActiveRole() !== ROLE_PROPRIETARIO) ? '' : 'none';
     } catch(e) {}
 
-    // Diary page: vet sees it read-only, owner can edit/generate
+    // Diary page: v7.1.0 dual mode — both vet and owner can generate/save their own profiles
     if (page === 'diary') {
         try {
             const isVet = getActiveRole() === ROLE_VETERINARIO;
             const diaryTextEl = document.getElementById('diaryText');
-            if (diaryTextEl) diaryTextEl.readOnly = isVet;
-            // Hide generate/save/export buttons for vet
+            if (diaryTextEl) diaryTextEl.readOnly = false;
+            // Both roles can use all diary buttons
             ['btnGenerateDiary', 'btnSaveDiary', 'btnExportDiaryTXT', 'btnExportDiaryPDF', 'diaryLangSelector', 'btnSpeakDiary'].forEach(function (id) {
                 var el = document.getElementById(id);
-                if (el) el.style.display = isVet ? 'none' : '';
+                if (el) el.style.display = '';
             });
-            // Show a read-only notice for vet
+            // Load the correct diary content for the current role
+            try { if (typeof loadDiaryForCurrentRole === 'function') loadDiaryForCurrentRole(); } catch(e) {}
+            // Remove legacy read-only notice
             var roNotice = document.getElementById('diaryVetReadonlyNotice');
-            if (!roNotice && isVet) {
-                roNotice = document.createElement('p');
-                roNotice.id = 'diaryVetReadonlyNotice';
-                roNotice.style.cssText = 'color:#888;font-size:13px;font-style:italic;margin-bottom:10px;';
-                roNotice.textContent = 'Profilo sanitario generato dal proprietario (sola lettura)';
-                var diaryPage = document.getElementById('page-diary');
-                if (diaryPage) diaryPage.insertBefore(roNotice, diaryPage.querySelector('.card') || diaryPage.firstChild.nextSibling);
-            }
-            if (roNotice) roNotice.style.display = isVet ? '' : 'none';
+            if (roNotice) roNotice.style.display = 'none';
         } catch(e) {}
     }
 }
@@ -348,8 +337,10 @@ function updateDocumentButtonsByRole() {
     const role = getActiveRole();
     const readBtn = document.getElementById('btnDocRead');
     const explainBtn = document.getElementById('btnDocExplain');
-    if (readBtn) readBtn.disabled = (role !== ROLE_VETERINARIO);
-    if (explainBtn) explainBtn.disabled = false; // both roles can generate explanation
+    // Vet: "Trascrivi" visible, "Spiegami" hidden
+    // Owner: "Trascrivi" hidden, "Spiegami" visible
+    if (readBtn) readBtn.style.display = (role === ROLE_VETERINARIO) ? '' : 'none';
+    if (explainBtn) explainBtn.style.display = (role === ROLE_PROPRIETARIO) ? '' : 'none';
 }
 
 function initRoleSystem() {
@@ -414,53 +405,9 @@ function _draftKeyForTemplate(templateKey) {
     return `ada_draft_tpl_${petKey}_${tpl}`;
 }
 
-function saveTemplateDraftState() {
-    try {
-        const key = _draftKeyForTemplate(currentTemplate);
-        const payload = {
-            extras: (currentTemplateExtras && typeof currentTemplateExtras === 'object') ? currentTemplateExtras : {},
-            checklist: (currentSOAPChecklist && typeof currentSOAPChecklist === 'object') ? currentSOAPChecklist : {},
-            savedAt: new Date().toISOString()
-        };
-        localStorage.setItem(key, JSON.stringify(payload));
-    } catch (e) {
-        // non-fatal
-    }
-}
-
-function scheduleTemplateDraftSave() {
-    try {
-        if (_templateDraftSaveTimer) clearTimeout(_templateDraftSaveTimer);
-        _templateDraftSaveTimer = setTimeout(() => {
-            saveTemplateDraftState();
-            _templateDraftSaveTimer = null;
-        }, 300);
-    } catch (e) {}
-}
-
-function restoreTemplateDraftState(options) {
-    const opts = options || {};
-    const templateKey = (opts.templateKey || currentTemplate || 'generale').toString();
-    const force = !!opts.force;
-
-    // Avoid overwriting a populated state unless forced
-    const extrasIsEmpty = !currentTemplateExtras || Object.keys(currentTemplateExtras || {}).length === 0;
-    const checklistIsEmpty = !currentSOAPChecklist || Object.keys(currentSOAPChecklist || {}).length === 0;
-    if (!force && (!extrasIsEmpty || !checklistIsEmpty)) return;
-
-    try {
-        const key = _draftKeyForTemplate(templateKey);
-        const raw = localStorage.getItem(key);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-            currentTemplateExtras = (parsed.extras && typeof parsed.extras === 'object') ? parsed.extras : {};
-            currentSOAPChecklist = (parsed.checklist && typeof parsed.checklist === 'object') ? parsed.checklist : {};
-        }
-    } catch (e) {
-        // non-fatal
-    }
-}
+function saveTemplateDraftState() {}
+function scheduleTemplateDraftSave() {}
+function restoreTemplateDraftState() {}
 
 function saveTextDrafts() {
     try {
@@ -471,8 +418,6 @@ function saveTextDrafts() {
             localStorage.setItem(`ada_draft_${id}`, el.value);
         });
 
-        // Template-specific drafts (extras/checklist)
-        saveTemplateDraftState();
     } catch (e) {
         // non-fatal
     }
@@ -500,10 +445,6 @@ function restoreTextDrafts() {
         }
         applyTranscriptionUI();
 
-        // Restore template-specific extras/checklist drafts if present
-        restoreTemplateDraftState({ force: false });
-        renderTemplateExtras();
-        renderChecklistInSOAP();
         applyHideEmptyVisibility();
     } catch (e) {
         // non-fatal
@@ -692,19 +633,39 @@ async function speakFullscreenText() {
 function initTemplateSelector() {
     // Restore last template
     const savedTemplate = localStorage.getItem('ada_last_template');
+    const selector = document.getElementById('templateSelector');
     if (savedTemplate) {
         currentTemplate = savedTemplate;
-        const selector = document.getElementById('templateSelector');
-        if (selector) selector.value = savedTemplate;
+        if (selector) selector.value = templateTitleFromKey(savedTemplate);
+    } else {
+        currentTemplate = 'generale';
+        if (selector) selector.value = '';
     }
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate];
-    // Restore draft extras/checklist for this template (if any)
-    restoreTemplateDraftState({ force: false });
-
-    // Render template-specific UI (extras + checklist)
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
+}
+
+// v7.1.0: Reverse mapping from display title to template key
+var _titleToKey = {};
+if (typeof templateTitles !== 'undefined') {
+    for (var _k in templateTitles) { if (templateTitles.hasOwnProperty(_k)) _titleToKey[templateTitles[_k]] = _k; }
+}
+// Add extra entries for datalist options that may not be in templateTitles
+var _extraTitleMap = { 'Cardiologia': 'cardiologia', 'Controllo': 'controllo', 'Medicina interna': 'medicina_interna', 'Neurologia': 'neurologia', 'Oncologia': 'oncologia', 'Ortopedia': 'ortopedia', 'Pre-Chirurgia': 'prechirurgia' };
+for (var _ek in _extraTitleMap) { if (!_titleToKey[_ek]) _titleToKey[_ek] = _extraTitleMap[_ek]; }
+
+function templateKeyFromTitle(title) {
+    if (_titleToKey[title]) return _titleToKey[title];
+    return 'generale'; // fallback for custom text
+}
+
+function templateTitleFromKey(key) {
+    return (typeof templateTitles !== 'undefined' && templateTitles[key]) ? templateTitles[key] : (key || 'Visita Generale');
+}
+
+// Called by the <input> onchange in the SOAP page
+function onTemplateSelectorInput(text) {
+    var key = templateKeyFromTitle(text);
+    onTemplateChange(key);
 }
 
 function onTemplateChange(value) {
@@ -713,18 +674,7 @@ function onTemplateChange(value) {
 
     currentTemplate = value;
     localStorage.setItem('ada_last_template', value);
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate];
 
-    // Reset template-specific state (8B)
-    currentTemplateExtras = {};
-    currentSOAPChecklist = {};
-    scheduleTemplateDraftSave();
-
-    // Restore drafts for the newly selected template
-    restoreTemplateDraftState({ templateKey: value, force: true });
-
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
 }
 
@@ -1107,7 +1057,6 @@ function initHideEmptyToggle() {
         if (!el) return;
         el.addEventListener('input', () => {
             if (hideEmptyFields) applyHideEmptyVisibility();
-            else applyMissingHighlights();
         });
     });
 
@@ -1117,72 +1066,7 @@ function initHideEmptyToggle() {
 function setHideEmptyFields(enabled) {
     hideEmptyFields = !!enabled;
     try { localStorage.setItem(ADA_HIDE_EMPTY_KEY, hideEmptyFields ? 'true' : 'false'); } catch (e) {}
-    // Re-render to apply hiding and missing highlights correctly
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
-}
-
-function _getTemplateConfigSafe() {
-    try {
-        if (typeof TEMPLATE_CONFIGS !== 'undefined' && TEMPLATE_CONFIGS && TEMPLATE_CONFIGS[currentTemplate]) {
-            return TEMPLATE_CONFIGS[currentTemplate];
-        }
-    } catch (e) {}
-    return null;
-}
-
-function renderTemplateExtras() {
-    const container = document.getElementById('extrasFields');
-    const section = document.getElementById('extrasSection');
-    if (!container || !section) return;
-
-    const cfg = (typeof _get8BTemplateConfig === 'function') ? _get8BTemplateConfig() : null;
-    if (!cfg || !Array.isArray(cfg.extraFields) || cfg.extraFields.length === 0) {
-        section.style.display = 'none';
-        container.innerHTML = '';
-        return;
-    }
-
-    section.style.display = '';
-
-    container.innerHTML = cfg.extraFields.map(f => {
-        const key = (f.key || '').toString();
-        const id = `extra_${key}`;
-        const rawLabel = (f.label || key).toString();
-        const label = getTemplateLabelTranslation('extras', key, rawLabel);
-        const hint = (f.hint || '').toString();
-        const value = ((currentTemplateExtras && currentTemplateExtras[key]) ? currentTemplateExtras[key] : '').toString();
-
-        const placeholder = hint.replace(/"/g, '&quot;');
-        const labelForOnclick = label.replace(/'/g, "\\'");
-        const safeValue = value.replace(/<\/textarea/gi, '<\/textarea');
-
-        return `
-            <div class="extra-field" data-extra-field="${key}">
-                <label>${label}</label>
-                <div class="textarea-wrapper">
-                    <textarea id="${id}" rows="3" placeholder="${placeholder}"
-                        oninput="updateExtraField('${key}', this.value)">${safeValue}</textarea>
-                    <button class="expand-btn" onclick="expandTextarea('${id}', '${labelForOnclick}')">⛶</button>
-                </div>
-                ${hint ? `<span class="hint">${hint}</span>` : ''}
-            </div>
-        `;
-    }).join('');
-
-    applyMissingHighlights();
-}
-
-function applyMissingHighlights() {
-    // SOAP sections
-    ['soap-s', 'soap-o', 'soap-a', 'soap-p'].forEach(id => {
-        const ta = document.getElementById(id);
-        if (!ta) return;
-        const wrapper = ta.closest('.soap-section');
-        const empty = !String(ta.value || '').trim();
-        if (wrapper) wrapper.classList.toggle('missing', empty && !hideEmptyFields);
-    });
 }
 
 function applyHideEmptyVisibility() {
@@ -1196,113 +1080,17 @@ function applyHideEmptyVisibility() {
         wrapper.style.display = (hideEmptyFields && empty) ? 'none' : '';
         wrapper.classList.toggle('missing', empty && !hideEmptyFields);
     });
-
-    // Extras fields
-    const extrasSection = document.getElementById('extrasSection');
-    const extrasContainer = document.getElementById('extrasFields');
-    if (extrasSection && extrasContainer) {
-        const fieldDivs = Array.from(extrasContainer.querySelectorAll('[data-extra-field]'));
-        let anyVisible = false;
-        fieldDivs.forEach(div => {
-            const key = div.getAttribute('data-extra-field');
-            const ta = div.querySelector('textarea');
-            const empty = !String(ta?.value || '').trim();
-            div.style.display = (hideEmptyFields && empty) ? 'none' : '';
-            if (ta) ta.classList.toggle('missing', empty && !hideEmptyFields);
-            if (div.style.display !== 'none') anyVisible = true;
-        });
-        extrasSection.style.display = anyVisible ? '' : (hideEmptyFields ? 'none' : '');
-    }
-
-    // Checklist items are hidden/shown in renderChecklistInSOAP; ensure missing highlights consistent
-    renderChecklistInSOAP();
 }
 
-// ============================================
-// CHECKLIST (Template-specific)
-// ============================================
-
-function initChecklist() {
-    // Restore open/closed state
-    try {
-        const open = localStorage.getItem('ada_checklist_open') === 'true';
-        const el = document.getElementById('checklistCollapsible');
-        if (el) el.classList.toggle('open', open);
-    } catch (e) {}
-
-    try { renderChecklistInSOAP(); } catch (e) {}
-}
-
-function toggleChecklist() {
-    const el = document.getElementById('checklistCollapsible');
-    if (!el) return;
-    el.classList.toggle('open');
-    try { localStorage.setItem('ada_checklist_open', el.classList.contains('open') ? 'true' : 'false'); } catch (e) {}
-}
-
-function resetChecklist() {
-    currentSOAPChecklist = {};
-    try { renderChecklistInSOAP(); } catch (e) {}
-    try { scheduleTemplateDraftSave(); } catch (e) {}
-}
-
-function toggleChecklistItem(key) {
-    const k = String(key || '').trim();
-    if (!k) return;
-    const cur = currentSOAPChecklist?.[k];
-
-    // tri-state: undefined -> true -> false -> undefined
-    let next;
-    if (cur === true) next = false;
-    else if (cur === false) next = undefined;
-    else next = true;
-
-    if (next === undefined) {
-        try { delete currentSOAPChecklist[k]; } catch (e) {}
-    } else {
-        currentSOAPChecklist[k] = next;
-    }
-
-    try { renderChecklistInSOAP(); } catch (e) {}
-    try { scheduleTemplateDraftSave(); } catch (e) {}
-}
-
-function renderChecklistInSOAP() {
-    const grid = document.getElementById('checklistGrid');
-    if (!grid) return;
-
-    const cfg = _getTemplateConfigSafe();
-    const items = (cfg && Array.isArray(cfg.checklistItems)) ? cfg.checklistItems : [];
-    if (!items.length) {
-        grid.innerHTML = '<p style="color:#888;margin:0;">Nessuna checklist per questo template</p>';
-        return;
-    }
-
-    const st = (currentSOAPChecklist && typeof currentSOAPChecklist === 'object') ? currentSOAPChecklist : {};
-
-    // Build DOM with data-key to avoid inline onclick quote issues
-    grid.innerHTML = items.map(it => {
-        const key = String(it.key ?? '').trim();
-        const rawLabel = (it.label || key).toString();
-        const label = _escapeHtml(getTemplateLabelTranslation('checklist', key, rawLabel));
-        const val = st[key];
-        const cls = val === true ? 'checked' : (val === false ? 'unchecked' : '');
-        const badge = val === true ? '✓' : (val === false ? '✗' : '•');
-
-        // Escape attribute double-quotes minimally
-        const safeKey = key.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        return `<button type="button" class="checklist-item ${cls}" data-key="${safeKey}">${badge} ${label}</button>`;
-    }).join('');
-
-    // Bind click handlers
-    grid.querySelectorAll('.checklist-item').forEach(el => {
-        el.addEventListener('click', (ev) => {
-            const k = el.getAttribute('data-key') || '';
-            toggleChecklistItem(k);
-        });
-    });
-}
+// Stubs for backward compat (functions may be called from archived data)
+function renderTemplateExtras() {}
+function renderChecklistInSOAP() {}
+function applyMissingHighlights() {}
+function initChecklist() {}
+function toggleChecklist() {}
+function resetChecklist() {}
+function toggleChecklistItem() {}
+function updateExtraField() {}
 
 
 // ============================================
@@ -1905,76 +1693,6 @@ function syncLangSelectorsForCurrentDoc() {
     setActiveLangButton('diaryLangSelector', getStoredLangForSelector('diaryLangSelector'));
 }
 
-function _getTemplateTranslationStore(store, lang) {
-    const tpl = (currentTemplate || 'generale').toString();
-    if (!store[tpl]) store[tpl] = {};
-    if (!store[tpl][lang]) store[tpl][lang] = {};
-    return store[tpl][lang];
-}
-
-function getTemplateLabelTranslation(kind, key, fallback) {
-    const lang = getStoredLangForSelector('soapLangSelector');
-    if (lang === 'IT') return fallback;
-    const store = kind === 'extras' ? extraLabelTranslations : checklistLabelTranslations;
-    const tpl = (currentTemplate || 'generale').toString();
-    const translated = store?.[tpl]?.[lang]?.[key];
-    return translated || fallback;
-}
-
-async function translateExtrasValues(lang) {
-    const container = document.getElementById('extrasFields');
-    if (!container) return;
-    const fields = Array.from(container.querySelectorAll('[data-extra-field]'));
-    for (const field of fields) {
-        const key = field.getAttribute('data-extra-field');
-        const ta = field.querySelector('textarea');
-        const value = (ta?.value || '').trim();
-        if (!key || !value) continue;
-        const translated = await translateText(value, lang);
-        if (ta) ta.value = translated;
-        if (currentTemplateExtras && typeof currentTemplateExtras === 'object') {
-            currentTemplateExtras[key] = translated;
-        }
-    }
-    try { scheduleTemplateDraftSave(); } catch (e) {}
-    try { applyHideEmptyVisibility(); } catch (e) {}
-}
-
-async function translateTemplateLabels(lang) {
-    const cfg = _getTemplateConfigSafe();
-    if (!cfg) return;
-
-    if (lang === 'IT') {
-        const tpl = (currentTemplate || 'generale').toString();
-        if (extraLabelTranslations[tpl]) delete extraLabelTranslations[tpl][lang];
-        if (checklistLabelTranslations[tpl]) delete checklistLabelTranslations[tpl][lang];
-        try { renderTemplateExtras(); } catch (e) {}
-        try { renderChecklistInSOAP(); } catch (e) {}
-        return;
-    }
-
-    const extras = Array.isArray(cfg.extraFields) ? cfg.extraFields : [];
-    const checklistItems = Array.isArray(cfg.checklistItems) ? cfg.checklistItems : [];
-    const extrasStore = _getTemplateTranslationStore(extraLabelTranslations, lang);
-    const checklistStore = _getTemplateTranslationStore(checklistLabelTranslations, lang);
-
-    for (const f of extras) {
-        const key = (f.key || '').toString();
-        if (!key || extrasStore[key]) continue;
-        const label = (f.label || key).toString();
-        extrasStore[key] = await translateText(label, lang);
-    }
-
-    for (const it of checklistItems) {
-        const key = (it.key || '').toString();
-        if (!key || checklistStore[key]) continue;
-        const label = (it.label || key).toString();
-        checklistStore[key] = await translateText(label, lang);
-    }
-
-    try { renderTemplateExtras(); } catch (e) {}
-    try { renderChecklistInSOAP(); } catch (e) {}
-}
 
 function initLanguageSelectors() {
     document.querySelectorAll('.lang-selector').forEach(selector => {
@@ -1998,8 +1716,6 @@ function initLanguageSelectors() {
                             const field = document.getElementById(fieldId);
                             if (field && field.value.trim()) field.value = await translateText(field.value, lang);
                         }
-                        await translateExtrasValues(lang);
-                        await translateTemplateLabels(lang);
                     } else if (selectorId === 'ownerLangSelector') {
                         const field = document.getElementById('ownerExplanation');
                         if (field && field.value.trim()) field.value = await translateText(field.value, lang);
@@ -2057,11 +1773,6 @@ async function translateText(text, targetLang) {
 function resetSoapDraftLink() {
     currentEditingSOAPIndex = -1;
     currentEditingHistoryId = null;
-  // v6.16.3: new visit should start clean (extras + checklist)
-  currentTemplateExtras = {};
-  currentSOAPChecklist = {};
-  try { renderTemplateExtras && renderTemplateExtras(); } catch(e) {}
-  try { renderChecklistInSOAP && renderChecklistInSOAP(); } catch(e) {}
   storeLangForSelector('soapLangSelector', 'IT');
   storeLangForSelector('ownerLangSelector', 'IT');
   syncLangSelectorsForCurrentDoc();
@@ -2071,6 +1782,58 @@ function resetSoapDraftLink() {
       localStorage.removeItem('ada_draft_ownerExplanation');
   } catch (e) {}
 
+}
+
+// v7.1.0: "Nuova" button — clear recording + report fields for a fresh visit
+function resetRecordingAndReport(options) {
+    var opts = options || {};
+    // Cancel any in-progress transcription / SOAP generation
+    try { if (typeof visitAbortController !== 'undefined' && visitAbortController) visitAbortController.abort(); } catch (e) {}
+
+    // Reset SOAP draft link (editing index, checklist, extras, languages)
+    resetSoapDraftLink();
+
+    // Clear transcription
+    const tt = document.getElementById('transcriptionText');
+    if (tt) tt.value = '';
+    const titleEl = document.getElementById('transcriptionTitle');
+    if (titleEl) titleEl.textContent = '';
+    const statusEl = document.getElementById('recordingStatus');
+    if (statusEl) statusEl.textContent = '';
+
+    // Hide generate / auto-complete rows
+    const genRow = document.getElementById('generateSoapRow');
+    if (genRow) genRow.style.display = 'none';
+    const autoRow = document.getElementById('autoSoapCompleteRow');
+    if (autoRow) autoRow.style.display = 'none';
+
+    // Reset template selector (empty — will auto-fill on save if still empty)
+    const tplSel = document.getElementById('templateSelector');
+    if (tplSel) tplSel.value = '';
+    currentTemplate = 'generale';
+
+    // Clear SOAP fields
+    ['soap-s', 'soap-o', 'soap-a', 'soap-p', 'soap-internal-notes'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    // Reset recording state
+    try {
+        if (typeof audioBlob !== 'undefined') audioBlob = null;
+        if (typeof audioChunks !== 'undefined') audioChunks = [];
+        if (typeof lastTranscriptionResult !== 'undefined') lastTranscriptionResult = null;
+        if (typeof transcriptionSegments !== 'undefined') transcriptionSegments = [];
+    } catch (e) {}
+
+    // Reset record button
+    const rb = document.getElementById('recordBtn');
+    if (rb) { rb.disabled = false; rb.textContent = '🎤'; rb.classList.remove('recording', 'paused'); }
+
+    // Clear draft from IndexedDB
+    try { if (typeof clearVisitDraft === 'function') clearVisitDraft(); } catch (e) {}
+
+    if (!opts.silent) showToast('Nuova visita pronta', 'success');
 }
 
 function _escapeHtml(str) {
@@ -2256,29 +2019,15 @@ async function openOrGenerateOwnerFromSelectedReport() {
     currentEditingHistoryId = id;
     syncLangSelectorsForCurrentDoc();
 
-    currentTemplateExtras = item.extras || {};
-    currentSOAPChecklist = item.checklist || {};
     lastTranscriptionDiarized = item.diarized || false;
     lastSOAPResult = item.structuredResult || null;
 
-    // Sync template selector + render template-specific UI for this archived report
+    // Sync template selector
     try {
         const selector = document.getElementById('templateSelector');
-        if (selector) selector.value = currentTemplate;
+        if (selector) selector.value = templateTitleFromKey(currentTemplate);
     } catch (e) {}
-    try { document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate]; } catch (e) {}
-    try { renderTemplateExtras(); } catch (e) {}
-    try { renderChecklistInSOAP(); } catch (e) {}
     try { applyHideEmptyVisibility(); } catch (e) {}
-
-    try {
-        document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate] || 'Referto SOAP';
-        renderChecklistInSOAP();
-        // Keep template-specific extras in sync when the user later opens the SOAP page
-        if (typeof renderTemplateExtras === 'function') renderTemplateExtras();
-        if (typeof applyHideEmptyVisibility === 'function') applyHideEmptyVisibility();
-        if (typeof applyMissingHighlights === 'function') applyMissingHighlights();
-    } catch (e) {}
 
     // Clear glossary/FAQ to avoid stale content
     try {
@@ -2392,20 +2141,15 @@ function loadHistoryById(id) {
 
     
   // v6.16.3: restore per-report specialist extras
-  currentTemplateExtras = (item.extras && typeof item.extras === 'object') ? item.extras : {};
-currentSOAPChecklist = item.checklist || {};
     lastTranscriptionDiarized = item.diarized || false;
     lastSOAPResult = item.structuredResult || null;
 
     // Sync selector UI
     try {
         const selector = document.getElementById('templateSelector');
-        if (selector) selector.value = currentTemplate;
+        if (selector) selector.value = templateTitleFromKey(currentTemplate);
     } catch (e) {}
 
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate] || 'Referto SOAP';
-    renderTemplateExtras();
-    renderChecklistInSOAP();
     applyHideEmptyVisibility();
 
     // Owner sees read-only view; vet sees editable SOAP

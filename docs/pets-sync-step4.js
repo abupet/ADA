@@ -92,10 +92,14 @@ function _petToPatch(petLike) {
         if (!Number.isNaN(n) && Number.isFinite(n)) patch.weight_kg = n;
       }
     }
+
+    // visit_date
+    if (isNonEmptyString(patient.visitDate)) patch.visit_date = patient.visitDate.trim();
   }
 
   // Rich data fields — full pet data sync
   if (typeof r.diary === "string") patch.notes = r.diary;
+  if (typeof r.ownerDiary === "string") patch.owner_diary = r.ownerDiary;
   if (r.lifestyle && typeof r.lifestyle === "object") patch.lifestyle = r.lifestyle;
   if (Array.isArray(r.vitalsData)) patch.vitals_data = r.vitalsData;
   if (Array.isArray(r.medications)) patch.medications = r.medications;

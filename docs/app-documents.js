@@ -658,7 +658,13 @@
         _openDB().then(function () {
             return _idbGetAllByIndex(STORE_NAME, 'pet_id', petId);
         }).then(function (documents) {
-            if (!documents || documents.length === 0) return;
+            if (!documents || documents.length === 0) {
+                // Clear the documents section when no documents remain
+                var existing = document.getElementById('documentsSection');
+                if (existing) existing.innerHTML = '';
+                _updateHistoryBadgeWithDocs(0);
+                return;
+            }
 
             // Sort documents newest first
             documents.sort(function (a, b) {
@@ -738,6 +744,7 @@
         if (!documentId) return;
 
         _currentDocumentId = documentId;
+        if (typeof logDebug === 'function') logDebug('openDocument', 'Opening document: ' + documentId);
 
         if (typeof navigateToPage === 'function') {
             navigateToPage('document');
@@ -781,6 +788,7 @@
             }
 
             // AI buttons - role-based
+            if (typeof logDebug === 'function') logDebug('openDocument', 'ai_status=' + (doc.ai_status || 'none') + ', has_read_text=' + !!doc.read_text + ', has_explanation=' + !!doc.owner_explanation + ', ai_error=' + (doc.ai_error || 'none'));
             _updateAIButtons(doc);
 
             // Show existing AI results
@@ -951,15 +959,15 @@
         var role    = _getRole();
 
         if (readBtn) {
-            // Only veterinario can trigger a read
-            readBtn.disabled = (role !== ROLE_VET);
-            readBtn.style.display = '';
+            // v7.1.0: Only vet sees "Trascrivi"
+            readBtn.disabled = false;
+            readBtn.style.display = (role === ROLE_VET) ? '' : 'none';
         }
 
         if (explBtn) {
-            // Only proprietario can trigger an explanation
-            explBtn.disabled = (role !== ROLE_OWNER);
-            explBtn.style.display = '';
+            // v7.1.0: Only owner sees "Spiegami il documento"
+            explBtn.disabled = false;
+            explBtn.style.display = (role === ROLE_OWNER) ? '' : 'none';
         }
 
         // Both roles can see existing results (handled by _showExistingAIResults)
@@ -1100,12 +1108,15 @@
 
     function explainDocument() {
         if (!_currentDocumentId) {
+            if (typeof logDebug === 'function') logDebug('explainDocument', 'No document selected');
             if (typeof showToast === 'function') showToast('Nessun documento selezionato', 'error');
             return;
         }
 
         var role = _getRole();
+        if (typeof logDebug === 'function') logDebug('explainDocument', 'documentId=' + _currentDocumentId + ', role=' + role);
         if (role !== ROLE_OWNER) {
+            if (typeof logDebug === 'function') logDebug('explainDocument', 'Blocked: role is not owner');
             if (typeof showToast === 'function') showToast('Funzione disponibile solo per il proprietario', 'error');
             return;
         }
@@ -1151,6 +1162,7 @@
                 return response.json();
             }).then(function (data) {
                 var text = (data && (data.owner_explanation || data.explanation || data.result)) || '';
+                if (typeof logDebug === 'function') logDebug('explainDocument', 'Success, text length=' + text.length);
 
                 // Persist result locally
                 return _openDB().then(function () {
@@ -1173,6 +1185,7 @@
                 });
             }).catch(function (err) {
                 if (err && err.name === 'AbortError') return;
+                if (typeof logError === 'function') logError('explainDocument', 'Error: ' + ((err && err.message) || 'sconosciuto'));
 
                 // Persist error
                 _openDB().then(function () {

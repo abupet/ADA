@@ -125,7 +125,6 @@ function getPatientData() {
         petBreed: document.getElementById('petBreed')?.value || '',
         petBirthdate: document.getElementById('petBirthdate')?.value || '',
         petSex: document.getElementById('petSex')?.value || '',
-        petWeight: document.getElementById('petWeight')?.value || '',
         petMicrochip: document.getElementById('petMicrochip')?.value || '',
         ownerName: document.getElementById('ownerName')?.value || '',
         ownerPhone: document.getElementById('ownerPhone')?.value || '',
@@ -152,7 +151,7 @@ function getLifestyleData() {
 }
 
 function setPatientData(data) {
-    const fields = ['petName', 'petSpecies', 'petBreed', 'petBirthdate', 'petSex', 'petWeight', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
+    const fields = ['petName', 'petSpecies', 'petBreed', 'petBirthdate', 'petSex', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
     fields.forEach(f => {
         const el = document.getElementById(f);
         if (el) el.value = (data && data[f]) || '';
@@ -243,7 +242,8 @@ async function generateDiary() {
     const lifestyle = getLifestyleData();
     const vetName = (typeof getVetName === 'function') ? getVetName() : '';
     const generatedDate = new Date().toLocaleDateString('it-IT');
-    
+    const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+
     const historyText = (historyData || []).map(h => {
         const d = new Date(h.createdAt || h.date || Date.now()).toLocaleDateString('it-IT');
         const tk = h.templateKey || h.template || 'generale';
@@ -256,17 +256,21 @@ async function generateDiary() {
     }).join('\n') || 'Nessuno';
     const vitalsText = vitalsData.map(v => `${new Date(v.date).toLocaleDateString('it-IT')}: Peso ${v.weight}kg, T ${v.temp}°C`).join('\n') || 'Nessuno';
     const medsText = medications.map(m => `${m.name} ${m.dosage} ${m.frequency}`).join('\n') || 'Nessuno';
-    
-    const prompt = `Genera un profilo sanitario per questo paziente veterinario.
 
-PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
+    const patientInfo = `PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
 PROPRIETARIO: ${patient.ownerName || 'N/D'}
 STILE DI VITA: Ambiente ${lifestyle.lifestyle || 'N/D'}, Attività ${lifestyle.activityLevel || 'N/D'}
 CONDIZIONI NOTE: ${lifestyle.knownConditions || 'Nessuna'}
 
 PARAMETRI VITALI: ${vitalsText}
 FARMACI: ${medsText}
-STORICO REFERTI: ${historyText}
+STORICO REFERTI: ${historyText}`;
+
+    let prompt;
+    if (isVet) {
+        prompt = `Genera un profilo sanitario per questo paziente veterinario.
+
+${patientInfo}
 
 ISTRUZIONI:
 Scrivi un profilo sanitario professionale e sintetico.
@@ -275,6 +279,18 @@ Esempio: "Il paziente presenta dermatite atopica [Fonte: Visita dermatologica, D
 Se un dato proviene dai Parametri Vitali, indica [Fonte: Parametri Vitali, Data: <data>].
 Se un dato proviene dai Farmaci attivi, indica [Fonte: Farmaci in corso].
 Se inserisci una firma, usa il nome veterinario "${vetName || '[Nome del Veterinario]'}" e la data "${generatedDate}".`;
+    } else {
+        prompt = `Genera un profilo sanitario semplice e chiaro per il proprietario di un animale.
+
+${patientInfo}
+
+ISTRUZIONI:
+Scrivi un profilo sanitario comprensibile per il proprietario. Usa un linguaggio semplice e rassicurante.
+Il tono deve essere impersonale, come se a scrivere fosse "il team Abupet".
+Spiega in modo chiaro: stato di salute generale, eventuali condizioni in corso, farmaci e cosa deve fare il proprietario.
+Evita termini tecnici complessi (o spiegali brevemente tra parentesi).
+Chiudi con: "Il team Abupet".`;
+    }
 
     try {
         const response = await fetchApi('/api/chat', {

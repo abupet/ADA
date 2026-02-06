@@ -1,4 +1,4 @@
-// ADA v7.0.0 - Configuration
+// ADA v7.1.0 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 
@@ -39,7 +39,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.0.0';
+const ADA_VERSION = '7.1.0';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -55,7 +55,7 @@ const ROLE_PERMISSIONS = {
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
+        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
     }
 };
@@ -106,113 +106,6 @@ const templateTitles = {
     'dermatologia': 'Dermatologia',
     'postchirurgico': 'Post-Chirurgico'
 };
-
-// Template-specific configuration (8B)
-// - extraFields: campi aggiuntivi (stringa). Se non presente nel testo → stringa vuota.
-// - checklistItems: items tri-state (true/false/null). null = non deducibile.
-// NOTE: chiavi stabili per export/archivio.
-const TEMPLATE_CONFIGS = {
-    generale: {
-        extraFields: [
-            { key: 'anamnesi_rilevante', label: 'Anamnesi rilevante (extra)', hint: 'Patologie pregresse rilevanti, interventi, ecc. (solo se esplicitati)' },
-            { key: 'condizioni_ambiente', label: 'Ambiente/gestione (extra)', hint: 'Casa/esterno, contatti, lettiera, ecc. (solo se riportato)' },
-            { key: 'note_varie', label: 'Note aggiuntive', hint: 'Dettagli utili non già presenti nel SOAP' }
-        ],
-        checklistItems: [
-            { key: 'stato_generale', label: 'Stato generale' },
-            { key: 'peso', label: 'Peso' },
-            { key: 'temperatura', label: 'Temperatura' },
-            { key: 'fc', label: 'FC/Polso' },
-            { key: 'fr', label: 'FR' },
-            { key: 'mucose', label: 'Mucose' },
-            { key: 'trc', label: 'TRC' },
-            { key: 'linfonodi', label: 'Linfonodi' },
-            { key: 'cute_mantello', label: 'Cute/Mantello' },
-            { key: 'auscult_cuore', label: 'Auscultazione cardiaca' },
-            { key: 'auscult_polmoni', label: 'Auscultazione polmonare' },
-            { key: 'palp_addome', label: 'Palpazione addome' }
-        ]
-    },
-    vaccinazione: {
-        extraFields: [
-            { key: 'vaccini_somministrati', label: 'Vaccini somministrati', hint: 'Nome vaccino/i e via di somministrazione se riportati' },
-            { key: 'lotto_scadenza', label: 'Lotto / scadenza', hint: 'Solo se esplicitati' },
-            { key: 'richiami_programmati', label: 'Richiami programmati', hint: 'Scadenze/tempi per richiami se indicati' },
-            { key: 'profilassi_parassiti', label: 'Profilassi parassiti', hint: 'Antiparassitario/vermifugo se discusso' }
-        ],
-        checklistItems: [
-            { key: 'anamnesi_vaccinale', label: 'Anamnesi vaccinale raccolta' },
-            { key: 'esame_pre_vaccinale', label: 'Esame pre-vaccinale' },
-            { key: 'temperatura', label: 'Temperatura' },
-            { key: 'mucose', label: 'Mucose/TRC' },
-            { key: 'linfonodi', label: 'Linfonodi' },
-            { key: 'peso', label: 'Peso' },
-            { key: 'consenso_info', label: 'Consenso/Info reazioni avverse' },
-            { key: 'note_post_vaccino', label: 'Istruzioni post-vaccino' }
-        ]
-    },
-    emergenza: {
-        extraFields: [
-            { key: 'triage', label: 'Triage / priorità', hint: 'Codice/gravità se esplicitati' },
-            { key: 'stabilizzazione', label: 'Stabilizzazione', hint: 'Manovre/ossigeno/fluidi se riportati' },
-            { key: 'terapie_urgenza', label: 'Terapie d’urgenza', hint: 'Farmaci/infusioni/analgesia se esplicitati' },
-            { key: 'monitoraggio', label: 'Monitoraggio', hint: 'Parametri monitorati e frequenza se indicati' }
-        ],
-        checklistItems: [
-            { key: 'triage_eseguito', label: 'Triage eseguito' },
-            { key: 'accesso_venoso', label: 'Accesso venoso' },
-            { key: 'fluidoterapia', label: 'Fluidoterapia' },
-            { key: 'ossigeno', label: 'Ossigenoterapia' },
-            { key: 'analgesia', label: 'Analgesia' },
-            { key: 'parametri_vitali', label: 'Parametri vitali rilevati' },
-            { key: 'esami_rapidi', label: 'Esami rapidi/POC' },
-            { key: 'piano_ricovero', label: 'Valutazione ricovero' }
-        ]
-    },
-    dermatologia: {
-        extraFields: [
-            { key: 'distribuzione_lesioni', label: 'Distribuzione lesioni', hint: 'Sedi corporee/estensione se riportate' },
-            { key: 'prurito', label: 'Prurito (scala/descrizione)', hint: 'Solo se riportato' },
-            { key: 'esami_derm', label: 'Esami dermatologici', hint: 'Citologia/raschiato/lampada Wood se eseguiti' },
-            { key: 'prodotti_usati', label: 'Prodotti/terapie topiche', hint: 'Shampoo/lozioni ecc. se discussi' }
-        ],
-        checklistItems: [
-            { key: 'valutazione_lesioni', label: 'Valutazione lesioni cutanee' },
-            { key: 'otoscopia', label: 'Otoscopia' },
-            { key: 'citologia', label: 'Citologia' },
-            { key: 'raschiato', label: 'Raschiato cutaneo' },
-            { key: 'ricerca_parassiti', label: 'Ricerca parassiti' },
-            { key: 'controllo_prurito', label: 'Valutazione prurito' },
-            { key: 'piano_followup', label: 'Follow-up dermatologico' }
-        ]
-    },
-    postchirurgico: {
-        extraFields: [
-            { key: 'tipo_intervento', label: 'Tipo intervento', hint: 'Solo se esplicitato' },
-            { key: 'sito_chirurgico', label: 'Sito chirurgico', hint: 'Aspetto ferita/edema/essudato se riportati' },
-            { key: 'medicazione', label: 'Medicazione / gestione ferita', hint: 'Dettagli su bendaggio/medicazioni se indicati' },
-            { key: 'rimozione_punti', label: 'Rimozione punti', hint: 'Quando prevista, se indicato' }
-        ],
-        checklistItems: [
-            { key: 'controllo_ferita', label: 'Controllo ferita' },
-            { key: 'dolore', label: 'Valutazione dolore' },
-            { key: 'temperatura', label: 'Temperatura' },
-            { key: 'medicazione', label: 'Medicazione eseguita/istruita' },
-            { key: 'collare', label: 'Collare elisabettiano/limitazioni' },
-            { key: 'terapia', label: 'Terapia post-operatoria' },
-            { key: 'followup', label: 'Follow-up programmato' }
-        ]
-    }
-};
-
-// Checklist items
-const checklistItems = [
-    'Stato generale', 'Peso', 'Temperatura', 'FC/Polso', 'FR',
-    'Mucose', 'TRC', 'Linfonodi', 'Cute/Mantello', 'Occhi',
-    'Orecchie', 'Cavo orale', 'Collo/Tiroide', 'Auscultazione cardiaca',
-    'Auscultazione polmonare', 'Palpazione addome', 'Apparato locomotore',
-    'Sistema nervoso', 'App. urogenitale', 'Stato nutrizionale'
-];
 
 // Language map for TTS
 const langMap = { 'IT': 'it', 'EN': 'en', 'DE': 'de', 'FR': 'fr', 'ES': 'es' };
