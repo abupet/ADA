@@ -170,7 +170,7 @@
                 <div class="card">
                     <div class="form-group" style="margin-bottom:12px;">
                         <label>Titolo</label>
-                        <input type="text" id="templateSelector" list="templateOptions" value="Visita Generale" placeholder="Scegli o digita un titolo..." onchange="onTemplateSelectorInput(this.value)">
+                        <input type="text" id="templateSelector" list="templateOptions" value="" placeholder="Scegli o digita un titolo..." onchange="onTemplateSelectorInput(this.value)">
                         <datalist id="templateOptions">
                             <option value="Visita Generale">
                             <option value="Pronto Soccorso">
@@ -259,7 +259,7 @@
                     </div>
 
                     <div class="soap-actions" style="margin-top: 10px;">
-                        <button id="btnRecordCorrection" class="btn btn-secondary" onclick="startCorrectionRecording()" data-testid="record-correction-button">🎤 Registra correzione</button>
+                        <button id="btnRecordCorrection" class="btn btn-secondary" onclick="startCorrectionRecording()" data-testid="record-correction-button">🎤 Correggi</button>
                         <div id="correctionButtons" class="correction-buttons">
                             <button class="btn btn-danger" onclick="cancelCorrection()" data-testid="cancel-correction-button">❌ Annulla</button>
                             <button class="btn btn-success" onclick="sendCorrection()" data-testid="send-correction-button">✅ Invia correzione</button>

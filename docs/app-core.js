@@ -639,7 +639,7 @@ function initTemplateSelector() {
         if (selector) selector.value = templateTitleFromKey(savedTemplate);
     } else {
         currentTemplate = 'generale';
-        if (selector) selector.value = 'Visita Generale';
+        if (selector) selector.value = '';
     }
     applyHideEmptyVisibility();
 }
@@ -1807,9 +1807,10 @@ function resetRecordingAndReport(options) {
     const autoRow = document.getElementById('autoSoapCompleteRow');
     if (autoRow) autoRow.style.display = 'none';
 
-    // Reset template selector to default
+    // Reset template selector (empty — will auto-fill on save if still empty)
     const tplSel = document.getElementById('templateSelector');
-    if (tplSel) tplSel.value = 'Visita Generale';
+    if (tplSel) tplSel.value = '';
+    currentTemplate = 'generale';
 
     // Clear SOAP fields
     ['soap-s', 'soap-o', 'soap-a', 'soap-p', 'soap-internal-notes'].forEach(function (id) {
