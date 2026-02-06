@@ -1127,6 +1127,28 @@
         }
 
         var documentId = _currentDocumentId;
+
+        // Check if explanation already exists — if so, show it and navigate without API call
+        _openDB().then(function () {
+            return _idbGet(STORE_NAME, documentId);
+        }).then(function (doc) {
+            if (doc && doc.owner_explanation && doc.owner_explanation.trim()) {
+                try {
+                    var oe = document.getElementById('ownerExplanation');
+                    if (oe) oe.value = doc.owner_explanation;
+                } catch (_) {}
+                if (typeof navigateToPage === 'function') navigateToPage('owner');
+                if (typeof showToast === 'function') showToast('Spiegazione documento aperta', 'success');
+                return;
+            }
+            // No existing explanation — proceed with API call
+            _explainDocumentGenerate(documentId);
+        }).catch(function () {
+            _explainDocumentGenerate(documentId);
+        });
+    }
+
+    function _explainDocumentGenerate(documentId) {
         var explBtn    = document.getElementById('btnDocExplain');
         var explRes    = document.getElementById('documentExplainResult');
         var explCont   = document.getElementById('documentExplainContent');
@@ -1186,6 +1208,12 @@
                     if (explRes)  explRes.style.display = text ? 'block' : 'none';
                     if (explBtn)  explBtn.disabled = false;
                     if (_explainLoader) _explainLoader.stop();
+                    // Save explanation to the Spiegazione Documento page and navigate there
+                    try {
+                        var oe = document.getElementById('ownerExplanation');
+                        if (oe) oe.value = text;
+                    } catch (_) {}
+                    if (typeof navigateToPage === 'function') navigateToPage('owner');
                     if (typeof showToast === 'function') showToast('Spiegazione generata', 'success');
                 });
             }).catch(function (err) {

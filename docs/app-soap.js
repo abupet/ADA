@@ -1053,12 +1053,23 @@ async function generateOwnerExplanation(soapOverride, options) {
         return;
     }
 
+    // Check if explanation already exists in the current history record
+    const persistId = opts.saveToHistoryId || (typeof currentEditingHistoryId !== 'undefined' ? currentEditingHistoryId : null);
+    if (persistId) {
+        const idx = (historyData || []).findIndex(r => r && r.id === persistId);
+        if (idx >= 0 && historyData[idx].ownerExplanation && historyData[idx].ownerExplanation.trim()) {
+            // Explanation already exists — show it and navigate without calling the API
+            document.getElementById('ownerExplanation').value = historyData[idx].ownerExplanation;
+            const shouldNavigate = (typeof opts.navigate === 'boolean') ? opts.navigate : true;
+            if (shouldNavigate && typeof navigateToPage === 'function') navigateToPage('owner');
+            showToast('Spiegazione documento aperta', 'success');
+            return;
+        }
+    }
+
     showProgress(true);
 
-    const vetName = (typeof getVetName === 'function') ? getVetName() : '';
-    const signatureHint = vetName ? `
-
-Chiudi con: "Il team AbuPet — in collaborazione con il Dott./Dott.ssa ${vetName}"` : `
+    const signatureHint = `
 
 Chiudi con: "Il team AbuPet"`;
 
