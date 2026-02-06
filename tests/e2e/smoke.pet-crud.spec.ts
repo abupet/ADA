@@ -125,32 +125,55 @@ test.describe("Pet CRUD with sync", () => {
       }
     });
 
-    // Wait for the create push
+    // Wait for the create push AND outbox to be fully cleared
+    // (avoids race: if delete fires while create is still in outbox, coalescing cancels both)
     await expect.poll(async () => capture.accepted.length, { timeout: 15_000 }).toBeGreaterThan(0);
-
-    // Verify pet is selected
     await expect.poll(async () => {
-      return await page.evaluate(() => {
-        const sel = document.getElementById("petSelector") as HTMLSelectElement | null;
-        return sel && sel.value && sel.value !== "";
+      return await page.evaluate(async () => {
+        const req = indexedDB.open("ADA_Pets");
+        return await new Promise<number>((resolve) => {
+          req.onsuccess = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains("outbox")) return resolve(0);
+            const tx = db.transaction("outbox", "readonly");
+            const store = tx.objectStore("outbox");
+            const countReq = store.count();
+            countReq.onsuccess = () => resolve(countReq.result || 0);
+            countReq.onerror = () => resolve(0);
+          };
+          req.onerror = () => resolve(0);
+        });
       });
-    }, { timeout: 10_000 }).toBe(true);
+    }, { timeout: 10_000 }).toBe(0);
 
-    // Try to delete the pet
-    const deleteBtn = page.locator('[data-testid="delete-pet-button"], button[onclick*="deletePet"], #deletePetBtn');
-    if (await deleteBtn.count() > 0) {
-      // Handle confirmation dialog
-      page.on("dialog", (dialog) => dialog.accept());
-      await deleteBtn.first().click();
+    // Navigate to pet data page (where delete button lives)
+    await navigateTo(page, "datipet");
+    await expect(page.locator("#page-datipet.active")).toBeVisible({ timeout: 10_000 });
 
-      // Wait for delete push
-      await expect.poll(async () => {
-        return capture.ops.filter((o: any) => o.type === "pet.delete").length;
-      }, { timeout: 15_000 }).toBeGreaterThan(0);
+    // Handle confirmation dialog BEFORE clicking
+    page.on("dialog", (dialog) => dialog.accept());
 
-      const deleteOps = capture.ops.filter((o: any) => o.type === "pet.delete");
-      expect(deleteOps.length).toBeGreaterThan(0);
-    }
+    // Delete the pet
+    const deleteBtn = page.locator('[data-testid="delete-pet-button"]');
+    await expect(deleteBtn).toBeVisible({ timeout: 5_000 });
+    await expect(deleteBtn).toBeEnabled({ timeout: 5_000 });
+    await deleteBtn.click();
+
+    // Trigger push explicitly
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      if ((window as any).ADA_PetsSync?.pushOutboxIfOnline) {
+        (window as any).ADA_PetsSync.pushOutboxIfOnline();
+      }
+    });
+
+    // Wait for delete push
+    await expect.poll(async () => {
+      return capture.ops.filter((o: any) => o.type === "pet.delete").length;
+    }, { timeout: 15_000 }).toBeGreaterThan(0);
+
+    const deleteOps = capture.ops.filter((o: any) => o.type === "pet.delete");
+    expect(deleteOps.length).toBeGreaterThan(0);
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
