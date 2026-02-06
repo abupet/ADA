@@ -2331,15 +2331,6 @@ function renderSoapReadonly(item) {
         html += '</div>';
     }
 
-    // Owner explanation if already generated
-    if (item.ownerExplanation && item.ownerExplanation.trim()) {
-        html += '<div class="soap-ro-section" style="border-left-color:#4caf50;">';
-        html += '<span class="soap-ro-letter" style="background:#4caf50;">&#x1f4d6;</span>';
-        html += '<span class="soap-ro-title">Spiegazione</span>';
-        html += '<div class="soap-ro-body">' + _escapeHtml(item.ownerExplanation.trim()) + '</div>';
-        html += '</div>';
-    }
-
     html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.0.0') + ' - AI Driven AbuPet</div>';
 
     container.innerHTML = html;
