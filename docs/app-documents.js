@@ -1063,7 +1063,7 @@
                 }).then(function (doc) {
                     if (doc) {
                         doc.read_text     = text;
-                        doc.ai_status     = 'completed';
+                        doc.ai_status     = 'complete';
                         doc.ai_error      = null;
                         doc.ai_updated_at = new Date().toISOString();
                         return _idbPut(STORE_NAME, doc);
@@ -1175,7 +1175,7 @@
                 }).then(function (doc) {
                     if (doc) {
                         doc.owner_explanation = text;
-                        doc.ai_status         = 'completed';
+                        doc.ai_status         = 'complete';
                         doc.ai_error          = null;
                         doc.ai_updated_at     = new Date().toISOString();
                         return _idbPut(STORE_NAME, doc);
