@@ -59,7 +59,7 @@ function _uuidv4() {
 
 function _petToPatch(petLike) {
   // petLike may be: full pet record, or {record}, or {patch}
-  const r = petLike && (petLike.record || petLike.patch || petLike);
+  const r = petLike && (petLike.patch || petLike.record || petLike);
   if (!r) return {};
   const patient = r.patient;
 
