@@ -691,9 +691,8 @@ function initTemplateSelector() {
     if (savedTemplate) {
         currentTemplate = savedTemplate;
         const selector = document.getElementById('templateSelector');
-        if (selector) selector.value = savedTemplate;
+        if (selector) selector.value = templateTitleFromKey(savedTemplate);
     }
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate];
     // Restore draft extras/checklist for this template (if any)
     restoreTemplateDraftState({ force: false });
 
@@ -703,13 +702,36 @@ function initTemplateSelector() {
     applyHideEmptyVisibility();
 }
 
+// v7.1.0: Reverse mapping from display title to template key
+var _titleToKey = {};
+if (typeof templateTitles !== 'undefined') {
+    for (var _k in templateTitles) { if (templateTitles.hasOwnProperty(_k)) _titleToKey[templateTitles[_k]] = _k; }
+}
+// Add extra entries for datalist options that may not be in templateTitles
+var _extraTitleMap = { 'Cardiologia': 'cardiologia', 'Controllo': 'controllo', 'Medicina interna': 'medicina_interna', 'Neurologia': 'neurologia', 'Oncologia': 'oncologia', 'Ortopedia': 'ortopedia', 'Pre-Chirurgia': 'prechirurgia' };
+for (var _ek in _extraTitleMap) { if (!_titleToKey[_ek]) _titleToKey[_ek] = _extraTitleMap[_ek]; }
+
+function templateKeyFromTitle(title) {
+    if (_titleToKey[title]) return _titleToKey[title];
+    return 'generale'; // fallback for custom text
+}
+
+function templateTitleFromKey(key) {
+    return (typeof templateTitles !== 'undefined' && templateTitles[key]) ? templateTitles[key] : (key || 'Visita Generale');
+}
+
+// Called by the <input> onchange in the SOAP page
+function onTemplateSelectorInput(text) {
+    var key = templateKeyFromTitle(text);
+    onTemplateChange(key);
+}
+
 function onTemplateChange(value) {
     // Save current template drafts before switching
     saveTemplateDraftState();
 
     currentTemplate = value;
     localStorage.setItem('ada_last_template', value);
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate];
 
     // Reset template-specific state (8B)
     currentTemplateExtras = {};
@@ -2094,7 +2116,7 @@ function resetRecordingAndReport(options) {
 
     // Reset template selector to default
     const tplSel = document.getElementById('templateSelector');
-    if (tplSel) tplSel.selectedIndex = 0;
+    if (tplSel) tplSel.value = 'Visita Generale';
 
     // Clear SOAP fields
     ['soap-s', 'soap-o', 'soap-a', 'soap-p', 'soap-internal-notes'].forEach(function (id) {
@@ -2311,15 +2333,13 @@ async function openOrGenerateOwnerFromSelectedReport() {
     // Sync template selector + render template-specific UI for this archived report
     try {
         const selector = document.getElementById('templateSelector');
-        if (selector) selector.value = currentTemplate;
+        if (selector) selector.value = templateTitleFromKey(currentTemplate);
     } catch (e) {}
-    try { document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate]; } catch (e) {}
     try { renderTemplateExtras(); } catch (e) {}
     try { renderChecklistInSOAP(); } catch (e) {}
     try { applyHideEmptyVisibility(); } catch (e) {}
 
     try {
-        document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate] || 'Referto SOAP';
         renderChecklistInSOAP();
         // Keep template-specific extras in sync when the user later opens the SOAP page
         if (typeof renderTemplateExtras === 'function') renderTemplateExtras();
@@ -2447,10 +2467,9 @@ currentSOAPChecklist = item.checklist || {};
     // Sync selector UI
     try {
         const selector = document.getElementById('templateSelector');
-        if (selector) selector.value = currentTemplate;
+        if (selector) selector.value = templateTitleFromKey(currentTemplate);
     } catch (e) {}
 
-    document.getElementById('soapTemplateTitle').textContent = templateTitles[currentTemplate] || 'Referto SOAP';
     renderTemplateExtras();
     renderChecklistInSOAP();
     applyHideEmptyVisibility();
