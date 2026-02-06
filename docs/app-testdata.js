@@ -157,6 +157,43 @@
         return result;
     }
 
+    // ── Lifestyle test data ──
+    var locations = ['Milano', 'Roma', 'Napoli', 'Torino', 'Bologna', 'Firenze', 'Padova', 'Verona', 'Brescia', 'Bari'];
+
+    var dietPreferencesByCane = ['Preferisce pollo e riso, evita pesce', 'Mangia volentieri crocchette grain-free', 'Ama le carote come snack, evita latticini', 'Ghiotto di carne bovina, tollera bene il salmone'];
+    var dietPreferencesByGatto = ['Preferisce tonno e pollo, rifiuta manzo', 'Ama il paté umido, crocchette solo se appetitizzate', 'Preferisce pesce bianco, evita fegato', 'Mangia volentieri pollo crudo, gradisce erba gatta'];
+    var dietPreferencesByConiglio = ['Fieno di erba medica, verdure fresche quotidiane', 'Fieno timothy, gradisce basilico e prezzemolo', 'Predilige radicchio e finocchio, evita cavoli', 'Fieno misto, pellet in quantità limitata'];
+
+    var knownConditionsByCane = ['Lieve artrosi arto posteriore dx', 'Allergia al pollo (DAP sospetta)', 'Epilessia idiopatica controllata', 'Soffio cardiaco grado II/VI', '', 'Otiti ricorrenti bilaterali'];
+    var knownConditionsByGatto = ['IRC stadio II IRIS', 'Ipertiroidismo compensato', 'FIV positivo, asintomatico', 'Cistite idiopatica ricorrente', '', 'Gengivostomatite cronica'];
+    var knownConditionsByConiglio = ['Malocclusione dentale lieve', 'Encephalitozoon cuniculi pregresso', '', 'Stasi gastrointestinale ricorrente', ''];
+
+    var currentMedsByCane = ['Meloxicam 0.1 mg/kg SID', '', 'Fenobarbital 2.5 mg/kg BID', 'Benazepril 0.25 mg/kg SID', ''];
+    var currentMedsByGatto = ['Benazepril + dieta renale', 'Metimazolo 2.5 mg BID', '', 'Cystease plus 1 cp/die', ''];
+    var currentMedsByConiglio = ['', 'Metacam 0.3 mg/kg SID al bisogno', '', ''];
+
+    var behaviorNotesByCane = ['Reattivo verso altri cani maschi, ottimo con le persone', 'Timido con gli estranei, ansia da separazione lieve', 'Molto socievole, tende a tirare al guinzaglio', '', 'Paura di tuoni e fuochi d\'artificio'];
+    var behaviorNotesByGatto = ['Molto territoriale, non tollera altri gatti', 'Affettuoso ma diffidente con gli estranei', 'Tende a nascondersi durante le visite', '', 'Aggressività da gioco, morde le mani'];
+    var behaviorNotesByConiglio = ['Docile, si lascia manipolare facilmente', 'Timido, tende a nascondersi se spaventato', '', 'Molto attivo di sera, scava nelle coperte'];
+
+    function _setSelectVal(id, val) {
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+    }
+    function _setMultiSelectRandom(id, options, minPick, maxPick) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var count = _rand(minPick, maxPick);
+        var pool = options.slice();
+        for (var i = 0; i < count && pool.length > 0; i++) {
+            var idx = Math.floor(Math.random() * pool.length);
+            var opt = pool.splice(idx, 1)[0];
+            for (var j = 0; j < el.options.length; j++) {
+                if (el.options[j].value === opt) el.options[j].selected = true;
+            }
+        }
+    }
+
     // ── TEST: Fill Add Pet ──
     window.testFillAddPet = function () {
         var species = _pick(['Cane', 'Gatto', 'Coniglio']);
@@ -180,7 +217,35 @@
         _setVal('newOwnerPhone', ownerPhones[ownerIdx]);
         _setVal('newVisitDate', _isoDate(new Date()));
 
-        if (typeof showToast === 'function') showToast('Dati test inseriti', 'success');
+        // ── Stile di Vita ──
+        _setSelectVal('newPetLifestyle', _pick(['indoor', 'outdoor', 'misto']));
+        var householdOpts = ['bambini', 'anziani', 'altri_cani', 'altri_gatti', 'altri_animali'];
+        _setMultiSelectRandom('newPetHousehold', householdOpts, 0, 3);
+        _setSelectVal('newPetActivityLevel', _pick(['basso', 'medio', 'alto']));
+        _setSelectVal('newPetDietType', _pick(['secco', 'umido', 'barf', 'misto', 'casalingo']));
+
+        var dietPrefs, conditions, meds, behavior;
+        if (species === 'Gatto') {
+            dietPrefs = dietPreferencesByGatto; conditions = knownConditionsByGatto;
+            meds = currentMedsByGatto; behavior = behaviorNotesByGatto;
+        } else if (species === 'Coniglio') {
+            dietPrefs = dietPreferencesByConiglio; conditions = knownConditionsByConiglio;
+            meds = currentMedsByConiglio; behavior = behaviorNotesByConiglio;
+        } else {
+            dietPrefs = dietPreferencesByCane; conditions = knownConditionsByCane;
+            meds = currentMedsByCane; behavior = behaviorNotesByCane;
+        }
+        _setVal('newPetDietPreferences', _pick(dietPrefs));
+        _setVal('newPetKnownConditions', _pick(conditions));
+        _setVal('newPetCurrentMeds', _pick(meds));
+        _setVal('newPetBehaviorNotes', _pick(behavior));
+        _setVal('newPetLocation', _pick(locations));
+
+        // Open lifestyle section so user sees the filled fields
+        var lifeSec = document.getElementById('newPetLifestyleSection');
+        if (lifeSec) lifeSec.style.display = '';
+
+        if (typeof showToast === 'function') showToast('Dati test inseriti (incluso stile di vita)', 'success');
     };
 
     // ── TEST: Fill SOAP ──
