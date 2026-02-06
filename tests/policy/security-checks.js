@@ -194,6 +194,51 @@
   })();
 
   // ---------------------------------------------------------------------------
+  // SEC-06  All /api routes (except health) go through requireAuth
+  // ---------------------------------------------------------------------------
+
+  (function checkRequireAuth() {
+    const CHECK = "SEC-06";
+    const serverPath = path.resolve(__dirname, "../../backend/src/server.js");
+
+    if (!fs.existsSync(serverPath)) {
+      pass(CHECK, "server.js not found (skipped)");
+      return;
+    }
+
+    const content = fs.readFileSync(serverPath, "utf8");
+
+    // Verify that there's a global requireJwt middleware on /api
+    const hasGlobalApiAuth = /app\.use\(\s*["']\/api["']\s*,\s*requireJwt\s*\)/.test(content);
+    if (!hasGlobalApiAuth) {
+      fail(CHECK, "No global app.use(\"/api\", requireJwt) found — all /api routes must be protected");
+      return;
+    }
+
+    // Check that /auth/login is NOT under /api (it should be at /auth/login)
+    const loginRoute = content.match(/app\.(post|get)\(\s*["'](\/[^"']+)["'].*login/g) || [];
+    for (const route of loginRoute) {
+      const pathMatch = route.match(/["'](\/[^"']+)["']/);
+      if (pathMatch && pathMatch[1].startsWith("/api/")) {
+        fail(CHECK, "Login endpoint is under /api/ — it should be outside /api to avoid auth middleware conflict");
+        return;
+      }
+    }
+
+    // Check that /api/health is defined BEFORE the global middleware (acceptable pattern)
+    const healthPos = content.indexOf("/api/health");
+    const globalAuthPos = content.indexOf('app.use("/api", requireJwt)') !== -1
+      ? content.indexOf('app.use("/api", requireJwt)')
+      : content.indexOf("app.use('/api', requireJwt)");
+
+    if (healthPos > -1 && globalAuthPos > -1 && healthPos > globalAuthPos) {
+      warn(CHECK, "/api/health is defined after global auth middleware — it will require auth");
+    }
+
+    pass(CHECK, "Global /api auth middleware present, login outside /api");
+  })();
+
+  // ---------------------------------------------------------------------------
   // Summary
   // ---------------------------------------------------------------------------
 

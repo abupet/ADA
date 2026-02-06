@@ -24,7 +24,7 @@ async function countOutbox(page: any): Promise<number> {
   });
 }
 
-test("@smoke Pets sync: offline create -> online push clears outbox + migrates tmp_id", async ({ page, context }) => {
+test("@smoke @sync Pets sync: offline create -> online push clears outbox + migrates tmp_id", async ({ page, context }) => {
   const errors = captureHardErrors(page);
 
   // Mock backend push/pull endpoints so test is deterministic in local environment
