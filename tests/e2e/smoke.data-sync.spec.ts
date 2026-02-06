@@ -112,7 +112,7 @@ async function setupSyncMocks(page: any) {
 
 test.describe("Data sync: saveData enqueues and pushes pet data", () => {
 
-  test("@smoke Saving a SOAP report enqueues outbox and syncs history_data", async ({ page, context }) => {
+  test("@smoke @sync Saving a SOAP report enqueues outbox and syncs history_data", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     const capture = await setupSyncMocks(page);
 
@@ -159,7 +159,7 @@ test.describe("Data sync: saveData enqueues and pushes pet data", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Adding a medication enqueues outbox and syncs medications", async ({ page, context }) => {
+  test("@smoke @sync Adding a medication enqueues outbox and syncs medications", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     const capture = await setupSyncMocks(page);
 
@@ -200,7 +200,7 @@ test.describe("Data sync: saveData enqueues and pushes pet data", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Recording vital parameters enqueues outbox and syncs vitals_data", async ({ page, context }) => {
+  test("@smoke @sync Recording vital parameters enqueues outbox and syncs vitals_data", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     const capture = await setupSyncMocks(page);
 
@@ -243,7 +243,7 @@ test.describe("Data sync: saveData enqueues and pushes pet data", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Adding photos enqueues outbox and syncs photos array", async ({ page, context }) => {
+  test("@smoke @sync Adding photos enqueues outbox and syncs photos array", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     const capture = await setupSyncMocks(page);
 
@@ -286,7 +286,7 @@ test.describe("Data sync: saveData enqueues and pushes pet data", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke ADA_PetsSync preserves both push and pull functions after script load", async ({ page }) => {
+  test("@smoke @sync ADA_PetsSync preserves both push and pull functions after script load", async ({ page }) => {
     const errors = captureHardErrors(page);
     await setupSyncMocks(page);
 
@@ -309,7 +309,7 @@ test.describe("Data sync: saveData enqueues and pushes pet data", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Offline save -> online push delivers data to server", async ({ page, context }) => {
+  test("@smoke @sync Offline save -> online push delivers data to server", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     const capture = await setupSyncMocks(page);
 
@@ -350,7 +350,7 @@ test.describe("Data sync: saveData enqueues and pushes pet data", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke saveData uses role-aware diary field (vet=diary, owner=ownerDiary)", async ({ page, context }) => {
+  test("@smoke @sync saveData uses role-aware diary field (vet=diary, owner=ownerDiary)", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     const capture = await setupSyncMocks(page);
 
