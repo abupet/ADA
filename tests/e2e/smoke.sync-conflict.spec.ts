@@ -156,8 +156,9 @@ test.describe("Sync conflict handling", () => {
     const outboxCount = await countOutbox(page);
     expect(outboxCount).toBeGreaterThan(0);
 
-    // App should not crash
-    expect(errors, errors.join("\n")).toHaveLength(0);
+    // App should not crash — filter out expected 500 errors from our mock
+    const realErrors = errors.filter(e => !/500/.test(e));
+    expect(realErrors, realErrors.join("\n")).toHaveLength(0);
   });
 
 });

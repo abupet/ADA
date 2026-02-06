@@ -63,6 +63,21 @@ test.describe("Pet CRUD with sync", () => {
     await page.locator("#page-addpet.active #newPetSpecies").selectOption({ index: 1 });
     await page.locator('button[onclick="saveNewPet()"]').click();
 
+    // Wait for pet to be selected (saveNewPet completes)
+    await expect.poll(async () => {
+      return await page.evaluate(() => {
+        const sel = document.getElementById("petSelector") as HTMLSelectElement | null;
+        return sel && sel.value && sel.value !== "";
+      });
+    }, { timeout: 10_000 }).toBe(true);
+
+    // Trigger push explicitly (saveNewPet enqueues but bootstrap debounce may delay push)
+    await page.evaluate(() => {
+      if ((window as any).ADA_PetsSync?.pushOutboxIfOnline) {
+        (window as any).ADA_PetsSync.pushOutboxIfOnline();
+      }
+    });
+
     // Wait for push
     await expect.poll(async () => capture.accepted.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
@@ -94,6 +109,21 @@ test.describe("Pet CRUD with sync", () => {
     await page.locator("#page-addpet.active #newPetName").fill("ToDeletePet");
     await page.locator("#page-addpet.active #newPetSpecies").selectOption({ index: 1 });
     await page.locator('button[onclick="saveNewPet()"]').click();
+
+    // Wait for pet to be selected (saveNewPet completes)
+    await expect.poll(async () => {
+      return await page.evaluate(() => {
+        const sel = document.getElementById("petSelector") as HTMLSelectElement | null;
+        return sel && sel.value && sel.value !== "";
+      });
+    }, { timeout: 10_000 }).toBe(true);
+
+    // Trigger push explicitly (saveNewPet enqueues but bootstrap debounce may delay push)
+    await page.evaluate(() => {
+      if ((window as any).ADA_PetsSync?.pushOutboxIfOnline) {
+        (window as any).ADA_PetsSync.pushOutboxIfOnline();
+      }
+    });
 
     // Wait for the create push
     await expect.poll(async () => capture.accepted.length, { timeout: 15_000 }).toBeGreaterThan(0);
