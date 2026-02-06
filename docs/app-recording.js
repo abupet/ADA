@@ -1119,6 +1119,12 @@ async function restoreChunkVisitDraft() {
             if (ta) ta.value = text;
         }
 
+        // Clear the stored draft so the restore (and toast) won't repeat on next load
+        try {
+            const txDel = db.transaction(ADA_VISIT_DRAFT_STORE, 'readwrite');
+            txDel.objectStore(ADA_VISIT_DRAFT_STORE).delete('current');
+        } catch (_) {}
+
         // Inform user (recording itself cannot be resumed after refresh)
         showToast('Ripristinato testo trascritto (chunking). Nota: la registrazione non riprende dopo refresh.', 'success');
     } catch (e) {}
