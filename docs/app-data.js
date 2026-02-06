@@ -125,7 +125,6 @@ function getPatientData() {
         petBreed: document.getElementById('petBreed')?.value || '',
         petBirthdate: document.getElementById('petBirthdate')?.value || '',
         petSex: document.getElementById('petSex')?.value || '',
-        petWeight: document.getElementById('petWeight')?.value || '',
         petMicrochip: document.getElementById('petMicrochip')?.value || '',
         ownerName: document.getElementById('ownerName')?.value || '',
         ownerPhone: document.getElementById('ownerPhone')?.value || '',
@@ -152,7 +151,7 @@ function getLifestyleData() {
 }
 
 function setPatientData(data) {
-    const fields = ['petName', 'petSpecies', 'petBreed', 'petBirthdate', 'petSex', 'petWeight', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
+    const fields = ['petName', 'petSpecies', 'petBreed', 'petBirthdate', 'petSex', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
     fields.forEach(f => {
         const el = document.getElementById(f);
         if (el) el.value = (data && data[f]) || '';
