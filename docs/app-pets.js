@@ -394,7 +394,10 @@ function normalizePetFromBackend(record, existing) {
         }
     };
 
-    // Reverse-map backend field names to local field names for rich data
+    // Reverse-map backend SQL column names to local patient field names
+    if (patch.breed && !result.patient.petBreed) result.patient.petBreed = patch.breed;
+    if (patch.sex && !result.patient.petSex) result.patient.petSex = patch.sex;
+    if (patch.birthdate && !result.patient.petBirthdate) result.patient.petBirthdate = patch.birthdate;
     if (patch.owner_name && !result.patient.ownerName) result.patient.ownerName = patch.owner_name;
     if (patch.owner_phone && !result.patient.ownerPhone) result.patient.ownerPhone = patch.owner_phone;
     if (patch.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = patch.microchip;
@@ -1322,9 +1325,8 @@ function getNewPetPatientData() {
         petName: document.getElementById('newPetName')?.value || '',
         petSpecies: document.getElementById('newPetSpecies')?.value || '',
         petBreed: document.getElementById('newPetBreed')?.value || '',
-        petAge: document.getElementById('newPetAge')?.value || '',
+        petBirthdate: document.getElementById('newPetAge')?.value || '',
         petSex: document.getElementById('newPetSex')?.value || '',
-        petWeight: document.getElementById('newPetWeight')?.value || '',
         petMicrochip: document.getElementById('newPetMicrochip')?.value || '',
         ownerName: document.getElementById('newOwnerName')?.value || '',
         ownerPhone: document.getElementById('newOwnerPhone')?.value || '',
