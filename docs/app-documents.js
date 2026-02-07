@@ -748,6 +748,7 @@
             var raw = localStorage.getItem(DELETED_IDS_KEY);
             if (!raw) return false;
             var ids = JSON.parse(raw);
+            if (!Array.isArray(ids)) return false;
             return ids.indexOf(documentId) !== -1;
         } catch (_e) { return false; }
     }
@@ -792,34 +793,37 @@
     /**
      * Flush pending delete outbox: retry server DELETE for each queued ID.
      * Called before pulling documents during sync and on 'online' event.
+     * Always resolves (never rejects) to avoid blocking the pull chain.
      */
     function _flushDeleteOutbox() {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve();
-        if (typeof fetchApi !== 'function') return Promise.resolve();
+        try {
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve();
+            if (typeof fetchApi !== 'function') return Promise.resolve();
 
-        var raw;
-        try { raw = localStorage.getItem(DELETE_OUTBOX_KEY); } catch (_e) { return Promise.resolve(); }
-        if (!raw) return Promise.resolve();
+            var raw = localStorage.getItem(DELETE_OUTBOX_KEY);
+            if (!raw) return Promise.resolve();
 
-        var ids;
-        try { ids = JSON.parse(raw); } catch (_e) { return Promise.resolve(); }
-        if (!ids || ids.length === 0) return Promise.resolve();
+            var ids = JSON.parse(raw);
+            if (!Array.isArray(ids) || ids.length === 0) return Promise.resolve();
 
-        var chain = Promise.resolve();
-        ids.forEach(function (docId) {
-            chain = chain.then(function () {
-                return fetchApi('/api/documents/' + encodeURIComponent(docId), { method: 'DELETE' })
-                    .then(function (res) {
-                        if (res && (res.ok || res.status === 404)) {
-                            // 200 = deleted, 404 = already gone — either way, done
-                            _dequeueDelete(docId);
-                            _clearLocalDeletion(docId);
-                        }
-                    })
-                    .catch(function () { /* still offline — keep in outbox */ });
+            var chain = Promise.resolve();
+            ids.forEach(function (docId) {
+                chain = chain.then(function () {
+                    return fetchApi('/api/documents/' + encodeURIComponent(docId), { method: 'DELETE' })
+                        .then(function (res) {
+                            if (res && (res.ok || res.status === 404)) {
+                                // 200 = deleted, 404 = already gone — either way, done
+                                _dequeueDelete(docId);
+                                _clearLocalDeletion(docId);
+                            }
+                        })
+                        .catch(function () { /* still offline — keep in outbox */ });
+                });
             });
-        });
-        return chain;
+            return chain;
+        } catch (_e) {
+            return Promise.resolve();
+        }
     }
 
     // Flush delete outbox when back online
@@ -1462,9 +1466,9 @@
         if (typeof fetchApi !== 'function') return Promise.resolve(0);
         if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve(0);
 
-        // Flush pending server deletes before pulling
-        return _flushDeleteOutbox().then(function () {
-        return fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId))
+        // Flush pending server deletes before pulling (never blocks pull)
+        return _flushDeleteOutbox().catch(function () {}).then(function () {
+            return fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId))
             .then(function (response) {
                 if (!response || !response.ok) return 0;
                 return response.json();
@@ -1532,9 +1536,11 @@
                             var raw = localStorage.getItem(DELETED_IDS_KEY);
                             if (raw) {
                                 var ids = JSON.parse(raw);
-                                ids.forEach(function (id) {
-                                    if (!serverIds[id]) _clearLocalDeletion(id);
-                                });
+                                if (Array.isArray(ids)) {
+                                    ids.forEach(function (id) {
+                                        if (!serverIds[id]) _clearLocalDeletion(id);
+                                    });
+                                }
                             }
                         } catch (_e) { /* ignore */ }
                     });
