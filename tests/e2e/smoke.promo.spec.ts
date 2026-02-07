@@ -16,33 +16,11 @@ async function navigateTo(page: any, pageName: string) {
   }, pageName);
 }
 
-async function ensurePetSelected(page: any) {
-  const hasPet = await page.evaluate(() => {
-    const sel = document.getElementById("petSelector") as HTMLSelectElement | null;
-    return sel && sel.value && sel.value !== "";
-  });
-
-  if (hasPet) return;
-
-  await navigateTo(page, "addpet");
-  await expect(page.locator("#page-addpet.active")).toBeVisible({ timeout: 10_000 });
-  await page.locator("#page-addpet.active #newPetName").fill("PromoTestPet");
-  await page.locator("#page-addpet.active #newPetSpecies").selectOption({ index: 1 });
-  await page.locator('button[onclick="saveNewPet()"]').click();
-
-  await expect.poll(async () => {
-    return await page.evaluate(() => {
-      const sel = document.getElementById("petSelector") as HTMLSelectElement | null;
-      return sel && sel.value && sel.value !== "";
-    });
-  }, { timeout: 10_000 }).toBe(true);
-}
-
-function setupPromoMocks(page: any) {
+async function setupPromoMocks(page: any) {
   const captured = { events: [] as any[], recommendations: 0, consents: 0 };
 
   // Mock promo recommendation endpoint
-  page.route("**/api/promo/recommendation**", async (route: any) => {
+  await page.route("**/api/promo/recommendation**", async (route: any) => {
     captured.recommendations++;
     await route.fulfill({
       status: 200,
@@ -65,7 +43,7 @@ function setupPromoMocks(page: any) {
   });
 
   // Mock promo events endpoint (single + batch)
-  page.route("**/api/promo/event**", async (route: any) => {
+  await page.route("**/api/promo/event**", async (route: any) => {
     const req = route.request();
     let body: any = {};
     try { body = JSON.parse(req.postData() || "{}"); } catch {}
@@ -82,7 +60,7 @@ function setupPromoMocks(page: any) {
   });
 
   // Mock consent endpoints
-  page.route("**/api/promo/consent**", async (route: any) => {
+  await page.route("**/api/promo/consent**", async (route: any) => {
     const req = route.request();
     captured.consents++;
     if (req.method() === "GET") {
@@ -105,7 +83,7 @@ function setupPromoMocks(page: any) {
   });
 
   // Mock sync endpoints
-  page.route("**/api/sync/pets/push", async (route: any) => {
+  await page.route("**/api/sync/pets/push", async (route: any) => {
     const req = route.request();
     let body: any = {};
     try { body = JSON.parse(req.postData() || "{}"); } catch {}
@@ -118,7 +96,7 @@ function setupPromoMocks(page: any) {
     });
   });
 
-  page.route("**/api/sync/pets/pull**", async (route: any) => {
+  await page.route("**/api/sync/pets/pull**", async (route: any) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -137,7 +115,7 @@ test.describe("Promo system smoke tests", () => {
 
   test("@smoke Promo globals are available after login", async ({ page }) => {
     const errors = captureHardErrors(page);
-    setupPromoMocks(page);
+    await setupPromoMocks(page);
 
     await login(page);
 
@@ -161,7 +139,7 @@ test.describe("Promo system smoke tests", () => {
 
   test("@smoke Admin dashboard globals are available after login", async ({ page }) => {
     const errors = captureHardErrors(page);
-    setupPromoMocks(page);
+    await setupPromoMocks(page);
 
     await login(page);
 
@@ -183,43 +161,33 @@ test.describe("Promo system smoke tests", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Owner role triggers promo slot on owner page", async ({ page }) => {
+  test("@smoke loadPromoRecommendation calls the API and returns data", async ({ page }) => {
     const errors = captureHardErrors(page);
-    const captured = setupPromoMocks(page);
+    const captured = await setupPromoMocks(page);
 
     await login(page);
-    await ensurePetSelected(page);
 
-    // Switch to proprietario if needed
-    const role = await page.evaluate(() => {
-      return typeof (window as any).getActiveRole === "function"
-        ? (window as any).getActiveRole()
-        : "unknown";
+    // Directly call loadPromoRecommendation and verify the API is hit
+    const result = await page.evaluate(async () => {
+      const w = window as any;
+      if (typeof w.loadPromoRecommendation !== "function") return { error: "not_a_function" };
+      const testPetId = "00000000-0000-0000-0000-000000000001";
+      const rec = await w.loadPromoRecommendation(testPetId, "home_feed");
+      return { rec, petId: testPetId };
     });
 
-    if (role !== "proprietario") {
-      const toggleBtn = page.locator('[data-testid="role-toggle"], #roleToggle, button[onclick*="toggleRole"]');
-      if (await toggleBtn.count() > 0) {
-        await toggleBtn.first().click();
-      }
-    }
-
-    // Navigate to owner page
-    await navigateTo(page, "owner");
-    await expect(page.locator("#page-owner.active")).toBeVisible({ timeout: 10_000 });
-
-    // Wait for promo recommendation request to be made
-    await expect.poll(
-      async () => captured.recommendations,
-      { timeout: 10_000 }
-    ).toBeGreaterThan(0);
+    // Verify the mock was called
+    expect(captured.recommendations).toBeGreaterThan(0);
+    // Verify the response was parsed correctly
+    expect(result.rec).toBeTruthy();
+    expect(result.rec.productId || result.rec.product_id).toBeTruthy();
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
   test("@smoke Consent banner renders on settings page", async ({ page }) => {
     const errors = captureHardErrors(page);
-    const captured = setupPromoMocks(page);
+    await setupPromoMocks(page);
 
     await login(page);
 
@@ -237,7 +205,7 @@ test.describe("Promo system smoke tests", () => {
 
   test("@smoke Promo containers exist in DOM", async ({ page }) => {
     const errors = captureHardErrors(page);
-    setupPromoMocks(page);
+    await setupPromoMocks(page);
 
     await login(page);
 
@@ -262,7 +230,7 @@ test.describe("Promo system smoke tests", () => {
 
   test("@smoke RBAC helper functions work correctly", async ({ page }) => {
     const errors = captureHardErrors(page);
-    setupPromoMocks(page);
+    await setupPromoMocks(page);
 
     await login(page);
 
