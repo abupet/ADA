@@ -514,7 +514,7 @@
       _pushing = false;
 
       if (typeof ADALog !== 'undefined') {
-        ADALog.info('SYNC', 'processPushResponse', {total: allOpIds.length, accepted: acceptedIds.length, rejected: rejectedIds.length, unhandled: unhandledIds.length});
+        ADALog.info('SYNC', 'processPushResponse', {total: allOpIds.length, accepted: acceptedIds.length, rejected: rejectedIds.length, rejectedReasons: rejectedMap, unhandled: unhandledIds.length});
       }
 
       if (rejectedIds.length > 0) {
@@ -589,6 +589,8 @@
         });
     }
 
+    var totalPages = 0;
+
     function pullLoop(since, page) {
       if (page >= MAX_PAGES) {
         // Safety limit reached; stop paginating
@@ -604,6 +606,7 @@
         }
 
         totalPulled += changes.length;
+        totalPages = page + 1;
 
         return resolveConflictsAndApply(changes).then(function () {
           // Persist new cursor
@@ -636,7 +639,7 @@
       })
       .then(function () {
         if (typeof ADALog !== 'undefined') {
-          ADALog.info('SYNC', 'pull: complete', {totalPulled: totalPulled});
+          ADALog.info('SYNC', 'pull: complete', {totalPulled: totalPulled, pages: totalPages});
         }
         return { pulled: totalPulled, cursor: null };
       })
