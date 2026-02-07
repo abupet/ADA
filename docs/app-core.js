@@ -302,6 +302,9 @@ function navigateToPage(page) {
         if (page === 'admin-wizard' && typeof initCsvWizard === 'function') {
             initCsvWizard('admin-wizard-content');
         }
+        if (page === 'superadmin-users' && typeof loadSuperadminUsers === 'function') {
+            loadSuperadminUsers('superadmin-users-content');
+        }
     } catch(e) {}
 
     // Hide internal notes from proprietario (only vet sees them on SOAP page)
@@ -363,6 +366,10 @@ function applyRoleUI(role) {
     if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
     if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
     if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
+
+    // Show "Gestione Utenti" only for super_admin
+    const navSuperadminUsers = document.getElementById('nav-superadmin-users');
+    if (navSuperadminUsers) navSuperadminUsers.style.display = (r === 'super_admin') ? '' : 'none';
 
     // Update toggle button
     const icon = document.getElementById('roleToggleIcon');

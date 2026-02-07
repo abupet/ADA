@@ -556,6 +556,214 @@ function dashboardRouter({ requireAuth }) {
   );
 
   // ==============================
+  // SUPER ADMIN: USER MANAGEMENT
+  // ==============================
+
+  // GET /api/superadmin/users
+  router.get(
+    "/api/superadmin/users",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (_req, res) => {
+      try {
+        const { rows } = await pool.query(
+          `SELECT u.user_id, u.email, u.display_name, u.base_role, u.status, u.created_at, u.updated_at,
+                  COALESCE(json_agg(json_build_object('tenant_id', ut.tenant_id, 'role', ut.role))
+                    FILTER (WHERE ut.tenant_id IS NOT NULL), '[]') AS tenants
+           FROM users u
+           LEFT JOIN user_tenants ut ON u.user_id = ut.user_id
+           GROUP BY u.user_id
+           ORDER BY u.created_at DESC`
+        );
+        res.json({ users: rows });
+      } catch (e) {
+        console.error("GET /api/superadmin/users error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/superadmin/users
+  router.post(
+    "/api/superadmin/users",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { email, password, display_name, base_role } = req.body || {};
+        if (!email || !password) {
+          return res.status(400).json({ error: "email_and_password_required" });
+        }
+
+        const validRoles = ["owner", "vet", "admin_brand", "super_admin"];
+        const role = validRoles.includes(base_role) ? base_role : "owner";
+
+        const bcrypt = require("bcryptjs");
+        const { randomUUID } = require("crypto");
+        const passwordHash = await bcrypt.hash(password, 10);
+        const userId = "usr_" + randomUUID();
+
+        const { rows } = await pool.query(
+          `INSERT INTO users (user_id, email, password_hash, display_name, base_role)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING user_id, email, display_name, base_role, status, created_at`,
+          [userId, email.toLowerCase().trim(), passwordHash, display_name || null, role]
+        );
+
+        res.status(201).json(rows[0]);
+      } catch (e) {
+        if (e.code === "23505") {
+          return res.status(409).json({ error: "email_already_exists" });
+        }
+        console.error("POST /api/superadmin/users error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // PATCH /api/superadmin/users/:userId
+  router.patch(
+    "/api/superadmin/users/:userId",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { userId } = req.params;
+        const patch = req.body || {};
+
+        const allowed = ["display_name", "base_role", "status"];
+        const sets = [];
+        const params = [userId];
+        let idx = 2;
+
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(patch, key)) {
+            if (key === "base_role") {
+              const validRoles = ["owner", "vet", "admin_brand", "super_admin"];
+              if (!validRoles.includes(patch[key])) continue;
+            }
+            if (key === "status") {
+              const validStatuses = ["active", "disabled"];
+              if (!validStatuses.includes(patch[key])) continue;
+            }
+            sets.push(`${key} = $${idx}`);
+            params.push(patch[key]);
+            idx++;
+          }
+        }
+
+        if (sets.length === 0) {
+          const { rows } = await pool.query(
+            "SELECT user_id, email, display_name, base_role, status, created_at, updated_at FROM users WHERE user_id = $1",
+            [userId]
+          );
+          return res.json(rows[0] || {});
+        }
+
+        sets.push("updated_at = NOW()");
+
+        const { rows } = await pool.query(
+          `UPDATE users SET ${sets.join(", ")}
+           WHERE user_id = $1
+           RETURNING user_id, email, display_name, base_role, status, created_at, updated_at`,
+          params
+        );
+
+        if (!rows[0]) return res.status(404).json({ error: "not_found" });
+        res.json(rows[0]);
+      } catch (e) {
+        console.error("PATCH /api/superadmin/users/:userId error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/superadmin/users/:userId/reset-password
+  router.post(
+    "/api/superadmin/users/:userId/reset-password",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { userId } = req.params;
+        const { password } = req.body || {};
+        if (!password) {
+          return res.status(400).json({ error: "password_required" });
+        }
+
+        const bcrypt = require("bcryptjs");
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        const { rowCount } = await pool.query(
+          "UPDATE users SET password_hash = $2, updated_at = NOW() WHERE user_id = $1",
+          [userId, passwordHash]
+        );
+
+        if (rowCount === 0) return res.status(404).json({ error: "not_found" });
+        res.json({ ok: true });
+      } catch (e) {
+        console.error("POST /api/superadmin/users/:userId/reset-password error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // PUT /api/superadmin/users/:userId/tenants
+  router.put(
+    "/api/superadmin/users/:userId/tenants",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { userId } = req.params;
+        const { tenant_id, role } = req.body || {};
+        if (!tenant_id) {
+          return res.status(400).json({ error: "tenant_id_required" });
+        }
+
+        const validRoles = ["admin_brand", "super_admin"];
+        const assignRole = validRoles.includes(role) ? role : "admin_brand";
+
+        const { rows } = await pool.query(
+          `INSERT INTO user_tenants (user_id, tenant_id, role)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = $3
+           RETURNING *`,
+          [userId, tenant_id, assignRole]
+        );
+
+        res.json(rows[0]);
+      } catch (e) {
+        if (e.code === "23503") {
+          return res.status(404).json({ error: "user_or_tenant_not_found" });
+        }
+        console.error("PUT /api/superadmin/users/:userId/tenants error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // DELETE /api/superadmin/users/:userId/tenants/:tenantId
+  router.delete(
+    "/api/superadmin/users/:userId/tenants/:tenantId",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { userId, tenantId } = req.params;
+        await pool.query(
+          "DELETE FROM user_tenants WHERE user_id = $1 AND tenant_id = $2",
+          [userId, tenantId]
+        );
+        res.json({ ok: true });
+      } catch (e) {
+        console.error("DELETE /api/superadmin/users/:userId/tenants/:tenantId error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // ==============================
   // SUPER ADMIN: AUDIT LOG
   // ==============================
 

@@ -64,9 +64,11 @@ const ROLE_PERMISSIONS = {
     },
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
-                'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit', 'settings'],
+                'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
+                'superadmin-users', 'settings'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
-                  'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit']
+                  'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
+                  'manage_users']
     }
 };
 
