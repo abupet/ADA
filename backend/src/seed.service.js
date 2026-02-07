@@ -291,10 +291,15 @@ async function _runSeedJob(pool, config, openAiKey) {
     _updateProgress(2, 5, 'Generating pet profiles');
     _log(`Phase 2: Generating ${config.petCount} pet profiles...`);
 
+    // Normalize percentages to fractions (UI sends 60/30/10, petgen expects 0.6/0.3/0.1)
+    const rawDog = config.dogPct || 0;
+    const rawCat = config.catPct || 0;
+    const rawRabbit = config.rabbitPct || 0;
+    const total = rawDog + rawCat + rawRabbit || 100;
     const pets = generatePetCohort(config.petCount, {
-      dogPct: config.dogPct,
-      catPct: config.catPct,
-      rabbitPct: config.rabbitPct,
+      dogPct: rawDog / total,
+      catPct: rawCat / total,
+      rabbitPct: rawRabbit / total,
     });
 
     _log(`Generated ${pets.length} pet profiles`);

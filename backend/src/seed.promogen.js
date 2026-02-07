@@ -226,6 +226,31 @@ async function scrapeProductsFromSites(siteUrls, openAiKey) {
     // --- Fetch HTML ---
     try {
       const urlObj = new URL(siteUrl);
+
+      // SSRF protection: only allow HTTPS
+      if (urlObj.protocol !== "https:") {
+        console.warn(`scrapeProductsFromSites: blocked non-HTTPS URL: ${siteUrl}`);
+        continue;
+      }
+
+      // SSRF protection: block private/reserved IP ranges and localhost
+      const hostname = urlObj.hostname.toLowerCase();
+      if (
+        hostname === "localhost" ||
+        hostname === "[::1]" ||
+        /^127\./.test(hostname) ||
+        /^10\./.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^169\.254\./.test(hostname) ||
+        /^0\./.test(hostname) ||
+        hostname.endsWith(".local") ||
+        hostname.endsWith(".internal")
+      ) {
+        console.warn(`scrapeProductsFromSites: blocked private/reserved address: ${siteUrl}`);
+        continue;
+      }
+
       sourceSite = urlObj.hostname.replace(/^www\./, "");
 
       const res = await fetch(siteUrl, {
