@@ -25,17 +25,51 @@ function clearAuthToken() {
 }
 
 async function fetchApi(path, options = {}) {
-    const headers = new Headers((options || {}).headers || {});
-    const token = getAuthToken();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-    if (response.status === 401) {
-        clearAuthToken();
-        if (typeof handleAuthFailure === 'function') {
-            handleAuthFailure();
-        }
+    var headers = new Headers((options || {}).headers || {});
+    var token = getAuthToken();
+    if (token) headers.set('Authorization', 'Bearer ' + token);
+
+    // Correlation ID propagation
+    if (typeof ADALog !== 'undefined' && ADALog.getCorrelationId()) {
+        headers.set('X-Correlation-Id', ADALog.getCorrelationId());
     }
-    return response;
+
+    var method = (options.method || 'GET').toUpperCase();
+    var startMs = Date.now();
+
+    if (typeof ADALog !== 'undefined' && method !== 'GET') {
+        ADALog.dbg('API', method + ' ' + path + ' started', null);
+    }
+
+    try {
+        var response = await fetch(API_BASE_URL + path, { ...options, headers: headers });
+        var durationMs = Date.now() - startMs;
+
+        if (response.status === 401) {
+            clearAuthToken();
+            if (typeof handleAuthFailure === 'function') handleAuthFailure();
+        }
+
+        if (typeof ADALog !== 'undefined') {
+            if (!response.ok) {
+                ADALog.warn('API', method + ' ' + path + ' → ' + response.status, {
+                    durationMs: durationMs, status: response.status
+                });
+            } else if (durationMs > 3000) {
+                ADALog.perf('API', method + ' ' + path + ' slow', { durationMs: durationMs });
+            }
+        }
+        return response;
+    } catch (err) {
+        if (typeof ADALog !== 'undefined') {
+            ADALog.err('API', method + ' ' + path + ' network error', {
+                durationMs: Date.now() - startMs,
+                error: err.message || 'unknown',
+                isAbort: err.name === 'AbortError'
+            });
+        }
+        throw err;
+    }
 }
 
 // Version
@@ -51,11 +85,11 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'seed'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
+        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'seed'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
     },
     admin_brand: {

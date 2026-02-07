@@ -229,6 +229,10 @@
         }
         if (params.length > 0) path += '?' + params.join('&');
 
+        if (typeof ADALog !== 'undefined') {
+            ADALog.dbg('PROMO', 'loadPromoRecommendation start', {petId: petId, context: context, path: path});
+        }
+
         return fetchApi(path, { method: 'GET' })
             .then(function (response) {
                 if (!response.ok) return null;
@@ -239,6 +243,9 @@
 
                 // V2 response: { pet_id, recommendation: {...} | null }
                 if (data.recommendation !== undefined) {
+                    if (typeof ADALog !== 'undefined') {
+                        ADALog.info('PROMO', 'loadPromoRecommendation done', {productId: data.recommendation ? (data.recommendation.promoItemId || data.recommendation.productId || null) : null, source: 'v2', confidence: null});
+                    }
                     return data.recommendation;
                 }
 
@@ -389,6 +396,10 @@
     function _renderCard(cardEl, rec, petId, role, context) {
         if (!cardEl) return;
 
+        if (typeof ADALog !== 'undefined') {
+            ADALog.dbg('PROMO', 'render card', {productId: rec ? (rec.promoItemId || rec.productId || null) : null, name: rec ? rec.name : null, context: context});
+        }
+
         // Nothing to show
         if (!rec || !rec.name) {
             cardEl.classList.add('promo-card--hidden');
@@ -475,6 +486,9 @@
 
         if (ctaBtn && ctaUrl) {
             ctaBtn.addEventListener('click', function () {
+                if (typeof ADALog !== 'undefined') {
+                    ADALog.info('PROMO', 'click tracked', {productId: productId, action: 'cta_click', context: context});
+                }
                 trackPromoEvent('cta_click', productId, petId, {
                     name: rec.name, role: role, context: context, ctaLabel: ctaLabel
                 });
@@ -507,6 +521,9 @@
 
         if (dismissBtn) {
             dismissBtn.addEventListener('click', function () {
+                if (typeof ADALog !== 'undefined') {
+                    ADALog.info('PROMO', 'dismiss tracked', {productId: productId, action: 'dismissed', context: context});
+                }
                 trackPromoEvent('dismissed', productId, petId, {
                     name: rec.name, role: role, context: context
                 });
@@ -565,6 +582,10 @@
     function _recordImpression(productId, petId, rec, role, context) {
         var sessionKey = (context || 'home_feed') + ':' + (petId || 'none');
         _sessionImpressions[sessionKey] = (_sessionImpressions[sessionKey] || 0) + 1;
+
+        if (typeof ADALog !== 'undefined') {
+            ADALog.info('PROMO', 'impression tracked', {productId: productId, petId: petId, context: context});
+        }
 
         trackPromoEvent('impression', productId, petId, {
             name: rec ? rec.name : null,

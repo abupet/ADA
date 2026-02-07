@@ -1,6 +1,12 @@
 // backend/src/eligibility.service.js v1
 // PR 2: Promo eligibility / selection engine
 
+// --- Debug logging helper (PR 13) ---
+function serverLog(level, domain, message, data, req) {
+    if (process.env.ADA_DEBUG_LOG !== 'true') return;
+    console.log(JSON.stringify({ts: new Date().toISOString(), level, domain, corrId: (req && req.correlationId) || '--------', msg: message, data: data || undefined}));
+}
+
 const { computeTags } = require("./tag.service");
 const {
   getEffectiveConsent,
@@ -317,6 +323,8 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
         (selected.product_url.includes("?") ? "&" : "?") +
         utmParams
       : null;
+
+    serverLog('INFO', 'ELIGIBILITY', 'after selectPromo', {petId, context: ctx, selectedItemId: selected.promo_item_id, matchScore: selected._matchScore, candidateCount: afterCapping.length});
 
     return {
       promoItemId: selected.promo_item_id,

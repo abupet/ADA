@@ -3,6 +3,12 @@
 
 const { createHash } = require("crypto");
 
+// --- Debug logging helper (PR 13) ---
+function serverLog(level, domain, message, data, req) {
+    if (process.env.ADA_DEBUG_LOG !== 'true') return;
+    console.log(JSON.stringify({ts: new Date().toISOString(), level, domain, corrId: (req && req.correlationId) || '--------', msg: message, data: data || undefined}));
+}
+
 /**
  * generateExplanation(pool, { pet, promoItem, context, matchedTags, getOpenAiKey })
  *
@@ -50,6 +56,7 @@ async function generateExplanation(
       [cacheKey]
     );
     if (cacheResult.rows[0]) {
+      serverLog('INFO', 'EXPLAIN', 'cache hit', {cacheKey, itemId});
       return {
         explanation: cacheResult.rows[0].explanation,
         source: "cache",
@@ -71,6 +78,7 @@ async function generateExplanation(
       if (budgetResult.rows[0]) {
         const b = budgetResult.rows[0];
         if (b.current_usage >= b.monthly_limit) {
+          serverLog('INFO', 'EXPLAIN', 'budget exceeded', {tenantId, currentUsage: b.current_usage, monthlyLimit: b.monthly_limit});
           return {
             explanation: _fallbackExplanation(petName),
             source: "fallback",
@@ -174,6 +182,7 @@ Rispondi con questo JSON:
         explanation.confidence = "low";
       }
     } catch (_parseErr) {
+      serverLog('ERR', 'EXPLAIN', 'parse fail', {itemId, error: _parseErr.message});
       explanation = _fallbackExplanation(petName);
       // Still save in cache to avoid repeated bad calls
     }
@@ -205,6 +214,7 @@ Rispondi con questo JSON:
       }
     }
 
+    serverLog('INFO', 'EXPLAIN', 'OpenAI done', {itemId, tokensUsed, latencyMs: Date.now() - startMs});
     return {
       explanation,
       source: "openai",
@@ -213,6 +223,7 @@ Rispondi con questo JSON:
     };
   } catch (e) {
     // Timeout or network error
+    serverLog('ERR', 'EXPLAIN', 'timeout', {itemId, error: e.message, latencyMs: Date.now() - startMs});
     return {
       explanation: _fallbackExplanation(petName),
       source: "fallback",
