@@ -729,13 +729,15 @@
     // =========================================================================
 
     var DELETED_IDS_KEY = 'ADA_DELETED_DOCS';
+    var DELETE_OUTBOX_KEY = 'ADA_DELETE_OUTBOX';
+
+    // --- Deletion tracking (prevents sync from re-adding) ---
 
     function _trackLocalDeletion(documentId) {
         try {
             var raw = localStorage.getItem(DELETED_IDS_KEY);
             var ids = raw ? JSON.parse(raw) : [];
             if (ids.indexOf(documentId) === -1) ids.push(documentId);
-            // Keep only the last 500 entries to avoid unbounded growth
             if (ids.length > 500) ids = ids.slice(ids.length - 500);
             localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(ids));
         } catch (_e) { /* localStorage full or unavailable */ }
@@ -763,6 +765,72 @@
         } catch (_e) { /* ignore */ }
     }
 
+    // --- Delete outbox (retries server DELETE when back online) ---
+
+    function _enqueueDelete(documentId) {
+        try {
+            var raw = localStorage.getItem(DELETE_OUTBOX_KEY);
+            var ids = raw ? JSON.parse(raw) : [];
+            if (ids.indexOf(documentId) === -1) ids.push(documentId);
+            localStorage.setItem(DELETE_OUTBOX_KEY, JSON.stringify(ids));
+        } catch (_e) { /* ignore */ }
+    }
+
+    function _dequeueDelete(documentId) {
+        try {
+            var raw = localStorage.getItem(DELETE_OUTBOX_KEY);
+            if (!raw) return;
+            var ids = JSON.parse(raw);
+            var idx = ids.indexOf(documentId);
+            if (idx !== -1) {
+                ids.splice(idx, 1);
+                localStorage.setItem(DELETE_OUTBOX_KEY, JSON.stringify(ids));
+            }
+        } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * Flush pending delete outbox: retry server DELETE for each queued ID.
+     * Called before pulling documents during sync and on 'online' event.
+     */
+    function _flushDeleteOutbox() {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve();
+        if (typeof fetchApi !== 'function') return Promise.resolve();
+
+        var raw;
+        try { raw = localStorage.getItem(DELETE_OUTBOX_KEY); } catch (_e) { return Promise.resolve(); }
+        if (!raw) return Promise.resolve();
+
+        var ids;
+        try { ids = JSON.parse(raw); } catch (_e) { return Promise.resolve(); }
+        if (!ids || ids.length === 0) return Promise.resolve();
+
+        var chain = Promise.resolve();
+        ids.forEach(function (docId) {
+            chain = chain.then(function () {
+                return fetchApi('/api/documents/' + encodeURIComponent(docId), { method: 'DELETE' })
+                    .then(function (res) {
+                        if (res && (res.ok || res.status === 404)) {
+                            // 200 = deleted, 404 = already gone — either way, done
+                            _dequeueDelete(docId);
+                            _clearLocalDeletion(docId);
+                        }
+                    })
+                    .catch(function () { /* still offline — keep in outbox */ });
+            });
+        });
+        return chain;
+    }
+
+    // Flush delete outbox when back online
+    try {
+        window.addEventListener('online', function () {
+            setTimeout(_flushDeleteOutbox, 2500);
+        });
+    } catch (_) {}
+
+    // --- Delete document (main function) ---
+
     function _deleteDocument(documentId) {
         if (!documentId) return;
         if (!confirm('Eliminare questo documento?')) return;
@@ -778,7 +846,12 @@
             // 2. Track locally so sync won't re-add it
             _trackLocalDeletion(documentId);
 
-            // 3. Remove from IndexedDB
+            // 3. If server delete failed, queue for retry
+            if (!serverOk) {
+                _enqueueDelete(documentId);
+            }
+
+            // 4. Remove from IndexedDB
             return _openDB().then(function () {
                 return Promise.all([
                     _idbDelete(STORE_NAME, documentId),
@@ -1389,6 +1462,8 @@
         if (typeof fetchApi !== 'function') return Promise.resolve(0);
         if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve(0);
 
+        // Flush pending server deletes before pulling
+        return _flushDeleteOutbox().then(function () {
         return fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId))
             .then(function (response) {
                 if (!response || !response.ok) return 0;
@@ -1468,6 +1543,7 @@
                 });
             })
             .catch(function () { return 0; });
+        }); // end _flushDeleteOutbox
     }
 
     // =========================================================================
@@ -1492,6 +1568,9 @@
 
     // Offline upload queue
     global.flushDocumentUploadQueue = _flushUploadQueue;
+
+    // Offline delete outbox
+    global.flushDocumentDeleteOutbox = _flushDeleteOutbox;
 
     // Cross-device document sync
     global.pullDocumentsForPet = pullDocumentsForPet;
