@@ -644,7 +644,7 @@
         var msg = err && err.message ? err.message : 'Pull error';
         recordError(msg);
         if (typeof ADALog !== 'undefined') {
-          ADALog.err('SYNC', 'pull: error', {error: msg});
+          ADALog.warn('SYNC', 'pull: error', {error: msg});
         }
         return { pulled: 0, error: msg };
       });
