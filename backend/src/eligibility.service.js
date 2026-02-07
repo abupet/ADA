@@ -324,7 +324,7 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
         utmParams
       : null;
 
-    serverLog('INFO', 'ELIGIBILITY', 'after selectPromo', {petId, context: ctx, selectedItemId: selected.promo_item_id, matchScore: selected._matchScore, candidateCount: afterCapping.length});
+    serverLog('INFO', 'ELIGIBILITY', 'after selectPromo', {petId, candidatesFound: afterCapping.length, selectedItemId: selected.promo_item_id, matchScore: selected._matchScore});
 
     return {
       promoItemId: selected.promo_item_id,
