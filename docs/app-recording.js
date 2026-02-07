@@ -1598,7 +1598,6 @@ async function handleLongTextTestUpload(event) {
 function logDebug(context, message) {
     // Moved to app-debug-logger.js
 }
-}
 
 // ============================================
 // TRANSCRIPTION WITH DIARIZATION
