@@ -811,6 +811,672 @@
     }
 
     // =========================================================================
+    // Admin: Catalog Management
+    // =========================================================================
+
+    var _catalogItems = [];
+    var _catalogPage = 1;
+    var _catalogTotal = 0;
+    var _catalogStatusFilter = '';
+
+    function loadAdminCatalog(containerId) {
+        var container = document.getElementById(containerId || 'admin-catalog-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+
+        var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
+        if (!tenantId && jwtRole === 'super_admin') {
+            container.innerHTML = '<p style="color:#888;">Seleziona un tenant dalla Dashboard per gestire il catalogo.</p>';
+            return;
+        }
+        if (!tenantId) {
+            container.innerHTML = '<p style="color:#888;">Tenant non configurato.</p>';
+            return;
+        }
+
+        container.innerHTML = '<p style="color:#888;">Caricamento catalogo...</p>';
+
+        var statusParam = _catalogStatusFilter ? '&status=' + _catalogStatusFilter : '';
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + _catalogPage + '&limit=20' + statusParam)
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data) { container.innerHTML = '<p style="color:#888;">Nessun dato.</p>'; return; }
+                _catalogItems = data.items || [];
+                _catalogTotal = data.total || 0;
+                _renderCatalogPage(container, tenantId);
+            })
+            .catch(function () {
+                container.innerHTML = '<p style="color:#dc2626;">Errore caricamento catalogo.</p>';
+            });
+    }
+
+    function _renderCatalogPage(container, tenantId) {
+        var html = [];
+
+        // Actions bar
+        html.push('<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">');
+        html.push('<button class="btn btn-primary" onclick="showCreateItemForm()">+ Nuovo Prodotto</button>');
+        html.push('<select onchange="filterCatalogStatus(this.value)" style="padding:6px 12px;border:1px solid #ddd;border-radius:6px;">');
+        html.push('<option value=""' + (!_catalogStatusFilter ? ' selected' : '') + '>Tutti</option>');
+        ['draft', 'in_review', 'published', 'retired'].forEach(function (s) {
+            html.push('<option value="' + s + '"' + (_catalogStatusFilter === s ? ' selected' : '') + '>' + s + '</option>');
+        });
+        html.push('</select>');
+        html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
+        html.push('</div>');
+
+        // Create item form (hidden)
+        html.push('<div id="create-item-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
+        html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuovo Prodotto</h4>');
+        html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Nome *</label><input type="text" id="newItemName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Nome prodotto"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Categoria *</label><select id="newItemCategory" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+        ['food_general', 'food_clinical', 'supplement', 'antiparasitic', 'accessory', 'service'].forEach(function (c) {
+            html.push('<option value="' + c + '">' + c + '</option>');
+        });
+        html.push('</select></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Specie</label><input type="text" id="newItemSpecies" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="dog, cat"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Lifecycle</label><input type="text" id="newItemLifecycle" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="puppy, adult, senior"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newItemDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="newItemUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="newItemImageUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Priorita</label><input type="number" id="newItemPriority" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" value="0"></div>');
+        html.push('</div>');
+        html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="createPromoItem()">Crea</button> <button class="btn btn-secondary" onclick="hideCreateItemForm()">Annulla</button></div>');
+        html.push('</div>');
+
+        // Items table
+        if (_catalogItems.length === 0) {
+            html.push('<p style="color:#888;">Nessun prodotto trovato.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Nome</th><th>Categoria</th><th>Specie</th><th>Stato</th><th>Priorita</th><th>Azioni</th></tr>');
+            _catalogItems.forEach(function (item) {
+                var statusColor = { draft: '#888', in_review: '#eab308', published: '#16a34a', retired: '#dc2626' }[item.status] || '#888';
+                html.push('<tr>');
+                html.push('<td>' + _escapeHtml(item.name) + '</td>');
+                html.push('<td>' + _escapeHtml(item.category) + '</td>');
+                html.push('<td>' + _escapeHtml(Array.isArray(item.species) ? item.species.join(', ') : '') + '</td>');
+                html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
+                html.push('<td>' + (item.priority || 0) + '</td>');
+                html.push('<td style="white-space:nowrap;">');
+
+                // Transition buttons based on current status
+                var transitions = { draft: ['in_review'], in_review: ['published', 'draft'], published: ['retired'], retired: ['draft'] };
+                var allowed = transitions[item.status] || [];
+                allowed.forEach(function (t) {
+                    var btnClass = t === 'published' ? 'btn-success' : (t === 'retired' ? 'btn-danger' : 'btn-secondary');
+                    html.push('<button class="btn ' + btnClass + '" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="transitionItem(\'' + _escapeHtml(item.promo_item_id) + '\',\'' + t + '\')">' + t + '</button>');
+                });
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')">Modifica</button>');
+                html.push('</td></tr>');
+            });
+            html.push('</table>');
+
+            // Pagination
+            var totalPages = Math.ceil(_catalogTotal / 20);
+            if (totalPages > 1) {
+                html.push('<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;">');
+                for (var p = 1; p <= totalPages; p++) {
+                    html.push('<button class="admin-period-btn' + (p === _catalogPage ? ' active' : '') + '" onclick="catalogGoToPage(' + p + ')">' + p + '</button>');
+                }
+                html.push('</div>');
+            }
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function showCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = ''; }
+    function hideCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = 'none'; }
+
+    function filterCatalogStatus(status) {
+        _catalogStatusFilter = status;
+        _catalogPage = 1;
+        loadAdminCatalog();
+    }
+
+    function catalogGoToPage(page) {
+        _catalogPage = page;
+        loadAdminCatalog();
+    }
+
+    function createPromoItem() {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var name = (document.getElementById('newItemName') || {}).value || '';
+        var category = (document.getElementById('newItemCategory') || {}).value || '';
+        if (!name || !category) {
+            if (typeof showToast === 'function') showToast('Nome e categoria obbligatori.', 'error');
+            return;
+        }
+
+        var speciesStr = (document.getElementById('newItemSpecies') || {}).value || '';
+        var lifecycleStr = (document.getElementById('newItemLifecycle') || {}).value || '';
+        var species = speciesStr ? speciesStr.split(',').map(function (s) { return s.trim(); }) : [];
+        var lifecycle = lifecycleStr ? lifecycleStr.split(',').map(function (s) { return s.trim(); }) : [];
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name, category: category, species: species, lifecycle_target: lifecycle,
+                description: (document.getElementById('newItemDescription') || {}).value || null,
+                product_url: (document.getElementById('newItemUrl') || {}).value || null,
+                image_url: (document.getElementById('newItemImageUrl') || {}).value || null,
+                priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0
+            })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Prodotto creato.', 'success');
+            hideCreateItemForm();
+            loadAdminCatalog();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore creazione prodotto.', 'error');
+        });
+    }
+
+    function transitionItem(itemId, newStatus) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId) + '/transition', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        }).then(function (r) {
+            if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'HTTP ' + r.status); });
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Stato aggiornato a ' + newStatus, 'success');
+            loadAdminCatalog();
+        }).catch(function (err) {
+            if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+        });
+    }
+
+    function editPromoItem(itemId) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var newName = prompt('Nuovo nome prodotto:');
+        if (!newName) return;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Prodotto aggiornato.', 'success');
+            loadAdminCatalog();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore aggiornamento.', 'error');
+        });
+    }
+
+    // =========================================================================
+    // Admin: Campaigns Management
+    // =========================================================================
+
+    var _campaignsData = [];
+
+    function loadAdminCampaigns(containerId) {
+        var container = document.getElementById(containerId || 'admin-campaigns-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+
+        var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
+        if (!tenantId && jwtRole === 'super_admin') {
+            container.innerHTML = '<p style="color:#888;">Seleziona un tenant dalla Dashboard per gestire le campagne.</p>';
+            return;
+        }
+        if (!tenantId) {
+            container.innerHTML = '<p style="color:#888;">Tenant non configurato.</p>';
+            return;
+        }
+
+        container.innerHTML = '<p style="color:#888;">Caricamento campagne...</p>';
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                _campaignsData = (data && data.campaigns) ? data.campaigns : [];
+                _renderCampaignsPage(container, tenantId);
+            })
+            .catch(function () {
+                container.innerHTML = '<p style="color:#dc2626;">Errore caricamento campagne.</p>';
+            });
+    }
+
+    function _renderCampaignsPage(container, tenantId) {
+        var html = [];
+
+        html.push('<div style="margin-bottom:16px;">');
+        html.push('<button class="btn btn-primary" onclick="showCreateCampaignForm()">+ Nuova Campagna</button>');
+        html.push('</div>');
+
+        // Create campaign form (hidden)
+        html.push('<div id="create-campaign-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
+        html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuova Campagna</h4>');
+        html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Nome *</label><input type="text" id="newCampaignName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Nome campagna"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">UTM Campaign</label><input type="text" id="newCampaignUtm" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="utm_campaign_id"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Data inizio</label><input type="date" id="newCampaignStart" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Data fine</label><input type="date" id="newCampaignEnd" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+        html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Contesti (comma-sep)</label><input type="text" id="newCampaignContexts" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="home_feed, pet_profile, post_visit"></div>');
+        html.push('</div>');
+        html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="createCampaign()">Crea</button> <button class="btn btn-secondary" onclick="hideCreateCampaignForm()">Annulla</button></div>');
+        html.push('</div>');
+
+        if (_campaignsData.length === 0) {
+            html.push('<p style="color:#888;">Nessuna campagna trovata.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Nome</th><th>Stato</th><th>Inizio</th><th>Fine</th><th>Contesti</th><th>Azioni</th></tr>');
+            _campaignsData.forEach(function (camp) {
+                var statusColor = { draft: '#888', active: '#16a34a', paused: '#eab308', ended: '#dc2626' }[camp.status] || '#888';
+                html.push('<tr>');
+                html.push('<td>' + _escapeHtml(camp.name) + '</td>');
+                html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(camp.status) + '</span></td>');
+                html.push('<td>' + _escapeHtml(camp.start_date ? camp.start_date.substring(0, 10) : '-') + '</td>');
+                html.push('<td>' + _escapeHtml(camp.end_date ? camp.end_date.substring(0, 10) : '-') + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(Array.isArray(camp.contexts) ? camp.contexts.join(', ') : '-') + '</td>');
+                html.push('<td style="white-space:nowrap;">');
+
+                // Status toggle buttons
+                if (camp.status === 'draft') {
+                    html.push('<button class="btn btn-success" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="updateCampaignStatus(\'' + _escapeHtml(camp.campaign_id) + '\',\'active\')">Attiva</button>');
+                } else if (camp.status === 'active') {
+                    html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="updateCampaignStatus(\'' + _escapeHtml(camp.campaign_id) + '\',\'paused\')">Pausa</button>');
+                    html.push('<button class="btn btn-danger" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="updateCampaignStatus(\'' + _escapeHtml(camp.campaign_id) + '\',\'ended\')">Termina</button>');
+                } else if (camp.status === 'paused') {
+                    html.push('<button class="btn btn-success" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="updateCampaignStatus(\'' + _escapeHtml(camp.campaign_id) + '\',\'active\')">Riprendi</button>');
+                }
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editCampaign(\'' + _escapeHtml(camp.campaign_id) + '\',\'' + _escapeHtml(camp.name) + '\')">Modifica</button>');
+                html.push('</td></tr>');
+            });
+            html.push('</table>');
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function showCreateCampaignForm() { var f = document.getElementById('create-campaign-form'); if (f) f.style.display = ''; }
+    function hideCreateCampaignForm() { var f = document.getElementById('create-campaign-form'); if (f) f.style.display = 'none'; }
+
+    function createCampaign() {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var name = (document.getElementById('newCampaignName') || {}).value || '';
+        if (!name) { if (typeof showToast === 'function') showToast('Nome obbligatorio.', 'error'); return; }
+
+        var contextsStr = (document.getElementById('newCampaignContexts') || {}).value || '';
+        var contexts = contextsStr ? contextsStr.split(',').map(function (s) { return s.trim(); }) : [];
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                start_date: (document.getElementById('newCampaignStart') || {}).value || null,
+                end_date: (document.getElementById('newCampaignEnd') || {}).value || null,
+                contexts: contexts,
+                utm_campaign: (document.getElementById('newCampaignUtm') || {}).value || null
+            })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Campagna creata.', 'success');
+            hideCreateCampaignForm();
+            loadAdminCampaigns();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore creazione campagna.', 'error');
+        });
+    }
+
+    function updateCampaignStatus(campaignId, newStatus) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns/' + encodeURIComponent(campaignId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Stato aggiornato.', 'success');
+            loadAdminCampaigns();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore aggiornamento.', 'error');
+        });
+    }
+
+    function editCampaign(campaignId, currentName) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var newName = prompt('Nuovo nome campagna:', currentName);
+        if (!newName || newName === currentName) return;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns/' + encodeURIComponent(campaignId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Campagna aggiornata.', 'success');
+            loadAdminCampaigns();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore aggiornamento.', 'error');
+        });
+    }
+
+    // =========================================================================
+    // Super Admin: Policies Management
+    // =========================================================================
+
+    function loadSuperadminPolicies(containerId) {
+        var container = document.getElementById(containerId || 'superadmin-policies-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+        container.innerHTML = '<p style="color:#888;">Caricamento policies...</p>';
+
+        fetchApi('/api/superadmin/policies')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                var policies = (data && data.policies) ? data.policies : [];
+                _renderPoliciesPage(container, policies);
+            })
+            .catch(function () {
+                container.innerHTML = '<p style="color:#dc2626;">Errore caricamento policies.</p>';
+            });
+    }
+
+    function _renderPoliciesPage(container, policies) {
+        var html = [];
+
+        html.push('<div style="margin-bottom:16px;">');
+        html.push('<button class="btn btn-primary" onclick="showCreatePolicyForm()">+ Nuova Policy</button>');
+        html.push('</div>');
+
+        // Create form
+        html.push('<div id="create-policy-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
+        html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuova/Modifica Policy</h4>');
+        html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label><input type="text" id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: max_impressions_per_day"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Valore *</label><input type="text" id="newPolicyValue" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: 10"></div>');
+        html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newPolicyDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione policy"></div>');
+        html.push('</div>');
+        html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="savePolicy()">Salva</button> <button class="btn btn-secondary" onclick="hidePolicyForm()">Annulla</button></div>');
+        html.push('</div>');
+
+        if (policies.length === 0) {
+            html.push('<p style="color:#888;">Nessuna policy configurata.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Chiave</th><th>Valore</th><th>Descrizione</th><th>Aggiornato</th><th>Azioni</th></tr>');
+            policies.forEach(function (p) {
+                var val = p.policy_value;
+                try { val = JSON.parse(p.policy_value); val = JSON.stringify(val); } catch (_e) { val = String(p.policy_value); }
+                html.push('<tr>');
+                html.push('<td><code>' + _escapeHtml(p.policy_key) + '</code></td>');
+                html.push('<td>' + _escapeHtml(val) + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(p.description || '-') + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(p.updated_at ? p.updated_at.substring(0, 10) : '-') + '</td>');
+                html.push('<td><button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editPolicy(\'' + _escapeHtml(p.policy_key) + '\')">Modifica</button></td>');
+                html.push('</tr>');
+            });
+            html.push('</table>');
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function showCreatePolicyForm() { var f = document.getElementById('create-policy-form'); if (f) f.style.display = ''; }
+    function hidePolicyForm() { var f = document.getElementById('create-policy-form'); if (f) f.style.display = 'none'; }
+
+    function savePolicy() {
+        var key = (document.getElementById('newPolicyKey') || {}).value || '';
+        var valueStr = (document.getElementById('newPolicyValue') || {}).value || '';
+        if (!key) { if (typeof showToast === 'function') showToast('Chiave obbligatoria.', 'error'); return; }
+
+        var value;
+        try { value = JSON.parse(valueStr); } catch (_e) { value = valueStr; }
+
+        fetchApi('/api/superadmin/policies/' + encodeURIComponent(key), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: value, description: (document.getElementById('newPolicyDescription') || {}).value || null })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Policy salvata.', 'success');
+            hidePolicyForm();
+            loadSuperadminPolicies();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore salvataggio policy.', 'error');
+        });
+    }
+
+    function editPolicy(key) {
+        var keyEl = document.getElementById('newPolicyKey');
+        var valEl = document.getElementById('newPolicyValue');
+        if (keyEl) keyEl.value = key;
+        if (valEl) valEl.value = '';
+        showCreatePolicyForm();
+    }
+
+    // =========================================================================
+    // Super Admin: Tag Dictionary Management
+    // =========================================================================
+
+    function loadSuperadminTags(containerId) {
+        var container = document.getElementById(containerId || 'superadmin-tags-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+        container.innerHTML = '<p style="color:#888;">Caricamento tag dictionary...</p>';
+
+        fetchApi('/api/superadmin/tags')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                var tags = (data && data.tags) ? data.tags : [];
+                _renderTagsPage(container, tags);
+            })
+            .catch(function () {
+                container.innerHTML = '<p style="color:#dc2626;">Errore caricamento tag.</p>';
+            });
+    }
+
+    function _renderTagsPage(container, tags) {
+        var html = [];
+
+        html.push('<div style="margin-bottom:16px;">');
+        html.push('<button class="btn btn-primary" onclick="showCreateTagForm()">+ Nuovo Tag</button>');
+        html.push('</div>');
+
+        // Create form
+        html.push('<div id="create-tag-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
+        html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuovo/Modifica Tag</h4>');
+        html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Tag ID *</label><input type="text" id="newTagId" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: clinical:allergy"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Label *</label><input type="text" id="newTagLabel" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Allergia"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Categoria *</label><input type="text" id="newTagCategory" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="clinical, lifecycle, species"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Sensibilita</label><select id="newTagSensitivity" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></div>');
+        html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newTagDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione"></div>');
+        html.push('</div>');
+        html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="saveTag()">Salva</button> <button class="btn btn-secondary" onclick="hideTagForm()">Annulla</button></div>');
+        html.push('</div>');
+
+        if (tags.length === 0) {
+            html.push('<p style="color:#888;">Nessun tag trovato.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Tag</th><th>Label</th><th>Categoria</th><th>Sensibilita</th><th>Descrizione</th><th>Azioni</th></tr>');
+            tags.forEach(function (t) {
+                var sensColor = { low: '#16a34a', medium: '#eab308', high: '#dc2626' }[t.sensitivity] || '#888';
+                html.push('<tr>');
+                html.push('<td><code>' + _escapeHtml(t.tag) + '</code></td>');
+                html.push('<td>' + _escapeHtml(t.label) + '</td>');
+                html.push('<td>' + _escapeHtml(t.category) + '</td>');
+                html.push('<td><span style="color:' + sensColor + ';font-weight:600;">' + _escapeHtml(t.sensitivity) + '</span></td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(t.description || '-') + '</td>');
+                html.push('<td><button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editTag(\'' + _escapeHtml(t.tag) + '\',\'' + _escapeHtml(t.label) + '\')">Modifica</button></td>');
+                html.push('</tr>');
+            });
+            html.push('</table>');
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function showCreateTagForm() { var f = document.getElementById('create-tag-form'); if (f) f.style.display = ''; }
+    function hideTagForm() { var f = document.getElementById('create-tag-form'); if (f) f.style.display = 'none'; }
+
+    function saveTag() {
+        var tag = (document.getElementById('newTagId') || {}).value || '';
+        var label = (document.getElementById('newTagLabel') || {}).value || '';
+        var category = (document.getElementById('newTagCategory') || {}).value || '';
+        if (!tag || !label || !category) { if (typeof showToast === 'function') showToast('Tag, label e categoria obbligatori.', 'error'); return; }
+
+        fetchApi('/api/superadmin/tags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tag: tag, label: label, category: category,
+                sensitivity: (document.getElementById('newTagSensitivity') || {}).value || 'low',
+                description: (document.getElementById('newTagDescription') || {}).value || null
+            })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Tag salvato.', 'success');
+            hideTagForm();
+            loadSuperadminTags();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore salvataggio tag.', 'error');
+        });
+    }
+
+    function editTag(tagId, currentLabel) {
+        var tagEl = document.getElementById('newTagId');
+        var labelEl = document.getElementById('newTagLabel');
+        if (tagEl) tagEl.value = tagId;
+        if (labelEl) labelEl.value = currentLabel;
+        showCreateTagForm();
+    }
+
+    // =========================================================================
+    // Super Admin: Audit Log Viewer
+    // =========================================================================
+
+    var _auditOffset = 0;
+
+    function loadSuperadminAudit(containerId) {
+        var container = document.getElementById(containerId || 'superadmin-audit-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+        container.innerHTML = '<p style="color:#888;">Caricamento audit log...</p>';
+
+        var actionFilter = (document.getElementById('auditActionFilter') || {}).value || '';
+        var params = '?limit=50&offset=' + _auditOffset;
+        if (actionFilter) params += '&action=' + encodeURIComponent(actionFilter);
+
+        fetchApi('/api/superadmin/audit' + params)
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                var audit = (data && data.audit) ? data.audit : [];
+                _renderAuditPage(container, audit);
+            })
+            .catch(function () {
+                container.innerHTML = '<p style="color:#dc2626;">Errore caricamento audit log.</p>';
+            });
+    }
+
+    function _renderAuditPage(container, audit) {
+        var html = [];
+
+        // Filter bar
+        html.push('<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">');
+        html.push('<input type="text" id="auditActionFilter" placeholder="Filtra per azione..." style="padding:6px 12px;border:1px solid #ddd;border-radius:6px;width:200px;">');
+        html.push('<button class="btn btn-secondary" onclick="auditApplyFilter()">Filtra</button>');
+        html.push('<button class="btn btn-secondary" onclick="auditResetFilter()">Reset</button>');
+        html.push('</div>');
+
+        if (audit.length === 0) {
+            html.push('<p style="color:#888;">Nessun record trovato.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Data</th><th>Chi</th><th>Azione</th><th>Entita</th><th>Esito</th><th>Ruolo</th><th>Tenant</th></tr>');
+            audit.forEach(function (a) {
+                var outColor = a.outcome === 'success' ? '#16a34a' : '#dc2626';
+                html.push('<tr>');
+                html.push('<td style="font-size:11px;white-space:nowrap;">' + _escapeHtml(a.created_at ? a.created_at.substring(0, 19).replace('T', ' ') : '-') + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(a.who || '-') + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(a.action || '-') + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(a.entity_id || '-') + '</td>');
+                html.push('<td><span style="color:' + outColor + ';font-weight:600;">' + _escapeHtml(a.outcome || '-') + '</span></td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(a.user_role || '-') + '</td>');
+                html.push('<td style="font-size:12px;">' + _escapeHtml(a.tenant_id || '-') + '</td>');
+                html.push('</tr>');
+            });
+            html.push('</table>');
+
+            // Pagination
+            html.push('<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;">');
+            if (_auditOffset > 0) {
+                html.push('<button class="btn btn-secondary" onclick="auditPrevPage()">Precedente</button>');
+            }
+            if (audit.length >= 50) {
+                html.push('<button class="btn btn-secondary" onclick="auditNextPage()">Successivo</button>');
+            }
+            html.push('</div>');
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function auditApplyFilter() { _auditOffset = 0; loadSuperadminAudit(); }
+    function auditResetFilter() {
+        _auditOffset = 0;
+        var f = document.getElementById('auditActionFilter');
+        if (f) f.value = '';
+        loadSuperadminAudit();
+    }
+    function auditPrevPage() { _auditOffset = Math.max(0, _auditOffset - 50); loadSuperadminAudit(); }
+    function auditNextPage() { _auditOffset += 50; loadSuperadminAudit(); }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -821,12 +1487,30 @@
     global.handleCsvUpload        = handleCsvUpload;
     global.wizardDryRun           = wizardDryRun;
     global.wizardImport           = wizardImport;
+    // Catalog
+    global.loadAdminCatalog       = loadAdminCatalog;
+    global.showCreateItemForm     = showCreateItemForm;
+    global.hideCreateItemForm     = hideCreateItemForm;
+    global.filterCatalogStatus    = filterCatalogStatus;
+    global.catalogGoToPage        = catalogGoToPage;
+    global.createPromoItem        = createPromoItem;
+    global.transitionItem         = transitionItem;
+    global.editPromoItem          = editPromoItem;
+    // Campaigns
+    global.loadAdminCampaigns     = loadAdminCampaigns;
+    global.showCreateCampaignForm = showCreateCampaignForm;
+    global.hideCreateCampaignForm = hideCreateCampaignForm;
+    global.createCampaign         = createCampaign;
+    global.updateCampaignStatus   = updateCampaignStatus;
+    global.editCampaign           = editCampaign;
+    // Tenants
     global.loadSuperadminTenants  = loadSuperadminTenants;
     global.showCreateTenantForm   = showCreateTenantForm;
     global.hideCreateTenantForm   = hideCreateTenantForm;
     global.createTenant           = createTenant;
     global.toggleTenantStatus     = toggleTenantStatus;
     global.promptEditTenant       = promptEditTenant;
+    // Users
     global.loadSuperadminUsers    = loadSuperadminUsers;
     global.showCreateUserForm     = showCreateUserForm;
     global.hideCreateUserForm     = hideCreateUserForm;
@@ -834,5 +1518,23 @@
     global.toggleUserStatus       = toggleUserStatus;
     global.promptResetPassword    = promptResetPassword;
     global.promptAssignTenant     = promptAssignTenant;
+    // Policies
+    global.loadSuperadminPolicies = loadSuperadminPolicies;
+    global.showCreatePolicyForm   = showCreatePolicyForm;
+    global.hidePolicyForm         = hidePolicyForm;
+    global.savePolicy             = savePolicy;
+    global.editPolicy             = editPolicy;
+    // Tags
+    global.loadSuperadminTags     = loadSuperadminTags;
+    global.showCreateTagForm      = showCreateTagForm;
+    global.hideTagForm            = hideTagForm;
+    global.saveTag                = saveTag;
+    global.editTag                = editTag;
+    // Audit
+    global.loadSuperadminAudit    = loadSuperadminAudit;
+    global.auditApplyFilter       = auditApplyFilter;
+    global.auditResetFilter       = auditResetFilter;
+    global.auditPrevPage          = auditPrevPage;
+    global.auditNextPage          = auditNextPage;
 
 })(typeof window !== 'undefined' ? window : this);

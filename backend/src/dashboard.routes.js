@@ -165,6 +165,278 @@ function dashboardRouter({ requireAuth }) {
   );
 
   // ==============================
+  // DASHBOARD SUB-ENDPOINTS
+  // ==============================
+
+  // GET /api/admin/:tenantId/dashboard/funnel
+  router.get(
+    "/api/admin/:tenantId/dashboard/funnel",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const period = req.query.period || "30d";
+        const intervalDays = { "7d": 7, "30d": 30, "90d": 90 }[period] || 30;
+
+        const { rows } = await pool.query(
+          `SELECT event_type, COUNT(*) as cnt, COUNT(DISTINCT pet_id) as unique_pets
+           FROM promo_events
+           WHERE tenant_id = $1
+           AND created_at >= NOW() - ($2 || ' days')::INTERVAL
+           GROUP BY event_type
+           ORDER BY cnt DESC`,
+          [tenantId, String(intervalDays)]
+        );
+
+        const funnel = {};
+        for (const r of rows) {
+          funnel[r.event_type] = { count: parseInt(r.cnt), unique_pets: parseInt(r.unique_pets) };
+        }
+
+        const impressions = funnel.impression?.count || 0;
+        const clicks = (funnel.cta_click?.count || 0) + (funnel.info_click?.count || 0) + (funnel.detail_view?.count || 0);
+        const buyClicks = funnel.cta_click?.count || 0;
+        const dismissals = funnel.dismissed?.count || 0;
+
+        res.json({
+          period,
+          funnel: {
+            impressions,
+            clicks,
+            buy_clicks: buyClicks,
+            dismissals,
+            ctr: impressions > 0 ? Math.round((clicks / impressions) * 10000) / 100 : 0,
+            buy_rate: clicks > 0 ? Math.round((buyClicks / clicks) * 10000) / 100 : 0,
+            dismiss_rate: impressions > 0 ? Math.round((dismissals / impressions) * 10000) / 100 : 0,
+            breakdown: funnel,
+          },
+        });
+      } catch (e) {
+        console.error("GET /api/admin/:tenantId/dashboard/funnel error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // GET /api/admin/:tenantId/dashboard/products
+  router.get(
+    "/api/admin/:tenantId/dashboard/products",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const period = req.query.period || "30d";
+        const intervalDays = { "7d": 7, "30d": 30, "90d": 90 }[period] || 30;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const offset = (page - 1) * limit;
+
+        const { rows } = await pool.query(
+          `SELECT pi.promo_item_id, pi.name, pi.category, pi.status,
+                  COALESCE(SUM(CASE WHEN pe.event_type = 'impression' THEN 1 ELSE 0 END), 0) as impressions,
+                  COALESCE(SUM(CASE WHEN pe.event_type IN ('cta_click','info_click','detail_view') THEN 1 ELSE 0 END), 0) as clicks,
+                  COALESCE(SUM(CASE WHEN pe.event_type = 'dismissed' THEN 1 ELSE 0 END), 0) as dismissals,
+                  COALESCE(SUM(CASE WHEN pe.event_type = 'cta_click' THEN 1 ELSE 0 END), 0) as buy_clicks
+           FROM promo_items pi
+           LEFT JOIN promo_events pe ON pi.promo_item_id = pe.promo_item_id
+             AND pe.created_at >= NOW() - ($2 || ' days')::INTERVAL
+           WHERE pi.tenant_id = $1
+           GROUP BY pi.promo_item_id, pi.name, pi.category, pi.status
+           ORDER BY impressions DESC
+           LIMIT $3 OFFSET $4`,
+          [tenantId, String(intervalDays), limit, offset]
+        );
+
+        const countResult = await pool.query(
+          "SELECT COUNT(*) FROM promo_items WHERE tenant_id = $1",
+          [tenantId]
+        );
+
+        const products = rows.map((r) => ({
+          ...r,
+          impressions: parseInt(r.impressions),
+          clicks: parseInt(r.clicks),
+          dismissals: parseInt(r.dismissals),
+          buy_clicks: parseInt(r.buy_clicks),
+          ctr: parseInt(r.impressions) > 0
+            ? Math.round((parseInt(r.clicks) / parseInt(r.impressions)) * 10000) / 100
+            : 0,
+        }));
+
+        res.json({ products, total: parseInt(countResult.rows[0].count), page, limit });
+      } catch (e) {
+        console.error("GET /api/admin/:tenantId/dashboard/products error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // GET /api/admin/:tenantId/dashboard/costs
+  router.get(
+    "/api/admin/:tenantId/dashboard/costs",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+
+        // Budget info
+        let budget = null;
+        try {
+          const budgetResult = await pool.query(
+            "SELECT monthly_limit, current_usage, alert_threshold FROM tenant_budgets WHERE tenant_id = $1 LIMIT 1",
+            [tenantId]
+          );
+          if (budgetResult.rows[0]) budget = budgetResult.rows[0];
+        } catch (_e) {
+          // skip
+        }
+
+        // Explanation cache stats
+        let cacheStats = { total: 0, hits_possible: 0 };
+        try {
+          const cacheResult = await pool.query(
+            `SELECT COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE expires_at > NOW()) as active
+             FROM explanation_cache ec
+             JOIN promo_items pi ON ec.promo_item_id = pi.promo_item_id
+             WHERE pi.tenant_id = $1`,
+            [tenantId]
+          );
+          cacheStats = {
+            total: parseInt(cacheResult.rows[0]?.total || 0),
+            active: parseInt(cacheResult.rows[0]?.active || 0),
+          };
+        } catch (_e) {
+          // skip
+        }
+
+        const impressions = await pool.query(
+          "SELECT COUNT(*) as cnt FROM promo_events WHERE tenant_id = $1 AND event_type = 'impression'",
+          [tenantId]
+        );
+        const totalImpressions = parseInt(impressions.rows[0]?.cnt || 0);
+        const costPerImpression = budget && totalImpressions > 0
+          ? Math.round((budget.current_usage / totalImpressions) * 10000) / 10000
+          : 0;
+
+        res.json({
+          budget,
+          cache: cacheStats,
+          total_impressions: totalImpressions,
+          cost_per_impression: costPerImpression,
+          budget_usage_pct: budget && budget.monthly_limit > 0
+            ? Math.round((budget.current_usage / budget.monthly_limit) * 10000) / 100
+            : 0,
+        });
+      } catch (e) {
+        console.error("GET /api/admin/:tenantId/dashboard/costs error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // GET /api/admin/:tenantId/dashboard/alerts
+  router.get(
+    "/api/admin/:tenantId/dashboard/alerts",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const alerts = [];
+
+        // Budget alert
+        try {
+          const budgetResult = await pool.query(
+            "SELECT monthly_limit, current_usage, alert_threshold FROM tenant_budgets WHERE tenant_id = $1 LIMIT 1",
+            [tenantId]
+          );
+          if (budgetResult.rows[0]) {
+            const b = budgetResult.rows[0];
+            const pct = b.monthly_limit > 0 ? (b.current_usage / b.monthly_limit) * 100 : 0;
+            const threshold = b.alert_threshold || 80;
+            if (pct >= 100) {
+              alerts.push({ type: "budget_exhausted", severity: "critical", message: "Budget AI esaurito (" + Math.round(pct) + "%)" });
+            } else if (pct >= threshold) {
+              alerts.push({ type: "budget_warning", severity: "warning", message: "Budget AI al " + Math.round(pct) + "%" });
+            }
+          }
+        } catch (_e) {}
+
+        // Vet flags
+        try {
+          const flagResult = await pool.query(
+            `SELECT COUNT(*) as cnt FROM vet_flags vf
+             JOIN promo_items pi ON vf.promo_item_id = pi.promo_item_id
+             WHERE pi.tenant_id = $1 AND vf.status = 'active'`,
+            [tenantId]
+          );
+          const flagCount = parseInt(flagResult.rows[0]?.cnt || 0);
+          if (flagCount > 0) {
+            alerts.push({ type: "vet_flags", severity: "warning", message: flagCount + " flag veterinari attivi" });
+          }
+        } catch (_e) {}
+
+        // High dismiss rate items (> 50% dismissal rate)
+        try {
+          const dismissResult = await pool.query(
+            `SELECT pi.name,
+                    COUNT(*) FILTER (WHERE pe.event_type = 'impression') as impressions,
+                    COUNT(*) FILTER (WHERE pe.event_type = 'dismissed') as dismissals
+             FROM promo_events pe
+             JOIN promo_items pi ON pe.promo_item_id = pi.promo_item_id
+             WHERE pi.tenant_id = $1
+             AND pe.created_at >= NOW() - INTERVAL '7 days'
+             GROUP BY pi.promo_item_id, pi.name
+             HAVING COUNT(*) FILTER (WHERE pe.event_type = 'impression') >= 10`,
+            [tenantId]
+          );
+          for (const r of dismissResult.rows) {
+            const imp = parseInt(r.impressions);
+            const dis = parseInt(r.dismissals);
+            const rate = imp > 0 ? Math.round((dis / imp) * 100) : 0;
+            if (rate > 50) {
+              alerts.push({ type: "high_dismiss", severity: "info", message: r.name + ": " + rate + "% dismiss rate" });
+            }
+          }
+        } catch (_e) {}
+
+        // Low CTR items (< 1% CTR with > 50 impressions)
+        try {
+          const ctrResult = await pool.query(
+            `SELECT pi.name,
+                    COUNT(*) FILTER (WHERE pe.event_type = 'impression') as impressions,
+                    COUNT(*) FILTER (WHERE pe.event_type IN ('cta_click','info_click')) as clicks
+             FROM promo_events pe
+             JOIN promo_items pi ON pe.promo_item_id = pi.promo_item_id
+             WHERE pi.tenant_id = $1
+             AND pe.created_at >= NOW() - INTERVAL '7 days'
+             GROUP BY pi.promo_item_id, pi.name
+             HAVING COUNT(*) FILTER (WHERE pe.event_type = 'impression') >= 50`,
+            [tenantId]
+          );
+          for (const r of ctrResult.rows) {
+            const imp = parseInt(r.impressions);
+            const clk = parseInt(r.clicks);
+            const ctr = imp > 0 ? (clk / imp) * 100 : 0;
+            if (ctr < 1) {
+              alerts.push({ type: "low_ctr", severity: "info", message: r.name + ": CTR " + ctr.toFixed(1) + "%" });
+            }
+          }
+        } catch (_e) {}
+
+        res.json({ alerts });
+      } catch (e) {
+        console.error("GET /api/admin/:tenantId/dashboard/alerts error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // ==============================
   // CSV EXPORT
   // ==============================
 
@@ -235,8 +507,69 @@ function dashboardRouter({ requireAuth }) {
     }
   );
 
+  // POST /api/admin/:tenantId/reports/export
+  router.post(
+    "/api/admin/:tenantId/reports/export",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { period = "30d", group_by = "item" } = req.body || {};
+        const intervalDays = { "7d": 7, "30d": 30, "90d": 90 }[period] || 30;
+        const k = 10; // anti re-identification threshold
+
+        let query, params;
+        if (group_by === "context") {
+          query = `SELECT pe.context as group_key,
+                          pe.event_type, COUNT(*) as cnt, COUNT(DISTINCT pe.pet_id) as unique_pets
+                   FROM promo_events pe
+                   WHERE pe.tenant_id = $1
+                   AND pe.created_at >= NOW() - ($2 || ' days')::INTERVAL
+                   GROUP BY pe.context, pe.event_type
+                   HAVING COUNT(DISTINCT pe.pet_id) >= $3
+                   ORDER BY pe.context, pe.event_type`;
+          params = [tenantId, String(intervalDays), k];
+        } else {
+          query = `SELECT pi.name as group_key,
+                          pe.event_type, COUNT(*) as cnt, COUNT(DISTINCT pe.pet_id) as unique_pets
+                   FROM promo_events pe
+                   JOIN promo_items pi ON pe.promo_item_id = pi.promo_item_id
+                   WHERE pe.tenant_id = $1
+                   AND pe.created_at >= NOW() - ($2 || ' days')::INTERVAL
+                   GROUP BY pi.name, pe.event_type
+                   HAVING COUNT(DISTINCT pe.pet_id) >= $3
+                   ORDER BY pi.name, pe.event_type`;
+          params = [tenantId, String(intervalDays), k];
+        }
+
+        const { rows } = await pool.query(query, params);
+
+        const headers = ["group", "event_type", "count", "unique_pets"];
+        const csvLines = [headers.join(",")];
+        for (const row of rows) {
+          const line = [
+            '"' + String(row.group_key || "").replace(/"/g, '""') + '"',
+            row.event_type,
+            row.cnt,
+            row.unique_pets,
+          ].join(",");
+          csvLines.push(line);
+        }
+
+        const csv = csvLines.join("\n");
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="promo_report_${tenantId}_${period}.csv"`);
+        res.send(csv);
+      } catch (e) {
+        console.error("POST /api/admin/:tenantId/reports/export error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
   // ==============================
-  // CSV IMPORT WIZARD
+  // CSV IMPORT WIZARD (full staging workflow)
   // ==============================
 
   // POST /api/admin/:tenantId/import/promo-items
@@ -370,6 +703,363 @@ function dashboardRouter({ requireAuth }) {
           "POST /api/admin/:tenantId/import/promo-items error",
           e
         );
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // GET /api/admin/:tenantId/wizard/csv-template
+  router.get(
+    "/api/admin/:tenantId/wizard/csv-template",
+    requireAuth,
+    requireRole(adminRoles),
+    async (_req, res) => {
+      const headers = "name,category,species,lifecycle_target,description,image_url,product_url,tags_include,tags_exclude,priority";
+      const example = '"Crocchette Senior","food_general","dog","senior","Alimento per cani anziani","","https://example.com/product","lifecycle:senior","","5"';
+      const csv = headers + "\n" + example + "\n";
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", 'attachment; filename="promo_items_template.csv"');
+      res.send(csv);
+    }
+  );
+
+  // POST /api/admin/:tenantId/wizard/csv-upload
+  router.post(
+    "/api/admin/:tenantId/wizard/csv-upload",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { items, operation = "append" } = req.body || {};
+
+        if (!Array.isArray(items) || items.length === 0) {
+          return res.status(400).json({ error: "items_array_required" });
+        }
+        if (items.length > 500) {
+          return res.status(400).json({ error: "max_500_items" });
+        }
+
+        const { randomUUID } = require("crypto");
+        const jobId = "job_" + randomUUID();
+
+        // Create ingest job
+        await pool.query(
+          `INSERT INTO brand_ingest_jobs (job_id, tenant_id, status, operation, total_rows, created_by)
+           VALUES ($1, $2, 'processing', $3, $4, $5)`,
+          [jobId, tenantId, operation, items.length, req.promoAuth?.userId]
+        );
+
+        const validCategories = ["food_general", "food_clinical", "supplement", "antiparasitic", "accessory", "service"];
+        const valid = [];
+        const errors = [];
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const rowNum = i + 1;
+
+          if (!item.name || !item.category) {
+            errors.push({ row: rowNum, error: "missing_name_or_category" });
+            continue;
+          }
+          if (!validCategories.includes(item.category)) {
+            errors.push({ row: rowNum, error: "invalid_category: " + item.category });
+            continue;
+          }
+
+          const stagingId = "stg_" + randomUUID();
+          const species = Array.isArray(item.species) ? item.species : item.species ? [item.species] : [];
+          const lifecycleTarget = Array.isArray(item.lifecycle_target) ? item.lifecycle_target : item.lifecycle_target ? [item.lifecycle_target] : [];
+          const tagsInclude = Array.isArray(item.tags_include) ? item.tags_include : item.tags_include ? String(item.tags_include).split(",").map(t => t.trim()) : [];
+          const tagsExclude = Array.isArray(item.tags_exclude) ? item.tags_exclude : item.tags_exclude ? String(item.tags_exclude).split(",").map(t => t.trim()) : [];
+
+          try {
+            await pool.query(
+              `INSERT INTO brand_products_staging
+                (staging_id, job_id, tenant_id, name, category, species, lifecycle_target,
+                 description, image_url, product_url, tags_include, tags_exclude, priority, status)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending')`,
+              [
+                stagingId, jobId, tenantId, item.name, item.category,
+                species, lifecycleTarget, item.description || null,
+                item.image_url || null, item.product_url || null,
+                tagsInclude, tagsExclude, parseInt(item.priority) || 0,
+              ]
+            );
+            valid.push({ staging_id: stagingId, name: item.name, category: item.category });
+          } catch (insertErr) {
+            errors.push({ row: rowNum, error: insertErr.message });
+          }
+        }
+
+        // Update job
+        await pool.query(
+          `UPDATE brand_ingest_jobs SET imported = $2, skipped = $3, errors = $4,
+           status = 'completed', completed_at = NOW() WHERE job_id = $1`,
+          [jobId, valid.length, errors.length, JSON.stringify(errors)]
+        );
+
+        res.json({ job_id: jobId, valid: valid.length, errors, preview: valid.slice(0, 20) });
+      } catch (e) {
+        console.error("POST /api/admin/:tenantId/wizard/csv-upload error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // GET /api/admin/:tenantId/wizard/staging?job_id=...
+  router.get(
+    "/api/admin/:tenantId/wizard/staging",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const jobId = req.query.job_id || null;
+
+        let query = "SELECT * FROM brand_products_staging WHERE tenant_id = $1";
+        const params = [tenantId];
+
+        if (jobId) {
+          query += " AND job_id = $2";
+          params.push(jobId);
+        }
+        query += " ORDER BY created_at DESC LIMIT 200";
+
+        const { rows } = await pool.query(query, params);
+        res.json({ staging: rows });
+      } catch (e) {
+        console.error("GET /api/admin/:tenantId/wizard/staging error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/admin/:tenantId/wizard/staging/:id/approve
+  router.post(
+    "/api/admin/:tenantId/wizard/staging/:id/approve",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId, id } = req.params;
+        const { rows } = await pool.query(
+          `UPDATE brand_products_staging SET status = 'approved', reviewed_by = $3, reviewed_at = NOW()
+           WHERE staging_id = $1 AND tenant_id = $2
+           RETURNING *`,
+          [id, tenantId, req.promoAuth?.userId]
+        );
+        if (!rows[0]) return res.status(404).json({ error: "not_found" });
+        res.json(rows[0]);
+      } catch (e) {
+        console.error("POST /api/admin/:tenantId/wizard/staging/:id/approve error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/admin/:tenantId/wizard/staging/:id/reject
+  router.post(
+    "/api/admin/:tenantId/wizard/staging/:id/reject",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId, id } = req.params;
+        const { review_notes } = req.body || {};
+        const { rows } = await pool.query(
+          `UPDATE brand_products_staging SET status = 'rejected', review_notes = $3,
+           reviewed_by = $4, reviewed_at = NOW()
+           WHERE staging_id = $1 AND tenant_id = $2
+           RETURNING *`,
+          [id, tenantId, review_notes || null, req.promoAuth?.userId]
+        );
+        if (!rows[0]) return res.status(404).json({ error: "not_found" });
+        res.json(rows[0]);
+      } catch (e) {
+        console.error("POST /api/admin/:tenantId/wizard/staging/:id/reject error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/admin/:tenantId/wizard/publish
+  router.post(
+    "/api/admin/:tenantId/wizard/publish",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { job_id } = req.body || {};
+        const { randomUUID } = require("crypto");
+
+        let query = `SELECT * FROM brand_products_staging WHERE tenant_id = $1 AND status = 'approved'`;
+        const params = [tenantId];
+        if (job_id) {
+          query += ` AND job_id = $2`;
+          params.push(job_id);
+        }
+
+        const { rows: approved } = await pool.query(query, params);
+
+        if (approved.length === 0) {
+          return res.status(400).json({ error: "no_approved_items" });
+        }
+
+        let published = 0;
+        const errors = [];
+
+        for (const stg of approved) {
+          try {
+            const itemId = "pi_" + randomUUID();
+            await pool.query(
+              `INSERT INTO promo_items
+                (promo_item_id, tenant_id, name, category, species, lifecycle_target,
+                 description, image_url, product_url, tags_include, tags_exclude, priority, status, version)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1)`,
+              [
+                itemId, tenantId, stg.name, stg.category,
+                stg.species, stg.lifecycle_target, stg.description,
+                stg.image_url, stg.product_url, stg.tags_include,
+                stg.tags_exclude, stg.priority,
+              ]
+            );
+
+            // Version snapshot
+            await pool.query(
+              `INSERT INTO promo_item_versions (promo_item_id, version, snapshot, status, changed_by)
+               VALUES ($1, 1, $2, 'draft', $3)`,
+              [itemId, JSON.stringify({ name: stg.name, category: stg.category, source: "csv_wizard" }), req.promoAuth?.userId]
+            );
+
+            // Mark staging as published (by deleting or updating)
+            await pool.query(
+              "UPDATE brand_products_staging SET status = 'published' WHERE staging_id = $1",
+              [stg.staging_id]
+            );
+
+            published++;
+          } catch (err) {
+            errors.push({ staging_id: stg.staging_id, name: stg.name, error: err.message });
+          }
+        }
+
+        res.json({ published, errors, total_approved: approved.length });
+      } catch (e) {
+        console.error("POST /api/admin/:tenantId/wizard/publish error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/admin/:tenantId/wizard/csv-confirm (legacy shortcut: direct import bypassing staging)
+  router.post(
+    "/api/admin/:tenantId/wizard/csv-confirm",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { items, dry_run, operation = "append" } = req.body || {};
+
+        if (!Array.isArray(items) || items.length === 0) {
+          return res.status(400).json({ error: "items_array_required" });
+        }
+        if (items.length > 500) {
+          return res.status(400).json({ error: "max_500_items" });
+        }
+
+        const validCategories = ["food_general", "food_clinical", "supplement", "antiparasitic", "accessory", "service"];
+        const results = { imported: 0, skipped: 0, errors: [] };
+        const { randomUUID } = require("crypto");
+
+        // Reset operation: retire all existing items first
+        if (operation === "reset" && !dry_run) {
+          await pool.query(
+            "UPDATE promo_items SET status = 'retired', updated_at = NOW() WHERE tenant_id = $1 AND status != 'retired'",
+            [tenantId]
+          );
+        }
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const rowNum = i + 1;
+
+          if (!item.name || !item.category) {
+            results.errors.push({ row: rowNum, error: "missing_name_or_category" });
+            results.skipped++;
+            continue;
+          }
+          if (!validCategories.includes(item.category)) {
+            results.errors.push({ row: rowNum, error: "invalid_category: " + item.category });
+            results.skipped++;
+            continue;
+          }
+          if (dry_run) {
+            results.imported++;
+            continue;
+          }
+
+          try {
+            const species = Array.isArray(item.species) ? item.species : item.species ? [item.species] : [];
+            const lifecycleTarget = Array.isArray(item.lifecycle_target) ? item.lifecycle_target : item.lifecycle_target ? [item.lifecycle_target] : [];
+            const tagsInclude = Array.isArray(item.tags_include) ? item.tags_include : item.tags_include ? String(item.tags_include).split(",").map(t => t.trim()) : [];
+            const tagsExclude = Array.isArray(item.tags_exclude) ? item.tags_exclude : item.tags_exclude ? String(item.tags_exclude).split(",").map(t => t.trim()) : [];
+
+            if (operation === "upsert") {
+              // Match by name
+              const existing = await pool.query(
+                "SELECT promo_item_id FROM promo_items WHERE tenant_id = $1 AND name = $2 LIMIT 1",
+                [tenantId, item.name]
+              );
+              if (existing.rows[0]) {
+                await pool.query(
+                  `UPDATE promo_items SET category=$3, species=$4, lifecycle_target=$5,
+                   description=$6, image_url=$7, product_url=$8, tags_include=$9, tags_exclude=$10,
+                   priority=$11, version=version+1, updated_at=NOW()
+                   WHERE promo_item_id=$1 AND tenant_id=$2`,
+                  [
+                    existing.rows[0].promo_item_id, tenantId, item.category,
+                    species, lifecycleTarget, item.description || null,
+                    item.image_url || null, item.product_url || null,
+                    tagsInclude, tagsExclude, parseInt(item.priority) || 0,
+                  ]
+                );
+                results.imported++;
+                continue;
+              }
+            }
+
+            const itemId = "pi_" + randomUUID();
+            await pool.query(
+              `INSERT INTO promo_items
+                (promo_item_id, tenant_id, name, category, species, lifecycle_target,
+                 description, image_url, product_url, tags_include, tags_exclude, priority, status, version)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1)`,
+              [
+                itemId, tenantId, item.name, item.category,
+                species, lifecycleTarget, item.description || null,
+                item.image_url || null, item.product_url || null,
+                tagsInclude, tagsExclude, parseInt(item.priority) || 0,
+              ]
+            );
+            await pool.query(
+              `INSERT INTO promo_item_versions (promo_item_id, version, snapshot, status, changed_by)
+               VALUES ($1, 1, $2, 'draft', $3)`,
+              [itemId, JSON.stringify({ name: item.name, category: item.category }), req.promoAuth?.userId]
+            );
+            results.imported++;
+          } catch (insertErr) {
+            results.errors.push({ row: rowNum, error: insertErr.message });
+            results.skipped++;
+          }
+        }
+
+        res.json(results);
+      } catch (e) {
+        console.error("POST /api/admin/:tenantId/wizard/csv-confirm error", e);
         res.status(500).json({ error: "server_error" });
       }
     }
