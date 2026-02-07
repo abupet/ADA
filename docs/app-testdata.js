@@ -18,10 +18,11 @@
             var btn = document.getElementById(id);
             if (btn) btn.style.display = visible ? '' : 'none';
         });
-        // Seed nav items visibility (PR 14)
+        // Seed nav items visibility (PR 14) — super_admin only
+        var seedVisible = (typeof isSuperAdmin === 'function' && isSuperAdmin());
         var seedNavItems = document.querySelectorAll('.seed-nav-item');
         for (var i = 0; i < seedNavItems.length; i++) {
-            seedNavItems[i].style.display = visible ? '' : 'none';
+            seedNavItems[i].style.display = seedVisible ? '' : 'none';
         }
     }
 
