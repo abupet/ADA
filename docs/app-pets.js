@@ -758,9 +758,12 @@ async function pullPetsIfOnline(options) {
     // Early exit checks (before setting in-flight flag)
     if (__petsPullInFlight) {
         if (_log) _log.info('PETS', 'pull: skip (in-flight)', {force, returnStats});
-        // If caller needs stats, wait for the in-flight pull to finish instead of returning 0
+        // If caller needs stats, wait for the in-flight pull and return its real stats
         if (returnStats && __petsPullPromise) {
-            try { await __petsPullPromise; } catch (e) {}
+            try {
+                const inflightResult = await __petsPullPromise;
+                return inflightResult != null ? inflightResult : stats;
+            } catch (e) {}
         }
         return returnStats ? stats : undefined;
     }
