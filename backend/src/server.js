@@ -1,4 +1,4 @@
-// backend/src/server.js v4
+// backend/src/server.js v5
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
@@ -11,6 +11,9 @@ const { petsSyncRouter } = require("./pets.sync.routes");
 const { syncRouter } = require("./sync.routes");
 const { documentsRouter } = require("./documents.routes");
 const { promoRouter } = require("./promo.routes");
+const { requireRole } = require("./rbac.middleware");
+const { adminRouter } = require("./admin.routes");
+const { dashboardRouter } = require("./dashboard.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -69,7 +72,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Ada-Role"],
 };
 
 app.use(cors(corsOptions));
@@ -120,6 +123,81 @@ app.post("/auth/login", (req, res) => {
     expiresIn: ttlSeconds,
   });
   return res.json({ token, expiresIn: ttlSeconds });
+});
+
+// --- Login V2: individual user auth with email/password (PR 1) ---
+app.post("/auth/login/v2", async (req, res) => {
+  if (!effectiveJwtSecret) {
+    return res.status(500).json({ error: "Server not configured" });
+  }
+
+  const { email, password } = req.body ?? {};
+  if (!email || !password) {
+    return res.status(400).json({ error: "email_and_password_required" });
+  }
+
+  // Require DATABASE_URL for v2 login
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({ error: "database_not_configured" });
+  }
+
+  try {
+    const bcrypt = require("bcryptjs");
+    const { getPool } = require("./db");
+    const pool = getPool();
+
+    const { rows } = await pool.query(
+      "SELECT user_id, email, password_hash, base_role, status FROM users WHERE email = $1 LIMIT 1",
+      [email.toLowerCase().trim()]
+    );
+
+    if (!rows[0]) {
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
+
+    const user = rows[0];
+    if (user.status !== "active") {
+      return res.status(403).json({ error: "account_disabled" });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
+
+    // Determine role and tenantId
+    let role = user.base_role;
+    let tenantId = null;
+
+    if (role === "admin_brand" || role === "super_admin") {
+      const utResult = await pool.query(
+        "SELECT tenant_id, role FROM user_tenants WHERE user_id = $1 LIMIT 1",
+        [user.user_id]
+      );
+      if (utResult.rows[0]) {
+        tenantId = utResult.rows[0].tenant_id;
+        // user_tenants role overrides base_role if present
+        if (utResult.rows[0].role) {
+          role = utResult.rows[0].role;
+        }
+      }
+    }
+
+    const payload = {
+      sub: user.user_id,
+      email: user.email,
+      role,
+      tenantId,
+    };
+
+    const token = jwt.sign(payload, effectiveJwtSecret, {
+      expiresIn: ttlSeconds,
+    });
+    return res.json({ token, expiresIn: ttlSeconds, role, tenantId });
+  } catch (e) {
+    console.error("POST /auth/login/v2 error", e);
+    return res.status(500).json({ error: "server_error" });
+  }
 });
 
 function requireJwt(req, res, next) {
@@ -179,10 +257,12 @@ function auditLogMiddleware(req, res, next) {
           user_agent: req.headers["user-agent"],
         };
 
+        const tenantId = req.promoAuth?.tenantId || req.user?.tenantId || null;
+        const userRole = req.promoAuth?.role || req.user?.role || null;
         pool.query(
-          `INSERT INTO audit_log (who, action, entity_id, entity_type, outcome, details)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [who, action, req.params?.id || req.params?.pet_id || null, null, outcome, JSON.stringify(details)]
+          `INSERT INTO audit_log (who, action, entity_id, entity_type, outcome, details, tenant_id, user_role)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [who, action, req.params?.id || req.params?.pet_id || null, null, outcome, JSON.stringify(details), tenantId, userRole]
         ).catch((err) => {
           console.warn("audit log write failed:", err.message);
         });
@@ -213,6 +293,12 @@ if (process.env.DATABASE_URL) {
 
 // --- Promo routes (PR 10) - supports mock mode without DATABASE_URL ---
 app.use(promoRouter({ requireAuth }));
+
+// --- Admin routes (PR 2) - requires DATABASE_URL ---
+if (process.env.DATABASE_URL) {
+  app.use(adminRouter({ requireAuth }));
+  app.use(dashboardRouter({ requireAuth }));
+}
 
 function getOpenAiKey() {
   const oaKey = process.env[openaiKeyName];

@@ -1,0 +1,342 @@
+// backend/src/eligibility.service.js v1
+// PR 2: Promo eligibility / selection engine
+
+const { computeTags } = require("./tag.service");
+const {
+  getEffectiveConsent,
+  isMarketingAllowed,
+  isClinicalTagsAllowed,
+} = require("./consent.service");
+
+/**
+ * Context rules: which categories are allowed and frequency caps.
+ */
+const CONTEXT_RULES = {
+  post_visit: {
+    categories: ["food_clinical", "supplement"],
+    freq: { per_event: 1 },
+  },
+  post_vaccination: {
+    categories: ["antiparasitic", "accessory"],
+    freq: { per_event: 1 },
+  },
+  home_feed: {
+    categories: ["food_general", "accessory", "service"],
+    freq: { per_session: 2, per_week: 4 },
+  },
+  pet_profile: {
+    categories: ["food_general", "accessory"],
+    freq: { per_session: 1 },
+  },
+  faq_view: {
+    categories: null, // any correlated
+    freq: { per_session: 1 },
+  },
+  milestone: {
+    categories: ["food_general", "service"],
+    freq: { per_event: 1 },
+  },
+};
+
+/**
+ * Contexts that allow high-sensitivity tag matching.
+ */
+const HIGH_SENSITIVITY_CONTEXTS = ["post_visit", "post_vaccination"];
+
+/**
+ * selectPromo(pool, { petId, ownerUserId, context })
+ *
+ * Returns a promo item recommendation or null.
+ *
+ * Steps:
+ * 1. Tags: read pet_tags. If empty -> computeTags first.
+ * 2. Consent: marketing_global, brand-specific, clinical_tags.
+ * 3. Candidates: query promo_items with filters.
+ * 4. Tag matching with sensitivity + consent check.
+ * 5. Frequency capping.
+ * 6. Ranking: priority DESC -> match_score DESC -> updated_at DESC. LIMIT 1.
+ * 7. Tie-break rotation: hash(petId + CURRENT_DATE) % count.
+ */
+async function selectPromo(pool, { petId, ownerUserId, context }) {
+  try {
+    const ctx = context || "home_feed";
+    const rules = CONTEXT_RULES[ctx] || CONTEXT_RULES.home_feed;
+
+    // 1. Get or compute tags
+    let petTags = [];
+    try {
+      const tagsResult = await pool.query(
+        "SELECT tag, value, confidence FROM pet_tags WHERE pet_id = $1",
+        [petId]
+      );
+      petTags = tagsResult.rows;
+
+      if (petTags.length === 0) {
+        const computed = await computeTags(pool, petId, ownerUserId);
+        if (computed.tags.length > 0) {
+          const tagsResult2 = await pool.query(
+            "SELECT tag, value, confidence FROM pet_tags WHERE pet_id = $1",
+            [petId]
+          );
+          petTags = tagsResult2.rows;
+        }
+      }
+    } catch (e) {
+      console.warn("selectPromo: tag lookup error:", e.message);
+    }
+
+    const petTagNames = petTags.map((t) => t.tag);
+
+    // Get pet species for filtering
+    let petSpecies = null;
+    try {
+      const petResult = await pool.query(
+        "SELECT species FROM pets WHERE pet_id = $1 LIMIT 1",
+        [petId]
+      );
+      if (petResult.rows[0]) {
+        const s = (petResult.rows[0].species || "").toLowerCase();
+        if (s === "cane" || s === "dog") petSpecies = "dog";
+        else if (s === "gatto" || s === "cat") petSpecies = "cat";
+      }
+    } catch (_e) {
+      // skip
+    }
+
+    // 2. Consent
+    const consent = await getEffectiveConsent(pool, ownerUserId);
+    if (!isMarketingAllowed(consent, null)) {
+      return null; // marketing globally off
+    }
+
+    const clinicalAllowed = isClinicalTagsAllowed(consent);
+    const highSensitivityOk =
+      clinicalAllowed && HIGH_SENSITIVITY_CONTEXTS.includes(ctx);
+
+    // 3. Fetch candidate promo_items
+    let candidates = [];
+    try {
+      // Use a subquery to prefer campaign rows matching the current context.
+      // DISTINCT ON picks the first row per item; ORDER BY puts context-matching
+      // campaigns first (via the bool sort), then NULLs (no campaign), then others.
+      const itemsResult = await pool.query(
+        `SELECT DISTINCT ON (pi.promo_item_id)
+           pi.*, pc.campaign_id, pc.frequency_cap, pc.utm_campaign, pc.contexts
+         FROM promo_items pi
+         LEFT JOIN campaign_items ci ON ci.promo_item_id = pi.promo_item_id
+         LEFT JOIN promo_campaigns pc ON pc.campaign_id = ci.campaign_id
+           AND pc.status = 'active'
+           AND (pc.start_date IS NULL OR pc.start_date <= CURRENT_DATE)
+           AND (pc.end_date IS NULL OR pc.end_date >= CURRENT_DATE)
+         WHERE pi.status = 'published'
+         ORDER BY pi.promo_item_id,
+                  (pc.contexts IS NOT NULL AND $1 = ANY(pc.contexts)) DESC NULLS LAST,
+                  pi.priority DESC`,
+        [ctx]
+      );
+      candidates = itemsResult.rows;
+    } catch (e) {
+      console.warn("selectPromo: candidates query error:", e.message);
+      return null;
+    }
+
+    if (candidates.length === 0) return null;
+
+    // 4. Filter candidates
+    const filtered = [];
+    for (const item of candidates) {
+      // Brand consent check
+      if (!isMarketingAllowed(consent, item.tenant_id)) continue;
+
+      // Species filter
+      if (
+        petSpecies &&
+        item.species &&
+        item.species.length > 0 &&
+        !item.species.includes("all") &&
+        !item.species.includes(petSpecies)
+      ) {
+        continue;
+      }
+
+      // Context/category filter
+      if (rules.categories) {
+        if (!rules.categories.includes(item.category)) continue;
+      }
+
+      // Campaign context filter
+      if (
+        item.contexts &&
+        item.contexts.length > 0 &&
+        !item.contexts.includes(ctx)
+      ) {
+        continue;
+      }
+
+      // Vet flag check
+      try {
+        const flagResult = await pool.query(
+          "SELECT 1 FROM vet_flags WHERE pet_id = $1 AND promo_item_id = $2 AND status = 'active' LIMIT 1",
+          [petId, item.promo_item_id]
+        );
+        if (flagResult.rows.length > 0) continue;
+      } catch (_e) {
+        // skip
+      }
+
+      // Tags exclude check (AND NOT)
+      if (item.tags_exclude && item.tags_exclude.length > 0) {
+        const excluded = item.tags_exclude.some((t) =>
+          petTagNames.includes(t)
+        );
+        if (excluded) continue;
+      }
+
+      // Tag sensitivity check: high-sensitivity tags in include only if allowed
+      if (item.tags_include && item.tags_include.length > 0) {
+        // Filter out high-sensitivity tags if not allowed
+        const effectiveInclude = item.tags_include.filter((t) => {
+          if (t.startsWith("clinical:") && !highSensitivityOk) return false;
+          return true;
+        });
+        // Calculate match score (OR match)
+        const matchScore = effectiveInclude.filter((t) =>
+          petTagNames.includes(t)
+        ).length;
+        item._matchScore = matchScore;
+      } else {
+        item._matchScore = 0;
+      }
+
+      filtered.push(item);
+    }
+
+    if (filtered.length === 0) return null;
+
+    // 5. Frequency capping
+    const afterCapping = [];
+    for (const item of filtered) {
+      const freqCap = item.frequency_cap || rules.freq || {};
+      let capped = false;
+
+      try {
+        // Check per_session (today's impressions)
+        if (freqCap.per_session) {
+          const sessionResult = await pool.query(
+            `SELECT COUNT(*) as cnt FROM promo_events
+             WHERE owner_user_id = $1 AND pet_id = $2 AND context = $3
+             AND event_type = 'impression' AND created_at >= CURRENT_DATE`,
+            [ownerUserId, petId, ctx]
+          );
+          if (Number(sessionResult.rows[0].cnt) >= freqCap.per_session) {
+            capped = true;
+          }
+        }
+
+        // Check per_week
+        if (!capped && freqCap.per_week) {
+          const weekResult = await pool.query(
+            `SELECT COUNT(*) as cnt FROM promo_events
+             WHERE owner_user_id = $1 AND pet_id = $2
+             AND event_type = 'impression'
+             AND created_at >= NOW() - INTERVAL '7 days'`,
+            [ownerUserId, petId]
+          );
+          if (Number(weekResult.rows[0].cnt) >= freqCap.per_week) {
+            capped = true;
+          }
+        }
+
+        // Check per_event (only 1 per unique event)
+        if (!capped && freqCap.per_event) {
+          const eventResult = await pool.query(
+            `SELECT COUNT(*) as cnt FROM promo_events
+             WHERE owner_user_id = $1 AND pet_id = $2 AND promo_item_id = $3
+             AND context = $4 AND event_type = 'impression'
+             AND created_at >= CURRENT_DATE`,
+            [ownerUserId, petId, item.promo_item_id, ctx]
+          );
+          if (Number(eventResult.rows[0].cnt) >= freqCap.per_event) {
+            capped = true;
+          }
+        }
+      } catch (_e) {
+        // On error, don't cap (graceful degradation)
+      }
+
+      if (!capped) afterCapping.push(item);
+    }
+
+    if (afterCapping.length === 0) return null;
+
+    // 6. Ranking: priority DESC -> match_score DESC -> updated_at DESC
+    afterCapping.sort((a, b) => {
+      const pA = a.priority || 0;
+      const pB = b.priority || 0;
+      if (pB !== pA) return pB - pA;
+
+      const mA = a._matchScore || 0;
+      const mB = b._matchScore || 0;
+      if (mB !== mA) return mB - mA;
+
+      const dA = new Date(a.updated_at || 0).getTime();
+      const dB = new Date(b.updated_at || 0).getTime();
+      return dB - dA;
+    });
+
+    // 7. Tie-break rotation: hash(petId + CURRENT_DATE) % count of top-priority items
+    const topPriority = afterCapping[0].priority || 0;
+    const topScore = afterCapping[0]._matchScore || 0;
+    const topTier = afterCapping.filter(
+      (i) => (i.priority || 0) === topPriority && (i._matchScore || 0) === topScore
+    );
+
+    let selectedIndex = 0;
+    if (topTier.length > 1) {
+      const dateStr = new Date().toISOString().split("T")[0];
+      const hashInput = petId + dateStr;
+      let hash = 0;
+      for (let i = 0; i < hashInput.length; i++) {
+        hash = ((hash << 5) - hash + hashInput.charCodeAt(i)) | 0;
+      }
+      selectedIndex = Math.abs(hash) % topTier.length;
+    }
+
+    const selected = topTier[selectedIndex];
+
+    // Build UTM params
+    const utmParams = new URLSearchParams({
+      utm_source: "ada",
+      utm_medium: "promo",
+      utm_campaign: selected.utm_campaign || selected.campaign_id || "default",
+      utm_content: selected.promo_item_id,
+    }).toString();
+
+    const ctaUrl = selected.product_url
+      ? selected.product_url +
+        (selected.product_url.includes("?") ? "&" : "?") +
+        utmParams
+      : null;
+
+    return {
+      promoItemId: selected.promo_item_id,
+      tenantId: selected.tenant_id,
+      name: selected.name,
+      category: selected.category,
+      imageUrl: selected.image_url,
+      description: selected.description,
+      ctaUrl,
+      context: ctx,
+      source: "eligibility",
+      matchedTags: petTagNames.filter(
+        (t) => selected.tags_include && selected.tags_include.includes(t)
+      ),
+      _item: selected, // internal, for explanation engine
+    };
+  } catch (e) {
+    console.error("selectPromo fatal error:", e);
+    return null;
+  }
+}
+
+module.exports = { selectPromo, CONTEXT_RULES };
