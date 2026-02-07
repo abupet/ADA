@@ -172,6 +172,10 @@ async function initApp() {
     // Initialize role system (PR 4)
     initRoleSystem();
 
+    // Render account info and settings visibility
+    try { renderAccountInfo(); } catch(e) {}
+    try { updateSettingsSectionsVisibility(); } catch(e) {}
+
     // Initialize documents module (PR 8)
     try { if (typeof initDocuments === 'function') initDocuments(); } catch(e) {}
 
@@ -246,7 +250,8 @@ function navigateToPage(page) {
     // PR 3: Redirect appointment to home
     if (page === 'appointment') page = getDefaultPageForRole();
 
-    if (page === 'debug' && !debugLogEnabled) page = getDefaultPageForRole();
+    var _saDebugAccess = typeof isSuperAdmin === 'function' && isSuperAdmin();
+    if (page === 'debug' && !debugLogEnabled && !_saDebugAccess) page = getDefaultPageForRole();
 
     // PR 5: Route guard — check role permissions
     if (typeof isPageAllowedForRole === 'function' && !isPageAllowedForRole(page)) {
@@ -271,7 +276,11 @@ function navigateToPage(page) {
     if (page === 'costs') updateCostDisplay();
     if (page === 'vitals') setTimeout(() => { try { if (!vitalsChart) initVitalsChart(); } catch(e) {} try { updateVitalsChart(); } catch(e) {} }, 100);
     if (page === 'photos') renderPhotos();
-    if (page === 'settings') renderSpeakersSettings();
+    if (page === 'settings') {
+        renderSpeakersSettings();
+        try { renderAccountInfo(); } catch(e) {}
+        try { updateSettingsSectionsVisibility(); } catch(e) {}
+    }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
         try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
@@ -400,8 +409,26 @@ function applyRoleUI(role) {
     // Update toggle button
     const icon = document.getElementById('roleToggleIcon');
     const label = document.getElementById('roleToggleLabel');
-    if (icon) icon.textContent = (r === ROLE_VETERINARIO) ? '🩺' : '🐾';
-    if (label) label.textContent = (r === ROLE_VETERINARIO) ? 'Veterinario' : 'Proprietario';
+    var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡' };
+    var roleLabelsMap = { 'veterinario': 'Veterinario', 'proprietario': 'Proprietario', 'admin_brand': 'Admin Brand', 'super_admin': 'Super Admin' };
+    if (icon) icon.textContent = roleIcons[r] || '🩺';
+    if (label) label.textContent = roleLabelsMap[r] || 'Veterinario';
+
+    // Show super_admin role selector if user is super_admin
+    var saSelector = document.getElementById('superAdminRoleSelector');
+    var saSelect = document.getElementById('superAdminRoleSelect');
+    if (saSelector) {
+        var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
+        saSelector.style.display = _isSA ? '' : 'none';
+        if (_isSA && saSelect) saSelect.value = r;
+    }
+
+    // For super_admin, show the appropriate sidebar sections based on active role
+    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+        if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
+        if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
+        if (adminSection) adminSection.style.display = (r === 'admin_brand' || r === 'super_admin') ? '' : 'none';
+    }
 
     // Re-init nav items for the new sidebar section
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
@@ -442,6 +469,23 @@ function updateDocumentButtonsByRole() {
 }
 
 function initRoleSystem() {
+    // Set initial active role based on JWT role (first login or no saved role)
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
+    var storedRole = null;
+    try { storedRole = localStorage.getItem(ADA_ACTIVE_ROLE_KEY); } catch(e) {}
+
+    if (jwtRole && !storedRole) {
+        // First login: set default role based on JWT role
+        if (jwtRole === 'vet') {
+            setActiveRole(ROLE_VETERINARIO);
+        } else if (jwtRole === 'owner' || jwtRole === 'admin_brand') {
+            setActiveRole(ROLE_PROPRIETARIO);
+        } else if (jwtRole === 'super_admin') {
+            // super_admin: default to veterinario on first login
+            setActiveRole(ROLE_VETERINARIO);
+        }
+    }
+
     const role = getActiveRole();
     applyRoleUI(role);
 }
@@ -552,7 +596,8 @@ function restoreTextDrafts() {
 function restoreLastPage() {
     const lastPage = localStorage.getItem('ada_current_page');
     const scrollPosition = localStorage.getItem('ada_scroll_position');
-    const safePage = (!debugLogEnabled && lastPage === 'debug') ? 'recording' : lastPage;
+    var _saCanDebug = typeof isSuperAdmin === 'function' && isSuperAdmin();
+    const safePage = (!debugLogEnabled && !_saCanDebug && lastPage === 'debug') ? 'recording' : lastPage;
 
     if (safePage) {
         navigateToPage(safePage);
@@ -785,6 +830,12 @@ const ADA_VET_NAME_KEY = 'ada_vet_name';
 
 function getVetName() {
     try {
+        // Use account display name from JWT as primary source
+        if (typeof getJwtDisplayName === 'function') {
+            var jwtName = getJwtDisplayName();
+            if (jwtName && jwtName.trim()) return jwtName.trim();
+        }
+        // Fallback to localStorage (legacy or manually set)
         return (localStorage.getItem(ADA_VET_NAME_KEY) || '').trim();
     } catch (e) {
         return '';
@@ -799,9 +850,301 @@ function saveVetName(value) {
 }
 
 function initVetNameSetting() {
-    const input = document.getElementById('vetNameInput');
-    if (!input) return;
-    input.value = getVetName();
+    // If JWT has display_name, the fallback input is hidden (renderAccountInfo handles it).
+    // Otherwise, populate the fallback input from localStorage so users can set their name.
+    var elInput = document.getElementById('vetNameFallbackInput');
+    if (elInput) {
+        elInput.value = (localStorage.getItem(ADA_VET_NAME_KEY) || '').trim();
+    }
+}
+
+function saveVetNameFromAccount() {
+    var elInput = document.getElementById('vetNameFallbackInput');
+    if (!elInput) return;
+    var val = elInput.value.trim();
+    saveVetName(val);
+    var elName = document.getElementById('accountDisplayName');
+    if (elName) elName.textContent = val || '—';
+}
+
+// ============================================
+// ACCOUNT INFO & SETTINGS VISIBILITY
+// ============================================
+
+function renderAccountInfo() {
+    var email = typeof getJwtEmail === 'function' ? getJwtEmail() : null;
+    var jwtName = typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : null;
+    var role = typeof getJwtRole === 'function' ? getJwtRole() : null;
+    var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+
+    var elEmail = document.getElementById('accountEmail');
+    var elName = document.getElementById('accountDisplayName');
+    var elRole = document.getElementById('accountRole');
+    var elTenantRow = document.getElementById('accountTenantRow');
+    var elTenant = document.getElementById('accountTenant');
+    var elNameEditRow = document.getElementById('accountNameEditRow');
+
+    if (elEmail) elEmail.textContent = email || '—';
+
+    // If JWT provides display_name, show it read-only and hide the fallback input.
+    // Otherwise show the localStorage-backed fallback input so users can set their name.
+    var hasJwtName = jwtName && jwtName.trim();
+    if (hasJwtName) {
+        if (elName) elName.textContent = jwtName.trim();
+        if (elNameEditRow) elNameEditRow.style.display = 'none';
+    } else {
+        var fallback = (localStorage.getItem(ADA_VET_NAME_KEY) || '').trim();
+        if (elName) elName.textContent = fallback || '—';
+        if (elNameEditRow) elNameEditRow.style.display = '';
+    }
+
+    var roleLabels = {
+        'vet': 'Veterinario',
+        'owner': 'Proprietario',
+        'admin_brand': 'Admin Brand',
+        'super_admin': 'Super Admin'
+    };
+    if (elRole) elRole.textContent = roleLabels[role] || role || '—';
+
+    if (elTenantRow && elTenant) {
+        if (tenantId) {
+            elTenantRow.style.display = '';
+            elTenant.style.display = '';
+            elTenant.textContent = tenantId;
+        } else {
+            elTenantRow.style.display = 'none';
+            elTenant.style.display = 'none';
+        }
+    }
+}
+
+function updateSettingsSectionsVisibility() {
+    var isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
+    var speakersCard = document.getElementById('settingsSpeakersCard');
+    var clinicCard = document.getElementById('settingsClinicCard');
+    var systemCard = document.getElementById('settingsSystemCard');
+
+    if (speakersCard) speakersCard.style.display = isSA ? '' : 'none';
+    if (clinicCard) clinicCard.style.display = isSA ? '' : 'none';
+    if (systemCard) systemCard.style.display = isSA ? '' : 'none';
+}
+
+// ============================================
+// CHANGE PASSWORD
+// ============================================
+
+function openChangePasswordModal() {
+    var modal = document.getElementById('changePasswordModal');
+    if (modal) modal.classList.add('active');
+    // Clear fields
+    var ids = ['cpCurrentPassword', 'cpNewPassword', 'cpConfirmPassword'];
+    ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+    var err = document.getElementById('cpError');
+    if (err) err.style.display = 'none';
+}
+
+function closeChangePasswordModal() {
+    var modal = document.getElementById('changePasswordModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function submitChangePassword() {
+    var currentPw = (document.getElementById('cpCurrentPassword')?.value || '').trim();
+    var newPw = (document.getElementById('cpNewPassword')?.value || '');
+    var confirmPw = (document.getElementById('cpConfirmPassword')?.value || '');
+    var errEl = document.getElementById('cpError');
+
+    function showErr(msg) {
+        if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
+    }
+
+    if (!currentPw) { showErr('Inserisci la password attuale.'); return; }
+    if (!newPw) { showErr('Inserisci la nuova password.'); return; }
+    if (newPw.length < 6) { showErr('La nuova password deve avere almeno 6 caratteri.'); return; }
+    if (newPw !== confirmPw) { showErr('Le password non coincidono.'); return; }
+    if (newPw === currentPw) { showErr('La nuova password deve essere diversa dalla precedente.'); return; }
+
+    if (errEl) errEl.style.display = 'none';
+
+    try {
+        var resp = await fetchApi('/api/me/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw })
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            var messages = {
+                'wrong_current_password': 'La password attuale non è corretta.',
+                'password_too_short': 'La nuova password deve avere almeno 6 caratteri.',
+                'legacy_token_not_supported': 'Cambio password non disponibile per questa sessione.',
+                'database_not_configured': 'Database non configurato.'
+            };
+            showErr(messages[data.error] || data.error || 'Errore sconosciuto');
+            return;
+        }
+        closeChangePasswordModal();
+        showToast('Password cambiata con successo', 'success');
+    } catch (e) {
+        showErr('Errore di rete: ' + (e.message || 'riprova'));
+    }
+}
+
+// ============================================
+// SUPER ADMIN ROLE SELECTOR
+// ============================================
+
+function onSuperAdminRoleChange(role) {
+    setActiveRole(role);
+    applyRoleUI(role);
+    var defaultPage = getDefaultPageForRole(role);
+    navigateToPage(defaultPage);
+    var labels = {
+        'veterinario': 'Veterinario',
+        'proprietario': 'Proprietario',
+        'admin_brand': 'Admin Brand',
+        'super_admin': 'Super Admin'
+    };
+    showToast('Ruolo: ' + (labels[role] || role), 'success');
+}
+
+// ============================================
+// EDIT PET MODAL
+// ============================================
+
+let _editPetSyncPaused = false;
+
+function openEditPetModal() {
+    if (!currentPetId) {
+        showToast('Nessun pet selezionato', 'error');
+        return;
+    }
+
+    _editPetSyncPaused = true;
+
+    // Load current values into edit modal fields
+    var fields = {
+        'editPetName': document.getElementById('petName')?.value || '',
+        'editPetSpecies': document.getElementById('petSpecies')?.value || '',
+        'editPetBreed': document.getElementById('petBreed')?.value || '',
+        'editPetBirthdate': document.getElementById('petBirthdate')?.value || '',
+        'editPetSex': document.getElementById('petSex')?.value || '',
+        'editPetMicrochip': document.getElementById('petMicrochip')?.value || '',
+        'editOwnerName': document.getElementById('ownerName')?.value || '',
+        'editOwnerPhone': document.getElementById('ownerPhone')?.value || '',
+        'editVisitDate': document.getElementById('visitDate')?.value || ''
+    };
+    for (var id in fields) {
+        var el = document.getElementById(id);
+        if (el) el.value = fields[id];
+    }
+
+    // Lifestyle fields
+    var lifestyleMapping = {
+        'editPetLifestyle': 'petLifestyle',
+        'editPetActivityLevel': 'petActivityLevel',
+        'editPetDietType': 'petDietType',
+        'editPetDietPreferences': 'petDietPreferences',
+        'editPetKnownConditions': 'petKnownConditions',
+        'editPetCurrentMeds': 'petCurrentMeds',
+        'editPetBehaviorNotes': 'petBehaviorNotes',
+        'editPetLocation': 'petLocation'
+    };
+    for (var editId in lifestyleMapping) {
+        var srcEl = document.getElementById(lifestyleMapping[editId]);
+        var dstEl = document.getElementById(editId);
+        if (srcEl && dstEl) dstEl.value = srcEl.value || '';
+    }
+
+    // Household multi-select
+    var srcHousehold = document.getElementById('petHousehold');
+    var dstHousehold = document.getElementById('editPetHousehold');
+    if (srcHousehold && dstHousehold) {
+        var srcValues = Array.from(srcHousehold.selectedOptions).map(function(o) { return o.value; });
+        Array.from(dstHousehold.options).forEach(function(opt) {
+            opt.selected = srcValues.indexOf(opt.value) !== -1;
+        });
+    }
+
+    // Close lifestyle section by default
+    var ls = document.getElementById('editPetLifestyleSection');
+    if (ls) ls.classList.remove('open');
+
+    var modal = document.getElementById('editPetModal');
+    if (modal) modal.classList.add('active');
+}
+
+function toggleEditPetLifestyleSection() {
+    var section = document.getElementById('editPetLifestyleSection');
+    if (section) section.classList.toggle('open');
+}
+
+async function saveEditPet() {
+    var petName = (document.getElementById('editPetName')?.value || '').trim();
+    var petSpecies = document.getElementById('editPetSpecies')?.value || '';
+
+    if (!petName) { alert('Nome del pet è obbligatorio'); return; }
+    if (!petSpecies) { alert('Specie è obbligatoria'); return; }
+
+    // Copy values from edit modal to main fields
+    var mapping = {
+        'petName': 'editPetName',
+        'petSpecies': 'editPetSpecies',
+        'petBreed': 'editPetBreed',
+        'petBirthdate': 'editPetBirthdate',
+        'petSex': 'editPetSex',
+        'petMicrochip': 'editPetMicrochip',
+        'ownerName': 'editOwnerName',
+        'ownerPhone': 'editOwnerPhone',
+        'visitDate': 'editVisitDate'
+    };
+    for (var mainId in mapping) {
+        var src = document.getElementById(mapping[mainId]);
+        var dst = document.getElementById(mainId);
+        if (src && dst) dst.value = src.value;
+    }
+
+    // Lifestyle
+    var lifestyleMapping = {
+        'petLifestyle': 'editPetLifestyle',
+        'petActivityLevel': 'editPetActivityLevel',
+        'petDietType': 'editPetDietType',
+        'petDietPreferences': 'editPetDietPreferences',
+        'petKnownConditions': 'editPetKnownConditions',
+        'petCurrentMeds': 'editPetCurrentMeds',
+        'petBehaviorNotes': 'editPetBehaviorNotes',
+        'petLocation': 'editPetLocation'
+    };
+    for (var lmId in lifestyleMapping) {
+        var lSrc = document.getElementById(lifestyleMapping[lmId]);
+        var lDst = document.getElementById(lmId);
+        if (lSrc && lDst) lDst.value = lSrc.value;
+    }
+
+    // Household multi-select
+    var editHousehold = document.getElementById('editPetHousehold');
+    var mainHousehold = document.getElementById('petHousehold');
+    if (editHousehold && mainHousehold) {
+        var editValues = Array.from(editHousehold.selectedOptions).map(function(o) { return o.value; });
+        Array.from(mainHousehold.options).forEach(function(opt) {
+            opt.selected = editValues.indexOf(opt.value) !== -1;
+        });
+    }
+
+    // Close modal
+    var modal = document.getElementById('editPetModal');
+    if (modal) modal.classList.remove('active');
+
+    _editPetSyncPaused = false;
+
+    // Save via the existing save flow
+    await saveCurrentPet();
+}
+
+function cancelEditPet() {
+    var modal = document.getElementById('editPetModal');
+    if (modal) modal.classList.remove('active');
+    _editPetSyncPaused = false;
 }
 
 // ============================================
@@ -1048,6 +1391,8 @@ function toggleChunkingEnabled(enabled) {
 
 function updateDebugToolsVisibility() {
     const dbg = !!debugLogEnabled;
+    var _saAccess = typeof isSuperAdmin === 'function' && isSuperAdmin();
+    var showDebug = dbg || _saAccess;
     const el1 = document.getElementById('debugTestTools');
     const el2 = document.getElementById('audioCacheTools');
     const nav = document.getElementById('nav-debug');
@@ -1055,11 +1400,11 @@ function updateDebugToolsVisibility() {
     const runtime = document.getElementById('chunkingRuntime');
     if (el1) el1.style.display = dbg ? '' : 'none';
     if (el2) el2.style.display = dbg ? '' : 'none';
-    if (nav) nav.style.display = dbg ? '' : 'none';
-    if (page) page.style.display = dbg ? '' : 'none';
+    if (nav) nav.style.display = showDebug ? '' : 'none';
+    if (page) page.style.display = showDebug ? '' : 'none';
     if (!dbg && runtime) runtime.style.display = 'none';
 
-    if (!dbg) {
+    if (!showDebug) {
         const activePage = document.querySelector('.page.active');
         if (activePage && activePage.id === 'page-debug') {
             navigateToPage('recording');

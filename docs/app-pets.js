@@ -396,41 +396,43 @@ function normalizePetFromBackend(record, existing) {
     };
 
     // Reverse-map backend SQL column names to local patient field names
-    if (patch.breed && !result.patient.petBreed) result.patient.petBreed = patch.breed;
-    if (patch.sex && !result.patient.petSex) result.patient.petSex = patch.sex;
+    // Always apply server values so that remote changes are reflected locally
+    if (patch.breed !== undefined && patch.breed !== null) result.patient.petBreed = patch.breed;
+    if (patch.sex !== undefined && patch.sex !== null) result.patient.petSex = patch.sex;
     // Normalize birthdate: PostgreSQL DATE serialized via JSONB becomes ISO datetime
     // (e.g. "2023-05-15T00:00:00.000Z") but <input type="date"> requires "YYYY-MM-DD"
-    if (patch.birthdate && !result.patient.petBirthdate) {
+    if (patch.birthdate !== undefined && patch.birthdate !== null) {
         var bd = String(patch.birthdate);
         result.patient.petBirthdate = bd.length > 10 ? bd.slice(0, 10) : bd;
     }
-    if (patch.owner_name && !result.patient.ownerName) result.patient.ownerName = patch.owner_name;
-    if (patch.owner_phone && !result.patient.ownerPhone) result.patient.ownerPhone = patch.owner_phone;
-    if (patch.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = patch.microchip;
-    if (patch.notes !== undefined && !result.diary) result.diary = patch.notes;
-    if (patch.lifestyle && typeof patch.lifestyle === 'object' && !result.lifestyle) result.lifestyle = patch.lifestyle;
-    if (Array.isArray(patch.vitals_data) && !result.vitalsData) result.vitalsData = patch.vitals_data;
-    if (Array.isArray(patch.medications) && !result.medications) result.medications = patch.medications;
-    if (Array.isArray(patch.history_data) && !result.historyData) result.historyData = patch.history_data;
-    if (Array.isArray(patch.photos) && !result.photos) result.photos = patch.photos;
+    if (patch.owner_name !== undefined && patch.owner_name !== null) result.patient.ownerName = patch.owner_name;
+    if (patch.owner_phone !== undefined && patch.owner_phone !== null) result.patient.ownerPhone = patch.owner_phone;
+    if (patch.microchip !== undefined && patch.microchip !== null) result.patient.petMicrochip = patch.microchip;
+    if (patch.notes !== undefined) result.diary = patch.notes;
+    if (patch.lifestyle && typeof patch.lifestyle === 'object') result.lifestyle = patch.lifestyle;
+    if (Array.isArray(patch.vitals_data)) result.vitalsData = patch.vitals_data;
+    if (Array.isArray(patch.medications)) result.medications = patch.medications;
+    if (Array.isArray(patch.history_data)) result.historyData = patch.history_data;
+    if (Array.isArray(patch.photos)) result.photos = patch.photos;
     if (patch.updated_at) result.updatedAt = patch.updated_at;
 
     // Extract extra_data from backend record (JSONB column)
+    // Always apply server values to ensure sync updates are reflected
     const extra = patch.extra_data || safeRecord.extra_data;
     if (extra && typeof extra === 'object') {
-        if (Array.isArray(extra.vitals_data) && !result.vitalsData) result.vitalsData = extra.vitals_data;
-        if (Array.isArray(extra.medications) && !result.medications) result.medications = extra.medications;
-        if (Array.isArray(extra.history_data) && !result.historyData) result.historyData = extra.history_data;
-        if (extra.lifestyle && typeof extra.lifestyle === 'object' && !result.lifestyle) result.lifestyle = extra.lifestyle;
-        if (extra.updated_at && !result.updatedAt) result.updatedAt = extra.updated_at;
+        if (Array.isArray(extra.vitals_data)) result.vitalsData = extra.vitals_data;
+        if (Array.isArray(extra.medications)) result.medications = extra.medications;
+        if (Array.isArray(extra.history_data)) result.historyData = extra.history_data;
+        if (extra.lifestyle && typeof extra.lifestyle === 'object') result.lifestyle = extra.lifestyle;
+        if (extra.updated_at) result.updatedAt = extra.updated_at;
         // Fields stored in extra_data (no dedicated SQL column)
-        if (extra.owner_name && !result.patient.ownerName) result.patient.ownerName = extra.owner_name;
-        if (extra.owner_phone && !result.patient.ownerPhone) result.patient.ownerPhone = extra.owner_phone;
-        if (extra.microchip && !result.patient.petMicrochip) result.patient.petMicrochip = extra.microchip;
-        if (extra.visit_date && !result.patient.visitDate) result.patient.visitDate = extra.visit_date;
-        if (extra.owner_diary && !result.ownerDiary) result.ownerDiary = extra.owner_diary;
-        if (Array.isArray(extra.photos) && !result.photos) result.photos = extra.photos;
-        if (extra.photos_count !== undefined && !result.photos_count) result.photos_count = extra.photos_count;
+        if (extra.owner_name !== undefined && extra.owner_name !== null) result.patient.ownerName = extra.owner_name;
+        if (extra.owner_phone !== undefined && extra.owner_phone !== null) result.patient.ownerPhone = extra.owner_phone;
+        if (extra.microchip !== undefined && extra.microchip !== null) result.patient.petMicrochip = extra.microchip;
+        if (extra.visit_date !== undefined && extra.visit_date !== null) result.patient.visitDate = extra.visit_date;
+        if (extra.owner_diary !== undefined) result.ownerDiary = extra.owner_diary;
+        if (Array.isArray(extra.photos)) result.photos = extra.photos;
+        if (extra.photos_count !== undefined) result.photos_count = extra.photos_count;
     }
 
     return result;
@@ -866,7 +868,14 @@ async function _doPetsPull(force, returnStats, stats, _log) {
         try {
             const docPetId = await resolveCurrentPetId();
             if (docPetId && typeof pullDocumentsForPet === 'function') {
-                await pullDocumentsForPet(docPetId);
+                var docPullCount = await pullDocumentsForPet(docPetId);
+                // Re-render history page if documents were pulled
+                if (docPullCount > 0) {
+                    try {
+                        if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory();
+                        if (typeof updateHistoryBadge === 'function') updateHistoryBadge();
+                    } catch (e2) {}
+                }
             }
         } catch (e) {}
 
@@ -883,13 +892,16 @@ async function _doPetsPull(force, returnStats, stats, _log) {
             }
         } catch (e) {}
 
-        // Refresh the current pet's data in the UI after merge
+        // Refresh the current pet's data in the UI after merge (skip if user is editing)
         try {
-            const activePetId = await resolveCurrentPetId();
-            if (activePetId) {
-                const refreshedPet = await getPetById(activePetId);
-                if (refreshedPet && typeof loadPetIntoMainFields === 'function') {
-                    loadPetIntoMainFields(refreshedPet);
+            var _editPaused = (typeof _editPetSyncPaused !== 'undefined' && _editPetSyncPaused);
+            if (!_editPaused) {
+                const activePetId = await resolveCurrentPetId();
+                if (activePetId) {
+                    const refreshedPet = await getPetById(activePetId);
+                    if (refreshedPet && typeof loadPetIntoMainFields === 'function') {
+                        loadPetIntoMainFields(refreshedPet);
+                    }
                 }
             }
         } catch (e) {}
@@ -931,7 +943,7 @@ async function refreshPetsFromServer(showFeedback) {
     } catch (e) { result.errors++; }
 
     if (pullResult) {
-        result.pulled = pullResult.upserted || 0;
+        result.pulled = (pullResult.upserted || 0) + (pullResult.deleted || 0);
     }
 
     const selectedId = await resolveCurrentPetId();
@@ -947,12 +959,14 @@ async function refreshPetsFromServer(showFeedback) {
         } else if (result.pulled > 0) {
             showToast('Sync: ' + result.pulled + ' pet aggiornati dal server', 'success');
         } else {
-            showToast('Sync: tutto aggiornato, nessuna modifica', 'success');
+            showToast('Sync: tutto aggiornato', 'success');
         }
     }
 
-    // Also flush document upload queue
+    // Also flush document upload queue and re-render history documents
     try { if (typeof flushDocumentUploadQueue === 'function') flushDocumentUploadQueue(); } catch (e) {}
+    try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch (e) {}
+    try { if (typeof updateHistoryBadge === 'function') updateHistoryBadge(); } catch (e) {}
 
     return result;
 }
@@ -1062,15 +1076,35 @@ async function rebuildPetSelector(selectId = null) {
 }
 
 function updateSaveButtonState() {
-    const saveBtn = document.getElementById('btnSavePet');
+    const editBtn = document.getElementById('btnEditPet');
     const deleteBtn = document.getElementById('btnDeletePet');
     const selector = document.getElementById('petSelector');
     const fieldsCard = document.getElementById('petFieldsCard');
     if (!selector) return;
     const noPet = (selector.value === '');
-    if (saveBtn) saveBtn.disabled = noPet;
+    if (editBtn) editBtn.disabled = noPet;
     if (deleteBtn) deleteBtn.disabled = noPet;
     if (fieldsCard) fieldsCard.style.display = noPet ? 'none' : '';
+
+    // Make pet fields read-only (must use Edit button to modify)
+    _setPetFieldsReadOnly(!noPet);
+}
+
+function _setPetFieldsReadOnly(readonly) {
+    var inputIds = ['petName', 'petBreed', 'petBirthdate', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
+    var selectIds = ['petSpecies', 'petSex', 'petLifestyle', 'petActivityLevel', 'petDietType'];
+    var textInputIds = ['petDietPreferences', 'petKnownConditions', 'petCurrentMeds', 'petBehaviorNotes', 'petLocation'];
+
+    inputIds.concat(textInputIds).forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.readOnly = readonly;
+    });
+    selectIds.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = readonly;
+    });
+    var hh = document.getElementById('petHousehold');
+    if (hh) hh.disabled = readonly;
 }
 
 // ============================================
