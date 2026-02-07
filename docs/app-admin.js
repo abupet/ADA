@@ -355,14 +355,242 @@
     }
 
     // =========================================================================
+    // Super Admin: User Management
+    // =========================================================================
+
+    var _usersData = [];
+    var _tenantsCache = [];
+
+    function loadSuperadminUsers(containerId) {
+        var container = document.getElementById(containerId || 'superadmin-users-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+
+        container.innerHTML = '<p style="color:#888;">Caricamento utenti...</p>';
+
+        // Load users and tenants in parallel
+        Promise.all([
+            fetchApi('/api/superadmin/users').then(function (r) { return r.ok ? r.json() : null; }),
+            fetchApi('/api/superadmin/tenants').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+        ]).then(function (results) {
+            var usersResp = results[0];
+            var tenantsResp = results[1];
+
+            _usersData = (usersResp && usersResp.users) ? usersResp.users : [];
+            _tenantsCache = (tenantsResp && tenantsResp.tenants) ? tenantsResp.tenants : [];
+
+            _renderUsersPage(container);
+        }).catch(function () {
+            container.innerHTML = '<p style="color:#dc2626;">Errore nel caricamento utenti.</p>';
+        });
+    }
+
+    function _renderUsersPage(container) {
+        var html = [];
+
+        // Create user button
+        html.push('<div style="margin-bottom:16px;">');
+        html.push('<button class="btn btn-primary" onclick="showCreateUserForm()">+ Nuovo Utente</button>');
+        html.push('</div>');
+
+        // Create user form (hidden)
+        html.push('<div id="create-user-form" style="display:none; margin-bottom:20px; padding:16px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0;">');
+        html.push('<h4 style="margin:0 0 12px; color:#1e3a5f;">Nuovo Utente</h4>');
+        html.push('<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Email *</label><input type="email" id="newUserEmail" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="email@esempio.com"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Password *</label><input type="text" id="newUserPassword" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Password"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Nome</label><input type="text" id="newUserDisplayName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Nome completo"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Ruolo</label><select id="newUserRole" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+        html.push('<option value="owner">Owner (Proprietario)</option>');
+        html.push('<option value="vet">Vet (Veterinario)</option>');
+        html.push('<option value="admin_brand">Admin Brand</option>');
+        html.push('<option value="super_admin">Super Admin</option>');
+        html.push('</select></div>');
+        html.push('</div>');
+        html.push('<div style="margin-top:12px;">');
+        html.push('<button class="btn btn-success" onclick="createUser()">Crea</button> ');
+        html.push('<button class="btn btn-secondary" onclick="hideCreateUserForm()">Annulla</button>');
+        html.push('</div>');
+        html.push('</div>');
+
+        // Users table
+        if (_usersData.length === 0) {
+            html.push('<p style="color:#888;">Nessun utente trovato.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Email</th><th>Nome</th><th>Ruolo</th><th>Stato</th><th>Tenant</th><th>Azioni</th></tr>');
+            _usersData.forEach(function (user) {
+                var statusBadge = user.status === 'active'
+                    ? '<span style="color:#16a34a;font-weight:600;">attivo</span>'
+                    : '<span style="color:#dc2626;font-weight:600;">disabilitato</span>';
+
+                var tenantInfo = '';
+                if (Array.isArray(user.tenants) && user.tenants.length > 0) {
+                    tenantInfo = user.tenants.map(function (t) {
+                        var tenantName = _tenantsCache.find(function (tc) { return tc.tenant_id === t.tenant_id; });
+                        return _escapeHtml((tenantName ? tenantName.name : t.tenant_id) + ' (' + t.role + ')');
+                    }).join(', ');
+                } else {
+                    tenantInfo = '<span style="color:#999;">-</span>';
+                }
+
+                html.push('<tr>');
+                html.push('<td>' + _escapeHtml(user.email) + '</td>');
+                html.push('<td>' + _escapeHtml(user.display_name || '-') + '</td>');
+                html.push('<td>' + _escapeHtml(user.base_role) + '</td>');
+                html.push('<td>' + statusBadge + '</td>');
+                html.push('<td style="font-size:12px;">' + tenantInfo + '</td>');
+                html.push('<td style="white-space:nowrap;">');
+
+                // Toggle status
+                if (user.status === 'active') {
+                    html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="toggleUserStatus(\'' + _escapeHtml(user.user_id) + '\', \'disabled\')">Disabilita</button> ');
+                } else {
+                    html.push('<button class="btn btn-success" style="padding:4px 8px;font-size:11px;" onclick="toggleUserStatus(\'' + _escapeHtml(user.user_id) + '\', \'active\')">Attiva</button> ');
+                }
+
+                // Reset password
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="promptResetPassword(\'' + _escapeHtml(user.user_id) + '\')">Reset pwd</button> ');
+
+                // Assign tenant
+                if (user.base_role === 'admin_brand') {
+                    html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="promptAssignTenant(\'' + _escapeHtml(user.user_id) + '\')">Assegna tenant</button>');
+                }
+
+                html.push('</td>');
+                html.push('</tr>');
+            });
+            html.push('</table>');
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function showCreateUserForm() {
+        var form = document.getElementById('create-user-form');
+        if (form) form.style.display = '';
+    }
+
+    function hideCreateUserForm() {
+        var form = document.getElementById('create-user-form');
+        if (form) form.style.display = 'none';
+    }
+
+    function createUser() {
+        var email = (document.getElementById('newUserEmail') || {}).value || '';
+        var password = (document.getElementById('newUserPassword') || {}).value || '';
+        var displayName = (document.getElementById('newUserDisplayName') || {}).value || '';
+        var baseRole = (document.getElementById('newUserRole') || {}).value || 'owner';
+
+        if (!email || !password) {
+            if (typeof showToast === 'function') showToast('Email e password obbligatori.', 'error');
+            return;
+        }
+
+        fetchApi('/api/superadmin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, password: password, display_name: displayName, base_role: baseRole })
+        }).then(function (r) {
+            if (r.status === 409) {
+                if (typeof showToast === 'function') showToast('Email gia esistente.', 'error');
+                return;
+            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function (data) {
+            if (!data) return;
+            if (typeof showToast === 'function') showToast('Utente creato: ' + data.email, 'success');
+            hideCreateUserForm();
+            loadSuperadminUsers();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore nella creazione utente.', 'error');
+        });
+    }
+
+    function toggleUserStatus(userId, newStatus) {
+        fetchApi('/api/superadmin/users/' + encodeURIComponent(userId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Stato aggiornato.', 'success');
+            loadSuperadminUsers();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore aggiornamento stato.', 'error');
+        });
+    }
+
+    function promptResetPassword(userId) {
+        var newPwd = prompt('Nuova password per l\'utente:');
+        if (!newPwd) return;
+
+        fetchApi('/api/superadmin/users/' + encodeURIComponent(userId) + '/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: newPwd })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Password aggiornata.', 'success');
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore reset password.', 'error');
+        });
+    }
+
+    function promptAssignTenant(userId) {
+        if (_tenantsCache.length === 0) {
+            if (typeof showToast === 'function') showToast('Nessun tenant disponibile. Creane uno prima.', 'error');
+            return;
+        }
+
+        var options = _tenantsCache.map(function (t, i) { return (i + 1) + ') ' + t.name + ' [' + t.slug + ']'; }).join('\n');
+        var choice = prompt('Scegli il tenant (numero):\n' + options);
+        if (!choice) return;
+
+        var idx = parseInt(choice) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= _tenantsCache.length) {
+            if (typeof showToast === 'function') showToast('Scelta non valida.', 'error');
+            return;
+        }
+
+        var tenant = _tenantsCache[idx];
+        fetchApi('/api/superadmin/users/' + encodeURIComponent(userId) + '/tenants', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenant_id: tenant.tenant_id, role: 'admin_brand' })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Tenant assegnato.', 'success');
+            loadSuperadminUsers();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore assegnazione tenant.', 'error');
+        });
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
-    global.loadAdminDashboard = loadAdminDashboard;
-    global.exportPromoCsv     = exportPromoCsv;
-    global.initCsvWizard      = initCsvWizard;
-    global.handleCsvUpload    = handleCsvUpload;
-    global.wizardDryRun       = wizardDryRun;
-    global.wizardImport       = wizardImport;
+    global.loadAdminDashboard    = loadAdminDashboard;
+    global.exportPromoCsv        = exportPromoCsv;
+    global.initCsvWizard         = initCsvWizard;
+    global.handleCsvUpload       = handleCsvUpload;
+    global.wizardDryRun          = wizardDryRun;
+    global.wizardImport          = wizardImport;
+    global.loadSuperadminUsers   = loadSuperadminUsers;
+    global.showCreateUserForm    = showCreateUserForm;
+    global.hideCreateUserForm    = hideCreateUserForm;
+    global.createUser            = createUser;
+    global.toggleUserStatus      = toggleUserStatus;
+    global.promptResetPassword   = promptResetPassword;
+    global.promptAssignTenant    = promptAssignTenant;
 
 })(typeof window !== 'undefined' ? window : this);
