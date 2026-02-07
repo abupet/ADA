@@ -155,7 +155,7 @@ app.post("/auth/login/v2", async (req, res) => {
     const pool = getPool();
 
     const { rows } = await pool.query(
-      "SELECT user_id, email, password_hash, base_role, status FROM users WHERE email = $1 LIMIT 1",
+      "SELECT user_id, email, display_name, password_hash, base_role, status FROM users WHERE email = $1 LIMIT 1",
       [email.toLowerCase().trim()]
     );
 
@@ -194,6 +194,7 @@ app.post("/auth/login/v2", async (req, res) => {
     const payload = {
       sub: user.user_id,
       email: user.email,
+      display_name: user.display_name || '',
       role,
       tenantId,
     };
@@ -232,6 +233,45 @@ function requireJwt(req, res, next) {
 app.use("/api", requireJwt);
 
 const requireAuth = requireJwt;
+
+// --- Self-service password change ---
+app.post("/api/me/change-password", requireAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({ error: "database_not_configured" });
+  }
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "current_and_new_password_required" });
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 6) {
+    return res.status(400).json({ error: "password_too_short", minLength: 6 });
+  }
+  // Legacy tokens cannot change password
+  if (!req.user || req.user.sub === "ada-user") {
+    return res.status(403).json({ error: "legacy_token_not_supported" });
+  }
+  try {
+    const bcrypt = require("bcryptjs");
+    const { getPool } = require("./db");
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT password_hash FROM users WHERE user_id = $1 LIMIT 1",
+      [req.user.sub]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "user_not_found" });
+    const valid = await bcrypt.compare(currentPassword, rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: "wrong_current_password" });
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2",
+      [newHash, req.user.sub]
+    );
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/me/change-password error", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
 
 // --- Audit logging middleware (PR 11) ---
 // Logs mutating API requests to the audit_log table when DATABASE_URL is available.

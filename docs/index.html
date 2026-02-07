@@ -362,7 +362,7 @@
                         </select>
                     </div>
                     <div class="pet-actions" style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-                        <button id="btnSavePet" class="btn btn-success btn-small" onclick="saveCurrentPet()" title="Salva Pet" disabled data-testid="save-pet-button">💾 Salva</button>
+                        <button id="btnEditPet" class="btn btn-primary btn-small" onclick="openEditPetModal()" title="Modifica Pet" disabled data-testid="edit-pet-button">✏️ Modifica</button>
                         <button class="btn btn-small btn-add-pet" onclick="openAddPetPage()" title="Aggiungi nuovo Pet" data-testid="add-pet-button">➕ Aggiungi</button>
                         <button id="btnDeletePet" class="btn btn-danger btn-small" onclick="deleteCurrentPet()" title="Elimina Pet" disabled data-testid="delete-pet-button">🗑️ Elimina</button>
                     </div>
@@ -884,7 +884,24 @@
                 </div>
                 <!-- Consent banner (PR 3) -->
                 <div id="settings-consent-container"></div>
-                <div class="card">
+
+                <!-- Account Info Card (visible to all users) -->
+                <div class="card" id="settingsAccountCard">
+                    <h3>Il mio Account</h3>
+                    <div style="display:grid; grid-template-columns:auto 1fr; gap:6px 12px; margin-bottom:12px; font-size:14px;">
+                        <span style="color:#888;">Email:</span>
+                        <span id="accountEmail" style="font-weight:500;">—</span>
+                        <span style="color:#888;">Nome:</span>
+                        <span id="accountDisplayName" style="font-weight:500;">—</span>
+                        <span style="color:#888;">Ruolo:</span>
+                        <span id="accountRole" style="font-weight:500;">—</span>
+                        <span id="accountTenantRow" style="color:#888; display:none;">Tenant:</span>
+                        <span id="accountTenant" style="font-weight:500; display:none;">—</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="openChangePasswordModal()" data-testid="change-password-button">🔒 Cambia Password</button>
+                </div>
+
+                <div class="card" id="settingsSpeakersCard">
                     <button class="section-toggle" onclick="toggleSpeakersSection()" data-testid="toggle-speakers-section-button">
                         <span>🎤 Parlanti (Reference Clips)</span>
                         <span id="speakersToggleIcon" class="toggle-icon">▸</span>
@@ -893,22 +910,17 @@
                     <p style="color:#666;font-size:13px;margin-bottom:15px;">
                         Configura i parlanti con nome e ruolo. Le clip audio (2-10s) migliorano l'identificazione vocale.
                     </p>
-                    
+
                     <div id="speakersContainer" class="speakers-section"></div>
-                    
+
                     <button id="btnAddSpeaker" class="btn btn-primary" onclick="addNewSpeaker()" style="margin-top:15px;" data-testid="add-speaker-button">
                         ➕ Aggiungi Parlante (max 4)
                     </button>
                     </div>
                 </div>
-                
-                <div class="card">
+
+                <div class="card" id="settingsClinicCard">
                     <h3>Informazioni clinica</h3>
-                    <div class="form-group" style="margin-bottom: 15px;">
-                        <label>Nome veterinario</label>
-                        <input type="text" id="vetNameInput" placeholder="Es: Dott. Rossi" oninput="saveVetName(this.value)">
-                        <p style="font-size: 12px; color: #888; margin-top: 5px;">Usato in export e, dove previsto, nelle comunicazioni al proprietario</p>
-                    </div>
                     <button class="section-toggle" onclick="toggleClinicLogoSection()" data-testid="toggle-clinic-logo-section-button">
                         <span>Logo clinica</span>
                         <span id="clinicLogoToggleIcon" class="toggle-icon">▸</span>
@@ -930,7 +942,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card" id="settingsSystemCard">
                     <h3>Sistema</h3>
                     <div class="form-group" style="margin-bottom: 15px;">
                         <label style="display: flex; align-items: center; gap: 10px;">
@@ -939,7 +951,7 @@
                         </label>
                         <p style="font-size: 12px; color: #888; margin-top: 5px;">Disattiva per migliorare le performance in produzione</p>
                     </div>
-                    
+
                     <h3 style="margin-top: 20px;">Informazioni</h3>
                         <p><strong>Versione:</strong> ADA v<span id="appVersion">--</span></p>
                     <p><strong>Novità v<span id="appReleaseNotesVersion">--</span>:</strong> Registrazione lunga a chunk con trascrizione in parallelo, profili automatici per dispositivo, UI runtime della coda, cache audio test e debug avanzato.</p>
@@ -1050,6 +1062,15 @@
                             <span id="roleToggleIcon">🩺</span>
                             <span id="roleToggleLabel">Veterinario</span>
                         </button>
+                    </div>
+                    <div id="superAdminRoleSelector" style="display:none; margin-top:10px;">
+                        <label style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruolo attivo (super admin):</label>
+                        <select id="superAdminRoleSelect" onchange="onSuperAdminRoleChange(this.value)" style="width:100%;">
+                            <option value="veterinario">🩺 Veterinario</option>
+                            <option value="proprietario">🐾 Proprietario</option>
+                            <option value="admin_brand">📊 Admin Brand</option>
+                            <option value="super_admin">⚡ Super Admin</option>
+                        </select>
                     </div>
                 </div>
                 <div class="card">
@@ -1289,6 +1310,157 @@
             <h3 style="color: var(--error);">⚠️ Credito API Esaurito</h3>
             <p style="margin: 20px 0;">Il credito delle API OpenAI è esaurito. Contatta l'amministratore per ricaricare il credito.</p>
             <button class="btn btn-primary" onclick="closeCreditExhaustedModal()" data-testid="close-credit-exhausted-button">OK, Ho capito</button>
+        </div>
+    </div>
+
+    <!-- Modal: Change Password -->
+    <div id="changePasswordModal" class="modal">
+        <div class="modal-content">
+            <h3>🔒 Cambia Password</h3>
+            <div class="form-group">
+                <label>Password attuale</label>
+                <input type="password" id="cpCurrentPassword" placeholder="Password attuale" autocomplete="current-password">
+            </div>
+            <div class="form-group">
+                <label>Nuova password</label>
+                <input type="password" id="cpNewPassword" placeholder="Nuova password (min. 6 caratteri)" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label>Conferma nuova password</label>
+                <input type="password" id="cpConfirmPassword" placeholder="Ripeti nuova password" autocomplete="new-password">
+            </div>
+            <p id="cpError" style="color:var(--error); font-size:13px; display:none; margin-bottom:10px;"></p>
+            <div class="button-row">
+                <button class="btn btn-success" onclick="submitChangePassword()" data-testid="submit-change-password-button">✅ Cambia</button>
+                <button class="btn btn-secondary" onclick="closeChangePasswordModal()" data-testid="cancel-change-password-button">❌ Annulla</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Edit Pet -->
+    <div id="editPetModal" class="modal">
+        <div class="modal-content" style="max-width:600px;">
+            <h3>✏️ Modifica Pet</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Nome Pet <span class="required">*</span></label>
+                    <input type="text" id="editPetName" placeholder="Nome" required>
+                </div>
+                <div class="form-group">
+                    <label>Specie <span class="required">*</span></label>
+                    <select id="editPetSpecies" required>
+                        <option value="">Seleziona...</option>
+                        <option value="Cane">Cane</option>
+                        <option value="Gatto">Gatto</option>
+                        <option value="Coniglio">Coniglio</option>
+                        <option value="Altro">Altro</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Razza</label>
+                    <input type="text" id="editPetBreed" placeholder="Razza">
+                </div>
+                <div class="form-group">
+                    <label>Data di nascita</label>
+                    <input type="date" id="editPetBirthdate">
+                </div>
+                <div class="form-group">
+                    <label>Sesso</label>
+                    <select id="editPetSex">
+                        <option value="">Seleziona...</option>
+                        <option value="Maschio">Maschio</option>
+                        <option value="Maschio castrato">Maschio castrato</option>
+                        <option value="Femmina">Femmina</option>
+                        <option value="Femmina sterilizzata">Femmina sterilizzata</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Microchip</label>
+                    <input type="text" id="editPetMicrochip" placeholder="N° Microchip">
+                </div>
+                <div class="form-group">
+                    <label>Proprietario</label>
+                    <input type="text" id="editOwnerName" placeholder="Nome proprietario">
+                </div>
+                <div class="form-group">
+                    <label>Telefono</label>
+                    <input type="tel" id="editOwnerPhone" placeholder="Telefono">
+                </div>
+                <div class="form-group">
+                    <label>Data Visita</label>
+                    <input type="date" id="editVisitDate">
+                </div>
+            </div>
+            <button class="btn btn-secondary" style="margin-top: 20px; width: 100%;" onclick="toggleEditPetLifestyleSection()" data-testid="toggle-edit-pet-lifestyle-section-button">
+                🏠 Stile di Vita ▼
+            </button>
+            <div id="editPetLifestyleSection" class="lifestyle-section">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Ambiente</label>
+                        <select id="editPetLifestyle">
+                            <option value="">Seleziona...</option>
+                            <option value="indoor">Indoor</option>
+                            <option value="outdoor">Outdoor</option>
+                            <option value="misto">Misto</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Conviventi</label>
+                        <select id="editPetHousehold" multiple>
+                            <option value="bambini">Bambini</option>
+                            <option value="anziani">Anziani</option>
+                            <option value="altri_cani">Altri cani</option>
+                            <option value="altri_gatti">Altri gatti</option>
+                            <option value="altri_animali">Altri animali</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Livello di attività</label>
+                        <select id="editPetActivityLevel">
+                            <option value="">Seleziona...</option>
+                            <option value="basso">Basso</option>
+                            <option value="medio">Medio</option>
+                            <option value="alto">Alto</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo alimentazione</label>
+                        <select id="editPetDietType">
+                            <option value="">Seleziona...</option>
+                            <option value="secco">Secco</option>
+                            <option value="umido">Umido</option>
+                            <option value="barf">BARF</option>
+                            <option value="misto">Misto</option>
+                            <option value="casalingo">Casalingo</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Preferenze alimentari</label>
+                        <input type="text" id="editPetDietPreferences" placeholder="Es: preferisce pollo, evita pesce...">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Condizioni note</label>
+                        <input type="text" id="editPetKnownConditions" placeholder="Es: insuff. renale, artrosi, allergie...">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Farmaci attuali</label>
+                        <input type="text" id="editPetCurrentMeds" placeholder="Farmaci in corso (opzionale)">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Note comportamentali</label>
+                        <input type="text" id="editPetBehaviorNotes" placeholder="Es: paure, ansia, aggressività...">
+                    </div>
+                    <div class="form-group">
+                        <label>Località (opz.)</label>
+                        <input type="text" id="editPetLocation" placeholder="Es: Milano">
+                    </div>
+                </div>
+            </div>
+            <div class="button-row" style="margin-top: 20px;">
+                <button class="btn btn-success" onclick="saveEditPet()" data-testid="save-edit-pet-button">💾 Salva</button>
+                <button class="btn btn-danger" onclick="cancelEditPet()" data-testid="cancel-edit-pet-button">❌ Annulla</button>
+            </div>
         </div>
     </div>
 

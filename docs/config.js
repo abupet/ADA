@@ -99,10 +99,11 @@ const ROLE_PERMISSIONS = {
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
                 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
-                'superadmin-users', 'settings'],
+                'superadmin-users', 'settings', 'debug',
+                'patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
                   'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
-                  'manage_users']
+                  'manage_users', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
     }
 };
 
@@ -111,12 +112,22 @@ function getActiveRole() {
         // Check JWT v2 role first (admin_brand, super_admin)
         if (typeof getJwtRole === 'function') {
             var jwtRole = getJwtRole();
-            if (jwtRole === 'admin_brand' || jwtRole === 'super_admin') {
-                return jwtRole;
+            if (jwtRole === 'admin_brand') {
+                return 'admin_brand';
+            }
+            // super_admin can switch between all roles; use localStorage choice
+            if (jwtRole === 'super_admin') {
+                var stored = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
+                if (stored === ROLE_PROPRIETARIO) return ROLE_PROPRIETARIO;
+                if (stored === ROLE_VETERINARIO) return ROLE_VETERINARIO;
+                if (stored === 'admin_brand') return 'admin_brand';
+                if (stored === 'super_admin') return 'super_admin';
+                // Default: last saved or veterinario
+                return stored || ROLE_VETERINARIO;
             }
         }
-        const stored = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
-        if (stored === ROLE_PROPRIETARIO) return ROLE_PROPRIETARIO;
+        var storedRole = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
+        if (storedRole === ROLE_PROPRIETARIO) return ROLE_PROPRIETARIO;
         return ROLE_VETERINARIO;
     } catch (e) {
         return ROLE_VETERINARIO;
@@ -134,6 +145,14 @@ function setActiveRole(role) {
 
 function isPageAllowedForRole(pageId, role) {
     const r = role || getActiveRole();
+    // super_admin JWT users always have access to all pages (regardless of active role)
+    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+        var activePerms = ROLE_PERMISSIONS[r];
+        if (activePerms && activePerms.pages.indexOf(pageId) !== -1) return true;
+        var saPerms = ROLE_PERMISSIONS['super_admin'];
+        if (saPerms && saPerms.pages.indexOf(pageId) !== -1) return true;
+        return false;
+    }
     const perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.pages.indexOf(pageId) !== -1;
@@ -141,6 +160,14 @@ function isPageAllowedForRole(pageId, role) {
 
 function isActionAllowedForRole(action, role) {
     const r = role || getActiveRole();
+    // super_admin JWT users always have access to all actions
+    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+        var activePerms = ROLE_PERMISSIONS[r];
+        if (activePerms && activePerms.actions.indexOf(action) !== -1) return true;
+        var saPerms = ROLE_PERMISSIONS['super_admin'];
+        if (saPerms && saPerms.actions.indexOf(action) !== -1) return true;
+        return false;
+    }
     const perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.actions.indexOf(action) !== -1;
@@ -480,6 +507,34 @@ function getJwtUserId() {
     var payload = decodeJwtPayload(token);
     if (!payload) return null;
     return payload.sub || null;
+}
+
+/**
+ * Get the display name from the current JWT token (v2 only).
+ */
+function getJwtDisplayName() {
+    var token = getAuthToken();
+    var payload = decodeJwtPayload(token);
+    if (!payload) return null;
+    return payload.display_name || null;
+}
+
+/**
+ * Get the email from the current JWT token (v2 only).
+ */
+function getJwtEmail() {
+    var token = getAuthToken();
+    var payload = decodeJwtPayload(token);
+    if (!payload) return null;
+    return payload.email || null;
+}
+
+/**
+ * Check if the current JWT user is a super_admin.
+ */
+function isSuperAdmin() {
+    if (typeof getJwtRole !== 'function') return false;
+    return getJwtRole() === 'super_admin';
 }
 
 // Helper: blob to base64 data URL
