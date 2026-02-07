@@ -1,7 +1,7 @@
 const express = require('express');
 const { startSeedJob, getJobStatus, cancelJob, wipeSeededData } = require('./seed.service');
 
-function seedRouter({ requireAuth }) {
+function seedRouter({ requireAuth, getOpenAiKey }) {
     const router = express.Router();
 
     // POST /api/seed/start — Start async seed job
@@ -12,7 +12,7 @@ function seedRouter({ requireAuth }) {
 
             const config = req.body || {};
             // Get OpenAI key from environment
-            const openAiKey = process.env.OPENAI_API_KEY || null;
+            const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
 
             const result = startSeedJob(pool, config, openAiKey);
             if (result.error === 'already_running') {
@@ -74,7 +74,7 @@ function seedRouter({ requireAuth }) {
         try {
             const { searchBrandSites } = require('./seed.promogen');
             const brands = (req.body || {}).brands || '';
-            const openAiKey = process.env.OPENAI_API_KEY || null;
+            const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
             const result = await searchBrandSites(brands, openAiKey);
             return res.json(result);
         } catch (e) {
@@ -87,7 +87,7 @@ function seedRouter({ requireAuth }) {
         try {
             const { scrapeProductsFromSites } = require('./seed.promogen');
             const siteUrls = (req.body || {}).siteUrls || [];
-            const openAiKey = process.env.OPENAI_API_KEY || null;
+            const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
             const result = await scrapeProductsFromSites(siteUrls, openAiKey);
             return res.json({ products: result });
         } catch (e) {

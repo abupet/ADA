@@ -309,7 +309,7 @@ if (process.env.DATABASE_URL) {
   app.use(adminRouter({ requireAuth }));
   app.use(dashboardRouter({ requireAuth }));
   // --- Seed Engine routes (PR 14) ---
-  app.use(seedRouter({ requireAuth }));
+  app.use(seedRouter({ requireAuth, getOpenAiKey }));
 }
 
 function getOpenAiKey() {
