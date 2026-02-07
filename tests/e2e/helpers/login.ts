@@ -4,6 +4,7 @@ import { gotoApp } from "./nav";
 export async function login(page: Page, retries = 1) {
   const pwd = process.env.ADA_TEST_PASSWORD;
   if (!pwd) throw new Error("Missing ADA_TEST_PASSWORD env var");
+  const email = process.env.ADA_TEST_EMAIL || "";
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
@@ -15,6 +16,12 @@ export async function login(page: Page, retries = 1) {
 
     await expect(page.locator("#passwordInput")).toBeVisible();
     await expect(page.getByTestId("login-button")).toBeVisible();
+
+    // Fill email if provided (v2 multi-user login)
+    if (email) {
+      await expect(page.getByTestId("email-input")).toBeVisible();
+      await page.getByTestId("email-input").fill(email);
+    }
 
     await page.locator("#passwordInput").fill(pwd);
     await page.getByTestId("login-button").click();

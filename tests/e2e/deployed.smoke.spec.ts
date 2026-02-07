@@ -23,11 +23,17 @@ test("@deployed Published app: carica + login + visita ok", async ({ page, conte
 
   const pwd = process.env.ADA_TEST_PASSWORD;
   if (!pwd) throw new Error("Missing ADA_TEST_PASSWORD env var");
+  const email = process.env.ADA_TEST_EMAIL || "";
 
   await page.goto("index.html", { waitUntil: "domcontentloaded" });
 
   await expect(page.locator("#passwordInput")).toBeVisible();
   await expect(page.getByTestId("login-button")).toBeVisible();
+
+  // Fill email if provided (v2 multi-user login)
+  if (email) {
+    await page.getByTestId("email-input").fill(email);
+  }
 
   await page.locator("#passwordInput").fill(pwd);
   await page.getByTestId("login-button").click();
