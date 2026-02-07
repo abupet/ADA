@@ -922,11 +922,10 @@ function updateSettingsSectionsVisibility() {
     var isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
     var speakersCard = document.getElementById('settingsSpeakersCard');
     var clinicCard = document.getElementById('settingsClinicCard');
-    var systemCard = document.getElementById('settingsSystemCard');
 
     if (speakersCard) speakersCard.style.display = isSA ? '' : 'none';
     if (clinicCard) clinicCard.style.display = isSA ? '' : 'none';
-    if (systemCard) systemCard.style.display = isSA ? '' : 'none';
+    // settingsSystemCard (debug toggle + version info) is always visible
 }
 
 // ============================================
