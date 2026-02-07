@@ -371,7 +371,8 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
  * Returns { text } on success, { error, message, statusCode } on failure.
  */
 async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
-  serverLog('INFO', 'DOC', 'processDocumentRead start', {documentId: doc.document_id, mime: doc.mime_type});
+  var _docStartMs = Date.now();
+  serverLog('INFO', 'DOC', 'processDocumentRead start', {documentId: doc.document_id, mimeType: doc.mime_type});
   const oaKey = safeGetOpenAiKey(getOpenAiKey);
 
   if (!oaKey) {
@@ -462,7 +463,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       // If the file content type isn't supported, retry with image_url for PDFs
       if (doc.mime_type === "application/pdf" && response.status === 400) {
         console.log("Retrying PDF as image_url fallback...");
-        serverLog('INFO', 'DOC', 'PDF->image fallback', {documentId: doc.document_id, status: response.status});
+        serverLog('INFO', 'DOC', 'PDF->image fallback', {documentId: doc.document_id, originalError: errMsg.slice(0, 100)});
         return await processDocumentReadFallback(pool, doc, oaKey, base64);
       }
 
@@ -481,7 +482,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       [doc.document_id, readText]
     );
 
-    serverLog('INFO', 'DOC', 'processDocumentRead done', {documentId: doc.document_id, textLength: readText.length});
+    serverLog('INFO', 'DOC', 'processDocumentRead done', {documentId: doc.document_id, latencyMs: Date.now() - _docStartMs, status: 'success'});
     return { text: readText };
   } catch (err) {
     console.error("processDocumentRead error", err);

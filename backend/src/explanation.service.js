@@ -56,7 +56,7 @@ async function generateExplanation(
       [cacheKey]
     );
     if (cacheResult.rows[0]) {
-      serverLog('INFO', 'EXPLAIN', 'cache hit', {cacheKey, itemId});
+      serverLog('INFO', 'EXPLAIN', 'cache hit', {cacheKey: cacheKey.slice(0, 12), latencyMs: Date.now() - startMs});
       return {
         explanation: cacheResult.rows[0].explanation,
         source: "cache",
@@ -78,7 +78,7 @@ async function generateExplanation(
       if (budgetResult.rows[0]) {
         const b = budgetResult.rows[0];
         if (b.current_usage >= b.monthly_limit) {
-          serverLog('INFO', 'EXPLAIN', 'budget exceeded', {tenantId, currentUsage: b.current_usage, monthlyLimit: b.monthly_limit});
+          serverLog('INFO', 'EXPLAIN', 'budget exceeded', {tenantId, usage: b.current_usage, limit: b.monthly_limit});
           return {
             explanation: _fallbackExplanation(petName),
             source: "fallback",
@@ -214,7 +214,7 @@ Rispondi con questo JSON:
       }
     }
 
-    serverLog('INFO', 'EXPLAIN', 'OpenAI done', {itemId, tokensUsed, latencyMs: Date.now() - startMs});
+    serverLog('INFO', 'EXPLAIN', 'OpenAI done', {source: 'openai', latencyMs: Date.now() - startMs, tokensUsed, confidence: (explanation && explanation.confidence) || null});
     return {
       explanation,
       source: "openai",
@@ -223,7 +223,7 @@ Rispondi con questo JSON:
     };
   } catch (e) {
     // Timeout or network error
-    serverLog('ERR', 'EXPLAIN', 'timeout', {itemId, error: e.message, latencyMs: Date.now() - startMs});
+    serverLog('ERR', 'EXPLAIN', 'timeout', {error: e.message, isAbort: e.name === 'AbortError', latencyMs: Date.now() - startMs});
     return {
       explanation: _fallbackExplanation(petName),
       source: "fallback",

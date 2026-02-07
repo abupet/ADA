@@ -398,8 +398,6 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
     return res.status(502).json({ error: "OpenAI request failed" });
   }
 
-  serverLog('INFO', 'OPENAI', 'response', {endpoint: endpoint, status: response.status, latencyMs: Date.now() - startMs}, res.req);
-
   const text = await response.text();
   let data;
   try {
@@ -407,6 +405,8 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
   } catch (error) {
     data = { error: text || response.statusText };
   }
+
+  serverLog('INFO', 'OPENAI', 'response', {endpoint: endpoint, status: response.status, latencyMs: Date.now() - startMs, tokensUsed: (data && data.usage && data.usage.total_tokens) || null}, res.req);
 
   return res.status(response.status).json(data);
 }
