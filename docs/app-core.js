@@ -302,11 +302,26 @@ function navigateToPage(page) {
         if (page === 'admin-wizard' && typeof initCsvWizard === 'function') {
             initCsvWizard('admin-wizard-content');
         }
+        if (page === 'admin-catalog' && typeof loadAdminCatalog === 'function') {
+            loadAdminCatalog('admin-catalog-content');
+        }
+        if (page === 'admin-campaigns' && typeof loadAdminCampaigns === 'function') {
+            loadAdminCampaigns('admin-campaigns-content');
+        }
         if (page === 'superadmin-users' && typeof loadSuperadminUsers === 'function') {
             loadSuperadminUsers('superadmin-users-content');
         }
         if (page === 'superadmin-tenants' && typeof loadSuperadminTenants === 'function') {
             loadSuperadminTenants('superadmin-tenants-content');
+        }
+        if (page === 'superadmin-policies' && typeof loadSuperadminPolicies === 'function') {
+            loadSuperadminPolicies('superadmin-policies-content');
+        }
+        if (page === 'superadmin-tags' && typeof loadSuperadminTags === 'function') {
+            loadSuperadminTags('superadmin-tags-content');
+        }
+        if (page === 'superadmin-audit' && typeof loadSuperadminAudit === 'function') {
+            loadSuperadminAudit('superadmin-audit-content');
         }
     } catch(e) {}
 
@@ -371,10 +386,10 @@ function applyRoleUI(role) {
     if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
 
     // Show super_admin-only nav items
-    const navSuperadminUsers = document.getElementById('nav-superadmin-users');
-    if (navSuperadminUsers) navSuperadminUsers.style.display = (r === 'super_admin') ? '' : 'none';
-    const navSuperadminTenants = document.getElementById('nav-superadmin-tenants');
-    if (navSuperadminTenants) navSuperadminTenants.style.display = (r === 'super_admin') ? '' : 'none';
+    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = (r === 'super_admin') ? '' : 'none';
+    });
 
     // Update toggle button
     const icon = document.getElementById('roleToggleIcon');
