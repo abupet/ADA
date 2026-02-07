@@ -728,18 +728,70 @@
     // Delete document
     // =========================================================================
 
+    var DELETED_IDS_KEY = 'ADA_DELETED_DOCS';
+
+    function _trackLocalDeletion(documentId) {
+        try {
+            var raw = localStorage.getItem(DELETED_IDS_KEY);
+            var ids = raw ? JSON.parse(raw) : [];
+            if (ids.indexOf(documentId) === -1) ids.push(documentId);
+            // Keep only the last 500 entries to avoid unbounded growth
+            if (ids.length > 500) ids = ids.slice(ids.length - 500);
+            localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(ids));
+        } catch (_e) { /* localStorage full or unavailable */ }
+    }
+
+    function _isLocallyDeleted(documentId) {
+        try {
+            var raw = localStorage.getItem(DELETED_IDS_KEY);
+            if (!raw) return false;
+            var ids = JSON.parse(raw);
+            return ids.indexOf(documentId) !== -1;
+        } catch (_e) { return false; }
+    }
+
+    function _clearLocalDeletion(documentId) {
+        try {
+            var raw = localStorage.getItem(DELETED_IDS_KEY);
+            if (!raw) return;
+            var ids = JSON.parse(raw);
+            var idx = ids.indexOf(documentId);
+            if (idx !== -1) {
+                ids.splice(idx, 1);
+                localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(ids));
+            }
+        } catch (_e) { /* ignore */ }
+    }
+
     function _deleteDocument(documentId) {
         if (!documentId) return;
         if (!confirm('Eliminare questo documento?')) return;
 
-        _openDB().then(function () {
-            return Promise.all([
-                _idbDelete(STORE_NAME, documentId),
-                _idbDelete(BLOBS_STORE_NAME, documentId)
-            ]);
-        }).then(function () {
-            if (typeof showToast === 'function') showToast('Documento eliminato', 'success');
-            renderDocumentsInHistory();
+        // 1. Delete from server
+        var serverDelete = (typeof fetchApi === 'function')
+            ? fetchApi('/api/documents/' + encodeURIComponent(documentId), { method: 'DELETE' })
+                .then(function (res) { return res && res.ok; })
+                .catch(function () { return false; })
+            : Promise.resolve(false);
+
+        serverDelete.then(function (serverOk) {
+            // 2. Track locally so sync won't re-add it
+            _trackLocalDeletion(documentId);
+
+            // 3. Remove from IndexedDB
+            return _openDB().then(function () {
+                return Promise.all([
+                    _idbDelete(STORE_NAME, documentId),
+                    _idbDelete(BLOBS_STORE_NAME, documentId)
+                ]);
+            }).then(function () {
+                if (!serverOk) {
+                    if (typeof showToast === 'function') showToast('Documento eliminato localmente (verrà rimosso dal server alla prossima sync)', 'warning');
+                } else {
+                    if (typeof showToast === 'function') showToast('Documento eliminato', 'success');
+                }
+                renderDocumentsInHistory();
+            });
         }).catch(function () {
             if (typeof showToast === 'function') showToast('Errore eliminazione documento', 'error');
         });
@@ -1346,9 +1398,18 @@
                 if (!data || !Array.isArray(data.documents)) return 0;
                 return _openDB().then(function () {
                     var newCount = 0;
+                    var serverIds = {};
                     var chain = Promise.resolve();
+
+                    // Build a set of server-side document IDs
+                    data.documents.forEach(function (doc) { serverIds[doc.document_id] = true; });
+
+                    // Add new server documents (skip locally deleted ones)
                     data.documents.forEach(function (doc) {
                         chain = chain.then(function () {
+                            // Skip documents the user explicitly deleted
+                            if (_isLocallyDeleted(doc.document_id)) return;
+
                             return _idbGet(STORE_NAME, doc.document_id).then(function (existing) {
                                 if (!existing) {
                                     // New document discovered from server
@@ -1369,6 +1430,40 @@
                             });
                         });
                     });
+
+                    // Remove local documents that no longer exist on the server
+                    // (deleted by another device or via wipe)
+                    chain = chain.then(function () {
+                        return _idbGetAllByIndex(STORE_NAME, 'pet_id', petId).then(function (localDocs) {
+                            var removeChain = Promise.resolve();
+                            (localDocs || []).forEach(function (ld) {
+                                if (ld._synced_from_server && !serverIds[ld.document_id]) {
+                                    removeChain = removeChain.then(function () {
+                                        return Promise.all([
+                                            _idbDelete(STORE_NAME, ld.document_id),
+                                            _idbDelete(BLOBS_STORE_NAME, ld.document_id)
+                                        ]);
+                                    });
+                                }
+                            });
+                            return removeChain;
+                        });
+                    });
+
+                    // Clean up deletion tracking for documents the server
+                    // no longer has (the delete was confirmed server-side)
+                    chain = chain.then(function () {
+                        try {
+                            var raw = localStorage.getItem(DELETED_IDS_KEY);
+                            if (raw) {
+                                var ids = JSON.parse(raw);
+                                ids.forEach(function (id) {
+                                    if (!serverIds[id]) _clearLocalDeletion(id);
+                                });
+                            }
+                        } catch (_e) { /* ignore */ }
+                    });
+
                     return chain.then(function () { return newCount; });
                 });
             })

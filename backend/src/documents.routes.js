@@ -341,6 +341,39 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
     }
   });
 
+  // DELETE /api/documents/:id - delete a document
+  router.delete("/api/documents/:id", requireAuth, async (req, res) => {
+    try {
+      const owner_user_id = req.user?.sub;
+      const { id } = req.params;
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_document_id" });
+
+      // Fetch storage_key before deleting so we can remove the file
+      const { rows } = await pool.query(
+        "SELECT storage_key FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+        [id, owner_user_id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: "not_found" });
+
+      await pool.query(
+        "DELETE FROM documents WHERE document_id = $1 AND owner_user_id = $2",
+        [id, owner_user_id]
+      );
+
+      // Best-effort file cleanup
+      try {
+        const filePath = path.join(getStoragePath(), rows[0].storage_key);
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch (_e) { /* non-critical */ }
+
+      serverLog('INFO', 'DOC', 'document deleted', { documentId: id }, req);
+      res.json({ deleted: true, document_id: id });
+    } catch (e) {
+      console.error("DELETE /api/documents/:id error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // GET /api/documents/:id/status - get AI job status
   router.get("/api/documents/:id/status", requireAuth, async (req, res) => {
     try {
