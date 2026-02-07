@@ -146,7 +146,11 @@ async function playNextChunk(lang = 'IT') {
     try {
         const t0 = performance.now();
         const voice = voiceMap[lang] || 'nova';
-        
+
+        if (typeof ADALog !== 'undefined') {
+            ADALog.info('TTS', 'request start', {textLength: chunk.length, voice: voice});
+        }
+
         const response = await fetchApi('/api/tts', {
             method: 'POST',
             headers: {
@@ -174,7 +178,11 @@ async function playNextChunk(lang = 'IT') {
         
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        
+
+        if (typeof ADALog !== 'undefined') {
+            ADALog.perf('TTS', 'request done', {latencyMs: Math.round(performance.now() - t0), audioSizeBytes: audioBlob.size});
+        }
+
         currentAudio = new Audio(audioUrl);
         isSpeaking = true;
         
@@ -243,6 +251,9 @@ async function playNextChunk(lang = 'IT') {
         
     } catch (error) {
         console.error('TTS error:', error);
+        if (typeof ADALog !== 'undefined') {
+            ADALog.err('TTS', 'request error', {error: (error && error.message) || String(error)});
+        }
         logError('TTS', error.message);
         showToast('Errore TTS: ' + error.message, 'error');
         isSpeaking = false;

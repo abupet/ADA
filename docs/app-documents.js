@@ -504,6 +504,10 @@
 
     function _processUploadWithResolvedId(file, petId) {
 
+        if (typeof ADALog !== 'undefined') {
+            ADALog.info('DOC', 'upload start', {mimeType: file.type, sizeBytes: file.size, petId: petId});
+        }
+
         // Ensure upload loader
         if (!_uploadLoader) {
             try {
@@ -792,6 +796,9 @@
 
             // AI buttons - role-based
             if (typeof logDebug === 'function') logDebug('openDocument', 'ai_status=' + (doc.ai_status || 'none') + ', has_read_text=' + !!doc.read_text + ', has_explanation=' + !!doc.owner_explanation + ', ai_error=' + (doc.ai_error || 'none'));
+            if (typeof ADALog !== 'undefined') {
+                ADALog.dbg('DOC', 'status poll', {documentId: documentId, currentStatus: doc.ai_status || 'none', pollCount: 1});
+            }
             _updateAIButtons(doc);
 
             // Show existing AI results
@@ -1028,9 +1035,15 @@
             } catch (_) { /* container may not exist */ }
         }
 
+        var _readT0 = performance.now();
+
         var fetchFn = function (signal) {
             if (typeof fetchApi !== 'function') {
                 return Promise.reject(new Error('fetchApi non disponibile'));
+            }
+
+            if (typeof ADALog !== 'undefined') {
+                ADALog.info('DOC', 'AI read start', {documentId: documentId, mimeType: 'unknown'});
             }
 
             return fetchApi('/api/documents/' + encodeURIComponent(documentId) + '/read', {
@@ -1060,6 +1073,10 @@
                         return _idbPut(STORE_NAME, doc);
                     }
                 }).then(function () {
+                    if (typeof ADALog !== 'undefined') {
+                        ADALog.perf('DOC', 'AI read done', {documentId: documentId, latencyMs: Math.round(performance.now() - _readT0), status: 'success'});
+                    }
+
                     // Update UI
                     if (readCont) readCont.textContent = text;
                     if (readRes)  readRes.style.display = text ? 'block' : 'none';

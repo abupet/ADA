@@ -7,6 +7,12 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { getPool } = require("./db");
 
+// --- Debug logging helper (PR 13) ---
+function serverLog(level, domain, message, data, req) {
+    if (process.env.ADA_DEBUG_LOG !== 'true') return;
+    console.log(JSON.stringify({ts: new Date().toISOString(), level, domain, corrId: (req && req.correlationId) || '--------', msg: message, data: data || undefined}));
+}
+
 // UUID v4 validation regex
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -365,6 +371,7 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
  * Returns { text } on success, { error, message, statusCode } on failure.
  */
 async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
+  serverLog('INFO', 'DOC', 'processDocumentRead start', {documentId: doc.document_id, mime: doc.mime_type});
   const oaKey = safeGetOpenAiKey(getOpenAiKey);
 
   if (!oaKey) {
@@ -455,6 +462,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       // If the file content type isn't supported, retry with image_url for PDFs
       if (doc.mime_type === "application/pdf" && response.status === 400) {
         console.log("Retrying PDF as image_url fallback...");
+        serverLog('INFO', 'DOC', 'PDF->image fallback', {documentId: doc.document_id, status: response.status});
         return await processDocumentReadFallback(pool, doc, oaKey, base64);
       }
 
@@ -473,6 +481,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       [doc.document_id, readText]
     );
 
+    serverLog('INFO', 'DOC', 'processDocumentRead done', {documentId: doc.document_id, textLength: readText.length});
     return { text: readText };
   } catch (err) {
     console.error("processDocumentRead error", err);

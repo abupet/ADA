@@ -108,6 +108,9 @@
       }
 
       request.onerror = function () {
+        if (typeof ADALog !== 'undefined') {
+          ADALog.err('IDB', 'openDB error', {error: String(request.error || 'Failed to open ' + DB_NAME)});
+        }
         reject(request.error || new Error('Failed to open ' + DB_NAME));
       };
 
@@ -122,6 +125,9 @@
 
       request.onupgradeneeded = function (event) {
         var db = event.target.result;
+        if (typeof ADALog !== 'undefined') {
+          ADALog.info('IDB', 'upgrade', {oldVersion: event.oldVersion, newVersion: event.newVersion});
+        }
 
         // Outbox store: keyed by op_id (UUID string)
         if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
@@ -345,6 +351,9 @@
           };
 
           tx.oncomplete = function () {
+            if (typeof ADALog !== 'undefined') {
+              ADALog.info('SYNC', 'enqueue', {opId: record.op_id, entityType: record.entity_type, entityId: record.entity_id, opType: record.operation_type, baseVersion: record.base_version});
+            }
             // Trigger auto-push when online
             triggerAutoPush();
             resolve(record.op_id);
@@ -415,6 +424,13 @@
                 client_ts: r.client_timestamp || null
               };
             });
+            if (typeof ADALog !== 'undefined') {
+              var entityTypeCounts = {};
+              toPush.forEach(function (r) {
+                entityTypeCounts[r.entity_type] = (entityTypeCounts[r.entity_type] || 0) + 1;
+              });
+              ADALog.info('SYNC', 'pushAll: sending', {opsCount: toPush.length, entityTypeCounts: entityTypeCounts});
+            }
             var deviceId = 'unknown';
             try { deviceId = localStorage.getItem('ada_device_id') || 'unknown'; } catch (e) {}
             return fetchApi(PUSH_ENDPOINT, {
@@ -497,6 +513,10 @@
     return Promise.all(tasks).then(function () {
       _pushing = false;
 
+      if (typeof ADALog !== 'undefined') {
+        ADALog.info('SYNC', 'processPushResponse', {total: allOpIds.length, accepted: acceptedIds.length, rejected: rejectedIds.length, unhandled: unhandledIds.length});
+      }
+
       if (rejectedIds.length > 0) {
         safeToast('Sync: ' + rejectedIds.length + ' operazioni rifiutate', 'error');
       }
@@ -516,6 +536,9 @@
   function handlePushError(err, opIds) {
     var msg = err && err.message ? err.message : 'Push error';
     recordError(msg);
+    if (typeof ADALog !== 'undefined') {
+      ADALog.err('SYNC', 'handlePushError', {error: msg, affectedOps: opIds.length});
+    }
 
     return updateOutboxStatuses(opIds, 'failed', msg).then(function () {
       _pushing = false;
@@ -602,6 +625,9 @@
     return metaGet('pull_cursor')
       .then(function (cursor) {
         var since = cursor || 0;
+        if (typeof ADALog !== 'undefined') {
+          ADALog.info('SYNC', 'pull: start', {cursor: since});
+        }
         return pullLoop(since, 0);
       })
       .then(function () {
@@ -609,11 +635,17 @@
         return metaSet('last_sync', _lastSyncTime);
       })
       .then(function () {
+        if (typeof ADALog !== 'undefined') {
+          ADALog.info('SYNC', 'pull: complete', {totalPulled: totalPulled});
+        }
         return { pulled: totalPulled, cursor: null };
       })
       .catch(function (err) {
         var msg = err && err.message ? err.message : 'Pull error';
         recordError(msg);
+        if (typeof ADALog !== 'undefined') {
+          ADALog.err('SYNC', 'pull: error', {error: msg});
+        }
         return { pulled: 0, error: msg };
       });
   }
@@ -666,22 +698,16 @@
 
             if (remoteTs.getTime() >= localTs.getTime()) {
               // Remote wins: mark local op for removal
-              console.warn(
-                '[syncEngine] Conflict resolved (last-write-wins): remote wins for ' +
-                change.entity_type + '/' + change.entity_id +
-                ' | remote=' + remoteTs.toISOString() +
-                ', local=' + localTs.toISOString()
-              );
+              if (typeof ADALog !== 'undefined') {
+                ADALog.warn('SYNC', 'conflict: remote wins', {entityType: change.entity_type, entityId: change.entity_id, remoteTs: remoteTs.toISOString(), localTs: localTs.toISOString(), localOpId: local.op_id});
+              }
               opsToRemove.push(local.op_id);
             } else {
               // Local wins: keep local op; it will be pushed on next cycle
               localWon = true;
-              console.warn(
-                '[syncEngine] Conflict resolved (last-write-wins): local wins for ' +
-                change.entity_type + '/' + change.entity_id +
-                ' | remote=' + remoteTs.toISOString() +
-                ', local=' + localTs.toISOString()
-              );
+              if (typeof ADALog !== 'undefined') {
+                ADALog.warn('SYNC', 'conflict: local wins', {entityType: change.entity_type, entityId: change.entity_id, remoteTs: remoteTs.toISOString(), localTs: localTs.toISOString(), localOpId: local.op_id});
+              }
             }
           });
         }
@@ -791,6 +817,9 @@
 
         return insertConvertedRecords(legacyRecords).then(function (count) {
           return metaSet('legacy_migrated', new Date().toISOString()).then(function () {
+            if (typeof ADALog !== 'undefined') {
+              ADALog.info('SYNC', 'migrateFromLegacy: complete', {migratedCount: count});
+            }
             safeToast('Sync: migrati ' + count + ' record dal vecchio outbox', 'success');
             return { migrated: true, count: count };
           });

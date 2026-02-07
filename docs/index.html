@@ -46,6 +46,7 @@
                     <div class="nav-item" data-page="soap">📋 Referto</div>
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
                     <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
+                    <div class="nav-item seed-nav-item" data-page="seed" style="display:none;">🌱 Seed Engine</div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
@@ -58,6 +59,7 @@
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
                     <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
                     <div class="nav-item" data-page="photos">📷 Foto</div>
+                    <div class="nav-item seed-nav-item" data-page="seed" style="display:none;">🌱 Seed Engine</div>
                 </div>
 
                 <!-- Sidebar: Admin Brand / Super Admin -->
@@ -1120,6 +1122,8 @@
                         <button class="btn btn-primary" onclick="openCostsPage()" data-testid="open-costs-button">💰 Consumo API</button>
                         <button class="btn btn-secondary" onclick="exportLogFile()" data-testid="export-log-button">📄 Scarica ADA.log</button>
                         <button class="btn btn-secondary" onclick="clearLog(); showToast('Log cancellato', 'success');" data-testid="clear-log-button">Cancella ADA.log</button>
+                        <button class="btn btn-secondary" onclick="showSyncDiagnostics()">🔄 Diagnostica Sync</button>
+                        <button class="btn btn-secondary" onclick="showApiMetrics()">📡 Metriche API</button>
                     </div>
                 </div>
                 <div id="debugTestTools" class="card" style="display:none;">
@@ -1139,6 +1143,76 @@
                         <button class="btn btn-secondary" onclick="clearSavedAudioChunks()" data-testid="clear-saved-audio-chunks-button">🗑️ Cancella file audio</button>
                     </div>
                     <p id="audioCacheInfo" style="font-size: 12px; color: #888; margin-top: 6px;" data-testid="audio-cache-info"></p>
+                </div>
+            </div>
+
+            <!-- Page: Seed Engine (PR 14) -->
+            <div id="page-seed" class="page" style="display:none;">
+                <div class="page-header">
+                    <h2>🌱 Seed Engine</h2>
+                </div>
+                <!-- Card Modalità -->
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="font-weight:600;display:block;margin-bottom:8px;">Modalità</label>
+                    <label style="display:block;margin-bottom:6px;"><input type="radio" name="seedMode" value="fresh" checked> Da zero (cancella tutto prima)</label>
+                    <label style="display:block;"><input type="radio" name="seedMode" value="append"> Aggiungi all'esistente</label>
+                </div>
+                <!-- Card Quantità -->
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="font-weight:600;display:block;margin-bottom:8px;">Quantità</label>
+                    <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+                        <div class="form-group"><label>Numero pet</label><input type="number" id="seedPetCount" value="10" min="1" max="100"></div>
+                        <div class="form-group"><label>Referti SOAP per pet</label><input type="number" id="seedSoapPerPet" value="3" min="1" max="10"></div>
+                        <div class="form-group"><label>Documenti per pet</label><input type="number" id="seedDocsPerPet" value="2" min="0" max="5"></div>
+                        <div class="form-group"><label>Parametri vitali per pet</label><input type="number" id="seedVitalsPerPet" value="8" min="0" max="30"></div>
+                        <div class="form-group"><label>Farmaci attivi per pet</label><input type="number" id="seedMedsPerPet" value="3" min="0" max="8"></div>
+                        <div class="form-group"><label>Foto per pet</label><input type="number" id="seedPhotosPerPet" value="2" min="0" max="6"></div>
+                        <div class="form-group"><label>Eventi promo per pet</label><input type="number" id="seedPromoEventsPerPet" value="5" min="0" max="20"></div>
+                    </div>
+                    <p id="seedEstimate" style="font-size:12px;color:#666;margin-top:8px;">~30 referti, ~20 documenti — circa 5 minuti con OpenAI</p>
+                </div>
+                <!-- Card Distribuzione specie -->
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="font-weight:600;display:block;margin-bottom:8px;">Distribuzione specie (%)</label>
+                    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                        <div class="form-group"><label>Cani</label><input type="number" id="seedDogPct" value="60" min="0" max="100"></div>
+                        <div class="form-group"><label>Gatti</label><input type="number" id="seedCatPct" value="30" min="0" max="100"></div>
+                        <div class="form-group"><label>Conigli</label><input type="number" id="seedRabbitPct" value="10" min="0" max="100"></div>
+                    </div>
+                </div>
+                <!-- Card Azioni -->
+                <div class="card" style="margin-bottom:15px;">
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <button class="btn btn-primary" id="seedStartBtn" onclick="seedStart()">🚀 Avvia popolamento</button>
+                        <button class="btn btn-danger" id="seedCancelBtn" onclick="seedCancel()" style="display:none;">⏹ Annulla</button>
+                        <button class="btn btn-secondary" onclick="seedWipe()">🗑 Cancella tutto il seed</button>
+                    </div>
+                </div>
+                <!-- Barra progresso -->
+                <div id="seedProgressSection" class="card" style="display:none;margin-bottom:15px;">
+                    <div id="seedProgressBar" class="progress-bar" style="height:20px;background:#e0e0e0;border-radius:10px;overflow:hidden;margin-bottom:8px;"><div class="progress-fill" style="height:100%;background:var(--primary);width:0%;transition:width 0.3s;"></div></div>
+                    <p id="seedPhaseText" style="font-size:13px;color:#333;margin-bottom:8px;">In attesa...</p>
+                    <pre id="seedLogArea" style="background:#f5f5f5;padding:10px;border-radius:6px;max-height:200px;overflow-y:auto;font-size:11px;white-space:pre-wrap;"></pre>
+                </div>
+                <!-- Card Promo (PR 15) -->
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="font-weight:600;display:block;margin-bottom:8px;">📦 Popolamento Promo — Brand e Prodotti</label>
+                    <p style="font-size:12px;color:#666;margin-bottom:10px;">
+                        Inserisci brand. ADA cercherà i siti ufficiali e ti proporrà i prodotti da importare.
+                    </p>
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <input type="text" id="seedBrandInput" placeholder="es. Royal Canin, Hill's, Purina..." style="flex:1;">
+                        <button class="btn btn-primary" onclick="seedSearchBrand()">🔍 Cerca siti</button>
+                    </div>
+                    <div id="seedBrandResults" style="display:none;"></div>
+                    <div style="margin-top:8px;">
+                        <input type="text" id="seedExtraSiteInput" placeholder="Aggiungi URL manualmente..." style="width:70%;">
+                        <button class="btn btn-secondary" onclick="seedAddExtraSite()">➕ Aggiungi</button>
+                    </div>
+                    <button class="btn btn-primary" id="seedScrapeBtn" onclick="seedScrapeSites()" style="display:none;margin-top:10px;">
+                        📥 Estrai prodotti dai siti selezionati
+                    </button>
+                    <div id="seedScrapeResults" style="display:none;"></div>
                 </div>
             </div>
 
@@ -1231,6 +1305,7 @@
       }
     </script>
     <script src="config.js"></script>
+    <script src="app-debug-logger.js"></script>
     <script src="app-loading.js"></script>
     <script src="app-core.js"></script>
     <script src="app-recording.js"></script>
@@ -1249,5 +1324,6 @@
     <script src="sync-engine.js"></script>
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
+    <script src="app-seed.js"></script>
 </body>
 </html>

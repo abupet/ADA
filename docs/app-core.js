@@ -237,6 +237,12 @@ function initNavigation() {
 }
 
 function navigateToPage(page) {
+    // Debug logging (PR 13)
+    if (typeof ADALog !== 'undefined') {
+        var fromPage = localStorage.getItem('ada_current_page') || 'unknown';
+        ADALog.info('CORE', 'navigateToPage', { from: fromPage, to: page, role: typeof getActiveRole === 'function' ? getActiveRole() : 'unknown' });
+    }
+
     // PR 3: Redirect appointment to home
     if (page === 'appointment') page = getDefaultPageForRole();
 
@@ -1398,21 +1404,54 @@ function downloadFile(content, filename, type) {
 
 // Global error logging function
 function logError(context, errorMessage) {
-    if (!debugLogEnabled) return;
-    
-    const now = new Date();
-    const timestamp = now.toLocaleString('it-IT', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
-    
-    const logEntry = `[${timestamp}] ${context}: ${errorMessage}\n`;
-    
-    let existingLog = localStorage.getItem('ADA_LOG') || '';
-    existingLog += logEntry;
-    localStorage.setItem('ADA_LOG', existingLog);
-    
-    console.error(`[ADA LOG] ${context}:`, errorMessage);
+    // Moved to app-debug-logger.js
+}
+
+// --- Sync Diagnostics (PR 13) ---
+function showSyncDiagnostics() {
+    try {
+        if (typeof syncEngine === 'undefined' || !syncEngine.getStatus) {
+            showToast('syncEngine non disponibile', 'error');
+            return;
+        }
+        var status = syncEngine.getStatus();
+        var msg = 'Sync Diagnostics:\n'
+            + '  Pending: ' + (status.pending || 0) + '\n'
+            + '  Pushing: ' + (status.pushing ? 'YES' : 'no') + '\n'
+            + '  Failed: ' + (status.errors ? status.errors.length : 0) + '\n'
+            + '  Last sync: ' + (status.lastSyncTime || 'never') + '\n';
+        if (status.errors && status.errors.length > 0) {
+            msg += '  Last errors:\n';
+            status.errors.slice(-5).forEach(function(e) {
+                msg += '    ' + e.time + ' — ' + e.error + '\n';
+            });
+        }
+        alert(msg);
+    } catch (e) {
+        showToast('Errore diagnostica sync: ' + e.message, 'error');
+    }
+}
+
+function showApiMetrics() {
+    try {
+        if (typeof ADAObservability === 'undefined' || !ADAObservability.getReport) {
+            showToast('ADAObservability non disponibile', 'error');
+            return;
+        }
+        var report = ADAObservability.getReport();
+        var msg = 'API Metrics:\n';
+        if (report && report.endpoints) {
+            Object.keys(report.endpoints).forEach(function(ep) {
+                var d = report.endpoints[ep];
+                msg += '  ' + ep + ': ' + d.count + ' calls, ' + d.errors + ' errors, avg ' + d.avgMs + 'ms\n';
+            });
+        } else {
+            msg += '  (nessun dato disponibile)\n';
+        }
+        alert(msg);
+    } catch (e) {
+        showToast('Errore metriche API: ' + e.message, 'error');
+    }
 }
 
 // Credit exhausted modal

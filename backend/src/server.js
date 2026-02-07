@@ -14,6 +14,7 @@ const { promoRouter } = require("./promo.routes");
 const { requireRole } = require("./rbac.middleware");
 const { adminRouter } = require("./admin.routes");
 const { dashboardRouter } = require("./dashboard.routes");
+const { seedRouter } = require("./seed.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -72,7 +73,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Ada-Role"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Ada-Role", "X-Correlation-Id"],
 };
 
 app.use(cors(corsOptions));
@@ -80,6 +81,13 @@ app.options("*", cors(corsOptions));
 // Higher JSON limit for pet sync (photos are base64 in payload)
 app.use("/api/sync/pets/push", express.json({ limit: "50mb" }));
 app.use(express.json({ limit: "2mb" }));
+
+// --- Correlation ID middleware (PR 13) ---
+app.use(function (req, res, next) {
+    req.correlationId = req.headers['x-correlation-id'] || null;
+    if (req.correlationId) res.setHeader('X-Correlation-Id', req.correlationId);
+    next();
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -255,6 +263,8 @@ function auditLogMiddleware(req, res, next) {
           duration_ms: Date.now() - startTime,
           ip: req.ip,
           user_agent: req.headers["user-agent"],
+          correlation_id: req.correlationId || null,
+          content_length: req.headers['content-length'] || null,
         };
 
         const tenantId = req.promoAuth?.tenantId || req.user?.tenantId || null;
@@ -298,6 +308,8 @@ app.use(promoRouter({ requireAuth }));
 if (process.env.DATABASE_URL) {
   app.use(adminRouter({ requireAuth }));
   app.use(dashboardRouter({ requireAuth }));
+  // --- Seed Engine routes (PR 14) ---
+  app.use(seedRouter({ requireAuth }));
 }
 
 function getOpenAiKey() {
@@ -308,11 +320,28 @@ function getOpenAiKey() {
   return oaKey;
 }
 
+// --- Debug logging helper (PR 13) ---
+function serverLog(level, domain, message, data, req) {
+    if (process.env.ADA_DEBUG_LOG !== 'true') return;
+    var entry = {
+        ts: new Date().toISOString(),
+        level: level,
+        domain: domain,
+        corrId: (req && req.correlationId) || '--------',
+        msg: message
+    };
+    if (data) entry.data = data;
+    console.log(JSON.stringify(entry));
+}
+
 async function proxyOpenAiRequest(res, endpoint, payload) {
   const oaKey = getOpenAiKey();
   if (!oaKey) {
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
+
+  var startMs = Date.now();
+  serverLog('INFO', 'OPENAI', 'request', {endpoint: endpoint, model: (payload || {}).model, maxTokens: (payload || {}).max_tokens}, res.req);
 
   let response;
   try {
@@ -325,8 +354,11 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
       body: JSON.stringify(payload ?? {}),
     });
   } catch (error) {
+    serverLog('ERR', 'OPENAI', 'error', {endpoint: endpoint, error: error.message, latencyMs: Date.now() - startMs}, res.req);
     return res.status(502).json({ error: "OpenAI request failed" });
   }
+
+  serverLog('INFO', 'OPENAI', 'response', {endpoint: endpoint, status: response.status, latencyMs: Date.now() - startMs}, res.req);
 
   const text = await response.text();
   let data;
@@ -405,6 +437,8 @@ app.post("/api/transcribe", upload.single("file"), async (req, res) => {
     return res.status(400).json({ error: "Missing audio file" });
   }
 
+  serverLog('INFO', 'OPENAI', 'whisper request', {audioSizeBytes: req.file.size, audioMime: req.file.mimetype}, req);
+
   const form = new FormData();
   const blob = new Blob([req.file.buffer], {
     type: req.file.mimetype || "application/octet-stream",
@@ -420,6 +454,7 @@ app.post("/api/transcribe", upload.single("file"), async (req, res) => {
     form.append("model", "whisper-1");
   }
 
+  var whisperStart = Date.now();
   let response;
   try {
     response = await fetch(`${openaiBaseUrl}/audio/transcriptions`, {
@@ -430,6 +465,8 @@ app.post("/api/transcribe", upload.single("file"), async (req, res) => {
   } catch (error) {
     return res.status(502).json({ error: "OpenAI request failed" });
   }
+
+  serverLog('INFO', 'OPENAI', 'whisper response', {status: response.status, latencyMs: Date.now() - whisperStart}, req);
 
   const text = await response.text();
   let data;
@@ -443,6 +480,7 @@ app.post("/api/transcribe", upload.single("file"), async (req, res) => {
 });
 
 app.post("/api/tts", async (req, res) => {
+  serverLog('INFO', 'OPENAI', 'tts request', {voice: (req.body || {}).voice, inputLength: ((req.body || {}).input || '').length}, req);
   const oaKey = getOpenAiKey();
   if (!oaKey) {
     if (isMockEnv) {

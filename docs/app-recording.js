@@ -1596,22 +1596,8 @@ async function handleLongTextTestUpload(event) {
 
 // Provide a logDebug helper (more verbose than logError). Uses ADA.log.
 function logDebug(context, message) {
-    try {
-        if (typeof debugLogEnabled === 'undefined' || !debugLogEnabled) return;
-        let msg = message;
-        if (typeof msg !== 'string') {
-            try { msg = JSON.stringify(msg); } catch (e) { msg = String(msg); }
-        }
-        const now = new Date();
-        const timestamp = now.toLocaleString('it-IT', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-        const entry = `[${timestamp}] DEBUG ${context}: ${msg}\n`;
-        let existingLog = localStorage.getItem('ADA_LOG') || '';
-        existingLog += entry;
-        localStorage.setItem('ADA_LOG', existingLog);
-    } catch (e) {}
+    // Moved to app-debug-logger.js
+}
 }
 
 // ============================================
@@ -1621,6 +1607,11 @@ function logDebug(context, message) {
 async function transcribeAudio() {
     // A new transcription implies a new referto draft
     try { if (typeof resetSoapDraftLink === 'function') resetSoapDraftLink(); } catch (e) {}
+
+    if (typeof ADALog !== 'undefined') {
+        ADALog.beginCorrelation('transcribe');
+        ADALog.info('OPENAI', 'transcribeAudio start', {audioSizeBytes: audioBlob ? audioBlob.size : 0, audioType: audioBlob ? audioBlob.type : ''});
+    }
 
     if (!audioBlob || audioBlob.size === 0) {
         showToast('Nessun audio da trascrivere', 'error');
@@ -1665,6 +1656,9 @@ async function transcribeAudio() {
             throw error;
         }
         console.error('Diarization attempt 1 failed:', error);
+        if (typeof ADALog !== 'undefined') {
+            ADALog.warn('OPENAI', 'diarization fallback', {attempt: 1, error: (error && error.message) || String(error)});
+        }
         logError("TRASCRIZIONE", `Tentativo 1 fallito - ${error.message}`);
         
         // Retry once
@@ -1706,6 +1700,9 @@ async function transcribeAudio() {
             );
             
             if (useFallback) {
+                if (typeof ADALog !== 'undefined') {
+                    ADALog.warn('OPENAI', 'diarization fallback', {attempt: 2, error: (error2 && error2.message) || String(error2)});
+                }
                 await transcribeWithWhisperFallback(recordedMinutes);
             } else {
                 document.getElementById('recordingStatus').textContent = '❌ Trascrizione annullata';
@@ -1714,6 +1711,11 @@ async function transcribeAudio() {
         }
     }
     
+    if (typeof ADALog !== 'undefined') {
+        ADALog.info('REC', 'pipeline done', {totalLatencyMs: Math.round(performance.now() - t0), transcriptLengthChars: (document.getElementById('transcriptionText')?.value || '').length, fallbackUsed: !lastTranscriptionDiarized});
+        ADALog.endCorrelation();
+    }
+
     showProgress(false);
     resetTimer();
     audioBlob = null;
@@ -1740,6 +1742,9 @@ async function transcribeDiarizedOpenAI(blob, attemptNum) {
     if (blob instanceof File && blob.name) {
         fd.append('file', blob, blob.name);
         console.log('Using original file:', blob.name, blob.type);
+        if (typeof ADALog !== 'undefined') {
+            ADALog.dbg('OPENAI', 'whisper attempt', {attempt: attemptNum, fileName: blob.name, mimeType: blob.type, fileSizeBytes: blob.size});
+        }
     } else {
         // For recorded blobs, create a File with correct MIME and filename
         const fileName = audioFileName || 'recording.webm';
@@ -1747,6 +1752,9 @@ async function transcribeDiarizedOpenAI(blob, attemptNum) {
         const file = new File([blob], fileName, { type: mimeType });
         fd.append('file', file, fileName);
         console.log('Created file from blob:', fileName, mimeType);
+        if (typeof ADALog !== 'undefined') {
+            ADALog.dbg('OPENAI', 'whisper attempt', {attempt: attemptNum, fileName: fileName, mimeType: mimeType, fileSizeBytes: blob.size});
+        }
     }
 
     // Use native diarization model
@@ -1785,6 +1793,11 @@ async function transcribeDiarizedOpenAI(blob, attemptNum) {
     if (!response.ok) {
         console.error('Transcription error:', response.status, responseText);
 
+        if (typeof ADALog !== 'undefined') {
+            const willRetry = responseText.includes('corrupted or unsupported') || responseText.includes('invalid_value');
+            ADALog.err('OPENAI', 'whisper error', {attempt: attemptNum, status: response.status, errorSnippet: (responseText || '').substring(0, 200), willRetry: willRetry});
+        }
+
         // If audio format issue - try normalization
         if (responseText.includes('corrupted or unsupported') || responseText.includes('invalid_value')) {
             console.log('Audio format issue detected, attempting normalization...');
@@ -1802,6 +1815,10 @@ async function transcribeDiarizedOpenAI(blob, attemptNum) {
 
     const result = JSON.parse(responseText);
     console.log('Diarized transcription result:', result);
+
+    if (typeof ADALog !== 'undefined') {
+        ADALog.perf('OPENAI', 'whisper done', {attempt: attemptNum, latencyMs: Math.round(performance.now() - (typeof t0 !== 'undefined' ? t0 : 0)), status: response.status, resultLengthChars: (result.text || responseText || '').length, segmentsCount: Array.isArray(result.segments) ? result.segments.length : 0});
+    }
 
     // Normalize diarized segments into our internal format
     const rawSegs = Array.isArray(result.segments) ? result.segments : [];
@@ -1838,6 +1855,12 @@ async function transcribeWithNormalizedAudio(originalBlob, speakersConfig) {
         logDebug('NORMALIZE_START', { originalSize: originalBlob.size });
     }
 
+    if (typeof ADALog !== 'undefined') {
+        ADALog.dbg('REC', 'audio normalization start', {inputSizeBytes: originalBlob.size, inputType: originalBlob.type});
+    }
+
+    const _normT0 = performance.now();
+
     try {
         const normalizedWav = await normalizeAudioToWav(originalBlob);
 
@@ -1846,6 +1869,10 @@ async function transcribeWithNormalizedAudio(originalBlob, speakersConfig) {
         }
 
         console.log('Normalized WAV size:', normalizedWav.size);
+
+        if (typeof ADALog !== 'undefined') {
+            ADALog.perf('REC', 'audio normalization done', {outputSizeBytes: normalizedWav.size, latencyMs: Math.round(performance.now() - _normT0)});
+        }
 
         const fd = new FormData();
         fd.append('file', normalizedWav, 'normalized.wav');

@@ -206,6 +206,11 @@ async function generateSOAP(options = {}) {
 
     const t0 = performance.now();
 
+    if (typeof ADALog !== 'undefined') {
+        ADALog.beginCorrelation('soap');
+        ADALog.info('SOAP', 'generateSOAP start', {auto: !!auto, transcriptLength: (document.getElementById('transcriptionText')?.value || '').length});
+    }
+
     const transcriptionTextRaw = document.getElementById('transcriptionText').value;
     const transcriptionText = sanitizeTranscriptionText(transcriptionTextRaw);
     if (!transcriptionText) {
@@ -259,6 +264,12 @@ async function generateSOAP(options = {}) {
         if (typeof navigateToPage === 'function') navigateToPage('soap');
 
         const dt = ((performance.now() - t0) / 1000).toFixed(1);
+
+        if (typeof ADALog !== 'undefined') {
+            ADALog.info('SOAP', 'generateSOAP done', {totalLatencyMs: Math.round(performance.now() - t0), resultValid: true});
+            ADALog.endCorrelation();
+        }
+
         showToast(`Referto SOAP generato in ${dt} s`, 'success');
 
     } catch (error) {
@@ -363,6 +374,12 @@ ISTRUZIONI IMPORTANTI:
             }
         } catch (e) {}
 
+        if (typeof ADALog !== 'undefined') {
+            ADALog.dbg('SOAP', 'structured attempt', {model: 'gpt-4o', maxTokens: undefined});
+        }
+
+        const _soapApiT0 = performance.now();
+
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: {
@@ -391,7 +408,11 @@ ISTRUZIONI IMPORTANTI:
                 });
             }
         } catch (e) {}
-        
+
+        if (typeof ADALog !== 'undefined') {
+            ADALog.perf('SOAP', 'structured response', {latencyMs: Math.round(performance.now() - _soapApiT0), status: response.status});
+        }
+
         if (!response.ok) {
             const errText = await response.text();
             console.error('Strict schema failed:', errText);
@@ -439,6 +460,10 @@ ISTRUZIONI IMPORTANTI:
 // Fallback without strict schema
 async function generateSOAPFallback(inputContent, transcriptionText, segmentsText, options = {}) {
     const signal = (options || {}).signal || undefined;
+
+    if (typeof ADALog !== 'undefined') {
+        ADALog.warn('SOAP', 'fallback', {fallbackLevel: 1, reason: 'strict schema failed'});
+    }
 
     console.log('Using SOAP fallback without strict schema');
     
@@ -495,6 +520,10 @@ async function generateSOAPFallback(inputContent, transcriptionText, segmentsTex
 // Ultra-robust fallback: returns string-based S/O/A/P so the UI is never empty
 async function generateSOAPFallbackTextOnly(transcriptionText, segmentsText, options = {}) {
     const signal = (options || {}).signal || undefined;
+
+    if (typeof ADALog !== 'undefined') {
+        ADALog.warn('SOAP', 'fallback', {fallbackLevel: 2, reason: 'text-only ultra fallback'});
+    }
 
     console.log('Using SOAP ultra fallback (text-only)');
 
