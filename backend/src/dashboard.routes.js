@@ -555,6 +555,67 @@ function dashboardRouter({ requireAuth }) {
     }
   );
 
+  // PATCH /api/superadmin/tenants/:tenantId
+  router.patch(
+    "/api/superadmin/tenants/:tenantId",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const patch = req.body || {};
+
+        const allowed = ["name", "slug", "status", "config"];
+        const sets = [];
+        const params = [tenantId];
+        let idx = 2;
+
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(patch, key)) {
+            if (key === "status") {
+              const validStatuses = ["active", "disabled"];
+              if (!validStatuses.includes(patch[key])) continue;
+            }
+            if (key === "config") {
+              sets.push(`${key} = $${idx}`);
+              params.push(JSON.stringify(patch[key]));
+            } else {
+              sets.push(`${key} = $${idx}`);
+              params.push(patch[key]);
+            }
+            idx++;
+          }
+        }
+
+        if (sets.length === 0) {
+          const { rows } = await pool.query(
+            "SELECT * FROM tenants WHERE tenant_id = $1",
+            [tenantId]
+          );
+          return res.json(rows[0] || {});
+        }
+
+        sets.push("updated_at = NOW()");
+
+        const { rows } = await pool.query(
+          `UPDATE tenants SET ${sets.join(", ")}
+           WHERE tenant_id = $1
+           RETURNING *`,
+          params
+        );
+
+        if (!rows[0]) return res.status(404).json({ error: "not_found" });
+        res.json(rows[0]);
+      } catch (e) {
+        if (e.code === "23505") {
+          return res.status(409).json({ error: "slug_already_exists" });
+        }
+        console.error("PATCH /api/superadmin/tenants/:tenantId error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
   // ==============================
   // SUPER ADMIN: USER MANAGEMENT
   // ==============================
