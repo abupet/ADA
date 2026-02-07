@@ -60,12 +60,14 @@
 
     function _escapeHtml(str) {
         if (typeof str !== 'string') return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // =========================================================================
     // Dashboard
     // =========================================================================
+
+    var _selectedDashboardTenant = null;
 
     function loadAdminDashboard(containerId, period) {
         var container = document.getElementById(containerId);
@@ -73,7 +75,31 @@
 
         _injectAdminStyles();
 
+        var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+
+        // super_admin without tenant: show tenant selector
+        if (!tenantId && jwtRole === 'super_admin') {
+            if (_selectedDashboardTenant) {
+                tenantId = _selectedDashboardTenant;
+            } else {
+                container.innerHTML = '<p style="color:#888;">Caricamento tenant...</p>';
+                fetchApi('/api/superadmin/tenants').then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (!data || !data.tenants || data.tenants.length === 0) {
+                            container.innerHTML = '<p style="color:#888;">Nessun tenant trovato. Creane uno dalla pagina Gestione Tenant.</p>';
+                            return;
+                        }
+                        // Auto-select first tenant
+                        _selectedDashboardTenant = data.tenants[0].tenant_id;
+                        _renderTenantSelector(container, data.tenants, containerId, period);
+                    }).catch(function () {
+                        container.innerHTML = '<p style="color:#dc2626;">Errore nel caricamento tenant.</p>';
+                    });
+                return;
+            }
+        }
+
         if (!tenantId) {
             container.innerHTML = '<p style="color:#888;">Dashboard non disponibile. Accesso admin richiesto.</p>';
             return;
@@ -91,11 +117,52 @@
                     return;
                 }
                 _dashboardData = data;
-                _renderDashboard(container, data, p);
+                // For super_admin, prepend tenant selector
+                if (jwtRole === 'super_admin' && !getJwtTenantId()) {
+                    fetchApi('/api/superadmin/tenants').then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (tData) {
+                            if (tData && tData.tenants) {
+                                var selectorHtml = _buildTenantSelectorHtml(tData.tenants, containerId, p);
+                                container.innerHTML = selectorHtml;
+                                var dashDiv = document.createElement('div');
+                                container.appendChild(dashDiv);
+                                _renderDashboard(dashDiv, data, p);
+                            } else {
+                                _renderDashboard(container, data, p);
+                            }
+                        }).catch(function () {
+                            _renderDashboard(container, data, p);
+                        });
+                } else {
+                    _renderDashboard(container, data, p);
+                }
             })
             .catch(function () {
                 container.innerHTML = '<p style="color:#dc2626;">Errore nel caricamento della dashboard.</p>';
             });
+    }
+
+    function _renderTenantSelector(container, tenants, containerId, period) {
+        container.innerHTML = _buildTenantSelectorHtml(tenants, containerId, period);
+        // Trigger dashboard load for selected tenant
+        loadAdminDashboard(containerId, period);
+    }
+
+    function _buildTenantSelectorHtml(tenants, containerId, period) {
+        var html = '<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;">';
+        html += '<label style="font-weight:600;font-size:14px;">Tenant:</label>';
+        html += '<select id="dashboard-tenant-select" onchange="selectDashboardTenant(this.value, \'' + containerId + '\', \'' + (period || '30d') + '\')" style="padding:8px;border:1px solid #ddd;border-radius:6px;">';
+        tenants.forEach(function (t) {
+            var selected = t.tenant_id === _selectedDashboardTenant ? ' selected' : '';
+            html += '<option value="' + _escapeHtml(t.tenant_id) + '"' + selected + '>' + _escapeHtml(t.name) + ' [' + _escapeHtml(t.slug) + ']</option>';
+        });
+        html += '</select></div>';
+        return html;
+    }
+
+    function selectDashboardTenant(tenantId, containerId, period) {
+        _selectedDashboardTenant = tenantId;
+        loadAdminDashboard(containerId, period);
     }
 
     function _renderDashboard(container, data, period) {
@@ -160,6 +227,7 @@
 
     function exportPromoCsv(period) {
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
         if (!tenantId) return;
 
         var p = period || '30d';
@@ -352,6 +420,173 @@
             .catch(function () {
                 if (results) results.innerHTML = '<p class="error">Errore di rete.</p>';
             });
+    }
+
+    // =========================================================================
+    // Super Admin: Tenant Management
+    // =========================================================================
+
+    var _tenantsData = [];
+
+    function loadSuperadminTenants(containerId) {
+        var container = document.getElementById(containerId || 'superadmin-tenants-content');
+        if (!container) return;
+
+        _injectAdminStyles();
+        container.innerHTML = '<p style="color:#888;">Caricamento tenant...</p>';
+
+        // Load tenants and users
+        Promise.all([
+            fetchApi('/api/superadmin/tenants').then(function (r) { return r.ok ? r.json() : null; }),
+            fetchApi('/api/superadmin/users').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+        ]).then(function (results) {
+            _tenantsData = (results[0] && results[0].tenants) ? results[0].tenants : [];
+            var allUsers = (results[1] && results[1].users) ? results[1].users : [];
+            _renderTenantsPage(container, allUsers);
+        }).catch(function () {
+            container.innerHTML = '<p style="color:#dc2626;">Errore nel caricamento tenant.</p>';
+        });
+    }
+
+    function _renderTenantsPage(container, allUsers) {
+        var html = [];
+
+        // Create tenant button
+        html.push('<div style="margin-bottom:16px;">');
+        html.push('<button class="btn btn-primary" onclick="showCreateTenantForm()">+ Nuovo Tenant</button>');
+        html.push('</div>');
+
+        // Create tenant form (hidden)
+        html.push('<div id="create-tenant-form" style="display:none; margin-bottom:20px; padding:16px; background:#f8fafc; border-radius:10px; border:1px solid #e2e8f0;">');
+        html.push('<h4 style="margin:0 0 12px; color:#1e3a5f;">Nuovo Tenant</h4>');
+        html.push('<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Nome *</label><input type="text" id="newTenantName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Nome Brand"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Slug *</label><input type="text" id="newTenantSlug" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="nome-brand"></div>');
+        html.push('</div>');
+        html.push('<div style="margin-top:12px;">');
+        html.push('<button class="btn btn-success" onclick="createTenant()">Crea</button> ');
+        html.push('<button class="btn btn-secondary" onclick="hideCreateTenantForm()">Annulla</button>');
+        html.push('</div>');
+        html.push('</div>');
+
+        // Tenants table
+        if (_tenantsData.length === 0) {
+            html.push('<p style="color:#888;">Nessun tenant trovato.</p>');
+        } else {
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Nome</th><th>Slug</th><th>Stato</th><th>Utenti associati</th><th>Azioni</th></tr>');
+            _tenantsData.forEach(function (tenant) {
+                var statusBadge = tenant.status === 'active'
+                    ? '<span style="color:#16a34a;font-weight:600;">attivo</span>'
+                    : '<span style="color:#dc2626;font-weight:600;">disabilitato</span>';
+
+                // Find users assigned to this tenant
+                var assignedUsers = allUsers.filter(function (u) {
+                    return Array.isArray(u.tenants) && u.tenants.some(function (t) { return t.tenant_id === tenant.tenant_id; });
+                });
+                var usersHtml = assignedUsers.length > 0
+                    ? assignedUsers.map(function (u) { return _escapeHtml(u.email); }).join(', ')
+                    : '<span style="color:#999;">nessuno</span>';
+
+                html.push('<tr>');
+                html.push('<td>' + _escapeHtml(tenant.name) + '</td>');
+                html.push('<td><code>' + _escapeHtml(tenant.slug) + '</code></td>');
+                html.push('<td>' + statusBadge + '</td>');
+                html.push('<td style="font-size:12px;">' + usersHtml + '</td>');
+                html.push('<td style="white-space:nowrap;">');
+
+                // Toggle status
+                if (tenant.status === 'active') {
+                    html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="toggleTenantStatus(\'' + _escapeHtml(tenant.tenant_id) + '\', \'disabled\')">Disabilita</button> ');
+                } else {
+                    html.push('<button class="btn btn-success" style="padding:4px 8px;font-size:11px;" onclick="toggleTenantStatus(\'' + _escapeHtml(tenant.tenant_id) + '\', \'active\')">Attiva</button> ');
+                }
+
+                // Edit name
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="promptEditTenant(\'' + _escapeHtml(tenant.tenant_id) + '\', \'' + _escapeHtml(tenant.name) + '\')">Modifica</button>');
+
+                html.push('</td>');
+                html.push('</tr>');
+            });
+            html.push('</table>');
+        }
+
+        container.innerHTML = html.join('');
+    }
+
+    function showCreateTenantForm() {
+        var form = document.getElementById('create-tenant-form');
+        if (form) form.style.display = '';
+    }
+
+    function hideCreateTenantForm() {
+        var form = document.getElementById('create-tenant-form');
+        if (form) form.style.display = 'none';
+    }
+
+    function createTenant() {
+        var name = (document.getElementById('newTenantName') || {}).value || '';
+        var slug = (document.getElementById('newTenantSlug') || {}).value || '';
+
+        if (!name || !slug) {
+            if (typeof showToast === 'function') showToast('Nome e slug obbligatori.', 'error');
+            return;
+        }
+
+        fetchApi('/api/superadmin/tenants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, slug: slug })
+        }).then(function (r) {
+            if (r.status === 409) {
+                if (typeof showToast === 'function') showToast('Slug gia esistente.', 'error');
+                return;
+            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function (data) {
+            if (!data) return;
+            if (typeof showToast === 'function') showToast('Tenant creato: ' + data.name, 'success');
+            hideCreateTenantForm();
+            loadSuperadminTenants();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore nella creazione tenant.', 'error');
+        });
+    }
+
+    function toggleTenantStatus(tenantId, newStatus) {
+        fetchApi('/api/superadmin/tenants/' + encodeURIComponent(tenantId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Stato tenant aggiornato.', 'success');
+            loadSuperadminTenants();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore aggiornamento stato.', 'error');
+        });
+    }
+
+    function promptEditTenant(tenantId, currentName) {
+        var newName = prompt('Nuovo nome per il tenant:', currentName);
+        if (!newName || newName === currentName) return;
+
+        fetchApi('/api/superadmin/tenants/' + encodeURIComponent(tenantId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Tenant aggiornato.', 'success');
+            loadSuperadminTenants();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore aggiornamento tenant.', 'error');
+        });
     }
 
     // =========================================================================
@@ -579,18 +814,25 @@
     // Expose public API
     // =========================================================================
 
-    global.loadAdminDashboard    = loadAdminDashboard;
-    global.exportPromoCsv        = exportPromoCsv;
-    global.initCsvWizard         = initCsvWizard;
-    global.handleCsvUpload       = handleCsvUpload;
-    global.wizardDryRun          = wizardDryRun;
-    global.wizardImport          = wizardImport;
-    global.loadSuperadminUsers   = loadSuperadminUsers;
-    global.showCreateUserForm    = showCreateUserForm;
-    global.hideCreateUserForm    = hideCreateUserForm;
-    global.createUser            = createUser;
-    global.toggleUserStatus      = toggleUserStatus;
-    global.promptResetPassword   = promptResetPassword;
-    global.promptAssignTenant    = promptAssignTenant;
+    global.loadAdminDashboard     = loadAdminDashboard;
+    global.selectDashboardTenant  = selectDashboardTenant;
+    global.exportPromoCsv         = exportPromoCsv;
+    global.initCsvWizard          = initCsvWizard;
+    global.handleCsvUpload        = handleCsvUpload;
+    global.wizardDryRun           = wizardDryRun;
+    global.wizardImport           = wizardImport;
+    global.loadSuperadminTenants  = loadSuperadminTenants;
+    global.showCreateTenantForm   = showCreateTenantForm;
+    global.hideCreateTenantForm   = hideCreateTenantForm;
+    global.createTenant           = createTenant;
+    global.toggleTenantStatus     = toggleTenantStatus;
+    global.promptEditTenant       = promptEditTenant;
+    global.loadSuperadminUsers    = loadSuperadminUsers;
+    global.showCreateUserForm     = showCreateUserForm;
+    global.hideCreateUserForm     = hideCreateUserForm;
+    global.createUser             = createUser;
+    global.toggleUserStatus       = toggleUserStatus;
+    global.promptResetPassword    = promptResetPassword;
+    global.promptAssignTenant     = promptAssignTenant;
 
 })(typeof window !== 'undefined' ? window : this);
