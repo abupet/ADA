@@ -91,6 +91,13 @@ ADA è una SPA vanilla JS con backend Express.
 
 ## 5. Regole funzionali non negoziabili
 
+### Versionamento (regola vincolante)
+- La versione dell'applicazione segue il formato **`vX.Y.Z`**
+- **Ogni volta** che una qualunque modifica del codice viene mergata in GitHub, la versione **deve** cambiare
+- Solo il proprietario del progetto può decidere quando e come modificare **X** o **Y**; in quel caso **Z = 0**
+- Se non viene data indicazione diversa, si incrementa **Z di 1**
+- La versione corrente è indicata in questo file (sezione 2) e in `RELEASE_NOTES.md`
+
 ### Release notes
 - Deve esistere **un solo** file `RELEASE_NOTES.md` (cumulativo)
 - Ogni release aggiunge una nuova sezione `## vX.Y.Z`
