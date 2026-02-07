@@ -119,13 +119,19 @@ async function callOpenAi(openAiKey, messages, options = {}) {
 async function wipeSeededData(pool) {
   const results = {};
 
-  // FK-safe ordering: children before parents
+  // FK-safe ordering: children before parents (matches spec §6 Wipe SQL)
   const tables = [
-    { name: 'promo_events', where: "metadata::text LIKE '%seeded%'" },
+    { name: 'promo_events', where: "metadata->>'seeded' = 'true'" },
+    { name: 'vet_flags', where: "reason LIKE '%[seed]%'" },
+    { name: 'campaign_items', where: "campaign_id IN (SELECT campaign_id FROM promo_campaigns WHERE utm_campaign LIKE 'seed_%')" },
+    { name: 'promo_campaigns', where: "utm_campaign LIKE 'seed_%'" },
+    { name: 'explanation_cache', where: "cache_key LIKE 'seed_%'" },
+    { name: 'promo_items', where: "promo_item_id LIKE 'seed-%'" },
     { name: 'pet_tags', where: "pet_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
+    { name: 'consents', where: "owner_user_id LIKE 'seed-%'" },
     { name: 'documents', where: "pet_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
+    { name: 'changes', where: "entity_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
     { name: 'pet_changes', where: "pet_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
-    { name: 'consents', where: "owner_user_id = 'ada-user' AND consent_type IN ('marketing_global','clinical_tags','marketing_brand')" },
     { name: 'pets', where: "notes LIKE '%[seed]%'" },
     { name: 'tenant_budgets', where: "tenant_id = 'seed-tenant'" },
     { name: 'tenants', where: "tenant_id = 'seed-tenant'" },
