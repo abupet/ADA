@@ -38,10 +38,10 @@ function dashboardRouter({ requireAuth }) {
         );
         stats.impressions = parseInt(impressionResult.rows[0]?.total || 0);
 
-        // Total clicks (cta_click + info_click)
+        // Total clicks (cta_click + info_click + detail_view)
         const clickResult = await pool.query(
           `SELECT COUNT(*) as total FROM promo_events
-           WHERE tenant_id = $1 AND event_type IN ('cta_click', 'info_click')
+           WHERE tenant_id = $1 AND event_type IN ('cta_click', 'info_click', 'detail_view')
            AND created_at >= NOW() - ($2 || ' days')::INTERVAL`,
           [tenantId, String(intervalDays)]
         );

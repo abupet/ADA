@@ -116,6 +116,9 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
     // 3. Fetch candidate promo_items
     let candidates = [];
     try {
+      // Use a subquery to prefer campaign rows matching the current context.
+      // DISTINCT ON picks the first row per item; ORDER BY puts context-matching
+      // campaigns first (via the bool sort), then NULLs (no campaign), then others.
       const itemsResult = await pool.query(
         `SELECT DISTINCT ON (pi.promo_item_id)
            pi.*, pc.campaign_id, pc.frequency_cap, pc.utm_campaign, pc.contexts
@@ -126,7 +129,10 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
            AND (pc.start_date IS NULL OR pc.start_date <= CURRENT_DATE)
            AND (pc.end_date IS NULL OR pc.end_date >= CURRENT_DATE)
          WHERE pi.status = 'published'
-         ORDER BY pi.promo_item_id, pi.priority DESC`
+         ORDER BY pi.promo_item_id,
+                  (pc.contexts IS NOT NULL AND $1 = ANY(pc.contexts)) DESC NULLS LAST,
+                  pi.priority DESC`,
+        [ctx]
       );
       candidates = itemsResult.rows;
     } catch (e) {

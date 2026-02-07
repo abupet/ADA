@@ -34,6 +34,7 @@
     var _eventBuffer = [];
     var _flushTimer = null;
     var _sessionImpressions = {}; // { "context:petId": count }
+    var _lastRenderedPromoItemId = null; // tracks last rendered promo for vet flag
 
     // =========================================================================
     // Mock data (backward compat)
@@ -451,6 +452,19 @@
         cardEl.innerHTML = html.join('\n');
         cardEl.classList.remove('promo-card--hidden');
 
+        // Store promo item id for vet flag integration
+        if (productId) {
+            cardEl.setAttribute('data-promo-item-id', productId);
+            _lastRenderedPromoItemId = productId;
+            // Also propagate to any vet-flag containers on the page
+            try {
+                var vetFlagContainers = document.querySelectorAll('[id$="-vet-flag-container"]');
+                for (var vi = 0; vi < vetFlagContainers.length; vi++) {
+                    vetFlagContainers[vi].setAttribute('data-promo-item-id', productId);
+                }
+            } catch (_) { /* ignore */ }
+        }
+
         // Track impression with IntersectionObserver (visible >50% for >1s)
         _trackImpressionWithObserver(cardEl, productId, petId, rec, role, context);
 
@@ -474,7 +488,7 @@
 
         if (infoBtn) {
             infoBtn.addEventListener('click', function () {
-                trackPromoEvent('detail_view', productId, petId, {
+                trackPromoEvent('info_click', productId, petId, {
                     name: rec.name, role: role, context: context
                 });
                 // Toggle detail view
@@ -684,8 +698,8 @@
                 var reason = prompt('Motivo della segnalazione (opzionale):');
                 if (reason === null) return; // cancelled
 
-                // Get current promo item id from last rendered card
-                var promoItemId = container.getAttribute('data-promo-item-id');
+                // Get current promo item id from container attribute or last rendered card
+                var promoItemId = container.getAttribute('data-promo-item-id') || _lastRenderedPromoItemId;
                 if (!promoItemId) {
                     if (_fnExists('showToast')) showToast('Nessuna promo attiva da segnalare.', 'info');
                     return;
