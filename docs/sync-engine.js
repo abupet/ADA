@@ -991,6 +991,13 @@
         var pushPromise = hasPending ? pushAll() : Promise.resolve();
         return pushPromise.then(function () {
           return pull();
+        }).then(function () {
+          // Also trigger pets-specific pull so pet changes from pet_changes table are synced
+          try {
+            if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+              window.ADA_PetsSync.pullPetsIfOnline();
+            }
+          } catch (e) { /* silent */ }
         });
       })
       .catch(function () { /* silent */ });

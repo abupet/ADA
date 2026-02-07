@@ -78,6 +78,7 @@ const ID_MAP_STORE_NAME = 'id_map';
 // pull throttling / in-flight (used by auto triggers and forced manual sync)
 let __petsPullLastAt = 0;
 let __petsPullInFlight = false;
+let __petsPullPromise = null;
 const __PETS_PULL_THROTTLE_MS = 30_000;
 
 
@@ -752,27 +753,47 @@ async function pullPetsIfOnline(options) {
     const force = !!(options && options.force);
     const returnStats = !!(options && options._returnStats);
     const stats = { upserted: 0, deleted: 0 };
+    const _log = (typeof ADALog !== 'undefined') ? ADALog : null;
 
     // Early exit checks (before setting in-flight flag)
-    if (__petsPullInFlight) return returnStats ? stats : undefined;
+    if (__petsPullInFlight) {
+        if (_log) _log.info('PETS', 'pull: skip (in-flight)', {force, returnStats});
+        // If caller needs stats, wait for the in-flight pull and return its real stats
+        if (returnStats && __petsPullPromise) {
+            try {
+                const inflightResult = await __petsPullPromise;
+                return inflightResult != null ? inflightResult : stats;
+            } catch (e) {}
+        }
+        return returnStats ? stats : undefined;
+    }
     const now = Date.now();
-    if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) return returnStats ? stats : undefined;
+    if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) {
+        if (_log) _log.info('PETS', 'pull: skip (throttled)', {msSinceLast: now - __petsPullLastAt});
+        return returnStats ? stats : undefined;
+    }
 
     // Check auth before setting flag (prevents smoke-test flakiness)
     try {
         if (typeof getAuthToken === 'function') {
             const t = getAuthToken();
-            if (!t) return;
+            if (!t) { if (_log) _log.warn('PETS', 'pull: skip (no auth token)'); return; }
         }
-    } catch (e) { return; }
+    } catch (e) { if (_log) _log.warn('PETS', 'pull: skip (auth error)'); return; }
 
-    if (!navigator.onLine) return;
-    if (typeof fetchApi !== 'function') return;
+    if (!navigator.onLine) { if (_log) _log.info('PETS', 'pull: skip (offline)'); return; }
+    if (typeof fetchApi !== 'function') { if (_log) _log.warn('PETS', 'pull: skip (no fetchApi)'); return; }
 
-    // Set flag and use try/finally to guarantee reset
+    // Set flag, store promise for race-condition protection, use try/finally to guarantee reset
     __petsPullLastAt = now;
     __petsPullInFlight = true;
+    // Store the work promise so concurrent callers (e.g. manual sync) can await it
+    const workPromise = _doPetsPull(force, returnStats, stats, _log);
+    __petsPullPromise = workPromise;
+    return workPromise;
+}
 
+async function _doPetsPull(force, returnStats, stats, _log) {
     try {
         const device_id = await getOrCreateDeviceId();
         const cursor = await getLastPetsCursor();
@@ -786,23 +807,34 @@ async function pullPetsIfOnline(options) {
         const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
         const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
 
+        if (_log) _log.info('PETS', 'pull: start', {cursor: cursor || 0, url: primaryUrl});
+
         let resp = null;
         try {
             resp = await fetchApi(primaryUrl, { method: 'GET' });
         } catch (e) {
+            if (_log) _log.warn('PETS', 'pull: primary fetch error', {error: String(e)});
             resp = null;
         }
         if (!resp || !resp.ok) {
+            if (_log) _log.warn('PETS', 'pull: primary failed, trying fallback', {status: resp?.status});
             try {
                 resp = await fetchApi(fallbackUrl, { method: 'GET' });
             } catch (e) {
+                if (_log) _log.warn('PETS', 'pull: fallback fetch error', {error: String(e)});
                 return; // silent
             }
-            if (!resp || !resp.ok) return;
+            if (!resp || !resp.ok) {
+                if (_log) _log.warn('PETS', 'pull: fallback also failed', {status: resp?.status});
+                return;
+            }
         }
 
         let data = null;
-        try { data = await resp.json(); } catch (e) { return; }
+        try { data = await resp.json(); } catch (e) {
+            if (_log) _log.warn('PETS', 'pull: json parse error', {error: String(e)});
+            return;
+        }
 
         const items =
             Array.isArray(data) ? data :
@@ -812,6 +844,7 @@ async function pullPetsIfOnline(options) {
             [];
 
         const pulled = unwrapPetsPullResponse(data);
+        if (_log) _log.info('PETS', 'pull: received', {changesCount: (data?.changes || []).length, upserts: (pulled.upserts || []).length, deletes: (pulled.deletes || []).length, nextCursor: data?.next_cursor});
         if (pulled.deletes && pulled.deletes.length) {
             for (const delId of pulled.deletes) { try { await deletePetById(delId); stats.deleted++; } catch(e) {} }
         }
@@ -822,7 +855,9 @@ async function pullPetsIfOnline(options) {
             await applyRemotePets(pulled.upserts);
             const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
             if (nextCursor) await setLastPetsCursor(nextCursor);
+            if (_log) _log.info('PETS', 'pull: complete', {upserted: stats.upserted, deleted: stats.deleted, cursor: nextCursor || 0});
         } catch (applyError) {
+            if (_log) _log.warn('PETS', 'pull: applyRemotePets failed', {error: String(applyError)});
             console.warn('pullPetsIfOnline: applyRemotePets failed, cursor not updated', applyError);
             stats.upserted = 0;
         }
@@ -860,6 +895,7 @@ async function pullPetsIfOnline(options) {
         } catch (e) {}
     } finally {
         __petsPullInFlight = false;
+        __petsPullPromise = null;
     }
     return returnStats ? stats : undefined;
 }
