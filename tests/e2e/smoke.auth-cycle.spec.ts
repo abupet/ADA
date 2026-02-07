@@ -25,7 +25,8 @@ test.describe("Auth cycle", () => {
     if (await logoutButton.count() > 0) {
       await logoutButton.first().click();
 
-      // Should see the login screen again
+      // Should see the login screen again (email + password fields)
+      await expect(page.getByTestId("email-input")).toBeVisible({ timeout: 10_000 });
       await expect(page.locator("#passwordInput")).toBeVisible({ timeout: 10_000 });
 
       // 3) Re-login

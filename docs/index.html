@@ -20,9 +20,10 @@
             <h1>ADA</h1>
             <p>AI Driven AbuPet</p>
             <p id="loginVersion" class="login-version" style="position:absolute; bottom:10px; right:15px; font-size:11px; color:#fff; margin:0; opacity:0.7;"></p>
+            <input type="email" id="emailInput" placeholder="Email" data-testid="email-input" onkeypress="if(event.key==='Enter')document.getElementById('passwordInput').focus()">
             <input type="password" id="passwordInput" placeholder="Password" onkeypress="if(event.key==='Enter')login()">
             <button class="btn btn-primary" onclick="login()" data-testid="login-button">Accedi</button>
-            <p id="loginError" class="error" style="display:none;" data-testid="login-error">Password errata</p>
+            <p id="loginError" class="error" style="display:none;" data-testid="login-error">Credenziali non valide</p>
         </div>
     </div>
 

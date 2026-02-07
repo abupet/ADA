@@ -45,30 +45,63 @@ function _extractJsonArray(text) {
 // ============================================
 
 async function login() {
+    const emailEl = document.getElementById('emailInput');
+    const email = emailEl ? emailEl.value.trim() : '';
     const password = document.getElementById('passwordInput').value;
     let token = '';
+    let loginData = null;
+
     try {
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-        });
-        if (response.ok) {
-            const data = await response.json();
-            token = data?.token || '';
+        if (email) {
+            // V2: multi-user login with email + password
+            const response = await fetch(`${API_BASE_URL}/auth/login/v2`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            if (response.ok) {
+                loginData = await response.json();
+                token = loginData?.token || '';
+            } else if (response.status === 503) {
+                // Database not configured — fall back to v1
+                const fallback = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                if (fallback.ok) {
+                    loginData = await fallback.json();
+                    token = loginData?.token || '';
+                }
+            }
+        } else {
+            // V1: legacy single-password login
+            const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            if (response.ok) {
+                loginData = await response.json();
+                token = loginData?.token || '';
+            }
         }
     } catch (e) {}
 
     if (token) {
         setAuthToken(token);
-        const sessionKey = btoa(password + ':' + Date.now());
+        const sessionKey = btoa((email || 'legacy') + ':' + Date.now());
         localStorage.setItem('ada_session', sessionKey);
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContainer').classList.add('active');
         loadData();
         initApp();
     } else {
-        document.getElementById('loginError').style.display = 'block';
+        const loginError = document.getElementById('loginError');
+        if (loginError) {
+            loginError.textContent = email ? 'Email o password non validi' : 'Password errata';
+            loginError.style.display = 'block';
+        }
     }
 }
 
@@ -106,6 +139,11 @@ function handleAuthFailure() {
         loginError.textContent = 'Sessione scaduta. Accedi di nuovo.';
         loginError.style.display = 'block';
     }
+    // Clear login form fields
+    const emailInput = document.getElementById('emailInput');
+    if (emailInput) emailInput.value = '';
+    const passwordInput = document.getElementById('passwordInput');
+    if (passwordInput) passwordInput.value = '';
 }
 
 // ============================================
