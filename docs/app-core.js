@@ -850,7 +850,21 @@ function saveVetName(value) {
 }
 
 function initVetNameSetting() {
-    // vetNameInput has been removed; nothing to do
+    // If JWT has display_name, the fallback input is hidden (renderAccountInfo handles it).
+    // Otherwise, populate the fallback input from localStorage so users can set their name.
+    var elInput = document.getElementById('vetNameFallbackInput');
+    if (elInput) {
+        elInput.value = (localStorage.getItem(ADA_VET_NAME_KEY) || '').trim();
+    }
+}
+
+function saveVetNameFromAccount() {
+    var elInput = document.getElementById('vetNameFallbackInput');
+    if (!elInput) return;
+    var val = elInput.value.trim();
+    saveVetName(val);
+    var elName = document.getElementById('accountDisplayName');
+    if (elName) elName.textContent = val || '—';
 }
 
 // ============================================
@@ -859,7 +873,7 @@ function initVetNameSetting() {
 
 function renderAccountInfo() {
     var email = typeof getJwtEmail === 'function' ? getJwtEmail() : null;
-    var name = typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : null;
+    var jwtName = typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : null;
     var role = typeof getJwtRole === 'function' ? getJwtRole() : null;
     var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
 
@@ -868,9 +882,21 @@ function renderAccountInfo() {
     var elRole = document.getElementById('accountRole');
     var elTenantRow = document.getElementById('accountTenantRow');
     var elTenant = document.getElementById('accountTenant');
+    var elNameEditRow = document.getElementById('accountNameEditRow');
 
     if (elEmail) elEmail.textContent = email || '—';
-    if (elName) elName.textContent = name || '—';
+
+    // If JWT provides display_name, show it read-only and hide the fallback input.
+    // Otherwise show the localStorage-backed fallback input so users can set their name.
+    var hasJwtName = jwtName && jwtName.trim();
+    if (hasJwtName) {
+        if (elName) elName.textContent = jwtName.trim();
+        if (elNameEditRow) elNameEditRow.style.display = 'none';
+    } else {
+        var fallback = (localStorage.getItem(ADA_VET_NAME_KEY) || '').trim();
+        if (elName) elName.textContent = fallback || '—';
+        if (elNameEditRow) elNameEditRow.style.display = '';
+    }
 
     var roleLabels = {
         'vet': 'Veterinario',

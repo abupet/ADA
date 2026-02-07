@@ -886,13 +886,20 @@
                 <div id="settings-consent-container"></div>
 
                 <!-- Account Info Card (visible to all users) -->
-                <div class="card" id="settingsAccountCard">
+                <div class="card" id="settingsAccountCard" data-testid="account-info-card">
                     <h3>Il mio Account</h3>
                     <div style="display:grid; grid-template-columns:auto 1fr; gap:6px 12px; margin-bottom:12px; font-size:14px;">
                         <span style="color:#888;">Email:</span>
                         <span id="accountEmail" style="font-weight:500;">—</span>
                         <span style="color:#888;">Nome:</span>
                         <span id="accountDisplayName" style="font-weight:500;">—</span>
+                        <div id="accountNameEditRow" style="display:none; grid-column:1/-1;">
+                            <label style="color:#888; font-size:13px;">Nome veterinario:</label>
+                            <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+                                <input type="text" id="vetNameFallbackInput" placeholder="Inserisci il tuo nome" style="flex:1; padding:6px 10px; border:1px solid #ddd; border-radius:6px; font-size:14px;" data-testid="vet-name-fallback-input">
+                                <button class="btn btn-secondary" onclick="saveVetNameFromAccount()" style="padding:6px 12px; font-size:13px;" data-testid="save-vet-name-button">Salva</button>
+                            </div>
+                        </div>
                         <span style="color:#888;">Ruolo:</span>
                         <span id="accountRole" style="font-weight:500;">—</span>
                         <span id="accountTenantRow" style="color:#888; display:none;">Tenant:</span>
