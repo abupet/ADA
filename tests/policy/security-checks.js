@@ -248,6 +248,7 @@
     const dashboardRoutesPath = path.resolve(__dirname, "../../backend/src/dashboard.routes.js");
 
     var checkedFiles = 0;
+    var localFails = 0;
 
     [adminRoutesPath, dashboardRoutesPath].forEach(function (filePath) {
       if (!fs.existsSync(filePath)) return;
@@ -259,6 +260,7 @@
       // Check that requireRole is imported/used
       if (!content.includes("requireRole")) {
         fail(CHECK, fileName + " does not use requireRole — admin routes must have RBAC");
+        localFails++;
         return;
       }
 
@@ -274,13 +276,14 @@
         // Every admin route must have requireRole in its middleware chain
         if (!routeArea.includes("requireRole")) {
           fail(CHECK, fileName + ": route " + pathStr + " missing requireRole");
+          localFails++;
         }
       }
     });
 
     if (checkedFiles === 0) {
       pass(CHECK, "Admin/dashboard route files not found (skipped)");
-    } else if (failures === 0 || !secretHits.length) {
+    } else if (localFails === 0) {
       pass(CHECK, "Admin routes use requireRole RBAC enforcement");
     }
   })();
