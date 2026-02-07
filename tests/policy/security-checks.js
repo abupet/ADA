@@ -239,6 +239,93 @@
   })();
 
   // ---------------------------------------------------------------------------
+  // SEC-07  Admin routes use requireRole (RBAC enforcement)
+  // ---------------------------------------------------------------------------
+
+  (function checkAdminRoutesRBAC() {
+    const CHECK = "SEC-07";
+    const adminRoutesPath = path.resolve(__dirname, "../../backend/src/admin.routes.js");
+    const dashboardRoutesPath = path.resolve(__dirname, "../../backend/src/dashboard.routes.js");
+
+    var checkedFiles = 0;
+
+    [adminRoutesPath, dashboardRoutesPath].forEach(function (filePath) {
+      if (!fs.existsSync(filePath)) return;
+      checkedFiles++;
+
+      var content = fs.readFileSync(filePath, "utf8");
+      var fileName = path.basename(filePath);
+
+      // Check that requireRole is imported/used
+      if (!content.includes("requireRole")) {
+        fail(CHECK, fileName + " does not use requireRole — admin routes must have RBAC");
+        return;
+      }
+
+      // Check that all router.get/post/put/patch/delete include requireRole
+      var routeRx = /router\.(get|post|put|patch|delete)\s*\(\s*["'][^"']+["']/g;
+      var match;
+      while ((match = routeRx.exec(content)) !== null) {
+        // Get the full route definition line area (next 200 chars)
+        var routeArea = content.slice(match.index, Math.min(content.length, match.index + 300));
+        var routePath = match[0].match(/["']([^"']+)["']/);
+        var pathStr = routePath ? routePath[1] : "unknown";
+
+        // Every admin route must have requireRole in its middleware chain
+        if (!routeArea.includes("requireRole")) {
+          fail(CHECK, fileName + ": route " + pathStr + " missing requireRole");
+        }
+      }
+    });
+
+    if (checkedFiles === 0) {
+      pass(CHECK, "Admin/dashboard route files not found (skipped)");
+    } else if (failures === 0 || !secretHits.length) {
+      pass(CHECK, "Admin routes use requireRole RBAC enforcement");
+    }
+  })();
+
+  // ---------------------------------------------------------------------------
+  // SEC-08  Consent endpoints validate input types and statuses
+  // ---------------------------------------------------------------------------
+
+  (function checkConsentValidation() {
+    const CHECK = "SEC-08";
+    const promoRoutesPath = path.resolve(__dirname, "../../backend/src/promo.routes.js");
+
+    if (!fs.existsSync(promoRoutesPath)) {
+      pass(CHECK, "promo.routes.js not found (skipped)");
+      return;
+    }
+
+    var content = fs.readFileSync(promoRoutesPath, "utf8");
+
+    // Check that PUT /api/promo/consent validates consent_type
+    var hasValidTypes = content.includes("validTypes") || content.includes("valid_types");
+    var hasValidStatuses = content.includes("validStatuses") || content.includes("valid_statuses");
+
+    if (!hasValidTypes) {
+      fail(CHECK, "promo.routes.js: consent endpoint missing consent_type validation");
+    }
+    if (!hasValidStatuses) {
+      fail(CHECK, "promo.routes.js: consent endpoint missing status validation");
+    }
+
+    // Check that POST /api/promo/consent/ack also validates
+    var ackSection = content.indexOf("/api/promo/consent/ack");
+    if (ackSection > -1) {
+      var ackArea = content.slice(ackSection, Math.min(content.length, ackSection + 800));
+      if (!ackArea.includes("validTypes") && !ackArea.includes("valid_types")) {
+        fail(CHECK, "promo.routes.js: consent/ack endpoint missing consent_type validation");
+      }
+    }
+
+    if (hasValidTypes && hasValidStatuses) {
+      pass(CHECK, "Consent endpoints validate input types and statuses");
+    }
+  })();
+
+  // ---------------------------------------------------------------------------
   // Summary
   // ---------------------------------------------------------------------------
 
