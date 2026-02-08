@@ -398,6 +398,78 @@ function adminRouter({ requireAuth }) {
     }
   );
 
+  // ==============================
+  // CAMPAIGN <-> PROMO ITEM LINKS
+  // ==============================
+
+  // GET campaign linked items
+  router.get(
+    "/api/admin/:tenantId/campaigns/:campaignId/items",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { campaignId } = req.params;
+        const { rows } = await pool.query(
+          `SELECT pi.promo_item_id, pi.name, pi.category, pi.species, pi.status
+           FROM campaign_items ci
+           JOIN promo_items pi ON pi.promo_item_id = ci.promo_item_id
+           WHERE ci.campaign_id = $1
+           ORDER BY pi.name`,
+          [campaignId]
+        );
+        res.json({ items: rows });
+      } catch (e) {
+        console.error("GET campaign items error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST link item to campaign
+  router.post(
+    "/api/admin/:tenantId/campaigns/:campaignId/items",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { campaignId } = req.params;
+        const { promo_item_id } = req.body || {};
+        if (!promo_item_id) return res.status(400).json({ error: "promo_item_id_required" });
+        await pool.query(
+          "INSERT INTO campaign_items (campaign_id, promo_item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [campaignId, promo_item_id]
+        );
+        await _auditLog(pool, req.promoAuth, "campaign.link_item", campaignId, "campaign", { promo_item_id });
+        res.json({ ok: true });
+      } catch (e) {
+        console.error("POST campaign link item error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // DELETE unlink item from campaign
+  router.delete(
+    "/api/admin/:tenantId/campaigns/:campaignId/items/:itemId",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { campaignId, itemId } = req.params;
+        await pool.query(
+          "DELETE FROM campaign_items WHERE campaign_id = $1 AND promo_item_id = $2",
+          [campaignId, itemId]
+        );
+        await _auditLog(pool, req.promoAuth, "campaign.unlink_item", campaignId, "campaign", { promo_item_id: itemId });
+        res.json({ ok: true });
+      } catch (e) {
+        console.error("DELETE campaign unlink item error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
   return router;
 }
 

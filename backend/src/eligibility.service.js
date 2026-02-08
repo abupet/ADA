@@ -7,7 +7,7 @@ function serverLog(level, domain, message, data, req) {
     console.log(JSON.stringify({ts: new Date().toISOString(), level, domain, corrId: (req && req.correlationId) || '--------', msg: message, data: data || undefined}));
 }
 
-const { computeTags } = require("./tag.service");
+const { computeTags, normalizeSpecies } = require("./tag.service");
 const {
   getEffectiveConsent,
   isMarketingAllowed,
@@ -93,17 +93,29 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
 
     const petTagNames = petTags.map((t) => t.tag);
 
-    // Get pet species for filtering
+    // Get pet species + lifecycle for filtering
     let petSpecies = null;
+    let petLifecycle = null;
     try {
       const petResult = await pool.query(
         "SELECT species FROM pets WHERE pet_id = $1 LIMIT 1",
         [petId]
       );
       if (petResult.rows[0]) {
-        const s = (petResult.rows[0].species || "").toLowerCase();
-        if (s === "cane" || s === "dog") petSpecies = "dog";
-        else if (s === "gatto" || s === "cat") petSpecies = "cat";
+        petSpecies = normalizeSpecies(petResult.rows[0].species);
+      }
+    } catch (_e) {
+      // skip
+    }
+
+    // Derive lifecycle from pet_tags (computed earlier)
+    try {
+      const lcResult = await pool.query(
+        "SELECT tag FROM pet_tags WHERE pet_id = $1 AND tag LIKE 'lifecycle:%' ORDER BY computed_at DESC LIMIT 1",
+        [petId]
+      );
+      if (lcResult.rows[0]) {
+        petLifecycle = lcResult.rows[0].tag.replace('lifecycle:', '');
       }
     } catch (_e) {
       // skip
@@ -161,6 +173,18 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
         item.species.length > 0 &&
         !item.species.includes("all") &&
         !item.species.includes(petSpecies)
+      ) {
+        continue;
+      }
+
+      // Lifecycle filter
+      if (
+        petLifecycle &&
+        item.lifecycle_target &&
+        Array.isArray(item.lifecycle_target) &&
+        item.lifecycle_target.length > 0 &&
+        !item.lifecycle_target.includes("all") &&
+        !item.lifecycle_target.includes(petLifecycle)
       ) {
         continue;
       }

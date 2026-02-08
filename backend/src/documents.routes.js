@@ -400,6 +400,23 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
 }
 
 /**
+ * Check if OpenAI optimizations are enabled (query global_policies).
+ */
+async function getDocumentAiModel(pool) {
+  try {
+    const { rows } = await pool.query(
+      "SELECT policy_value FROM global_policies WHERE policy_key = 'openai_optimizations'"
+    );
+    if (rows.length > 0 && rows[0].policy_value) {
+      const val = typeof rows[0].policy_value === 'string'
+        ? JSON.parse(rows[0].policy_value) : rows[0].policy_value;
+      if (val.enabled) return 'gpt-4o-mini';
+    }
+  } catch (_e) { /* ignore, use default */ }
+  return 'gpt-4o';
+}
+
+/**
  * Synchronous AI read: extracts text from a document image/PDF via OpenAI vision.
  * Returns { text } on success, { error, message, statusCode } on failure.
  */
@@ -461,8 +478,9 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       });
     }
 
+    const docModel = await getDocumentAiModel(pool);
     const payload = {
-      model: "gpt-4o",
+      model: docModel,
       messages: [
         {
           role: "system",
@@ -476,7 +494,7 @@ async function processDocumentRead(pool, doc, getOpenAiKey, isMockEnv) {
       max_tokens: 4096,
     };
 
-    console.log("processDocumentRead: calling OpenAI for doc", doc.document_id, "mime:", doc.mime_type);
+    console.log("processDocumentRead: calling OpenAI for doc", doc.document_id, "mime:", doc.mime_type, "model:", docModel);
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -616,8 +634,9 @@ async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
   }
 
   try {
+    const explainModel = await getDocumentAiModel(pool);
     const payload = {
-      model: "gpt-4o",
+      model: explainModel,
       messages: [
         {
           role: "system",
