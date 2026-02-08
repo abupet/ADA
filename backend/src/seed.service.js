@@ -113,6 +113,12 @@ async function callOpenAi(openAiKey, messages, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Species mapping: petgen uses English, frontend expects Italian
+// ---------------------------------------------------------------------------
+
+const SPECIES_IT = { dog: 'Cane', cat: 'Gatto', rabbit: 'Coniglio' };
+
+// ---------------------------------------------------------------------------
 // Wipe seeded data (FK-safe order)
 // ---------------------------------------------------------------------------
 
@@ -333,7 +339,7 @@ async function _runSeedJob(pool, config, openAiKey) {
           `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
            RETURNING *`,
-          [petId, ownerUserId, pet.name, pet.species, pet.breed, pet.sex, pet.birthdate, pet.weightKg, notes]
+          [petId, ownerUserId, pet.name, SPECIES_IT[pet.species] || pet.species, pet.breed, pet.sex, pet.birthdate, pet.weightKg, notes]
         );
         petIds.push(petId);
 
@@ -407,10 +413,17 @@ async function _runSeedJob(pool, config, openAiKey) {
           const historyEntry = {
             visit_type: visitType,
             visit_date: visitDate.toISOString().split('T')[0],
-            S: soapData.S || '',
-            O: soapData.O || '',
-            A: soapData.A || '',
-            P: soapData.P || '',
+            createdAt: visitDate.toISOString(),
+            soapData: {
+              s: soapData.S || '',
+              o: soapData.O || '',
+              a: soapData.A || '',
+              p: soapData.P || '',
+            },
+            s: soapData.S || '',
+            o: soapData.O || '',
+            a: soapData.A || '',
+            p: soapData.P || '',
           };
 
           historyDataMap[pet._petId].push(historyEntry);
@@ -527,10 +540,10 @@ async function _runSeedJob(pool, config, openAiKey) {
 
         vitals.push({
           date: vitalDate.toISOString(),
-          temperature_c: +(baseTemp + tempVariation).toFixed(1),
-          heart_rate_bpm: Math.round(baseHR + hrVariation),
-          respiratory_rate: Math.round(baseRR + rrVariation),
-          weight_kg: +(pet.weightKg + (Math.random() * 2 - 1)).toFixed(1),
+          temp: +(baseTemp + tempVariation).toFixed(1),
+          hr: Math.round(baseHR + hrVariation),
+          rr: Math.round(baseRR + rrVariation),
+          weight: +(pet.weightKg + (Math.random() * 2 - 1)).toFixed(1),
         });
       }
       vitals.sort((a, b) => new Date(a.date) - new Date(b.date));
