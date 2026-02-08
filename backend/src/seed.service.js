@@ -127,7 +127,7 @@ async function wipeSeededData(pool) {
     { name: 'promo_campaigns', where: "utm_campaign LIKE 'seed_%'" },
     { name: 'explanation_cache', where: "cache_key LIKE 'seed_%'" },
     { name: 'promo_items', where: "promo_item_id LIKE 'seed-%'" },
-    { name: 'pet_tags', where: "pet_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
+    { name: 'pet_tags', where: "pet_id IN (SELECT pet_id::text FROM pets WHERE notes LIKE '%[seed]%')" },
     { name: 'consents', where: "owner_user_id LIKE 'seed-%'" },
     { name: 'documents', where: "pet_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
     { name: 'changes', where: "entity_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')" },
@@ -329,12 +329,24 @@ async function _runSeedJob(pool, config, openAiKey) {
       const notes = (pet.diary || '') + ' [seed]';
 
       try {
-        await pool.query(
+        const ins = await pool.query(
           `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+           RETURNING *`,
           [petId, ownerUserId, pet.name, pet.species, pet.breed, pet.sex, pet.birthdate, pet.weightKg, notes]
         );
         petIds.push(petId);
+
+        // Create pet_changes so pull sync sees the new pet
+        try {
+          await pool.query(
+            `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
+             VALUES ($1, $2, 'pet.upsert', $3, 1, 'seed-engine', $4)`,
+            [ownerUserId, petId, JSON.stringify(ins.rows[0]), randomUUID()]
+          );
+        } catch (_e) {
+          _log(`pet_changes insert warning for ${pet.name}: ${_e.message}`);
+        }
       } catch (e) {
         _log(`Insert pet ${pet.name} error: ${e.message}`);
       }
@@ -402,17 +414,6 @@ async function _runSeedJob(pool, config, openAiKey) {
           };
 
           historyDataMap[pet._petId].push(historyEntry);
-
-          // Also insert as pet_changes for tag computation
-          try {
-            await pool.query(
-              `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version)
-               VALUES ($1, $2, 'soap.seed', $3, 1)`,
-              [ownerUserId, pet._petId, JSON.stringify(historyEntry)]
-            );
-          } catch (_e) {
-            // skip — table may not exist
-          }
         } catch (e) {
           _log(`SOAP error for ${pet.name} (#${s + 1}): ${e.message}`);
         }
@@ -715,10 +716,23 @@ async function _runSeedJob(pool, config, openAiKey) {
       };
 
       try {
-        await pool.query(
-          `UPDATE pets SET extra_data = $1, updated_at = NOW() WHERE pet_id = $2`,
+        const upd = await pool.query(
+          `UPDATE pets SET extra_data = $1, version = version + 1, updated_at = NOW() WHERE pet_id = $2 RETURNING *`,
           [JSON.stringify(extraData), pet._petId]
         );
+
+        // Create pet_changes with full data so pull sync gets complete pet info
+        if (upd.rows[0]) {
+          try {
+            await pool.query(
+              `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
+               VALUES ($1, $2, 'pet.upsert', $3, $4, 'seed-engine', $5)`,
+              [ownerUserId, pet._petId, JSON.stringify(upd.rows[0]), upd.rows[0].version, randomUUID()]
+            );
+          } catch (_e) {
+            _log(`pet_changes update warning for ${pet.name}: ${_e.message}`);
+          }
+        }
       } catch (e) {
         _log(`Extra data update error for ${pet.name}: ${e.message}`);
       }
