@@ -35,7 +35,15 @@ test.describe("Role-based access control", () => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
 
-    // Super admin default page is admin-dashboard; TEST & DEMO should be visible
+    await expect(page.locator("#appContainer")).toBeVisible({ timeout: 10_000 });
+
+    // super_admin defaults to veterinario; switch to super_admin role
+    await page.evaluate(() => {
+      (window as any).setActiveRole('super_admin');
+      (window as any).applyRoleUI('super_admin');
+    });
+
+    // TEST & DEMO should be visible after switching to super_admin role
     await expect(page.locator("#sidebar-test-demo")).toBeVisible({ timeout: 10_000 });
 
     // Navigate to debug

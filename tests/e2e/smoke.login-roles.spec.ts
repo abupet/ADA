@@ -43,14 +43,20 @@ test.describe("Login per ruolo", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Super admin login → sidebar admin + TEST DEMO visibili", async ({ page }) => {
+  test("@smoke Super admin login → switch to super_admin role → sidebar admin + TEST DEMO visibili", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
 
     await expect(page.locator("#appContainer")).toBeVisible({ timeout: 10_000 });
-    // Super admin: default page = admin-dashboard
+
+    // super_admin defaults to veterinario on first login; switch to super_admin role
+    await page.evaluate(() => {
+      (window as any).setActiveRole('super_admin');
+      (window as any).applyRoleUI('super_admin');
+    });
+
+    // Super admin role: sidebar-admin and TEST & DEMO should be visible
     await expect(page.locator("#sidebar-admin")).toBeVisible({ timeout: 10_000 });
-    // TEST & DEMO section visible for super_admin
     await expect(page.locator("#sidebar-test-demo")).toBeVisible({ timeout: 10_000 });
 
     expect(errors, errors.join("\n")).toHaveLength(0);
