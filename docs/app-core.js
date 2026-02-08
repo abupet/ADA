@@ -940,7 +940,9 @@ function updateSettingsSectionsVisibility() {
 
     if (speakersCard) speakersCard.style.display = isSA ? '' : 'none';
     if (clinicCard) clinicCard.style.display = isSA ? '' : 'none';
-    // settingsSystemCard (debug toggle + version info) is always visible
+
+    // Sistema card: role-based access control
+    try { updateSettingsSystemVisibility(); } catch(e) {}
 }
 
 // ============================================
