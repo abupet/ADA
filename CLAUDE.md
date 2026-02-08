@@ -7,7 +7,7 @@ Key mandatory rules:
 - **Versioning**: every merge to GitHub MUST bump the version (increment Z by 1 unless told otherwise)
 - **Release notes**: update `RELEASE_NOTES.md` with every version change
 - **Version locations**: `docs/config.js` (ADA_VERSION), `AGENTS.md` (section 2), `RELEASE_NOTES.md`
-- **Definition of done**: requirements implemented, CI green, release notes updated
+- **Definition of done**: requirements implemented, CI green, release notes updated, **automated tests verified/updated**
 
 ## Post-Push CI Workflow (ALWAYS follow this)
 

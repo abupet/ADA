@@ -1,5 +1,9 @@
 # Release Notes (cumulative)
 
+## v7.2.5 (2026-02-08)
+- Aggiunta regola vincolante: per ogni release user-facing/comportamentale, verificare e aggiornare i test automatici E2E
+- Regola aggiunta in `AGENTS.md` (Definition of done) e `CLAUDE.md`
+
 ## v7.2.4 (2026-02-08)
 - Impostazioni / Sistema: solo super_admin vede e modifica il flag "Debug attivo"; altri ruoli vedono la sezione in sola lettura solo se debug ON, nascosta se OFF
 - Debug: per super_admin nascosto il pulsante toggle ruolo, visibile solo il dropdown con titolo "Ruolo attivo (super admin)"
