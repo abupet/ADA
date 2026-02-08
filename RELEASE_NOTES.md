@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v7.2.13 (2026-02-08)
+- Fix: regression test audio 100s — timeout trascrizione aumentato da 20s a 60s per supportare Whisper API in CI (REAL)
+
 ## v7.2.12 (2026-02-08)
 - Fix: schema OpenAI `vet_soap_report` — con `strict: true` e `additionalProperties: false`, tutte le properties devono essere in `required`. Aggiunti campi mancanti in 7 oggetti: `speakers.items` (display_name), `meta` (visit_datetime_local, species, age_text, sex, sterilized), `symptoms.items` (onset, duration, frequency, severity), `medications_current.items` (dose_text, route, frequency), `S` (chief_complaint, diet, environment, vaccination_prevention), `problem_list.items` (status), `treatment_plan.items` (dose_text, duration, notes)
 
