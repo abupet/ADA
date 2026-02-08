@@ -26,14 +26,22 @@ export async function login(page: Page, retries = 1) {
     await page.locator("#passwordInput").fill(pwd);
     await page.getByTestId("login-button").click();
 
-    // Wait for either login success (appContainer visible) or failure (login-error visible).
-    // The login() function in the browser is async (fetches /auth/login), so we must wait
-    // for the outcome rather than checking immediately after click.
-    const appContainer = page.locator("#appContainer");
+    // Wait for either login success (appContainer gets .active) or failure (loginError shown).
+    // We use waitForFunction instead of locator.or() to avoid Playwright strict mode
+    // violations — both elements always exist in the DOM, only their visibility changes.
+    await page.waitForFunction(
+      () => {
+        const app = document.querySelector("#appContainer");
+        const err = document.querySelector("#loginError");
+        return (
+          (app && app.classList.contains("active")) ||
+          (err && getComputedStyle(err).display !== "none")
+        );
+      },
+      { timeout: 15_000 },
+    );
+
     const loginError = page.getByTestId("login-error");
-
-    await expect(appContainer.or(loginError)).toBeVisible({ timeout: 15_000 });
-
     if (await loginError.isVisible()) {
       const txt = await loginError.textContent();
       if (attempt < retries) {
@@ -43,7 +51,7 @@ export async function login(page: Page, retries = 1) {
       throw new Error(`Login failed (login-error visible): ${txt || ""}`);
     }
 
-    await expect(appContainer).toBeVisible();
+    await expect(page.locator("#appContainer")).toBeVisible();
     return; // success
   }
 }
