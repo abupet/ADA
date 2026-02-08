@@ -1,5 +1,9 @@
 # Release Notes (cumulative)
 
+## v7.2.5 (2026-02-08)
+- Aggiunta regola vincolante: per ogni release user-facing/comportamentale, verificare e aggiornare i test automatici E2E
+- Regola aggiunta in `AGENTS.md` (Definition of done) e `CLAUDE.md`
+
 ## v7.2.4 (2026-02-08)
 - Fix: `ada-tests.sh` ora avvia automaticamente il backend (porta 3000) prima dei test e2e, allineandosi alla CI
 - Fix: `login.ts` helper usa `locator.or()` per attendere correttamente il risultato del login asincrono, evitando race condition tra appContainer e loginError
