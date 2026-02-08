@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v7.2.11 (2026-02-08)
+- Fix: Seed Engine — prompt SOAP ora richiede esplicitamente output JSON `{"S":..., "O":..., "A":..., "P":...}`, evitando risposte free-form che il parser non gestiva
+- Fix: Seed Engine — migliorato fallback `_extractSoapSection()` per estrarre correttamente sezioni S/O/A/P da testo libero multi-riga (sostituisce il regex fragile `_extractSection`)
+- Fix: Seed Engine — documenti ora scritti fisicamente su disco (`uploads/`) oltre che nel DB, risolvendo il 404 "file_not_found" dell'endpoint download
+
 ## v7.2.10 (2026-02-08)
 - Fix: Seed Engine — specie ora in italiano (Cane/Gatto/Coniglio) anziché inglese (dog/cat/rabbit)
 - Fix: Seed Engine — referti SOAP: campi ora in formato `soapData { s, o, a, p }` + back-compat lowercase, allineati al frontend `_getSoapFromRecord()`

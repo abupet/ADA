@@ -1598,7 +1598,11 @@ REGOLE:
 - Se è una visita di emergenza, il tono deve essere più urgente.
 - Se è un follow-up (visita n.${visitNumber}), fai riferimento al decorso clinico.
 - Ogni sezione deve avere 3-6 righe di contenuto realistico.
-- NON inventare farmaci inesistenti. Usa solo farmaci veterinari reali.`;
+- NON inventare farmaci inesistenti. Usa solo farmaci veterinari reali.
+
+FORMATO DI RISPOSTA:
+Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza markdown né testo aggiuntivo:
+{"S": "testo soggettivo qui...", "O": "testo oggettivo qui...", "A": "testo assessment qui...", "P": "testo piano qui..."}`;
 
   const user = `Genera una nota SOAP per la seguente visita veterinaria:
 
