@@ -39,11 +39,10 @@ test("@smoke Impostazioni/Sistema: non-super_admin debug ON vede card read-only"
 test("@smoke Impostazioni/Sistema: non-super_admin debug OFF nasconde card", async ({ page }) => {
   await login(page);
 
-  // Set debug OFF and navigate to settings in the same JS execution context
-  // to avoid any race condition with multiple event listeners
+  // Turn debug OFF using the app's own toggleDebugLog function,
+  // then navigate to settings — the card should be hidden
   await page.evaluate(() => {
-    localStorage.setItem('ada_debug_log', 'false');
-    (window as any).debugLogEnabled = false;
+    (window as any).toggleDebugLog(false);
     (window as any).navigateToPage('settings');
   });
 
