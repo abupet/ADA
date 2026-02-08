@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v7.2.12 (2026-02-08)
+- Fix: schema OpenAI `vet_soap_report` — con `strict: true` e `additionalProperties: false`, tutte le properties devono essere in `required`. Aggiunti campi mancanti in 7 oggetti: `speakers.items` (display_name), `meta` (visit_datetime_local, species, age_text, sex, sterilized), `symptoms.items` (onset, duration, frequency, severity), `medications_current.items` (dose_text, route, frequency), `S` (chief_complaint, diet, environment, vaccination_prevention), `problem_list.items` (status), `treatment_plan.items` (dose_text, duration, notes)
+
 ## v7.2.11 (2026-02-08)
 - Ristrutturazione test: rimosso Login V1 (solo Login V2 con email + password)
 - Backend: rimosso endpoint `POST /auth/login` e variabili `ADA_LOGIN_PASSWORD`/`ADA_TEST_PASSWORD` dal destructuring
