@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v7.2.6 (2026-02-08)
+- Test ciclo completo commit → PR → cancellazione branch (nessuna modifica funzionale)
+
 ## v7.2.5 (2026-02-08)
 - Aggiunta regola vincolante: per ogni release user-facing/comportamentale, verificare e aggiornare i test automatici E2E
 - Regola aggiunta in `AGENTS.md` (Definition of done) e `CLAUDE.md`
