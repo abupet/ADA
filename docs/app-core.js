@@ -280,6 +280,7 @@ function navigateToPage(page) {
         renderSpeakersSettings();
         try { renderAccountInfo(); } catch(e) {}
         try { updateSettingsSectionsVisibility(); } catch(e) {}
+        try { initOpenAiOptimizationsSettingsUI(); } catch(e) {}
     }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
@@ -1651,22 +1652,25 @@ async function sendFullscreenCorrection() {
         const correctionText = transcribeResult.text;
         
         // Apply correction using GPT
+        const corrTaskModel = getAiModelForTask('text_correction', 'gpt-4o');
+        const corrTaskParams = getAiParamsForTask('text_correction');
         const applyResponse = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: corrTaskModel,
                 messages: [
                     { role: 'system', content: 'Sei un assistente che applica correzioni testuali. Applica le modifiche richieste al testo originale e restituisci SOLO il testo corretto, senza spiegazioni.' },
                     { role: 'user', content: `TESTO ORIGINALE:\n${currentText}\n\nCORREZIONE RICHIESTA:\n${correctionText}\n\nApplica la correzione e restituisci il testo modificato.` }
                 ],
-                temperature: 0.3
+                temperature: corrTaskParams.temperature ?? 0.3
             })
         });
-        
+
         const applyResult = await applyResponse.json();
         if (applyResult.error) throw new Error(applyResult.error.message);
-        
+        if (applyResult.usage) trackChatUsage(corrTaskModel, applyResult.usage);
+
         const correctedText = applyResult.choices[0].message.content;
         document.getElementById('fullscreenTextarea').value = correctedText;
         
@@ -2227,17 +2231,19 @@ function updateSOAPLabels(lang) {
 }
 
 async function translateText(text, targetLang) {
+    const taskModel = getAiModelForTask('translate', 'gpt-4o');
+    const taskParams = getAiParamsForTask('translate');
     const response = await fetchApi('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            model: 'gpt-4o',
+            model: taskModel,
             messages: [{ role: 'user', content: `Traduci in ${langNames[targetLang]}. Rispondi SOLO con la traduzione:\n\n${text}` }],
-            temperature: 0.3
+            temperature: taskParams.temperature ?? 0.3
         })
     });
     const data = await response.json();
-    trackChatUsage('gpt-4o', data.usage);
+    trackChatUsage(taskModel, data.usage);
     return data.choices[0].message.content;
 }
 
@@ -2948,6 +2954,37 @@ function deleteMedication(index) {
 function openCostsPage() {
     navigateToPage('costs');
     updateCostDisplay();
+}
+
+// ============================================
+// OPENAI OPTIMIZATIONS SETTINGS (super_admin)
+// ============================================
+
+async function initOpenAiOptimizationsSettingsUI() {
+    const card = document.getElementById('openaiOptCard');
+    if (!card) return;
+    if (getActiveRole() !== 'super_admin') { card.style.display = 'none'; return; }
+    card.style.display = '';
+    try {
+        const flags = await refreshOpenAiOptimizationFlags(true);
+        document.getElementById('openaiOptEnabled').checked = !!flags.enabled;
+        document.getElementById('openaiOptSmartDiarization').checked = !!flags.smart_diarization;
+    } catch (e) { console.warn('initOpenAiOptimizationsSettingsUI error:', e); }
+}
+
+async function saveOpenAiOptimizations() {
+    const enabled = document.getElementById('openaiOptEnabled').checked;
+    const smart_diarization = document.getElementById('openaiOptSmartDiarization').checked;
+    try {
+        const resp = await fetchApi('/api/superadmin/openai-optimizations', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, smart_diarization })
+        });
+        if (!resp.ok) { const err = await resp.json().catch(() => null); throw new Error(err?.error || `HTTP ${resp.status}`); }
+        await refreshOpenAiOptimizationFlags(true);
+        showToast('Ottimizzazioni salvate', 'success');
+    } catch (e) { showToast('Errore: ' + e.message, 'error'); }
 }
 
 // Initialize on load

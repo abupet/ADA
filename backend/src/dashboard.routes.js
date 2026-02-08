@@ -1191,6 +1191,35 @@ function dashboardRouter({ requireAuth }) {
   );
 
   // ==============================
+  // SUPER ADMIN: OPENAI OPTIMIZATIONS
+  // ==============================
+
+  // PUT /api/superadmin/openai-optimizations
+  router.put(
+    "/api/superadmin/openai-optimizations",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { enabled, smart_diarization } = req.body || {};
+        const value = { enabled: !!enabled, smart_diarization: !!smart_diarization };
+        const { rows } = await pool.query(
+          `INSERT INTO global_policies (policy_key, policy_value, description, updated_by)
+           VALUES ('openai_optimizations', $1, 'OpenAI cost optimizations toggle', $2)
+           ON CONFLICT (policy_key) DO UPDATE SET
+             policy_value = $1, updated_by = $2, updated_at = NOW()
+           RETURNING *`,
+          [JSON.stringify(value), req.promoAuth?.userId]
+        );
+        res.json(rows[0]);
+      } catch (e) {
+        console.error("PUT /api/superadmin/openai-optimizations error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // ==============================
   // SUPER ADMIN: TENANTS MANAGEMENT
   // ==============================
 

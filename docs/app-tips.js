@@ -167,14 +167,16 @@ function _updateMemoryWithTips(mem, tips) {
 // ------------------------
 
 async function _callTipsLLM(prompt) {
+    const tipsModel = getAiModelForTask('tips_generate', 'gpt-4o');
+    const tipsParams = getAiParamsForTask('tips_generate');
     const response = await fetchApi('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            model: 'gpt-4o',
+            model: tipsModel,
             messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7,
-            max_tokens: 3600,
+            temperature: tipsParams.temperature ?? 0.7,
+            max_tokens: tipsParams.max_tokens ?? 3600,
             response_format: { type: 'json_object' }
         })
     });
@@ -198,7 +200,7 @@ async function _callTipsLLM(prompt) {
     }
 
     if (typeof trackChatUsageOrEstimate === 'function') {
-        trackChatUsageOrEstimate('gpt-4o', prompt, content, data.usage);
+        trackChatUsageOrEstimate(tipsModel, prompt, content, data.usage);
     }
 
     return Array.isArray(parsed?.tips) ? parsed.tips : [];
