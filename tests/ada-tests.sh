@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ada-tests.sh v2
+# ada-tests.sh v3
 #
 # Location (new):
 #   ./ada/tests/ada-tests.sh
@@ -326,6 +326,11 @@ run_long_local() {
   env "${envs[@]}" npx playwright test --project=chromium --grep @long
 }
 
+run_unit() {
+  say "Running UNIT tests ..."
+  npm run test:unit
+}
+
 run_policy() {
   say "Running POLICY checks ..."
   node tests/policy/policy-checks.js
@@ -357,6 +362,8 @@ install_all() {
 # Level 2: broader/longer checks (run when preparing release / after big changes)
 
 run_level1() {
+  # Unit tests are fast (no server needed) and verify backend logic
+  run_unit
   # Policy checks are fast and catch secrets/network issues early
   run_policy
   # Local smoke (requires local server) — will run the @smoke suite
@@ -424,6 +431,7 @@ run_cmd() {
 
     level1) run_level1 ;;
 
+    unit) run_unit ;;
     smoke) run_smoke_local ;;
     smoke-headed) run_smoke_local_headed ;;
     smoke-strict) run_smoke_strict_local ;;
@@ -466,7 +474,7 @@ run_cmd_safe() {
       server_is_up port_is_listening start_server_new_terminal wait_for_server \
       ensure_server_running start_server_background_and_wait \
       build_envs mode_label strict_label \
-      run_smoke_local run_smoke_local_headed run_regression_local run_long_local run_policy run_deployed \
+      run_unit run_level1 run_level2 run_smoke_local run_smoke_local_headed run_regression_local run_long_local run_policy run_deployed \
       run_smoke_strict_local run_regression_strict_local run_deployed_strict \
       install_all open_report clean_artifacts status
     export REPO_DIR PORT LOCAL_URL DEPLOY_URL MODE STRICT_ON STRICT_ALLOW_HOSTS_RUNTIME DEFAULT_STRICT_ALLOW_HOSTS ADA_TEST_PASSWORD
@@ -590,7 +598,7 @@ print_help() {
   echo -e "${CLR_BOLD}LOG${CLR_RESET}"
   echo ""
   echo -e "${CLR_BOLD}LIVELLI${CLR_RESET}"
-  echo "  - Level 1 suite: policy + smoke locale (rapido, consigliato)"
+  echo "  - Level 1 suite: unit + policy + smoke locale (rapido, consigliato)"
   echo "  - Level 2 suite: regression + deployed + long (più lento)"
   echo "  - Header/footer sempre in: $LOG_FILE (append)"
   echo "  - Output completo:"
@@ -623,12 +631,12 @@ print_header() {
 
   if [[ $menu_level -eq 1 ]]; then
     echo -e "${CLR_BOLD}MENU LIVELLO 1 (test più utili)${CLR_RESET}"
-    echo "1) Level 1 suite (Policy + Smoke local)  [consigliato]"
+    echo "1) Level 1 suite (Unit + Policy + Smoke local)  [consigliato]"
     echo "2) Smoke (local, $(mode_label), STRICT=$(strict_label))"
-    echo "3) Policy checks"
-    echo "4) Status"
-    echo "5) Open report"
-    echo "6) Clean artifacts"
+    echo "3) Unit tests (backend logic, no server needed)"
+    echo "4) Policy checks"
+    echo "5) Status"
+    echo "6) Open report"
     echo "0) Vai a MENU LIVELLO 2"
   else
     echo -e "${CLR_BOLD}MENU LIVELLO 2 (test aggiuntivi / setup)${CLR_RESET}"
@@ -639,6 +647,7 @@ print_header() {
     echo "5) Install (npm ci + playwright install)"
     echo "6) Smoke headed (local, $(mode_label), STRICT=$(strict_label))"
     echo "7) Start server in other terminal (background)"
+    echo "8) Clean artifacts"
     echo "0) Torna a MENU LIVELLO 1"
   fi
 
@@ -675,10 +684,10 @@ menu_loop() {
       case "$choice" in
         1) run_cmd_safe level1 || true; wait_space_to_menu ;;
         2) run_cmd_safe smoke || true; wait_space_to_menu ;;
-        3) run_cmd_safe policy || true; wait_space_to_menu ;;
-        4) run_cmd_safe status || true; wait_space_to_menu ;;
-        5) run_cmd_safe report || true; wait_space_to_menu ;;
-        6) run_cmd_safe clean || true; wait_space_to_menu ;;
+        3) run_cmd_safe unit || true; wait_space_to_menu ;;
+        4) run_cmd_safe policy || true; wait_space_to_menu ;;
+        5) run_cmd_safe status || true; wait_space_to_menu ;;
+        6) run_cmd_safe report || true; wait_space_to_menu ;;
         *) warn "Scelta non valida."; wait_space_to_menu ;;
       esac
     else
@@ -690,6 +699,7 @@ menu_loop() {
         5) run_cmd_safe install || true; wait_space_to_menu ;;
         6) run_cmd_safe smoke-headed || true; wait_space_to_menu ;;
         7) run_cmd_safe start-server-bg || true; wait_space_to_menu ;;
+        8) run_cmd_safe clean || true; wait_space_to_menu ;;
         *) warn "Scelta non valida."; wait_space_to_menu ;;
       esac
     fi

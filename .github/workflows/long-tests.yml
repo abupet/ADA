@@ -1,4 +1,4 @@
-# long-tests.yml v1
+# long-tests.yml v2
 name: Long tests (manual)
 
 on:
@@ -7,7 +7,14 @@ on:
 jobs:
   long:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: ci
+
+    env:
+      FRONTEND_ORIGIN: "http://localhost:4173"
+      ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+      RATE_LIMIT_PER_MIN: "600"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,6 +24,9 @@ jobs:
           cache: "npm"
 
       - run: npm ci
+
+      - name: Install backend dependencies
+        run: npm install --prefix backend
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -29,12 +39,20 @@ jobs:
 
       - name: Start server
         run: |
+          nohup node backend/src/server.js > backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health > /dev/null
           nohup npm run serve > server.log 2>&1 &
-          npx wait-on http://127.0.0.1:4173
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173 > /dev/null
 
       - name: Run long tests (manual)
-        env:
-          ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
         run: npm run test:ci:long
 
       - name: Upload Playwright report (on failure)
@@ -59,6 +77,14 @@ jobs:
         with:
           name: server-log
           path: server.log
+          if-no-files-found: ignore
+
+      - name: Upload backend log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend.log
           if-no-files-found: ignore
 
       - name: Write CI summary

@@ -9,6 +9,12 @@ const steps = [];
 
 if (!onlyLong && !skipPolicy) {
   steps.push({
+    name: "Unit tests",
+    command: "npm",
+    args: ["run", "test:unit"],
+  });
+
+  steps.push({
     name: "Policy checks",
     command: "node",
     args: ["tests/policy/policy-checks.js"],
