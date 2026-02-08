@@ -484,8 +484,6 @@ function getJwtRole() {
     var token = getAuthToken();
     var payload = decodeJwtPayload(token);
     if (!payload) return null;
-    // Legacy token: sub = "ada-user", no role field
-    if (payload.sub === 'ada-user') return null;
     return payload.role || null;
 }
 
