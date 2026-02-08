@@ -1,4 +1,4 @@
-# ci-real.yml v7
+# ci-real.yml v8
 name: CI (REAL)
 
 on:
@@ -6,6 +6,9 @@ on:
   schedule:
     # Nightly at 02:30 Rome time (01:30 UTC during CET; GitHub schedules use UTC)
     - cron: "30 1 * * *"
+
+permissions:
+  issues: write
 
 jobs:
   test_real:
@@ -108,6 +111,59 @@ jobs:
           name: backend-log
           path: backend.log
           if-no-files-found: ignore
+
+      - name: Notify nightly failure (open/update issue)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+          LABEL="nightly-failure"
+
+          # Ensure label exists
+          gh label create "$LABEL" --color "d93f0b" --description "Nightly CI (REAL) failure" 2>/dev/null || true
+
+          # Check for existing open issue
+          ISSUE_NUM=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+
+          if [ -z "$ISSUE_NUM" ]; then
+            # Create new issue
+            gh issue create \
+              --title "Nightly CI (REAL) failed — $DATE" \
+              --label "$LABEL" \
+              --body "$(cat <<EOF
+          ## Nightly CI (REAL) failed
+
+          - **Date:** $DATE
+          - **Run:** $RUN_URL
+          - **Branch:** main
+          - **Trigger:** ${{ github.event_name }}
+
+          ### Next steps
+          1. Check the [run logs]($RUN_URL) and download artifacts (playwright-report, test-results)
+          2. Fix the failing test(s)
+          3. Close this issue when resolved
+          EOF
+          )"
+          else
+            # Comment on existing issue
+            gh issue comment "$ISSUE_NUM" \
+              --body "### Still failing — $DATE
+          - **Run:** $RUN_URL
+          - **Trigger:** ${{ github.event_name }}"
+          fi
+
+      - name: Close nightly failure issue (on success)
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LABEL="nightly-failure"
+          ISSUE_NUM=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE_NUM" ]; then
+            gh issue close "$ISSUE_NUM" --comment "Nightly CI (REAL) passed — auto-closing."
+          fi
 
       - name: Write CI summary
         if: always()
