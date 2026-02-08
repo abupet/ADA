@@ -11,6 +11,10 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const pool = getPool();
 
             const config = req.body || {};
+            // Use the authenticated user's ID so seeded pets belong to the logged-in user
+            if (!config.ownerUserId && req.user && req.user.sub) {
+                config.ownerUserId = req.user.sub;
+            }
             // Get OpenAI key from environment
             const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
 
