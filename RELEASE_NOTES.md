@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v7.2.14 (2026-02-08)
+- CI: notifica automatica nightly failure — se CI (REAL) fallisce, crea una issue GitHub con label `nightly-failure` (o commenta su issue esistente); se passa, chiude automaticamente la issue aperta
+
 ## v7.2.13 (2026-02-08)
 - Fix: regression test audio 100s — timeout trascrizione aumentato da 20s a 60s per supportare Whisper API in CI (REAL)
 
