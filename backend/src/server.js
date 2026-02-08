@@ -411,6 +411,28 @@ async function proxyOpenAiRequest(res, endpoint, payload) {
   return res.status(response.status).json(data);
 }
 
+// GET /api/policies/openai-optimizations
+app.get("/api/policies/openai-optimizations", requireAuth, async (_req, res) => {
+  const defaults = { enabled: false, smart_diarization: false };
+  try {
+    const { getPool } = require("./db");
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT policy_value FROM global_policies WHERE policy_key = 'openai_optimizations'"
+    );
+    if (rows.length > 0 && rows[0].policy_value) {
+      const val = typeof rows[0].policy_value === 'string'
+        ? JSON.parse(rows[0].policy_value) : rows[0].policy_value;
+      res.json({ enabled: !!val.enabled, smart_diarization: !!val.smart_diarization });
+    } else {
+      res.json(defaults);
+    }
+  } catch (e) {
+    console.error("GET /api/policies/openai-optimizations error", e);
+    res.json(defaults); // fail-safe: default OFF
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
     const oaKey = getOpenAiKey();

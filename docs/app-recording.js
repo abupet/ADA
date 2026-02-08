@@ -2079,7 +2079,7 @@ Esempio: [{"segment_index": 0, "speaker": "Veterinario", "role": "veterinario", 
             });
         }
         
-        trackChatUsage('gpt-4o', data.usage);
+        trackChatUsage('gpt-4o-mini', data.usage);
         saveApiUsage();
         
     } catch (e) {

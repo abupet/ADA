@@ -949,6 +949,31 @@
                     </div>
                 </div>
 
+                <!-- OpenAI Optimizations (super_admin only) -->
+                <div id="openaiOptCard" class="card" style="display:none;">
+                    <h3>OpenAI — Ottimizzazioni</h3>
+                    <p style="color:#666;font-size:13px;margin-bottom:15px;">
+                        Quando attive, i task secondari (traduzioni, tips, FAQ, glossario, spiegazione proprietario)
+                        usano un modello più economico. Il SOAP resta invariato.
+                    </p>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label style="display:flex;align-items:center;gap:10px;">
+                            <input type="checkbox" id="openaiOptEnabled">
+                            <span>Ottimizzazioni globali attive</span>
+                        </label>
+                    </div>
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label style="display:flex;align-items:center;gap:10px;">
+                            <input type="checkbox" id="openaiOptSmartDiarization">
+                            <span>Diarizzazione solo quando serve</span>
+                        </label>
+                        <p style="font-size:12px;color:#888;margin-top:5px;">
+                            Se attiva e nessun parlante è configurato, salta la diarizzazione (Whisper diretto, più veloce ed economico).
+                        </p>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveOpenAiOptimizations()">Salva</button>
+                </div>
+
                 <div class="card" id="settingsSystemCard">
                     <h3>Sistema</h3>
                     <div class="form-group" style="margin-bottom: 15px;">
@@ -1486,6 +1511,7 @@
     <script src="config.js"></script>
     <script src="app-debug-logger.js"></script>
     <script src="app-loading.js"></script>
+    <script src="app-openai-optimizations.js"></script>
     <script src="app-core.js"></script>
     <script src="app-recording.js"></script>
     <script src="app-soap.js"></script>

@@ -293,10 +293,12 @@ Chiudi con: "Il team AbuPet".`;
     }
 
     try {
+        const diaryModel = getAiModelForTask('diary_generate', 'gpt-4o');
+        const diaryParams = getAiParamsForTask('diary_generate');
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5 })
+            body: JSON.stringify({ model: diaryModel, messages: [{ role: 'user', content: prompt }], temperature: diaryParams.temperature ?? 0.5 })
         });
         if (!response.ok) {
             const err = await response.json().catch(() => null);
@@ -311,7 +313,7 @@ Chiudi con: "Il team AbuPet".`;
             content = content.replace(/\[Data\]/gi, generatedDate);
         }
         document.getElementById('diaryText').value = content;
-        trackChatUsage('gpt-4o', data.usage);
+        trackChatUsage(diaryModel, data.usage);
         saveApiUsage();
         updateCostDisplay();
         showToast('Profilo sanitario generato', 'success');
@@ -500,10 +502,12 @@ Se NON correlata ad animali/pet: "Mi dispiace, posso rispondere solo a domande s
 Altrimenti rispondi in modo chiaro e rassicurante.`;
 
     try {
+        const qnaModel = getAiModelForTask('qna_answer', 'gpt-4o');
+        const qnaParams = getAiParamsForTask('qna_answer');
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.5 })
+            body: JSON.stringify({ model: qnaModel, messages: [{ role: 'user', content: prompt }], temperature: qnaParams.temperature ?? 0.5 })
         });
         if (!response.ok) {
             const err = await response.json().catch(() => null);
@@ -521,7 +525,7 @@ Altrimenti rispondi in modo chiaro e rassicurante.`;
             return;
         }
         document.getElementById('qnaAnswer').value = content;
-        trackChatUsage('gpt-4o', data.usage);
+        trackChatUsage(qnaModel, data.usage);
         saveApiUsage();
         updateCostDisplay();
         showToast('Risposta generata', 'success');
@@ -543,10 +547,12 @@ Diagnosi recente: ${_getMostRecentDiagnosisText()}
 Rispondi in JSON: {"faq": [{"question": "...", "answer": "..."}]}`;
 
     try {
+        const faqModel = getAiModelForTask('qna_faq', 'gpt-4o');
+        const faqParams = getAiParamsForTask('qna_faq');
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], temperature: 0.6 })
+            body: JSON.stringify({ model: faqModel, messages: [{ role: 'user', content: prompt }], temperature: faqParams.temperature ?? 0.6 })
         });
         if (!response.ok) {
             const err = await response.json().catch(() => null);
@@ -581,7 +587,7 @@ Rispondi in JSON: {"faq": [{"question": "...", "answer": "..."}]}`;
                 });
             }
         }
-        trackChatUsage('gpt-4o', data.usage);
+        trackChatUsage(faqModel, data.usage);
         saveApiUsage();
         updateCostDisplay();
         showToast('Domande generate', 'success');

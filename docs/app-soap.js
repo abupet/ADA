@@ -120,8 +120,9 @@ function addAnicuraLogoToPdf(doc, x, y, maxW, maxH) {
 
 
 
-function formatSegmentsForPrompt(segments) {
+function formatSegmentsForPrompt(segments, options) {
     if (!Array.isArray(segments) || segments.length === 0) return '';
+    const compact = options && options.compact;
 
     function fmtNum(x) {
         const n = Number(x);
@@ -129,14 +130,44 @@ function formatSegmentsForPrompt(segments) {
         return (Math.round(n * 10) / 10).toFixed(1);
     }
 
-    return segments.map(seg => {
-        const idx = (seg.segment_index !== undefined && seg.segment_index !== null) ? seg.segment_index : '';
-        const start = fmtNum(seg.start);
-        const end = fmtNum(seg.end);
+    if (!compact) {
+        // Originale — invariato
+        return segments.map(seg => {
+            const idx = (seg.segment_index !== undefined && seg.segment_index !== null) ? seg.segment_index : '';
+            const start = fmtNum(seg.start);
+            const end = fmtNum(seg.end);
+            const speaker = (seg.speaker || 'sconosciuto').toString().trim();
+            const role = (seg.role || 'unknown').toString().trim();
+            const t = (seg.text || '').toString().replace(/\s+/g, ' ').trim();
+            return `[SEG ${idx}] (${start}-${end}) ${speaker} [${role}]: ${t}`;
+        }).join('\n');
+    }
+
+    // Compact: merge segmenti consecutivi stesso speaker
+    const merged = [];
+    let current = null;
+    for (const seg of segments) {
         const speaker = (seg.speaker || 'sconosciuto').toString().trim();
         const role = (seg.role || 'unknown').toString().trim();
-        const t = (seg.text || '').toString().replace(/\s+/g, ' ').trim();
-        return `[SEG ${idx}] (${start}-${end}) ${speaker} [${role}]: ${t}`;
+        const text = (seg.text || '').toString().replace(/\s+/g, ' ').trim();
+        const idx = (seg.segment_index !== undefined && seg.segment_index !== null) ? seg.segment_index : null;
+        const start = Number(seg.start) || 0;
+        const end = Number(seg.end) || 0;
+
+        if (current && current.speaker === speaker && current.role === role && (start - current.end) <= 1.5) {
+            current.ids.push(idx);
+            current.texts.push(text);
+            current.end = end;
+        } else {
+            if (current) merged.push(current);
+            current = { speaker, role, ids: [idx], texts: [text], start, end };
+        }
+    }
+    if (current) merged.push(current);
+
+    return merged.map(block => {
+        const idsStr = block.ids.filter(id => id !== null).join(',');
+        return `[SEG ${idsStr}] ${block.speaker} [${block.role}]: ${block.texts.join(' ')}`;
     }).join('\n');
 }
 
@@ -332,7 +363,10 @@ async function generateSOAPStructured(transcriptionText, options = {}) {
         ? transcriptionSegments
         : (lastTranscriptionResult && Array.isArray(lastTranscriptionResult.segments) ? lastTranscriptionResult.segments : []);
 
-    const segmentsText = segmentsSource.length > 0 ? formatSegmentsForPrompt(segmentsSource) : '';
+    const compactSegments = typeof isOpenAiOptimizationsEnabled === 'function' && isOpenAiOptimizationsEnabled();
+    const segmentsText = segmentsSource.length > 0
+        ? formatSegmentsForPrompt(segmentsSource, { compact: compactSegments })
+        : '';
 
     // Check if we have real segments from transcription
     if (segmentsSource.length > 0) {
@@ -1119,13 +1153,15 @@ Esame obiettivo: ${soap.o}
 Scrivi la spiegazione:`;
 
     try {
+        const ownerModel = getAiModelForTask('owner_explanation', 'gpt-4o');
+        const ownerParams = getAiParamsForTask('owner_explanation');
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: ownerModel,
                 messages: [{ role: 'user', content: prompt }],
-                temperature: 0.5,
+                temperature: ownerParams.temperature ?? 0.5,
             })
         });
 
@@ -1144,7 +1180,7 @@ Scrivi la spiegazione:`;
         }
 
         // Track usage (prefer real token counts)
-        trackChatUsageOrEstimate('gpt-4o', prompt, explanation, data.usage);
+        trackChatUsageOrEstimate(ownerModel, prompt, explanation, data.usage);
 
         // Persist into history record if requested
         const persistId = opts.saveToHistoryId || (typeof currentEditingHistoryId !== 'undefined' ? currentEditingHistoryId : null);
@@ -1284,13 +1320,15 @@ Rispondi in JSON: {"glossary": [{"term": "...", "meaning": "..."}]}
 Lingua: italiano.`;
 
     try {
+        const glossModel = getAiModelForTask('glossary_generate', 'gpt-4o');
+        const glossParams = getAiParamsForTask('glossary_generate');
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: glossModel,
                 messages: [{ role: 'user', content: prompt }],
-                temperature: 0.4,
+                temperature: glossParams.temperature ?? 0.4,
             })
         });
 
@@ -1328,7 +1366,7 @@ Lingua: italiano.`;
             }
         }
 
-        trackChatUsageOrEstimate('gpt-4o', prompt, content, data.usage);
+        trackChatUsageOrEstimate(glossModel, prompt, content, data.usage);
 
         const dt = ((performance.now() - t0) / 1000).toFixed(1);
         showToast(`Glossario generato in ${dt} s`, 'success');
@@ -1366,13 +1404,15 @@ Rispondi in JSON: {"faq": [{"question": "...", "answer": "..."}]}
 Le risposte devono essere chiare, rassicuranti e in italiano.`;
 
     try {
+        const faqGenModel = getAiModelForTask('faq_generate', 'gpt-4o');
+        const faqGenParams = getAiParamsForTask('faq_generate');
         const response = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: faqGenModel,
                 messages: [{ role: 'user', content: prompt }],
-                temperature: 0.5,
+                temperature: faqGenParams.temperature ?? 0.5,
             })
         });
 
@@ -1398,7 +1438,7 @@ Le risposte devono essere chiare, rassicuranti e in italiano.`;
         }
 
         // Track usage
-        trackChatUsageOrEstimate('gpt-4o', prompt, content, data.usage);
+        trackChatUsageOrEstimate(faqGenModel, prompt, content, data.usage);
 
         const dt = ((performance.now() - t0) / 1000).toFixed(1);
         showToast(`FAQ generate in ${dt} s`, 'success');
