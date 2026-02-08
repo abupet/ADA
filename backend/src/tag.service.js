@@ -1,5 +1,36 @@
-// backend/src/tag.service.js v1
+// backend/src/tag.service.js v2
 // PR 2: Tag computation engine
+// PR 17: normalizzazione specie + lifecycle in italiano
+
+// --- Species normalizzazione ---
+const SPECIES_MAP = {
+  cane: 'dog', dog: 'dog', cani: 'dog',
+  gatto: 'cat', cat: 'cat', gatti: 'cat',
+  coniglio: 'rabbit', rabbit: 'rabbit',
+  furetto: 'ferret', ferret: 'ferret',
+  uccello: 'bird', bird: 'bird',
+  rettile: 'reptile', reptile: 'reptile',
+};
+
+function normalizeSpecies(raw) {
+  if (!raw) return null;
+  const key = String(raw).toLowerCase().trim();
+  return SPECIES_MAP[key] || null;
+}
+
+// --- Lifecycle label italiano ---
+const LIFECYCLE_LABELS = {
+  puppy: 'Cucciolo',
+  adult: 'Adulto',
+  senior: 'Senior',
+};
+
+function lifecycleLabelIt(tag) {
+  // tag format: "lifecycle:puppy" -> "Cucciolo"
+  const parts = String(tag).split(':');
+  const stage = parts.length > 1 ? parts[1] : parts[0];
+  return LIFECYCLE_LABELS[stage] || stage;
+}
 
 /**
  * computeTags(pool, petId, ownerUserId)
@@ -23,16 +54,15 @@ async function computeTags(pool, petId, ownerUserId) {
     }
 
     const pet = rows[0];
-    const species = (pet.species || "").toLowerCase().trim();
+    const speciesRaw = (pet.species || "").toLowerCase().trim();
+    const speciesNorm = normalizeSpecies(speciesRaw);
     const weightKg = pet.weight_kg ? Number(pet.weight_kg) : null;
     const birthdate = pet.birthdate ? new Date(pet.birthdate) : null;
 
     // --- Species tags (low sensitivity) ---
     try {
-      if (species === "cane" || species === "dog") {
-        tags.push("species:dog");
-      } else if (species === "gatto" || species === "cat") {
-        tags.push("species:cat");
+      if (speciesNorm) {
+        tags.push("species:" + speciesNorm);
       }
     } catch (e) {
       errors.push("species_tag_error: " + e.message);
@@ -40,7 +70,7 @@ async function computeTags(pool, petId, ownerUserId) {
 
     // --- Size tags (low sensitivity, dogs only) ---
     try {
-      if ((species === "cane" || species === "dog") && weightKg !== null) {
+      if (speciesNorm === "dog" && weightKg !== null) {
         if (weightKg < 10) {
           tags.push("size:small");
         } else if (weightKg < 25) {
@@ -65,9 +95,9 @@ async function computeTags(pool, petId, ownerUserId) {
         } else {
           // Senior thresholds depend on species and size
           let seniorAge = 7; // default
-          if (species === "gatto" || species === "cat") {
+          if (speciesNorm === "cat") {
             seniorAge = 10;
-          } else if (species === "cane" || species === "dog") {
+          } else if (speciesNorm === "dog") {
             if (weightKg !== null) {
               if (weightKg < 10) seniorAge = 10;
               else if (weightKg < 25) seniorAge = 8;
@@ -193,4 +223,4 @@ async function computeTags(pool, petId, ownerUserId) {
   return { tags, errors };
 }
 
-module.exports = { computeTags };
+module.exports = { computeTags, normalizeSpecies, lifecycleLabelIt, SPECIES_MAP, LIFECYCLE_LABELS };

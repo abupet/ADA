@@ -437,10 +437,22 @@
         var ctaUrl = rec.ctaUrl || rec.infoUrl || null;
 
         // Build card HTML
+        var imageUrl = rec.imageUrl || rec.image_url || null;
+        var description = rec.description || null;
+
         var html = [
-            '<span class="promo-badge">Consigliato per il tuo pet</span>',
-            '<div class="promo-name">' + _escapeHtml(rec.name) + '</div>'
+            '<span class="promo-badge">Consigliato per il tuo pet</span>'
         ];
+
+        if (imageUrl) {
+            html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin:8px 0;">');
+        }
+
+        html.push('<div class="promo-name">' + _escapeHtml(rec.name) + '</div>');
+
+        if (description) {
+            html.push('<div class="promo-description" style="font-size:13px;color:#555;margin:4px 0 8px;">' + _escapeHtml(description) + '</div>');
+        }
 
         if (whyText) {
             html.push('<div class="promo-explanation">' + _escapeHtml(whyText) + '</div>');

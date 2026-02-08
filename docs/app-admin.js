@@ -879,8 +879,16 @@
             html.push('<option value="' + c + '">' + c + '</option>');
         });
         html.push('</select></div>');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Specie</label><input type="text" id="newItemSpecies" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="dog, cat"></div>');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Lifecycle</label><input type="text" id="newItemLifecycle" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="puppy, adult, senior"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Specie</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">');
+        ['dog', 'cat', 'rabbit', 'ferret', 'bird', 'reptile'].forEach(function (s) {
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemSpecies" value="' + s + '">' + s + '</label>');
+        });
+        html.push('</div></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Lifecycle</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">');
+        ['puppy', 'adult', 'senior'].forEach(function (lc) {
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemLifecycle" value="' + lc + '">' + lc + '</label>');
+        });
+        html.push('</div></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newItemDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione"></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="newItemUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="newItemImageUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
@@ -894,13 +902,14 @@
             html.push('<p style="color:#888;">Nessun prodotto trovato.</p>');
         } else {
             html.push('<table class="admin-table">');
-            html.push('<tr><th>Nome</th><th>Categoria</th><th>Specie</th><th>Stato</th><th>Priorita</th><th>Azioni</th></tr>');
+            html.push('<tr><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Stato</th><th>Priorita</th><th>Azioni</th></tr>');
             _catalogItems.forEach(function (item) {
                 var statusColor = { draft: '#888', in_review: '#eab308', published: '#16a34a', retired: '#dc2626' }[item.status] || '#888';
                 html.push('<tr>');
                 html.push('<td>' + _escapeHtml(item.name) + '</td>');
                 html.push('<td>' + _escapeHtml(item.category) + '</td>');
                 html.push('<td>' + _escapeHtml(Array.isArray(item.species) ? item.species.join(', ') : '') + '</td>');
+                html.push('<td>' + _escapeHtml(Array.isArray(item.lifecycle_target) ? item.lifecycle_target.join(', ') : '') + '</td>');
                 html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
                 html.push('<td>' + (item.priority || 0) + '</td>');
                 html.push('<td style="white-space:nowrap;">');
@@ -957,10 +966,12 @@
             return;
         }
 
-        var speciesStr = (document.getElementById('newItemSpecies') || {}).value || '';
-        var lifecycleStr = (document.getElementById('newItemLifecycle') || {}).value || '';
-        var species = speciesStr ? speciesStr.split(',').map(function (s) { return s.trim(); }) : [];
-        var lifecycle = lifecycleStr ? lifecycleStr.split(',').map(function (s) { return s.trim(); }) : [];
+        var species = [];
+        var speciesBoxes = document.querySelectorAll('.newItemSpecies:checked');
+        for (var si = 0; si < speciesBoxes.length; si++) species.push(speciesBoxes[si].value);
+        var lifecycle = [];
+        var lcBoxes = document.querySelectorAll('.newItemLifecycle:checked');
+        for (var li = 0; li < lcBoxes.length; li++) lifecycle.push(lcBoxes[li].value);
 
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items', {
             method: 'POST',
@@ -1009,17 +1020,85 @@
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
         if (!tenantId) return;
 
-        var newName = prompt('Nuovo nome prodotto:');
-        if (!newName) return;
+        // Find item in cache
+        var item = _catalogItems.find(function (i) { return i.promo_item_id === itemId; });
+        if (!item) return;
+
+        var speciesOptions = ['dog', 'cat', 'rabbit', 'ferret', 'bird', 'reptile'];
+        var lifecycleOptions = ['puppy', 'adult', 'senior'];
+        var categoryOptions = ['food_general', 'food_clinical', 'supplement', 'antiparasitic', 'accessory', 'service'];
+
+        _showModal('Modifica Prodotto', function (container) {
+            var html = [];
+            html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome</label><input type="text" id="editItemName" value="' + _escapeHtml(item.name || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Categoria</label><select id="editItemCategory" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+            categoryOptions.forEach(function (c) {
+                html.push('<option value="' + c + '"' + (item.category === c ? ' selected' : '') + '>' + c + '</option>');
+            });
+            html.push('</select></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="editItemDescription" value="' + _escapeHtml(item.description || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="editItemUrl" value="' + _escapeHtml(item.product_url || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="editItemImageUrl" value="' + _escapeHtml(item.image_url || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Priorità</label><input type="number" id="editItemPriority" value="' + (item.priority || 0) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('</div>');
+
+            // Species checkboxes
+            var itemSpecies = Array.isArray(item.species) ? item.species : [];
+            html.push('<div style="margin-top:12px;"><label style="font-size:12px;font-weight:600;">Specie target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
+            speciesOptions.forEach(function (s) {
+                var checked = itemSpecies.indexOf(s) !== -1 ? ' checked' : '';
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemSpecies" value="' + s + '"' + checked + '>' + s + '</label>');
+            });
+            html.push('</div></div>');
+
+            // Lifecycle checkboxes
+            var itemLifecycle = Array.isArray(item.lifecycle_target) ? item.lifecycle_target : [];
+            html.push('<div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Lifecycle target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
+            lifecycleOptions.forEach(function (lc) {
+                var checked = itemLifecycle.indexOf(lc) !== -1 ? ' checked' : '';
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemLifecycle" value="' + lc + '"' + checked + '>' + lc + '</label>');
+            });
+            html.push('</div></div>');
+
+            html.push('<div style="margin-top:16px;"><button class="btn btn-success" onclick="_savePromoItemEdit(\'' + _escapeHtml(itemId) + '\')">Salva</button> <button class="btn btn-secondary" onclick="_closeModal()">Annulla</button></div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function _savePromoItemEdit(itemId) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var species = [];
+        var speciesCheckboxes = document.querySelectorAll('.editItemSpecies:checked');
+        for (var i = 0; i < speciesCheckboxes.length; i++) species.push(speciesCheckboxes[i].value);
+
+        var lifecycle = [];
+        var lcCheckboxes = document.querySelectorAll('.editItemLifecycle:checked');
+        for (var j = 0; j < lcCheckboxes.length; j++) lifecycle.push(lcCheckboxes[j].value);
+
+        var patch = {
+            name: (document.getElementById('editItemName') || {}).value || '',
+            category: (document.getElementById('editItemCategory') || {}).value || '',
+            description: (document.getElementById('editItemDescription') || {}).value || null,
+            product_url: (document.getElementById('editItemUrl') || {}).value || null,
+            image_url: (document.getElementById('editItemImageUrl') || {}).value || null,
+            priority: parseInt((document.getElementById('editItemPriority') || {}).value) || 0,
+            species: species,
+            lifecycle_target: lifecycle
+        };
 
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName })
+            body: JSON.stringify(patch)
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         }).then(function () {
+            _closeModal();
             if (typeof showToast === 'function') showToast('Prodotto aggiornato.', 'success');
             loadAdminCatalog();
         }).catch(function () {
@@ -1109,7 +1188,8 @@
                 } else if (camp.status === 'paused') {
                     html.push('<button class="btn btn-success" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="updateCampaignStatus(\'' + _escapeHtml(camp.campaign_id) + '\',\'active\')">Riprendi</button>');
                 }
-                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editCampaign(\'' + _escapeHtml(camp.campaign_id) + '\',\'' + _escapeHtml(camp.name) + '\')">Modifica</button>');
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="manageCampaignItems(\'' + _escapeHtml(camp.campaign_id) + '\')">Prodotti</button>');
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editCampaign(\'' + _escapeHtml(camp.campaign_id) + '\')">Modifica</button>');
                 html.push('</td></tr>');
             });
             html.push('</table>');
@@ -1174,26 +1254,148 @@
         });
     }
 
-    function editCampaign(campaignId, currentName) {
+    function editCampaign(campaignId) {
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
         if (!tenantId) return;
 
-        var newName = prompt('Nuovo nome campagna:', currentName);
-        if (!newName || newName === currentName) return;
+        // Find campaign in cache
+        var camp = _campaignsData.find(function (c) { return c.campaign_id === campaignId; });
+        if (!camp) return;
+
+        _showModal('Modifica Campagna', function (container) {
+            var html = [];
+            html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome</label><input type="text" id="editCampName" value="' + _escapeHtml(camp.name || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">UTM Campaign</label><input type="text" id="editCampUtm" value="' + _escapeHtml(camp.utm_campaign || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Data inizio</label><input type="date" id="editCampStart" value="' + _escapeHtml(camp.start_date ? camp.start_date.substring(0, 10) : '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Data fine</label><input type="date" id="editCampEnd" value="' + _escapeHtml(camp.end_date ? camp.end_date.substring(0, 10) : '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Contesti</label><input type="text" id="editCampContexts" value="' + _escapeHtml(Array.isArray(camp.contexts) ? camp.contexts.join(', ') : '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('</div>');
+            html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="_saveCampaignEdit(\'' + _escapeHtml(campaignId) + '\')">Salva</button> <button class="btn btn-secondary" onclick="_closeModal()">Annulla</button></div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function _saveCampaignEdit(campaignId) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var name = (document.getElementById('editCampName') || {}).value || '';
+        var utm_campaign = (document.getElementById('editCampUtm') || {}).value || null;
+        var start_date = (document.getElementById('editCampStart') || {}).value || null;
+        var end_date = (document.getElementById('editCampEnd') || {}).value || null;
+        var contextsStr = (document.getElementById('editCampContexts') || {}).value || '';
+        var contexts = contextsStr ? contextsStr.split(',').map(function (s) { return s.trim(); }) : [];
 
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns/' + encodeURIComponent(campaignId), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName })
+            body: JSON.stringify({ name: name, utm_campaign: utm_campaign, start_date: start_date, end_date: end_date, contexts: contexts })
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         }).then(function () {
+            _closeModal();
             if (typeof showToast === 'function') showToast('Campagna aggiornata.', 'success');
             loadAdminCampaigns();
         }).catch(function () {
             if (typeof showToast === 'function') showToast('Errore aggiornamento.', 'error');
+        });
+    }
+
+    // =========================================================================
+    // Campaign <-> Promo Item linking
+    // =========================================================================
+
+    function manageCampaignItems(campaignId) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        _showModal('Prodotti nella campagna', function (container) {
+            container.innerHTML = '<p style="color:#888;">Caricamento...</p>';
+
+            // Load linked items and all available items in parallel
+            Promise.all([
+                fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns/' + encodeURIComponent(campaignId) + '/items').then(function (r) { return r.ok ? r.json() : { items: [] }; }),
+                fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?limit=100').then(function (r) { return r.ok ? r.json() : { items: [] }; })
+            ]).then(function (results) {
+                var linked = results[0].items || [];
+                var allItems = results[1].items || [];
+                var linkedIds = linked.map(function (i) { return i.promo_item_id; });
+
+                var html = [];
+                html.push('<h4 style="margin:0 0 8px;color:#1e3a5f;">Prodotti collegati</h4>');
+                if (linked.length === 0) {
+                    html.push('<p style="color:#888;">Nessun prodotto collegato.</p>');
+                } else {
+                    linked.forEach(function (item) {
+                        html.push('<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">');
+                        html.push('<span>' + _escapeHtml(item.name) + ' <small style="color:#888;">(' + _escapeHtml(item.category) + ')</small></span>');
+                        html.push('<button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="unlinkCampaignItem(\'' + _escapeHtml(campaignId) + '\',\'' + _escapeHtml(item.promo_item_id) + '\')">Rimuovi</button>');
+                        html.push('</div>');
+                    });
+                }
+
+                // Add item selector
+                var unlinked = allItems.filter(function (i) { return linkedIds.indexOf(i.promo_item_id) === -1; });
+                if (unlinked.length > 0) {
+                    html.push('<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">');
+                    html.push('<select id="linkItemSelect" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+                    unlinked.forEach(function (item) {
+                        html.push('<option value="' + _escapeHtml(item.promo_item_id) + '">' + _escapeHtml(item.name) + ' (' + _escapeHtml(item.category) + ')</option>');
+                    });
+                    html.push('</select>');
+                    html.push('<button class="btn btn-success" onclick="linkCampaignItem(\'' + _escapeHtml(campaignId) + '\')">Aggiungi</button>');
+                    html.push('</div>');
+                }
+
+                html.push('<div style="margin-top:16px;"><button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button></div>');
+                container.innerHTML = html.join('');
+            });
+        });
+    }
+
+    function linkCampaignItem(campaignId) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var itemId = (document.getElementById('linkItemSelect') || {}).value;
+        if (!itemId) return;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns/' + encodeURIComponent(campaignId) + '/items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ promo_item_id: itemId })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Prodotto collegato.', 'success');
+            manageCampaignItems(campaignId); // refresh
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore collegamento.', 'error');
+        });
+    }
+
+    function unlinkCampaignItem(campaignId, itemId) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/campaigns/' + encodeURIComponent(campaignId) + '/items/' + encodeURIComponent(itemId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Prodotto rimosso.', 'success');
+            manageCampaignItems(campaignId); // refresh
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore rimozione.', 'error');
         });
     }
 
@@ -1477,6 +1679,38 @@
     function auditNextPage() { _auditOffset += 50; loadSuperadminAudit(); }
 
     // =========================================================================
+    // Modal helper
+    // =========================================================================
+
+    function _showModal(title, renderFn) {
+        _closeModal(); // close any existing
+        var overlay = document.createElement('div');
+        overlay.id = 'admin-modal-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        overlay.onclick = function (e) { if (e.target === overlay) _closeModal(); };
+
+        var modal = document.createElement('div');
+        modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+
+        var header = document.createElement('h3');
+        header.style.cssText = 'margin:0 0 16px;color:#1e3a5f;';
+        header.textContent = title;
+        modal.appendChild(header);
+
+        var body = document.createElement('div');
+        modal.appendChild(body);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        if (typeof renderFn === 'function') renderFn(body);
+    }
+
+    function _closeModal() {
+        var overlay = document.getElementById('admin-modal-overlay');
+        if (overlay) overlay.remove();
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -1503,6 +1737,15 @@
     global.createCampaign         = createCampaign;
     global.updateCampaignStatus   = updateCampaignStatus;
     global.editCampaign           = editCampaign;
+    global._saveCampaignEdit      = _saveCampaignEdit;
+    // Campaign-Item linking
+    global.manageCampaignItems    = manageCampaignItems;
+    global.linkCampaignItem       = linkCampaignItem;
+    global.unlinkCampaignItem     = unlinkCampaignItem;
+    // Promo edit modal
+    global._savePromoItemEdit     = _savePromoItemEdit;
+    // Modal helpers
+    global._closeModal            = _closeModal;
     // Tenants
     global.loadSuperadminTenants  = loadSuperadminTenants;
     global.showCreateTenantForm   = showCreateTenantForm;
