@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v7.2.2 (2026-02-08)
+- Aggiunto cleanup automatico branch dopo merge PR
+- Aggiunta lettura e valutazione automatica review Codex/bot sulle PR
+- Aggiornato `CLAUDE.md` con workflow completo
+
 ## v7.2.1 (2026-02-08)
 - Aggiunto `CLAUDE.md` con istruzioni per CI feedback automatico e workflow PR/merge
 - Allineata versione in tutti i file (config.js, AGENTS.md, RELEASE_NOTES.md)

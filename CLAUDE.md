@@ -23,8 +23,10 @@ Never wait for the user to paste CI logs. Always check CI results autonomously.
 ## PR and Merge Workflow
 
 - After CI passes, **automatically create a PR** with `gh pr create`
+- **Read Codex reviews**: after PR creation, check for reviews with `gh api repos/abupet/ada/pulls/<N>/comments` and `gh api repos/abupet/ada/issues/<N>/comments`. If Codex (or other bots) left feedback, evaluate it and address valid issues before requesting merge
 - For **merge**, always ask the user for confirmation first
 - Use `gh pr merge` with the appropriate merge strategy after approval
+- **After merge, ALWAYS delete the remote branch** with `gh api -X DELETE repos/abupet/ada/git/refs/heads/<branch>` to avoid branch proliferation
 
 ## Project Setup
 
