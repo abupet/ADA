@@ -1,5 +1,52 @@
 # Release Notes (cumulative)
 
+## v7.2.10 (2026-02-08)
+- Fix: Seed Engine — specie ora in italiano (Cane/Gatto/Coniglio) anziché inglese (dog/cat/rabbit)
+- Fix: Seed Engine — referti SOAP: campi ora in formato `soapData { s, o, a, p }` + back-compat lowercase, allineati al frontend `_getSoapFromRecord()`
+- Fix: Seed Engine — parametri vitali: campi rinominati da `temperature_c/heart_rate_bpm/respiratory_rate/weight_kg` a `temp/hr/rr/weight`, allineati al grafico frontend
+
+## v7.2.9 (2026-02-08)
+- Fix: Seed Engine — i pet ora appartengono all'utente loggato (`req.user.sub`) anziché al fallback hardcoded `'ada-user'`. Questo era il motivo per cui il pull sync non restituiva i pet seedati: l'utente V2/super_admin ha un `user_id` diverso da `'ada-user'`
+
+## v7.2.8 (2026-02-08)
+- Fix: Seed Engine — i pet generati ora appaiono nel frontend grazie alla creazione di record `pet_changes` con `change_type='pet.upsert'` (Phase 3 e Phase 9), necessari per il meccanismo di pull sync
+- Fix: Seed Engine — corretto errore wipe `pet_tags`: cast `pet_id::text` per compatibilità UUID↔TEXT
+- Fix: Seed Engine — rimossi inserimenti invalidi `pet_changes` con `change_type='soap.seed'` (violazione CHECK constraint)
+
+## v7.2.7 (2026-02-08)
+- Fix: Seed Engine — le chiamate OpenAI per generazione SOAP e documenti ora inviano `messages` come array di oggetti (anziché un oggetto singolo), risolvendo l'errore 400 "Invalid type for 'messages'"
+
+## v7.2.6 (2026-02-08)
+- Test ciclo completo commit → PR → cancellazione branch (nessuna modifica funzionale)
+
+## v7.2.5 (2026-02-08)
+- Aggiunta regola vincolante: per ogni release user-facing/comportamentale, verificare e aggiornare i test automatici E2E
+- Regola aggiunta in `AGENTS.md` (Definition of done) e `CLAUDE.md`
+
+## v7.2.4 (2026-02-08)
+- Fix: `ada-tests.sh` ora avvia automaticamente il backend (porta 3000) prima dei test e2e, allineandosi alla CI
+- Fix: `login.ts` helper usa `locator.or()` per attendere correttamente il risultato del login asincrono, evitando race condition tra appContainer e loginError
+- Status mostra ora lo stato di backend e frontend separatamente
+- Impostazioni / Sistema: solo super_admin vede e modifica il flag "Debug attivo"; altri ruoli vedono la sezione in sola lettura solo se debug ON, nascosta se OFF
+- Debug: per super_admin nascosto il pulsante toggle ruolo, visibile solo il dropdown con titolo "Ruolo attivo (super admin)"
+- Seed Engine: appare solo quando super_admin sceglie il ruolo attivo super_admin, spostato nella nuova sezione sidebar "TEST & DEMO" prima di "ADMIN PROMO"
+
+## v7.2.3 (2026-02-08)
+- Aggiunta sezione "Mandatory Reads Before Coding" a `CLAUDE.md`
+- Lettura obbligatoria di `AGENTS.md`, `TEST_PLAN.md` prima di ogni modifica
+- Lettura condizionale di ADR e PR template in base all'area modificata
+- Esclusa directory `tmp/` dal lavoro autonomo
+
+## v7.2.2 (2026-02-08)
+- Aggiunto cleanup automatico branch dopo merge PR
+- Aggiunta lettura e valutazione automatica review Codex/bot sulle PR
+- Aggiornato `CLAUDE.md` con workflow completo
+
+## v7.2.1 (2026-02-08)
+- Aggiunto `CLAUDE.md` con istruzioni per CI feedback automatico e workflow PR/merge
+- Allineata versione in tutti i file (config.js, AGENTS.md, RELEASE_NOTES.md)
+- Aggiunto riferimento obbligatorio a `AGENTS.md` come fonte di verità in `CLAUDE.md`
+
 ## v7.0.0 (2026-02-04)
 
 Major release: role system, document management, sync engine, promo, hardening, observability.

@@ -265,6 +265,7 @@ function navigateToPage(page) {
         renderSpeakersSettings();
         try { renderAccountInfo(); } catch(e) {}
         try { updateSettingsSectionsVisibility(); } catch(e) {}
+        try { initOpenAiOptimizationsSettingsUI(); } catch(e) {}
     }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
@@ -375,15 +376,20 @@ function toggleActiveRole() {
 
 function applyRoleUI(role) {
     const r = role || getActiveRole();
+    var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
 
     // Update sidebar sections
     const vetSection = document.getElementById('sidebar-vet');
     const ownerSection = document.getElementById('sidebar-owner');
     const adminSection = document.getElementById('sidebar-admin');
+    const testDemoSection = document.getElementById('sidebar-test-demo');
     const isAdmin = (r === 'admin_brand' || r === 'super_admin');
     if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
     if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
     if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
+
+    // TEST & DEMO section: visible only when super_admin user has super_admin as active role
+    if (testDemoSection) testDemoSection.style.display = (_isSA && r === 'super_admin') ? '' : 'none';
 
     // Show super_admin-only nav items
     ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit'].forEach(function (id) {
@@ -393,27 +399,36 @@ function applyRoleUI(role) {
 
     // Update toggle button
     const icon = document.getElementById('roleToggleIcon');
-    const label = document.getElementById('roleToggleLabel');
+    const labelEl = document.getElementById('roleToggleLabel');
     var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡' };
     var roleLabelsMap = { 'veterinario': 'Veterinario', 'proprietario': 'Proprietario', 'admin_brand': 'Admin Brand', 'super_admin': 'Super Admin' };
     if (icon) icon.textContent = roleIcons[r] || '🩺';
-    if (label) label.textContent = roleLabelsMap[r] || 'Veterinario';
+    if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
+
+    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label,
+    // show only the dropdown with smaller title
+    var roleToggleContainer = document.getElementById('roleToggleContainer');
+    var roleToggleLabelBlock = document.getElementById('roleToggleLabelBlock');
+    if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? 'none' : '';
+    if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? 'none' : '';
 
     // Show super_admin role selector if user is super_admin
     var saSelector = document.getElementById('superAdminRoleSelector');
     var saSelect = document.getElementById('superAdminRoleSelect');
     if (saSelector) {
-        var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
         saSelector.style.display = _isSA ? '' : 'none';
         if (_isSA && saSelect) saSelect.value = r;
     }
 
     // For super_admin, show the appropriate sidebar sections based on active role
-    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+    if (_isSA) {
         if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
         if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
         if (adminSection) adminSection.style.display = (r === 'admin_brand' || r === 'super_admin') ? '' : 'none';
     }
+
+    // Settings: Sistema section visibility and debug checkbox access control
+    try { updateSettingsSystemVisibility(); } catch(e) {}
 
     // Re-init nav items for the new sidebar section
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
@@ -907,11 +922,12 @@ function updateSettingsSectionsVisibility() {
     var isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
     var speakersCard = document.getElementById('settingsSpeakersCard');
     var clinicCard = document.getElementById('settingsClinicCard');
-    var systemCard = document.getElementById('settingsSystemCard');
 
     if (speakersCard) speakersCard.style.display = isSA ? '' : 'none';
     if (clinicCard) clinicCard.style.display = isSA ? '' : 'none';
-    if (systemCard) systemCard.style.display = isSA ? '' : 'none';
+
+    // Sistema card: role-based access control
+    try { updateSettingsSystemVisibility(); } catch(e) {}
 }
 
 // ============================================
@@ -1154,6 +1170,7 @@ function toggleDebugLog(enabled) {
 
     // Debug ON exposes test-only UI tools (long audio/text loaders) and audio cache controls
     try { updateDebugToolsVisibility(); } catch (e) {}
+    try { updateSettingsSystemVisibility(); } catch (e) {}
     try { if (typeof refreshAudioCacheInfo === 'function') refreshAudioCacheInfo(); } catch (e) {}
 }
 
@@ -1372,6 +1389,31 @@ function toggleChunkingEnabled(enabled) {
     setChunkingEnabled(!!enabled);
     showToast(enabled ? 'Chunking attivato' : 'Chunking disattivato', 'success');
     try { if (typeof updateChunkingBadgesFromSettings === 'function') updateChunkingBadgesFromSettings(); } catch (e) {}
+}
+
+/**
+ * Settings page: role-based visibility of the Sistema section and Debug checkbox.
+ * - super_admin: always sees and can modify
+ * - admin_brand, vet, owner: debug ON → see read-only; debug OFF → hidden
+ */
+function updateSettingsSystemVisibility() {
+    var card = document.getElementById('settingsSystemCard');
+    var checkbox = document.getElementById('debugLogEnabled');
+    if (!card) return;
+    var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
+    var dbg = !!debugLogEnabled;
+    if (_isSA) {
+        // super_admin always sees and can modify
+        card.style.display = '';
+        if (checkbox) { checkbox.disabled = false; checkbox.style.pointerEvents = ''; }
+    } else if (dbg) {
+        // non-super_admin with debug ON: visible, read-only
+        card.style.display = '';
+        if (checkbox) { checkbox.disabled = true; checkbox.style.pointerEvents = 'none'; }
+    } else {
+        // non-super_admin with debug OFF: hidden
+        card.style.display = 'none';
+    }
 }
 
 function updateDebugToolsVisibility() {
@@ -1637,22 +1679,25 @@ async function sendFullscreenCorrection() {
         const correctionText = transcribeResult.text;
         
         // Apply correction using GPT
+        const corrTaskModel = getAiModelForTask('text_correction', 'gpt-4o');
+        const corrTaskParams = getAiParamsForTask('text_correction');
         const applyResponse = await fetchApi('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: 'gpt-4o',
+                model: corrTaskModel,
                 messages: [
                     { role: 'system', content: 'Sei un assistente che applica correzioni testuali. Applica le modifiche richieste al testo originale e restituisci SOLO il testo corretto, senza spiegazioni.' },
                     { role: 'user', content: `TESTO ORIGINALE:\n${currentText}\n\nCORREZIONE RICHIESTA:\n${correctionText}\n\nApplica la correzione e restituisci il testo modificato.` }
                 ],
-                temperature: 0.3
+                temperature: corrTaskParams.temperature ?? 0.3
             })
         });
-        
+
         const applyResult = await applyResponse.json();
         if (applyResult.error) throw new Error(applyResult.error.message);
-        
+        if (applyResult.usage) trackChatUsage(corrTaskModel, applyResult.usage);
+
         const correctedText = applyResult.choices[0].message.content;
         document.getElementById('fullscreenTextarea').value = correctedText;
         
@@ -2213,17 +2258,19 @@ function updateSOAPLabels(lang) {
 }
 
 async function translateText(text, targetLang) {
+    const taskModel = getAiModelForTask('translate', 'gpt-4o');
+    const taskParams = getAiParamsForTask('translate');
     const response = await fetchApi('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            model: 'gpt-4o',
+            model: taskModel,
             messages: [{ role: 'user', content: `Traduci in ${langNames[targetLang]}. Rispondi SOLO con la traduzione:\n\n${text}` }],
-            temperature: 0.3
+            temperature: taskParams.temperature ?? 0.3
         })
     });
     const data = await response.json();
-    trackChatUsage('gpt-4o', data.usage);
+    trackChatUsage(taskModel, data.usage);
     return data.choices[0].message.content;
 }
 
@@ -2792,7 +2839,7 @@ function renderSoapReadonly(item) {
         html += '</div>';
     }
 
-    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.0.0') + ' - AI Driven AbuPet</div>';
+    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.2.1') + ' - AI Driven AbuPet</div>';
 
     container.innerHTML = html;
 
@@ -2934,6 +2981,37 @@ function deleteMedication(index) {
 function openCostsPage() {
     navigateToPage('costs');
     updateCostDisplay();
+}
+
+// ============================================
+// OPENAI OPTIMIZATIONS SETTINGS (super_admin)
+// ============================================
+
+async function initOpenAiOptimizationsSettingsUI() {
+    const card = document.getElementById('openaiOptCard');
+    if (!card) return;
+    if (getActiveRole() !== 'super_admin') { card.style.display = 'none'; return; }
+    card.style.display = '';
+    try {
+        const flags = await refreshOpenAiOptimizationFlags(true);
+        document.getElementById('openaiOptEnabled').checked = !!flags.enabled;
+        document.getElementById('openaiOptSmartDiarization').checked = !!flags.smart_diarization;
+    } catch (e) { console.warn('initOpenAiOptimizationsSettingsUI error:', e); }
+}
+
+async function saveOpenAiOptimizations() {
+    const enabled = document.getElementById('openaiOptEnabled').checked;
+    const smart_diarization = document.getElementById('openaiOptSmartDiarization').checked;
+    try {
+        const resp = await fetchApi('/api/superadmin/openai-optimizations', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, smart_diarization })
+        });
+        if (!resp.ok) { const err = await resp.json().catch(() => null); throw new Error(err?.error || `HTTP ${resp.status}`); }
+        await refreshOpenAiOptimizationFlags(true);
+        showToast('Ottimizzazioni salvate', 'success');
+    } catch (e) { showToast('Errore: ' + e.message, 'error'); }
 }
 
 // Initialize on load

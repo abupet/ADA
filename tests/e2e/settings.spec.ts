@@ -18,3 +18,37 @@ test("@smoke Impostazioni: account info visibile, debug attivo", async ({ page }
   await expect(page.locator("#page-debug")).toBeVisible();
   await expect(page.getByTestId("debug-system-tools")).toBeVisible();
 });
+
+test("@smoke Impostazioni/Sistema: non-super_admin debug ON vede card read-only", async ({ page }) => {
+  await login(page);
+
+  // Default: debugLogEnabled = true (localStorage empty → defaults ON)
+  await page.locator('.nav-item[data-page="settings"]').click();
+  await expect(page.locator("#page-settings")).toBeVisible();
+
+  // Sistema card should be visible (debug is ON)
+  const systemCard = page.locator("#settingsSystemCard");
+  await expect(systemCard).toBeVisible();
+
+  // Debug checkbox should be visible but disabled (read-only for non-super_admin)
+  const checkbox = page.locator("#debugLogEnabled");
+  await expect(checkbox).toBeVisible();
+  await expect(checkbox).toBeDisabled();
+});
+
+test("@smoke Impostazioni/Sistema: non-super_admin debug OFF nasconde card", async ({ page }) => {
+  await login(page);
+
+  // Turn debug OFF using the app's own toggleDebugLog function,
+  // then navigate to settings — the card should be hidden
+  await page.evaluate(() => {
+    (window as any).toggleDebugLog(false);
+    (window as any).navigateToPage('settings');
+  });
+
+  await expect(page.locator("#page-settings.active")).toBeVisible();
+
+  // Sistema card should be hidden (debug is OFF and user is not super_admin)
+  const systemCard = page.locator("#settingsSystemCard");
+  await expect(systemCard).not.toBeVisible();
+});

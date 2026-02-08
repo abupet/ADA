@@ -1,4 +1,4 @@
-# long-tests.yml v1
+# long-tests.yml v2
 name: Long tests (manual)
 
 on:
@@ -7,6 +7,7 @@ on:
 jobs:
   long:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: ci
 
     env:
@@ -31,6 +32,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Install backend dependencies
+        run: npm install --prefix backend
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -42,8 +46,18 @@ jobs:
 
       - name: Start server
         run: |
+          nohup node backend/src/server.js > backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health > /dev/null
           nohup npm run serve > server.log 2>&1 &
-          npx wait-on http://127.0.0.1:4173
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173 > /dev/null
 
       - name: Seed test users
         run: node backend/src/seed.test-users.js
@@ -73,6 +87,14 @@ jobs:
         with:
           name: server-log
           path: server.log
+          if-no-files-found: ignore
+
+      - name: Upload backend log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend.log
           if-no-files-found: ignore
 
       - name: Write CI summary

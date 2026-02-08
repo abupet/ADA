@@ -1,4 +1,4 @@
-# ci-real.yml v6
+# ci-real.yml v7
 name: CI (REAL)
 
 on:
@@ -17,6 +17,7 @@ jobs:
       STRICT_NETWORK: "1"
       STRICT_ALLOW_HOSTS: "cdnjs.cloudflare.com"
       ALLOW_OPENAI: "1"
+      FRONTEND_ORIGIN: "http://localhost:4173"
       ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
       ADA_TEST_EMAIL: ${{ secrets.TEST_VET_EMAIL }}
       TEST_SUPER_ADMIN_EMAIL: ${{ secrets.TEST_SUPER_ADMIN_EMAIL }}
@@ -42,6 +43,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install backend dependencies
+        run: npm install --prefix backend
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -54,8 +58,18 @@ jobs:
 
       - name: Start server
         run: |
+          nohup node backend/src/server.js > backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health > /dev/null
           nohup npm run serve > server.log 2>&1 &
-          npx wait-on http://127.0.0.1:4173
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173 > /dev/null
 
       - name: Seed test users
         run: node backend/src/seed.test-users.js
@@ -85,6 +99,14 @@ jobs:
         with:
           name: server-log
           path: server.log
+          if-no-files-found: ignore
+
+      - name: Upload backend log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: backend.log
           if-no-files-found: ignore
 
       - name: Write CI summary

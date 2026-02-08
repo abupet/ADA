@@ -1623,7 +1623,32 @@ async function transcribeAudio() {
     
     // Try diarized transcription first
     document.getElementById('recordingStatus').textContent = '⏳ Sto trascrivendo...';
-    
+
+    // Smart diarization: skip diarization when no speakers configured
+    let skipDiarization = false;
+    if (typeof isSmartDiarizationEnabled === 'function' && isSmartDiarizationEnabled()) {
+        try {
+            const savedSpeakers = await getSavedSpeakers();
+            if (!savedSpeakers || savedSpeakers.length === 0) {
+                skipDiarization = true;
+                if (typeof ADALog !== 'undefined') {
+                    ADALog.info('OPENAI', 'smart diarization: no speakers configured, using Whisper direct');
+                }
+            }
+        } catch (_e) { /* ignore, proceed with diarization */ }
+    }
+
+    if (skipDiarization) {
+        try {
+            await transcribeWithWhisperFallback(recordedMinutes);
+            const dt = ((performance.now() - t0) / 1000).toFixed(1);
+            showToast(`✅ Trascrizione completata (${dt}s, Whisper diretto)`, 'success');
+        } catch (e) {
+            if (isAbortError(e) || (getVisitSignal() && getVisitSignal().aborted)) throw e;
+            showToast('Errore trascrizione: ' + e.message, 'error');
+        }
+    } else {
+
     try {
         const result = await transcribeDiarizedOpenAI(audioBlob, 1); // attempt 1
         lastTranscriptionResult = result;
@@ -1709,7 +1734,8 @@ async function transcribeAudio() {
             }
         }
     }
-    
+    } // end else (diarization path)
+
     if (typeof ADALog !== 'undefined') {
         ADALog.info('REC', 'pipeline done', {totalLatencyMs: Math.round(performance.now() - t0), transcriptLengthChars: (document.getElementById('transcriptionText')?.value || '').length, fallbackUsed: !lastTranscriptionDiarized});
         ADALog.endCorrelation();
@@ -2079,7 +2105,7 @@ Esempio: [{"segment_index": 0, "speaker": "Veterinario", "role": "veterinario", 
             });
         }
         
-        trackChatUsage('gpt-4o', data.usage);
+        trackChatUsage('gpt-4o-mini', data.usage);
         saveApiUsage();
         
     } catch (e) {

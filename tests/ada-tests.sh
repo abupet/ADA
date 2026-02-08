@@ -498,6 +498,11 @@ run_unit() {
   run_and_log "UNIT tests" npm run test:unit
 }
 
+run_unit() {
+  say "Running UNIT tests ..."
+  npm run test:unit
+}
+
 run_policy() {
   run_and_log "POLICY checks" node tests/policy/policy-checks.js
 }
