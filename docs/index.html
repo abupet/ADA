@@ -46,7 +46,6 @@
                     <div class="nav-item" data-page="soap">📋 Referto</div>
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
                     <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
-                    <div class="nav-item seed-nav-item" data-page="seed" style="display:none;">🌱 Seed Engine</div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
@@ -59,7 +58,12 @@
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
                     <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
                     <div class="nav-item" data-page="photos">📷 Foto</div>
-                    <div class="nav-item seed-nav-item" data-page="seed" style="display:none;">🌱 Seed Engine</div>
+                </div>
+
+                <!-- Sidebar: TEST & DEMO (super_admin only) -->
+                <div id="sidebar-test-demo" class="sidebar-role-section" style="display:none;">
+                    <div class="nav-section">TEST & DEMO</div>
+                    <div class="nav-item seed-nav-item" data-page="seed">🌱 Seed Engine</div>
                 </div>
 
                 <!-- Sidebar: Admin Brand / Super Admin -->
@@ -1088,7 +1092,9 @@
                     <h2>🛠 Debug</h2>
                 </div>
                 <div class="card" style="margin-bottom:15px;">
-                    <label style="font-weight:600; margin-bottom:8px; display:block;">Ruolo attivo</label>
+                    <div id="roleToggleLabelBlock" style="margin-bottom:8px;">
+                        <label style="font-weight:600; display:block;">Ruolo attivo</label>
+                    </div>
                     <div id="roleToggleContainer" class="role-toggle-container">
                         <button id="roleToggleBtn" class="role-toggle-btn" onclick="toggleActiveRole()" data-testid="role-toggle-button">
                             <span id="roleToggleIcon">🩺</span>
@@ -1096,7 +1102,7 @@
                         </button>
                     </div>
                     <div id="superAdminRoleSelector" style="display:none; margin-top:10px;">
-                        <label style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruolo attivo (super admin):</label>
+                        <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruolo attivo (super admin)</label>
                         <select id="superAdminRoleSelect" onchange="onSuperAdminRoleChange(this.value)" style="width:100%;">
                             <option value="veterinario">🩺 Veterinario</option>
                             <option value="proprietario">🐾 Proprietario</option>

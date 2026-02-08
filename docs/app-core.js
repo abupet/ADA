@@ -391,15 +391,20 @@ function toggleActiveRole() {
 
 function applyRoleUI(role) {
     const r = role || getActiveRole();
+    var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
 
     // Update sidebar sections
     const vetSection = document.getElementById('sidebar-vet');
     const ownerSection = document.getElementById('sidebar-owner');
     const adminSection = document.getElementById('sidebar-admin');
+    const testDemoSection = document.getElementById('sidebar-test-demo');
     const isAdmin = (r === 'admin_brand' || r === 'super_admin');
     if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
     if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
     if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
+
+    // TEST & DEMO section: visible only when super_admin user has super_admin as active role
+    if (testDemoSection) testDemoSection.style.display = (_isSA && r === 'super_admin') ? '' : 'none';
 
     // Show super_admin-only nav items
     ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit'].forEach(function (id) {
@@ -409,27 +414,36 @@ function applyRoleUI(role) {
 
     // Update toggle button
     const icon = document.getElementById('roleToggleIcon');
-    const label = document.getElementById('roleToggleLabel');
+    const labelEl = document.getElementById('roleToggleLabel');
     var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡' };
     var roleLabelsMap = { 'veterinario': 'Veterinario', 'proprietario': 'Proprietario', 'admin_brand': 'Admin Brand', 'super_admin': 'Super Admin' };
     if (icon) icon.textContent = roleIcons[r] || '🩺';
-    if (label) label.textContent = roleLabelsMap[r] || 'Veterinario';
+    if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
+
+    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label,
+    // show only the dropdown with smaller title
+    var roleToggleContainer = document.getElementById('roleToggleContainer');
+    var roleToggleLabelBlock = document.getElementById('roleToggleLabelBlock');
+    if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? 'none' : '';
+    if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? 'none' : '';
 
     // Show super_admin role selector if user is super_admin
     var saSelector = document.getElementById('superAdminRoleSelector');
     var saSelect = document.getElementById('superAdminRoleSelect');
     if (saSelector) {
-        var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
         saSelector.style.display = _isSA ? '' : 'none';
         if (_isSA && saSelect) saSelect.value = r;
     }
 
     // For super_admin, show the appropriate sidebar sections based on active role
-    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+    if (_isSA) {
         if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
         if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
         if (adminSection) adminSection.style.display = (r === 'admin_brand' || r === 'super_admin') ? '' : 'none';
     }
+
+    // Settings: Sistema section visibility and debug checkbox access control
+    try { updateSettingsSystemVisibility(); } catch(e) {}
 
     // Re-init nav items for the new sidebar section
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
@@ -1169,6 +1183,7 @@ function toggleDebugLog(enabled) {
 
     // Debug ON exposes test-only UI tools (long audio/text loaders) and audio cache controls
     try { updateDebugToolsVisibility(); } catch (e) {}
+    try { updateSettingsSystemVisibility(); } catch (e) {}
     try { if (typeof refreshAudioCacheInfo === 'function') refreshAudioCacheInfo(); } catch (e) {}
 }
 
@@ -1387,6 +1402,31 @@ function toggleChunkingEnabled(enabled) {
     setChunkingEnabled(!!enabled);
     showToast(enabled ? 'Chunking attivato' : 'Chunking disattivato', 'success');
     try { if (typeof updateChunkingBadgesFromSettings === 'function') updateChunkingBadgesFromSettings(); } catch (e) {}
+}
+
+/**
+ * Settings page: role-based visibility of the Sistema section and Debug checkbox.
+ * - super_admin: always sees and can modify
+ * - admin_brand, vet, owner: debug ON → see read-only; debug OFF → hidden
+ */
+function updateSettingsSystemVisibility() {
+    var card = document.getElementById('settingsSystemCard');
+    var checkbox = document.getElementById('debugLogEnabled');
+    if (!card) return;
+    var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
+    var dbg = !!debugLogEnabled;
+    if (_isSA) {
+        // super_admin always sees and can modify
+        card.style.display = '';
+        if (checkbox) { checkbox.disabled = false; checkbox.style.pointerEvents = ''; }
+    } else if (dbg) {
+        // non-super_admin with debug ON: visible, read-only
+        card.style.display = '';
+        if (checkbox) { checkbox.disabled = true; checkbox.style.pointerEvents = 'none'; }
+    } else {
+        // non-super_admin with debug OFF: hidden
+        card.style.display = 'none';
+    }
 }
 
 function updateDebugToolsVisibility() {
