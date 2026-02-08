@@ -78,7 +78,9 @@ function createMockPool(queryResponses) {
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species query
     { rows: [{ species: "cane" }] },
-    // 3. consent query (marketing_global opted_out)
+    // 3. lifecycle pet_tags query
+    { rows: [] },
+    // 4. consent query (marketing_global opted_out)
     { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_out" }] },
   ]);
 
@@ -102,9 +104,11 @@ function createMockPool(queryResponses) {
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species
     { rows: [{ species: "dog" }] },
-    // 3. consents (all opted_in)
+    // 3. lifecycle pet_tags query
+    { rows: [] },
+    // 4. consents (all opted_in)
     { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 4. promo_items candidates
+    // 5. promo_items candidates
     { rows: [] },
   ]);
 
@@ -148,15 +152,17 @@ function createMockPool(queryResponses) {
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species
     { rows: [{ species: "cane" }] },
-    // 3. consents
-    { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 4. candidates
-    { rows: [mockItem] },
-    // 5. vet_flags check (no flags)
+    // 3. lifecycle pet_tags query
     { rows: [] },
-    // 6. frequency capping - per_session
+    // 4. consents
+    { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
+    // 5. candidates
+    { rows: [mockItem] },
+    // 6. vet_flags check (no flags)
+    { rows: [] },
+    // 7. frequency capping - per_session
     { rows: [{ cnt: "0" }] },
-    // 7. frequency capping - per_week
+    // 8. frequency capping - per_week
     { rows: [{ cnt: "0" }] },
   ]);
 
@@ -206,9 +212,11 @@ function createMockPool(queryResponses) {
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species -> dog
     { rows: [{ species: "dog" }] },
-    // 3. consents
+    // 3. lifecycle pet_tags query
+    { rows: [] },
+    // 4. consents
     { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 4. candidates - only cat item
+    // 5. candidates - only cat item
     { rows: [catOnlyItem] },
   ]);
 
@@ -245,15 +253,17 @@ function createMockPool(queryResponses) {
   };
 
   const pool = createMockPool([
-    // 1. pet_tags
+    // 1. pet_tags (empty -> triggers computeTags)
     { rows: [] },
-    // 2. computeTags called (pet query) - return no pet -> skip
+    // 2. computeTags: pet lookup (not found -> skip)
     { rows: [] },
     // 3. pets species
     { rows: [{ species: "dog" }] },
-    // 4. consents
+    // 4. lifecycle pet_tags query
+    { rows: [] },
+    // 5. consents
     { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 5. candidates - supplement item
+    // 6. candidates - supplement item
     { rows: [supplementItem] },
   ]);
 
@@ -294,11 +304,13 @@ function createMockPool(queryResponses) {
     { rows: [{ tag: "clinical:allergy", value: null, confidence: null }] },
     // 2. pets species
     { rows: [{ species: "dog" }] },
-    // 3. consents
+    // 3. lifecycle pet_tags query
+    { rows: [] },
+    // 4. consents
     { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 4. candidates
+    // 5. candidates
     { rows: [itemWithExclude] },
-    // 5. vet_flags
+    // 6. vet_flags
     { rows: [] },
   ]);
 
@@ -318,15 +330,17 @@ function createMockPool(queryResponses) {
 
 (async function testDefaultContext() {
   const pool = createMockPool([
-    // 1. pet_tags
+    // 1. pet_tags (empty -> triggers computeTags)
     { rows: [] },
-    // 2. computeTags pet query
+    // 2. computeTags: pet lookup (not found -> skip)
     { rows: [] },
     // 3. pets species
     { rows: [{ species: "dog" }] },
-    // 4. consents
+    // 4. lifecycle pet_tags query
+    { rows: [] },
+    // 5. consents
     { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 5. candidates
+    // 6. candidates
     { rows: [] },
   ]);
 
@@ -368,13 +382,15 @@ function createMockPool(queryResponses) {
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species
     { rows: [{ species: "dog" }] },
-    // 3. consents
-    { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
-    // 4. candidates
-    { rows: [itemWithQuery] },
-    // 5. vet_flags
+    // 3. lifecycle pet_tags query
     { rows: [] },
-    // 6-7. frequency capping
+    // 4. consents
+    { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
+    // 5. candidates
+    { rows: [itemWithQuery] },
+    // 6. vet_flags
+    { rows: [] },
+    // 7-8. frequency capping
     { rows: [{ cnt: "0" }] },
     { rows: [{ cnt: "0" }] },
   ]);
