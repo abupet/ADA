@@ -124,8 +124,33 @@ const SPECIES_IT = { dog: 'Cane', cat: 'Gatto', rabbit: 'Coniglio' };
 // Wipe seeded data (FK-safe order)
 // ---------------------------------------------------------------------------
 
-async function wipeSeededData(pool) {
+async function wipeSeededData(pool, ownerUserId) {
   const results = {};
+
+  // Collect seeded pet IDs before deletion (needed for pet.delete sync notifications)
+  let seededPetIds = [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT pet_id, owner_user_id FROM pets WHERE notes LIKE '%[seed]%'`
+    );
+    seededPetIds = rows;
+  } catch (_e) {
+    // continue — worst case frontend won't get delete notifications
+  }
+
+  // Also delete seed document files from disk
+  try {
+    const { rows: docRows } = await pool.query(
+      `SELECT storage_key FROM documents WHERE pet_id IN (SELECT pet_id FROM pets WHERE notes LIKE '%[seed]%')`
+    );
+    const storageDir = process.env.DOCUMENT_STORAGE_PATH || path.resolve(__dirname, '../../uploads');
+    for (const doc of docRows) {
+      try {
+        const fp = path.join(storageDir, doc.storage_key);
+        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      } catch (_e) { /* best effort */ }
+    }
+  } catch (_e) { /* continue */ }
 
   // FK-safe ordering: children before parents (matches spec §6 Wipe SQL)
   const tables = [
@@ -153,6 +178,20 @@ async function wipeSeededData(pool) {
       results[t.name] = { error: e.message };
     }
   }
+
+  // Insert pet.delete records so the frontend pull sync removes pets from IndexedDB
+  let deleteNotifications = 0;
+  for (const pet of seededPetIds) {
+    try {
+      await pool.query(
+        `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
+         VALUES ($1, $2, 'pet.delete', NULL, NULL, 'seed-engine', $3)`,
+        [ownerUserId || pet.owner_user_id, pet.pet_id, randomUUID()]
+      );
+      deleteNotifications++;
+    } catch (_e) { /* best effort */ }
+  }
+  results._delete_notifications = deleteNotifications;
 
   return results;
 }
@@ -226,7 +265,7 @@ async function _runSeedJob(pool, config, openAiKey) {
     if (config.mode === 'fresh') {
       if (_isCancelled()) return _finishCancelled();
       _log('Fresh mode: wiping seeded data...');
-      const wipeResult = await wipeSeededData(pool);
+      const wipeResult = await wipeSeededData(pool, ownerUserId);
       _log(`Wipe complete: ${JSON.stringify(wipeResult)}`);
     }
     _updateProgress(0, 2, 'Wipe complete');
@@ -451,6 +490,10 @@ async function _runSeedJob(pool, config, openAiKey) {
     const totalDocs = pets.length * config.docsPerPet;
     let docsDone = 0;
 
+    // Load placeholder files once (PDF + PNG)
+    const placeholderPdf = fs.readFileSync(path.resolve(__dirname, 'seed-assets/placeholder.pdf'));
+    const placeholderPng = fs.readFileSync(path.resolve(__dirname, 'seed-assets/placeholder.png'));
+
     for (const pet of pets) {
       if (_isCancelled()) return _finishCancelled();
       if (!pet._petId || !petIds.includes(pet._petId)) continue;
@@ -461,50 +504,43 @@ async function _runSeedJob(pool, config, openAiKey) {
         if (_isCancelled()) return _finishCancelled();
 
         const docType = docTypes[d % docTypes.length];
-        const docDate = _randomPastDate(120);
         const documentId = randomUUID();
 
-        try {
-          let docText;
-          if (openAiKey) {
-            const prompt = buildDocumentPrompt(pet, docType, d);
-            const messages = [
-              { role: 'system', content: prompt.system },
-              { role: 'user', content: prompt.user },
-            ];
-            docText = await callOpenAi(openAiKey, messages, {
-              temperature: 0.7,
-              timeout: 30000,
-            });
-          } else {
-            docText = `[SEED-MOCK] Documento: ${docType} per ${pet.name} (${pet.species}, ${pet.breed}).\n\nRisultati nella norma. Nessuna anomalia rilevata.\n\nData: ${docDate.toISOString().split('T')[0]}`;
-          }
+        // Alternate between PDF and PNG placeholders
+        const usePdf = d % 2 === 0;
+        const fileBuffer = usePdf ? placeholderPdf : placeholderPng;
+        const mimeType = usePdf ? 'application/pdf' : 'image/png';
+        const ext = usePdf ? 'pdf' : 'png';
+        const safeName = pet.name.toLowerCase().replace(/\s+/g, '_');
+        const filename = `seed_${docType}_${safeName}.${ext}`;
+        const storageKey = `${documentId}_${filename}`;
 
-          // Write document file to disk so download endpoint works
-          const storageKey = `${documentId}_seed_${docType}_${pet.name.toLowerCase().replace(/\s+/g, '_')}.txt`;
+        try {
+          // Write file to disk
           try {
             const storageDir = process.env.DOCUMENT_STORAGE_PATH || path.resolve(__dirname, '../../uploads');
             if (!fs.existsSync(storageDir)) {
               fs.mkdirSync(storageDir, { recursive: true });
             }
-            fs.writeFileSync(path.join(storageDir, storageKey), docText, 'utf8');
+            fs.writeFileSync(path.join(storageDir, storageKey), fileBuffer);
           } catch (fsErr) {
             _log(`File write warning for ${pet.name}: ${fsErr.message}`);
           }
 
+          // Insert DB record
           try {
             await pool.query(
-              `INSERT INTO documents (document_id, pet_id, owner_user_id, original_filename, mime_type, size_bytes, storage_key, hash_sha256, read_text, ai_status, created_by)
-               VALUES ($1, $2, $3, $4, 'text/plain', $5, $6, $7, $8, 'completed', $3)`,
+              `INSERT INTO documents (document_id, pet_id, owner_user_id, original_filename, mime_type, size_bytes, storage_key, hash_sha256, ai_status, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $3)`,
               [
                 documentId,
                 pet._petId,
                 ownerUserId,
-                `seed_${docType}_${pet.name.toLowerCase().replace(/\s+/g, '_')}.txt`,
-                Buffer.byteLength(docText, 'utf8'),
+                filename,
+                mimeType,
+                fileBuffer.length,
                 storageKey,
-                _simpleHash(docText),
-                docText,
+                _simpleHash(fileBuffer.toString('base64')),
               ]
             );
           } catch (e) {
