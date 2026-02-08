@@ -39,7 +39,11 @@ test("@smoke Impostazioni/Sistema: non-super_admin debug ON vede card read-only"
 test("@smoke Impostazioni/Sistema: non-super_admin debug OFF nasconde card", async ({ page }) => {
   await login(page);
 
-  // Turn debug OFF via JS (simulate super_admin toggling it off previously)
+  // Navigate to settings first
+  await page.locator('.nav-item[data-page="settings"]').click();
+  await expect(page.locator("#page-settings")).toBeVisible();
+
+  // Now turn debug OFF while on the settings page
   await page.evaluate(() => {
     localStorage.setItem('ada_debug_log', 'false');
     (window as any).debugLogEnabled = false;
@@ -47,9 +51,6 @@ test("@smoke Impostazioni/Sistema: non-super_admin debug OFF nasconde card", asy
       (window as any).updateSettingsSystemVisibility();
     }
   });
-
-  await page.locator('.nav-item[data-page="settings"]').click();
-  await expect(page.locator("#page-settings")).toBeVisible();
 
   // Sistema card should be hidden (debug is OFF and user is not super_admin)
   const systemCard = page.locator("#settingsSystemCard");
