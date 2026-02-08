@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v7.2.1 (2026-02-08)
+- Aggiunto `CLAUDE.md` con istruzioni per CI feedback automatico e workflow PR/merge
+- Allineata versione in tutti i file (config.js, AGENTS.md, RELEASE_NOTES.md)
+- Aggiunto riferimento obbligatorio a `AGENTS.md` come fonte di verità in `CLAUDE.md`
+
 ## v7.0.0 (2026-02-04)
 
 Major release: role system, document management, sync engine, promo, hardening, observability.

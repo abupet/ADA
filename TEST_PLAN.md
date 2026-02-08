@@ -1,7 +1,7 @@
 # ADA — Piano Test Manuale
 
 ## Baseline
-Versione: v7.0.0 (post bug-fix)
+Versione: v7.2.1
 
 ---
 
