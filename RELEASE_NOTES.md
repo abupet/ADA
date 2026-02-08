@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v7.2.15 (2026-02-09)
+- Feat: Seed Engine Promo — crawling ricorsivo pagine figlie prima dell'estrazione prodotti
+  - Nuova funzione `_discoverChildUrls()`: estrae link figli dalla pagina madre (URL che iniziano con l'URL madre)
+  - Nuova funzione `_crawlChildPages()`: BFS fino a 2 livelli di profondità, max 50 pagine per URL madre
+  - Nuova funzione `_safeFetchHtml()`: fetch SSRF-safe riutilizzabile (estratta dalla logica esistente)
+  - Nuova funzione `_extractProductsFromPage()`: estrazione prodotti (JSON-LD, Open Graph, HTML selectors) estratta in helper riutilizzabile
+  - `scrapeProductsFromSites()` ora crawla ricorsivamente le pagine figlie prima di estrarre i prodotti, trovando prodotti individuali dalle pagine di dettaglio
+  - Fetch sequenziale per rispettare i server ed evitare ban
+
 ## v7.2.12 (2026-02-08)
 - Fix: Seed Engine — documenti ora usano file placeholder reali (PDF e PNG) anziché text/plain, visualizzabili correttamente nell'app
 - Fix: Document viewer — aggiunto download automatico dal server quando il blob non è in IndexedDB (funzione `_fetchAndCacheBlob`), risolvendo "Anteprima non disponibile"
