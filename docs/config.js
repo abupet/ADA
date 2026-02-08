@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.2.11';
+const ADA_VERSION = '7.2.12';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -270,12 +270,12 @@ const SOAP_JSON_SCHEMA = {
                                 "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
                                 "supporting_segment_ids": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
                             },
-                            "required": ["speaker_label", "role", "confidence", "supporting_segment_ids"]
+                            "required": ["speaker_label", "role", "display_name", "confidence", "supporting_segment_ids"]
                         }
                     },
                     "disclaimers": { "type": "array", "items": { "type": "string" } }
                 },
-                "required": ["language", "speakers", "disclaimers"]
+                "required": ["language", "visit_datetime_local", "species", "age_text", "sex", "sterilized", "speakers", "disclaimers"]
             },
             "S": {
                 "type": "object",
@@ -297,7 +297,7 @@ const SOAP_JSON_SCHEMA = {
                                 "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
                                 "supporting_segment_ids": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
                             },
-                            "required": ["name", "confidence", "supporting_segment_ids"]
+                            "required": ["name", "onset", "duration", "frequency", "severity", "confidence", "supporting_segment_ids"]
                         }
                     },
                     "diet": { "type": ["string", "null"] },
@@ -315,14 +315,14 @@ const SOAP_JSON_SCHEMA = {
                                 "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
                                 "supporting_segment_ids": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
                             },
-                            "required": ["drug_name", "confidence", "supporting_segment_ids"]
+                            "required": ["drug_name", "dose_text", "route", "frequency", "confidence", "supporting_segment_ids"]
                         }
                     },
                     "allergies": { "type": "array", "items": { "type": "string" } },
                     "vaccination_prevention": { "type": ["string", "null"] },
                     "supporting_segment_ids": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
                 },
-                "required": ["history", "symptoms", "medications_current", "allergies", "supporting_segment_ids"]
+                "required": ["chief_complaint", "history", "symptoms", "diet", "environment", "medications_current", "allergies", "vaccination_prevention", "supporting_segment_ids"]
             },
             "O": {
                 "type": "object",
@@ -363,7 +363,7 @@ const SOAP_JSON_SCHEMA = {
                                 "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
                                 "supporting_segment_ids": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
                             },
-                            "required": ["problem", "confidence", "supporting_segment_ids"]
+                            "required": ["problem", "status", "confidence", "supporting_segment_ids"]
                         }
                     },
                     "differentials": { "type": "array", "items": { "type": "string" } },
@@ -403,7 +403,7 @@ const SOAP_JSON_SCHEMA = {
                                 "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
                                 "supporting_segment_ids": { "type": "array", "items": { "type": "integer", "minimum": 0 } }
                             },
-                            "required": ["action", "confidence", "supporting_segment_ids"]
+                            "required": ["action", "dose_text", "duration", "notes", "confidence", "supporting_segment_ids"]
                         }
                     },
                     "client_instructions": { "type": "array", "items": { "type": "string" } },
