@@ -1,4 +1,4 @@
-# ci.yml v6
+# ci.yml v6 — Login V2 only
 name: CI (PR)
 
 on:
