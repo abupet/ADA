@@ -18,7 +18,8 @@
     "test:ci:long": "node scripts/ci/run-tests.js --long-only",
     "test:unit": "node tests/unit/pets.pull-merge.test.js && node tests/unit/pet-to-patch.test.js && node tests/unit/outbox-coalescing.test.js && node tests/unit/consent.service.test.js && node tests/unit/eligibility.service.test.js && node tests/unit/explanation.service.test.js && node tests/unit/rbac.middleware.test.js && node tests/unit/tag.service.test.js",
     "test:sync": "playwright test --project=chromium --grep @sync",
-    "test:smoke:strict": "set STRICT_NETWORK=1&& set STRICT_ALLOW_HOSTS=cdnjs.cloudflare.com&& playwright test --project=chromium --grep @smoke"
+    "test:smoke:strict": "set STRICT_NETWORK=1&& set STRICT_ALLOW_HOSTS=cdnjs.cloudflare.com&& playwright test --project=chromium --grep @smoke",
+    "seed:test-users": "node backend/src/seed.test-users.js"
   },
   "repository": {
     "type": "git",

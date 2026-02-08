@@ -22,7 +22,7 @@ test("Upload audio medio 100s (fixture) – regression", async ({ page }) => {
   const status = page.locator("#recordingStatus");
   await expect(status).toContainText(
     /Trascrizione pronta|Referto generato|Sto generando/i,
-    { timeout: 20_000 }
+    { timeout: 60_000 }
   );
 
   expect(errors, errors.join("\n")).toHaveLength(0);

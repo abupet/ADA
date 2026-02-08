@@ -18,9 +18,16 @@ jobs:
       ALLOW_OPENAI: "1"
       FRONTEND_ORIGIN: "http://localhost:4173"
       ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+      ADA_TEST_EMAIL: ${{ secrets.TEST_VET_EMAIL }}
+      TEST_SUPER_ADMIN_EMAIL: ${{ secrets.TEST_SUPER_ADMIN_EMAIL }}
+      TEST_ADMIN_BRAND_EMAIL: ${{ secrets.TEST_ADMIN_BRAND_EMAIL }}
+      TEST_VET_EMAIL: ${{ secrets.TEST_VET_EMAIL }}
+      TEST_OWNER_EMAIL: ${{ secrets.TEST_OWNER_EMAIL }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
       RATE_LIMIT_PER_MIN: "600"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - name: Checkout
@@ -62,6 +69,9 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:4173 > /dev/null
+
+      - name: Seed test users
+        run: node backend/src/seed.test-users.js
 
       - name: CI tests (REAL)
         run: npm run test:ci:real
