@@ -2,7 +2,7 @@
 
 Repository dell'app ADA (AbuPet AI) — assistente veterinario con AI.
 
-**Versione corrente:** 7.0.0
+**Versione corrente:** 7.2.1
 
 ---
 
@@ -158,7 +158,7 @@ npx playwright show-report
 
 ---
 
-## Funzionalità principali (v7.0.0)
+## Funzionalità principali (v7.2.1)
 
 - **Sistema ruoli**: Veterinario / Proprietario con sidebar e permessi differenziati
 - **Documenti**: upload PDF/JPG/PNG/WebP, viewer, AI read/explain

@@ -2812,7 +2812,7 @@ function renderSoapReadonly(item) {
         html += '</div>';
     }
 
-    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.0.0') + ' - AI Driven AbuPet</div>';
+    html += '<div class="soap-ro-footer">Generato con ADA v' + (typeof ADA_VERSION !== 'undefined' ? ADA_VERSION : '7.2.1') + ' - AI Driven AbuPet</div>';
 
     container.innerHTML = html;
 
