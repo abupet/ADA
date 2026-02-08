@@ -36,3 +36,21 @@ Never wait for the user to paste CI logs. Always check CI results autonomously.
 - Tests: `npm run test:ci` (Playwright + backend, MODE=MOCK)
 - Frontend serve: `npm run serve` (port 4173)
 - Backend: `node backend/src/server.js` (port 3000)
+
+## Mandatory Reads Before Coding (ALWAYS follow this)
+
+Before making ANY code change, read the relevant files:
+
+### Always read (every task):
+- **`AGENTS.md`** — source of truth: architecture, rules, versioning, forbidden actions
+- **`TEST_PLAN.md`** — 18 manual tests describing expected behavior of every feature
+
+### Read when touching specific areas:
+- **`docs/decisions/ADR-PETS-PULL-MERGE.md`** — if modifying sync, pets, `app-pets.js`, `sync-engine.js`, or `pets-sync-bootstrap.js`
+- **`RELEASE_NOTES.md`** — if bumping version (to check current state)
+
+### Read when creating PRs:
+- **`.github/pull_request_template.md`** — use its checklist format in PR descriptions
+
+### Directory excluded from autonomous work:
+- **`tmp/`** — contains future development plans. Do NOT read or act on files in this directory unless the user gives an explicit command to do so.

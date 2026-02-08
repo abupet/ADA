@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v7.2.3 (2026-02-08)
+- Aggiunta sezione "Mandatory Reads Before Coding" a `CLAUDE.md`
+- Lettura obbligatoria di `AGENTS.md`, `TEST_PLAN.md` prima di ogni modifica
+- Lettura condizionale di ADR e PR template in base all'area modificata
+- Esclusa directory `tmp/` dal lavoro autonomo
+
 ## v7.2.2 (2026-02-08)
 - Aggiunto cleanup automatico branch dopo merge PR
 - Aggiunta lettura e valutazione automatica review Codex/bot sulle PR
