@@ -1,5 +1,18 @@
 # Release Notes (cumulative)
 
+## v7.2.11 (2026-02-08)
+- Ristrutturazione test: rimosso Login V1 (solo Login V2 con email + password)
+- Backend: rimosso endpoint `POST /auth/login` e variabili `ADA_LOGIN_PASSWORD`/`ADA_TEST_PASSWORD` dal destructuring
+- Frontend: `login()` in `app-core.js` ora richiede email obbligatoria, rimosso fallback V1
+- Frontend: `getJwtRole()` in `config.js` rimosso check legacy token `ada-user`
+- Nuovo seed script `backend/src/seed.test-users.js` per creare 4 utenti test (super_admin, admin_brand, vet, owner) + tenant
+- Test E2E: `login.ts` helper accetta `{ email, password, retries }` per login per ruolo
+- Nuovo test `smoke.login-roles.spec.ts` con 4 test per ruolo (vet, owner, admin_brand, super_admin)
+- Test `smoke.role-access.spec.ts` riscritto per usare login reali per ruolo (rimossi mock `isSuperAdmin`)
+- Test `deployed.smoke.spec.ts` aggiornato per Login V2 only
+- `ada-tests.sh` v5: secrets da `.env` (non piu' file esterno), log in `test-results/ada-tests-XXX/`, integrazione Claude Code
+- CI workflows (ci.yml, ci-real.yml, real-on-label.yml, long-tests.yml): aggiunte variabili email test + DATABASE_URL + step seed users
+
 ## v7.2.10 (2026-02-08)
 - Fix: Seed Engine — specie ora in italiano (Cane/Gatto/Coniglio) anziché inglese (dog/cat/rabbit)
 - Fix: Seed Engine — referti SOAP: campi ora in formato `soapData { s, o, a, p }` + back-compat lowercase, allineati al frontend `_getSoapFromRecord()`

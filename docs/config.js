@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.2.10';
+const ADA_VERSION = '7.2.11';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -484,8 +484,6 @@ function getJwtRole() {
     var token = getAuthToken();
     var payload = decodeJwtPayload(token);
     if (!payload) return null;
-    // Legacy token: sub = "ada-user", no role field
-    if (payload.sub === 'ada-user') return null;
     return payload.role || null;
 }
 
