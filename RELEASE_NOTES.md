@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v7.2.7 (2026-02-08)
+- Fix: Seed Engine — le chiamate OpenAI per generazione SOAP e documenti ora inviano `messages` come array di oggetti (anziché un oggetto singolo), risolvendo l'errore 400 "Invalid type for 'messages'"
+
 ## v7.2.6 (2026-02-08)
 - Test ciclo completo commit → PR → cancellazione branch (nessuna modifica funzionale)
 

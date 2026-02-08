@@ -372,7 +372,11 @@ async function _runSeedJob(pool, config, openAiKey) {
         try {
           let soapData;
           if (openAiKey) {
-            const messages = buildSoapPrompt(pet, visitType, s);
+            const prompt = buildSoapPrompt(pet, visitType, s);
+            const messages = [
+              { role: 'system', content: prompt.system },
+              { role: 'user', content: prompt.user },
+            ];
             const raw = await callOpenAi(openAiKey, messages, {
               temperature: 0.7,
               timeout: 30000,
@@ -447,7 +451,11 @@ async function _runSeedJob(pool, config, openAiKey) {
         try {
           let docText;
           if (openAiKey) {
-            const messages = buildDocumentPrompt(pet, docType, d);
+            const prompt = buildDocumentPrompt(pet, docType, d);
+            const messages = [
+              { role: 'system', content: prompt.system },
+              { role: 'user', content: prompt.user },
+            ];
             docText = await callOpenAi(openAiKey, messages, {
               temperature: 0.7,
               timeout: 30000,
