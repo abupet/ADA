@@ -2,6 +2,8 @@
 // PR 14: Seed engine orchestrator — generates realistic test data for the ADA veterinary app.
 
 const { randomUUID } = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const {
   generatePetCohort,
   buildSoapPrompt,
@@ -478,6 +480,18 @@ async function _runSeedJob(pool, config, openAiKey) {
             docText = `[SEED-MOCK] Documento: ${docType} per ${pet.name} (${pet.species}, ${pet.breed}).\n\nRisultati nella norma. Nessuna anomalia rilevata.\n\nData: ${docDate.toISOString().split('T')[0]}`;
           }
 
+          // Write document file to disk so download endpoint works
+          const storageKey = `${documentId}_seed_${docType}_${pet.name.toLowerCase().replace(/\s+/g, '_')}.txt`;
+          try {
+            const storageDir = process.env.DOCUMENT_STORAGE_PATH || path.resolve(__dirname, '../../uploads');
+            if (!fs.existsSync(storageDir)) {
+              fs.mkdirSync(storageDir, { recursive: true });
+            }
+            fs.writeFileSync(path.join(storageDir, storageKey), docText, 'utf8');
+          } catch (fsErr) {
+            _log(`File write warning for ${pet.name}: ${fsErr.message}`);
+          }
+
           try {
             await pool.query(
               `INSERT INTO documents (document_id, pet_id, owner_user_id, original_filename, mime_type, size_bytes, storage_key, hash_sha256, read_text, ai_status, created_by)
@@ -488,7 +502,7 @@ async function _runSeedJob(pool, config, openAiKey) {
                 ownerUserId,
                 `seed_${docType}_${pet.name.toLowerCase().replace(/\s+/g, '_')}.txt`,
                 Buffer.byteLength(docText, 'utf8'),
-                `seed/${documentId}.txt`,
+                storageKey,
                 _simpleHash(docText),
                 docText,
               ]
@@ -846,18 +860,34 @@ function _parseSoapJson(raw) {
       }
     }
 
-    // Fallback: extract sections by letter
+    // Fallback: extract sections from free-form text with headers like
+    // "**S (Soggettivo):**", "S:", "## S", etc.
     return {
-      S: _extractSection(raw, 'S'),
-      O: _extractSection(raw, 'O'),
-      A: _extractSection(raw, 'A'),
-      P: _extractSection(raw, 'P'),
+      S: _extractSoapSection(raw, 'S'),
+      O: _extractSoapSection(raw, 'O'),
+      A: _extractSoapSection(raw, 'A'),
+      P: _extractSoapSection(raw, 'P'),
     };
   }
 }
 
-function _extractSection(text, letter) {
-  const regex = new RegExp(`["']?${letter}["']?\\s*[:=]\\s*["']?([^"'{}\\[\\]]+)`, 'i');
+function _extractSoapSection(text, letter) {
+  // Match section headers like: **S (Soggettivo):**, ## S, S:, "S":
+  // Then capture everything until the next section header or end of text
+  const nextLetters = { S: 'O', O: 'A', A: 'P', P: null };
+  const next = nextLetters[letter];
+
+  // Build pattern: match the letter as a section header followed by content
+  const headerPattern = `(?:\\*\\*)?\\s*${letter}\\s*(?:\\([^)]*\\))?\\s*:?\\s*(?:\\*\\*)?\\s*:?\\s*`;
+  let endPattern;
+  if (next) {
+    // Stop at the next SOAP section header
+    endPattern = `(?=(?:\\*\\*)?\\s*${next}\\s*(?:\\([^)]*\\))?\\s*:?\\s*(?:\\*\\*)?|$)`;
+  } else {
+    endPattern = '$';
+  }
+
+  const regex = new RegExp(headerPattern + '([\\s\\S]*?)' + endPattern, 'i');
   const match = text.match(regex);
   return match ? match[1].trim() : '';
 }
