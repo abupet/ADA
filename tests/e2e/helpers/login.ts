@@ -26,8 +26,23 @@ export async function login(page: Page, retries = 1) {
     await page.locator("#passwordInput").fill(pwd);
     await page.getByTestId("login-button").click();
 
+    // Wait for either login success (appContainer gets .active) or failure (loginError shown).
+    // We use waitForFunction instead of locator.or() to avoid Playwright strict mode
+    // violations — both elements always exist in the DOM, only their visibility changes.
+    await page.waitForFunction(
+      () => {
+        const app = document.querySelector("#appContainer");
+        const err = document.querySelector("#loginError");
+        return (
+          (app && app.classList.contains("active")) ||
+          (err && getComputedStyle(err).display !== "none")
+        );
+      },
+      { timeout: 15_000 },
+    );
+
     const loginError = page.getByTestId("login-error");
-    if (await loginError.isVisible().catch(() => false)) {
+    if (await loginError.isVisible()) {
       const txt = await loginError.textContent();
       if (attempt < retries) {
         console.warn(`Login attempt ${attempt + 1} failed (${txt}), retrying...`);

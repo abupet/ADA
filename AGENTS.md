@@ -35,7 +35,7 @@ ADA è una SPA vanilla JS con backend Express.
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 7.2.3
+**Versione corrente:** 7.2.4
 
 ---
 
@@ -53,7 +53,7 @@ ADA è una SPA vanilla JS con backend Express.
 
 ---
 
-## 4. Sistemi chiave (v7.2.3)
+## 4. Sistemi chiave (v7.2.4)
 
 ### Sistema ruoli
 - Due ruoli: `veterinario`, `proprietario`
