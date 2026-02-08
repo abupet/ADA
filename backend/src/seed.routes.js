@@ -45,7 +45,8 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
         try {
             const { getPool } = require('./db');
             const pool = getPool();
-            const result = await wipeSeededData(pool);
+            const ownerUserId = req.user && req.user.sub ? req.user.sub : null;
+            const result = await wipeSeededData(pool, ownerUserId);
             return res.json({ status: 'wiped', details: result });
         } catch (e) {
             return res.status(500).json({ error: e.message });

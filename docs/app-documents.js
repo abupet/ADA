@@ -945,6 +945,35 @@
     }
 
     // =========================================================================
+    // Document Viewer: fetch blob from server and cache in IndexedDB
+    // =========================================================================
+
+    function _fetchAndCacheBlob(doc) {
+        if (!doc || !doc.document_id) return Promise.resolve(null);
+        return fetchApi('/api/documents/' + encodeURIComponent(doc.document_id) + '/download')
+            .then(function (resp) {
+                if (!resp || !resp.ok) return null;
+                return resp.arrayBuffer();
+            })
+            .then(function (ab) {
+                if (!ab) return null;
+                var base64 = _arrayBufferToBase64(ab);
+                var blobRecord = {
+                    document_id: doc.document_id,
+                    mime_type: doc.mime_type,
+                    base64: base64,
+                    stored_at: new Date().toISOString()
+                };
+                return _openDB().then(function () {
+                    return _idbPut(BLOBS_STORE_NAME, blobRecord);
+                }).then(function () {
+                    return blobRecord;
+                });
+            })
+            .catch(function () { return null; });
+    }
+
+    // =========================================================================
     // Document Viewer: render content
     // =========================================================================
 
@@ -952,7 +981,17 @@
         if (!container) return;
 
         if (!blobRecord || !blobRecord.base64) {
-            container.innerHTML = '<p style="color:#888;">Anteprima non disponibile (documento non memorizzato localmente).</p>';
+            // Try fetching from server and caching locally
+            container.innerHTML = '<p style="color:#888;"><span class="spinner-border spinner-border-sm"></span> Scaricamento documento dal server\u2026</p>';
+            _fetchAndCacheBlob(doc).then(function (fetched) {
+                if (fetched && fetched.base64) {
+                    _renderDocumentContent(doc, fetched, container);
+                } else {
+                    container.innerHTML = '<p style="color:#888;">Anteprima non disponibile (documento non memorizzato localmente).</p>';
+                }
+            }).catch(function () {
+                container.innerHTML = '<p style="color:#888;">Anteprima non disponibile (documento non memorizzato localmente).</p>';
+            });
             return;
         }
 

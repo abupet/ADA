@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v7.2.12 (2026-02-08)
+- Fix: Seed Engine — documenti ora usano file placeholder reali (PDF e PNG) anziché text/plain, visualizzabili correttamente nell'app
+- Fix: Document viewer — aggiunto download automatico dal server quando il blob non è in IndexedDB (funzione `_fetchAndCacheBlob`), risolvendo "Anteprima non disponibile"
+- Fix: Wipe "Da zero" — ora inserisce record `pet.delete` in `pet_changes` dopo la cancellazione, così il pull sync del frontend rimuove i pet dall'IndexedDB. Anche i file su disco vengono cancellati
+
 ## v7.2.11 (2026-02-08)
 - Fix: Seed Engine — prompt SOAP ora richiede esplicitamente output JSON `{"S":..., "O":..., "A":..., "P":...}`, evitando risposte free-form che il parser non gestiva
 - Fix: Seed Engine — migliorato fallback `_extractSoapSection()` per estrarre correttamente sezioni S/O/A/P da testo libero multi-riga (sostituisce il regex fragile `_extractSection`)
