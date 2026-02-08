@@ -26,8 +26,15 @@ export async function login(page: Page, retries = 1) {
     await page.locator("#passwordInput").fill(pwd);
     await page.getByTestId("login-button").click();
 
+    // Wait for either login success (appContainer visible) or failure (login-error visible).
+    // The login() function in the browser is async (fetches /auth/login), so we must wait
+    // for the outcome rather than checking immediately after click.
+    const appContainer = page.locator("#appContainer");
     const loginError = page.getByTestId("login-error");
-    if (await loginError.isVisible().catch(() => false)) {
+
+    await expect(appContainer.or(loginError)).toBeVisible({ timeout: 15_000 });
+
+    if (await loginError.isVisible()) {
       const txt = await loginError.textContent();
       if (attempt < retries) {
         console.warn(`Login attempt ${attempt + 1} failed (${txt}), retrying...`);
@@ -36,7 +43,7 @@ export async function login(page: Page, retries = 1) {
       throw new Error(`Login failed (login-error visible): ${txt || ""}`);
     }
 
-    await expect(page.locator("#appContainer")).toBeVisible();
+    await expect(appContainer).toBeVisible();
     return; // success
   }
 }

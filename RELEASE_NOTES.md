@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v7.2.4 (2026-02-08)
+- Fix: `ada-tests.sh` ora avvia automaticamente il backend (porta 3000) prima dei test e2e, allineandosi alla CI
+- Fix: `login.ts` helper usa `locator.or()` per attendere correttamente il risultato del login asincrono, evitando race condition tra appContainer e loginError
+- Status mostra ora lo stato di backend e frontend separatamente
+
 ## v7.2.3 (2026-02-08)
 - Aggiunta sezione "Mandatory Reads Before Coding" a `CLAUDE.md`
 - Lettura obbligatoria di `AGENTS.md`, `TEST_PLAN.md` prima di ogni modifica

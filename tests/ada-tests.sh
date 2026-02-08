@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ada-tests.sh v3
+# ada-tests.sh v4
 #
 # Location (new):
 #   ./ada/tests/ada-tests.sh
@@ -24,6 +24,7 @@ set -euo pipefail
 
 # ---------------------- Defaults ----------------------
 DEFAULT_LOCAL_PORT="4173"
+DEFAULT_BACKEND_PORT="3000"
 DEFAULT_DEPLOY_URL="https://abupet.github.io/ada/"
 DEFAULT_STRICT_ALLOW_HOSTS="cdnjs.cloudflare.com"
 # ------------------------------------------------------
@@ -40,7 +41,9 @@ LOG_FILE="$OUT_DIR/ada-tests.log"
 TRANSCRIPTS_DIR="$OUT_DIR/ada-tests.transcripts"
 
 PORT="${PORT:-$DEFAULT_LOCAL_PORT}"
+BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 LOCAL_URL="${LOCAL_URL:-"http://localhost:${PORT}/index.html"}"
+BACKEND_URL="http://localhost:${BACKEND_PORT}"
 DEPLOY_URL="${DEPLOY_URL:-$DEFAULT_DEPLOY_URL}"
 
 # -------------------- Load secrets --------------------
@@ -291,12 +294,80 @@ start_server_background_and_wait() {
   start_server_new_terminal
   wait_for_server 25
 }
+# ---------------------- Backend server checks ----------------------
+backend_is_up() {
+  if have_cmd curl; then
+    curl -fsS "$BACKEND_URL/api/health" >/dev/null 2>&1
+    return $?
+  fi
+  if have_cmd powershell.exe; then
+    powershell.exe -NoProfile -Command \
+      "try { (Invoke-WebRequest -UseBasicParsing '$BACKEND_URL/api/health').StatusCode -eq 200 } catch { exit 1 }" \
+      >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+start_backend_new_terminal() {
+  local repo_win
+  repo_win="$(cd "$REPO_DIR" && pwd -W 2>/dev/null || true)"
+  if [[ -z "$repo_win" ]]; then repo_win="$REPO_DIR"; fi
+  repo_win="${repo_win//$'\r'/}"
+
+  say "Avvio backend in un altro terminale (background): node backend/src/server.js"
+
+  if have_cmd powershell.exe; then
+    powershell.exe -NoProfile -Command \
+      "Start-Process -FilePath 'cmd.exe' -WorkingDirectory '$repo_win' -ArgumentList '/k','set MODE=${MODE}&&set ADA_TEST_PASSWORD=${ADA_TEST_PASSWORD:-}&&set FRONTEND_ORIGIN=http://localhost:${PORT}&&set RATE_LIMIT_PER_MIN=600&&node backend/src/server.js' -WindowStyle Normal" \
+      >/dev/null 2>&1
+    return 0
+  fi
+
+  cmd.exe /c start "ADA backend" cmd.exe /k "cd /d \"$repo_win\" && set MODE=${MODE}&& set ADA_TEST_PASSWORD=${ADA_TEST_PASSWORD:-}&& set FRONTEND_ORIGIN=http://localhost:${PORT}&& set RATE_LIMIT_PER_MIN=600&& node backend/src/server.js"
+}
+
+wait_for_backend() {
+  local max_seconds="${1:-30}"
+  local i=0
+  echo -e "${CLR_DIM}⏳ In attesa del backend su: $BACKEND_URL/api/health (max ${max_seconds}s) ...${CLR_RESET}"
+  while (( i < max_seconds )); do
+    if backend_is_up; then
+      echo ""
+      say "Backend OK: $BACKEND_URL"
+      return 0
+    fi
+    local remaining=$((max_seconds - i))
+    echo -ne "${CLR_DIM}   ...ancora in attesa (${remaining}s)\r${CLR_RESET}"
+    sleep 1
+    ((i++))
+  done
+  echo ""
+  warn "Backend ancora non raggiungibile dopo ${max_seconds}s: $BACKEND_URL"
+  warn "Controlla la finestra 'ADA backend' (errori node / porta occupata)."
+  return 1
+}
+
+ensure_backend_running() {
+  if backend_is_up; then
+    say "Backend già attivo: $BACKEND_URL"
+    return 0
+  fi
+  start_backend_new_terminal
+  wait_for_backend 30
+}
+
+# Ensures both backend (port 3000) and frontend (port 4173) are running
+ensure_all_servers_running() {
+  ensure_backend_running
+  ensure_server_running
+}
 # -----------------------------------------------------------
 
 # ---------------------- Test runners ----------------------
 run_smoke_local() {
   need_password
-  ensure_server_running
+  ensure_all_servers_running
   say "Running SMOKE tests (local, $(mode_label), STRICT=$(strict_label)) ..."
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
   env "${envs[@]}" npx playwright test --project=chromium --grep @smoke
@@ -304,7 +375,7 @@ run_smoke_local() {
 
 run_smoke_local_headed() {
   need_password
-  ensure_server_running
+  ensure_all_servers_running
   say "Running SMOKE tests (local, headed, $(mode_label), STRICT=$(strict_label)) ..."
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
   env "${envs[@]}" npx playwright test --project=chromium --grep @smoke --headed
@@ -312,7 +383,7 @@ run_smoke_local_headed() {
 
 run_regression_local() {
   need_password
-  ensure_server_running
+  ensure_all_servers_running
   say "Running REGRESSION tests (local, $(mode_label), STRICT=$(strict_label)) ..."
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
   env "${envs[@]}" npx playwright test --project=chromium
@@ -320,7 +391,7 @@ run_regression_local() {
 
 run_long_local() {
   need_password
-  ensure_server_running
+  ensure_all_servers_running
   say "Running LONG tests @long (local, $(mode_label), STRICT=$(strict_label)) ..."
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
   env "${envs[@]}" npx playwright test --project=chromium --grep @long
@@ -409,7 +480,8 @@ status() {
   [[ "${STRICT_ON}" == "1" ]] && echo "STRICT_ALLOW_HOSTS: $STRICT_ALLOW_HOSTS_RUNTIME" || echo "STRICT_ALLOW_HOSTS: (n/a)"
   [[ -n "${ADA_TEST_PASSWORD:-}" ]] && echo "ADA_TEST_PASSWORD:  ✅ set" || echo "ADA_TEST_PASSWORD:  ❌ NOT set"
   echo "------------------------------------------------"
-  if server_is_up; then echo "Local server:       ✅ reachable"; else echo "Local server:       ❌ not reachable"; fi
+  if backend_is_up; then echo "Backend (${BACKEND_PORT}):     ✅ reachable"; else echo "Backend (${BACKEND_PORT}):     ❌ not reachable"; fi
+  if server_is_up; then echo "Frontend (${PORT}):    ✅ reachable"; else echo "Frontend (${PORT}):    ❌ not reachable"; fi
   if port_is_listening; then echo "Port ${PORT}:        ✅ LISTENING"; else echo "Port ${PORT}:        ❌ not listening"; fi
   echo "------------------------------------------------"
   echo -n "node: "; (have_cmd node && node -v) || echo "❌ missing"
@@ -473,11 +545,13 @@ run_cmd_safe() {
     export -f run_cmd say warn die have_cmd need_password \
       server_is_up port_is_listening start_server_new_terminal wait_for_server \
       ensure_server_running start_server_background_and_wait \
+      backend_is_up start_backend_new_terminal wait_for_backend \
+      ensure_backend_running ensure_all_servers_running \
       build_envs mode_label strict_label \
       run_unit run_level1 run_level2 run_smoke_local run_smoke_local_headed run_regression_local run_long_local run_policy run_deployed \
       run_smoke_strict_local run_regression_strict_local run_deployed_strict \
       install_all open_report clean_artifacts status
-    export REPO_DIR PORT LOCAL_URL DEPLOY_URL MODE STRICT_ON STRICT_ALLOW_HOSTS_RUNTIME DEFAULT_STRICT_ALLOW_HOSTS ADA_TEST_PASSWORD
+    export REPO_DIR PORT BACKEND_PORT LOCAL_URL BACKEND_URL DEPLOY_URL MODE STRICT_ON STRICT_ALLOW_HOSTS_RUNTIME DEFAULT_STRICT_ALLOW_HOSTS ADA_TEST_PASSWORD
 
     set +e
     script -q -c "bash -lc 'cd \"${REPO_DIR}\"; run_cmd \"${cmd}\"'" "$tmp"
