@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v7.2.4 (2026-02-08)
+- Impostazioni / Sistema: solo super_admin vede e modifica il flag "Debug attivo"; altri ruoli vedono la sezione in sola lettura solo se debug ON, nascosta se OFF
+- Debug: per super_admin nascosto il pulsante toggle ruolo, visibile solo il dropdown con titolo "Ruolo attivo (super admin)"
+- Seed Engine: appare solo quando super_admin sceglie il ruolo attivo super_admin, spostato nella nuova sezione sidebar "TEST & DEMO" prima di "ADMIN PROMO"
+
 ## v7.2.3 (2026-02-08)
 - Aggiunta sezione "Mandatory Reads Before Coding" a `CLAUDE.md`
 - Lettura obbligatoria di `AGENTS.md`, `TEST_PLAN.md` prima di ogni modifica
