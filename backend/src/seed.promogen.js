@@ -216,281 +216,405 @@ const VALID_CATEGORIES = [
  * @returns {Promise<Array<Object>>}
  */
 async function scrapeProductsFromSites(siteUrls, openAiKey) {
-  const cheerio = require("cheerio");
   const allProducts = [];
 
   for (const siteUrl of siteUrls) {
-    let html = "";
-    let sourceSite = "";
-
-    // --- Fetch HTML ---
+    // --- Crawl the URL and its child pages (BFS, max 50 pages, depth 2) ---
+    console.log(`scrapeProductsFromSites: starting crawl from ${siteUrl}`);
+    let pages;
     try {
-      const urlObj = new URL(siteUrl);
-
-      // SSRF protection: only allow HTTPS
-      if (urlObj.protocol !== "https:") {
-        console.warn(`scrapeProductsFromSites: blocked non-HTTPS URL: ${siteUrl}`);
-        continue;
-      }
-
-      // SSRF protection: block private/reserved IP ranges and localhost
-      const hostname = urlObj.hostname.toLowerCase();
-      if (
-        hostname === "localhost" ||
-        hostname === "[::1]" ||
-        /^127\./.test(hostname) ||
-        /^10\./.test(hostname) ||
-        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-        /^192\.168\./.test(hostname) ||
-        /^169\.254\./.test(hostname) ||
-        /^0\./.test(hostname) ||
-        hostname.endsWith(".local") ||
-        hostname.endsWith(".internal")
-      ) {
-        console.warn(`scrapeProductsFromSites: blocked private/reserved address: ${siteUrl}`);
-        continue;
-      }
-
-      sourceSite = urlObj.hostname.replace(/^www\./, "");
-
-      const res = await fetch(siteUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; ADA-VetSeedBot/1.0; +https://ada-vet.app)",
-          Accept: "text/html,application/xhtml+xml",
-        },
-        redirect: "follow",
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!res.ok) {
-        console.warn(
-          `scrapeProductsFromSites: HTTP ${res.status} for ${siteUrl}`
-        );
-        continue;
-      }
-
-      html = await res.text();
-    } catch (fetchErr) {
+      pages = await _crawlChildPages(siteUrl, 50, 2);
+    } catch (crawlErr) {
       console.warn(
-        `scrapeProductsFromSites: fetch error for ${siteUrl}:`,
-        fetchErr.message
+        `scrapeProductsFromSites: crawl error for ${siteUrl}:`,
+        crawlErr.message
       );
       continue;
     }
 
-    if (!html) continue;
+    if (!pages || pages.length === 0) continue;
 
-    let $;
-    try {
-      $ = cheerio.load(html);
-    } catch (cheerioErr) {
-      console.warn(
-        `scrapeProductsFromSites: cheerio parse error for ${siteUrl}:`,
-        cheerioErr.message
+    console.log(
+      `scrapeProductsFromSites: crawled ${pages.length} page(s) from ${siteUrl}`
+    );
+
+    // --- Extract products from each crawled page ---
+    for (const page of pages) {
+      const productsFromPage = _extractProductsFromPage(
+        page.$,
+        page.url,
+        page.sourceSite
       );
-      continue;
-    }
 
-    const productsFromSite = [];
-
-    // --- Strategy (b): JSON-LD ---
-    try {
-      $('script[type="application/ld+json"]').each((_i, el) => {
+      // --- OpenAI fallback if few products found on this page ---
+      if (productsFromPage.length < 3 && openAiKey) {
         try {
-          const json = JSON.parse($(el).html());
-          const items = Array.isArray(json) ? json : [json];
-          for (const item of items) {
-            // Direct Product type
-            if (item["@type"] === "Product" || item["@type"] === "IndividualProduct") {
-              productsFromSite.push(_jsonLdToProduct(item, siteUrl, sourceSite));
-            }
-            // ItemList wrapping products
-            if (item["@type"] === "ItemList" && Array.isArray(item.itemListElement)) {
-              for (const li of item.itemListElement) {
-                const inner = li.item || li;
-                if (
-                  inner["@type"] === "Product" ||
-                  inner["@type"] === "IndividualProduct"
-                ) {
-                  productsFromSite.push(
-                    _jsonLdToProduct(inner, siteUrl, sourceSite)
-                  );
-                }
+          const bodyText = (page.$("main").text() || page.$("body").text() || "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 6000);
+
+          if (bodyText.length > 200) {
+            const aiRes = await fetch(
+              "https://api.openai.com/v1/chat/completions",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${openAiKey}`,
+                },
+                body: JSON.stringify({
+                  model: "gpt-4o-mini",
+                  temperature: 0.1,
+                  messages: [
+                    {
+                      role: "system",
+                      content:
+                        "Estrai i prodotti veterinari dal testo di una pagina web. " +
+                        "Rispondi SOLO con un JSON array di oggetti con campi: " +
+                        '"name", "category" (food_general|food_clinical|supplement|antiparasitic|accessory|service), ' +
+                        '"species" (array: dog|cat), "lifecycle_target" (array: puppy|adult|senior), ' +
+                        '"description". Se non trovi prodotti, rispondi con [].',
+                    },
+                    {
+                      role: "user",
+                      content: `URL: ${page.url}\n\nTesto pagina:\n${bodyText}`,
+                    },
+                  ],
+                }),
               }
-            }
-          }
-        } catch (_jsonErr) {
-          // Skip individual script blocks that don't parse
-        }
-      });
-    } catch (_ldErr) {
-      // Non-fatal
-    }
-
-    // --- Strategy (b): Open Graph ---
-    try {
-      const ogTitle = $('meta[property="og:title"]').attr("content");
-      const ogImage = $('meta[property="og:image"]').attr("content");
-      const ogDesc = $('meta[property="og:description"]').attr("content");
-      const ogUrl = $('meta[property="og:url"]').attr("content");
-
-      if (
-        ogTitle &&
-        productsFromSite.length === 0 &&
-        (ogDesc || "").toLowerCase().match(/prodott|product|food|cibo|aliment/)
-      ) {
-        productsFromSite.push(
-          _buildProduct({
-            name: ogTitle,
-            description: ogDesc || "",
-            product_url: ogUrl || siteUrl,
-            image_url: ogImage || "",
-            source_site: sourceSite,
-          })
-        );
-      }
-    } catch (_ogErr) {
-      // Non-fatal
-    }
-
-    // --- Strategy (c): HTML structure ---
-    if (productsFromSite.length === 0) {
-      try {
-        const productSelectors = [
-          ".product-card",
-          ".product-item",
-          ".product-tile",
-          '[data-product]',
-          ".card.product",
-          "article.product",
-          ".product-list-item",
-          ".plp-product",
-        ];
-
-        for (const sel of productSelectors) {
-          $(sel).each((_i, el) => {
-            const $el = $(el);
-            const name =
-              $el.find("h2, h3, h4, .product-name, .product-title, .card-title").first().text().trim() ||
-              $el.find("a[title]").attr("title") ||
-              "";
-            if (!name) return;
-
-            const link =
-              $el.find("a[href]").first().attr("href") || "";
-            const img =
-              $el.find("img").first().attr("src") ||
-              $el.find("img").first().attr("data-src") ||
-              "";
-            const desc =
-              $el.find(".product-description, .product-desc, .description, p").first().text().trim() ||
-              "";
-
-            productsFromSite.push(
-              _buildProduct({
-                name,
-                description: desc,
-                product_url: _resolveUrl(link, siteUrl),
-                image_url: _resolveUrl(img, siteUrl),
-                source_site: sourceSite,
-              })
             );
-          });
 
-          if (productsFromSite.length > 0) break; // First matching selector wins
-        }
-      } catch (_htmlErr) {
-        // Non-fatal
-      }
-    }
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              const aiText = (aiData.choices?.[0]?.message?.content || "").trim();
+              let aiParsed = [];
+              try {
+                const cleaned = aiText
+                  .replace(/```json?\s*/gi, "")
+                  .replace(/```/g, "")
+                  .trim();
+                aiParsed = JSON.parse(cleaned);
+              } catch (_pe) {
+                // skip
+              }
 
-    // --- Strategy (d): OpenAI summarisation fallback ---
-    if (productsFromSite.length < 3 && openAiKey) {
-      try {
-        // Build a trimmed text representation (max ~6000 chars)
-        const bodyText = ($("main").text() || $("body").text() || "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 6000);
-
-        if (bodyText.length > 200) {
-          const aiRes = await fetch(
-            "https://api.openai.com/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openAiKey}`,
-              },
-              body: JSON.stringify({
-                model: "gpt-4o-mini",
-                temperature: 0.1,
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      "Estrai i prodotti veterinari dal testo di una pagina web. " +
-                      "Rispondi SOLO con un JSON array di oggetti con campi: " +
-                      '"name", "category" (food_general|food_clinical|supplement|antiparasitic|accessory|service), ' +
-                      '"species" (array: dog|cat), "lifecycle_target" (array: puppy|adult|senior), ' +
-                      '"description". Se non trovi prodotti, rispondi con [].',
-                  },
-                  {
-                    role: "user",
-                    content: `URL: ${siteUrl}\n\nTesto pagina:\n${bodyText}`,
-                  },
-                ],
-              }),
-            }
-          );
-
-          if (aiRes.ok) {
-            const aiData = await aiRes.json();
-            const aiText = (aiData.choices?.[0]?.message?.content || "").trim();
-            let aiParsed = [];
-            try {
-              const cleaned = aiText
-                .replace(/```json?\s*/gi, "")
-                .replace(/```/g, "")
-                .trim();
-              aiParsed = JSON.parse(cleaned);
-            } catch (_pe) {
-              // skip
-            }
-
-            if (Array.isArray(aiParsed)) {
-              for (const item of aiParsed) {
-                if (item && item.name) {
-                  productsFromSite.push(
-                    _buildProduct({
-                      name: item.name,
-                      category: item.category,
-                      species: item.species,
-                      lifecycle_target: item.lifecycle_target,
-                      description: item.description || "",
-                      product_url: siteUrl,
-                      image_url: "",
-                      source_site: sourceSite,
-                    })
-                  );
+              if (Array.isArray(aiParsed)) {
+                for (const item of aiParsed) {
+                  if (item && item.name) {
+                    productsFromPage.push(
+                      _buildProduct({
+                        name: item.name,
+                        category: item.category,
+                        species: item.species,
+                        lifecycle_target: item.lifecycle_target,
+                        description: item.description || "",
+                        product_url: page.url,
+                        image_url: "",
+                        source_site: page.sourceSite,
+                      })
+                    );
+                  }
                 }
               }
             }
           }
+        } catch (aiErr) {
+          console.warn(
+            `scrapeProductsFromSites: OpenAI fallback error for ${page.url}:`,
+            aiErr.message
+          );
         }
-      } catch (aiErr) {
-        console.warn(
-          `scrapeProductsFromSites: OpenAI fallback error for ${siteUrl}:`,
-          aiErr.message
-        );
       }
-    }
 
-    allProducts.push(...productsFromSite);
+      allProducts.push(...productsFromPage);
+    }
   }
 
   return allProducts;
+}
+
+/**
+ * Extract products from a single page using JSON-LD, Open Graph, and HTML selectors.
+ *
+ * @param {import('cheerio').CheerioAPI} $
+ * @param {string} pageUrl
+ * @param {string} sourceSite
+ * @returns {Array<Object>}
+ */
+function _extractProductsFromPage($, pageUrl, sourceSite) {
+  const products = [];
+
+  // --- Strategy (b): JSON-LD ---
+  try {
+    $('script[type="application/ld+json"]').each((_i, el) => {
+      try {
+        const json = JSON.parse($(el).html());
+        const items = Array.isArray(json) ? json : [json];
+        for (const item of items) {
+          if (item["@type"] === "Product" || item["@type"] === "IndividualProduct") {
+            products.push(_jsonLdToProduct(item, pageUrl, sourceSite));
+          }
+          if (item["@type"] === "ItemList" && Array.isArray(item.itemListElement)) {
+            for (const li of item.itemListElement) {
+              const inner = li.item || li;
+              if (
+                inner["@type"] === "Product" ||
+                inner["@type"] === "IndividualProduct"
+              ) {
+                products.push(_jsonLdToProduct(inner, pageUrl, sourceSite));
+              }
+            }
+          }
+        }
+      } catch (_jsonErr) {
+        // Skip individual script blocks that don't parse
+      }
+    });
+  } catch (_ldErr) {
+    // Non-fatal
+  }
+
+  // --- Strategy (b): Open Graph ---
+  try {
+    const ogTitle = $('meta[property="og:title"]').attr("content");
+    const ogImage = $('meta[property="og:image"]').attr("content");
+    const ogDesc = $('meta[property="og:description"]').attr("content");
+    const ogUrl = $('meta[property="og:url"]').attr("content");
+
+    if (
+      ogTitle &&
+      products.length === 0 &&
+      (ogDesc || "").toLowerCase().match(/prodott|product|food|cibo|aliment/)
+    ) {
+      products.push(
+        _buildProduct({
+          name: ogTitle,
+          description: ogDesc || "",
+          product_url: ogUrl || pageUrl,
+          image_url: ogImage || "",
+          source_site: sourceSite,
+        })
+      );
+    }
+  } catch (_ogErr) {
+    // Non-fatal
+  }
+
+  // --- Strategy (c): HTML structure ---
+  if (products.length === 0) {
+    try {
+      const productSelectors = [
+        ".product-card",
+        ".product-item",
+        ".product-tile",
+        '[data-product]',
+        ".card.product",
+        "article.product",
+        ".product-list-item",
+        ".plp-product",
+      ];
+
+      for (const sel of productSelectors) {
+        $(sel).each((_i, el) => {
+          const $el = $(el);
+          const name =
+            $el.find("h2, h3, h4, .product-name, .product-title, .card-title").first().text().trim() ||
+            $el.find("a[title]").attr("title") ||
+            "";
+          if (!name) return;
+
+          const link =
+            $el.find("a[href]").first().attr("href") || "";
+          const img =
+            $el.find("img").first().attr("src") ||
+            $el.find("img").first().attr("data-src") ||
+            "";
+          const desc =
+            $el.find(".product-description, .product-desc, .description, p").first().text().trim() ||
+            "";
+
+          products.push(
+            _buildProduct({
+              name,
+              description: desc,
+              product_url: _resolveUrl(link, pageUrl),
+              image_url: _resolveUrl(img, pageUrl),
+              source_site: sourceSite,
+            })
+          );
+        });
+
+        if (products.length > 0) break; // First matching selector wins
+      }
+    } catch (_htmlErr) {
+      // Non-fatal
+    }
+  }
+
+  return products;
+}
+
+// ---------------------------------------------------------------------------
+// Child-page crawling helpers (recursive scraping)
+// ---------------------------------------------------------------------------
+
+/**
+ * SSRF-safe HTML fetch.  Returns { html, sourceSite } or null on failure.
+ */
+async function _safeFetchHtml(url) {
+  try {
+    const urlObj = new URL(url);
+
+    if (urlObj.protocol !== "https:") {
+      console.warn(`_safeFetchHtml: blocked non-HTTPS URL: ${url}`);
+      return null;
+    }
+
+    const hostname = urlObj.hostname.toLowerCase();
+    if (
+      hostname === "localhost" ||
+      hostname === "[::1]" ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^169\.254\./.test(hostname) ||
+      /^0\./.test(hostname) ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal")
+    ) {
+      console.warn(`_safeFetchHtml: blocked private/reserved address: ${url}`);
+      return null;
+    }
+
+    const sourceSite = urlObj.hostname.replace(/^www\./, "");
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; ADA-VetSeedBot/1.0; +https://ada-vet.app)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) {
+      console.warn(`_safeFetchHtml: HTTP ${res.status} for ${url}`);
+      return null;
+    }
+
+    const html = await res.text();
+    return { html, sourceSite };
+  } catch (err) {
+    console.warn(`_safeFetchHtml: fetch error for ${url}:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Normalise a URL for comparison: remove trailing slash, fragment, optionally query string.
+ */
+function _normalizeUrlForCompare(url) {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    // Keep pathname, remove trailing slash (unless root "/")
+    if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+      u.pathname = u.pathname.slice(0, -1);
+    }
+    return u.href;
+  } catch (_e) {
+    return url;
+  }
+}
+
+/**
+ * Discover child URLs from an already-fetched page.
+ *
+ * A link is a "child" if its resolved URL starts with the parentUrl
+ * (after normalisation — trailing slash removed).
+ *
+ * @param {string} parentUrl  The root/parent URL (used as prefix filter)
+ * @param {string} _html      Raw HTML (unused — kept for signature clarity)
+ * @param {import('cheerio').CheerioAPI} $  Cheerio instance of the page
+ * @returns {string[]}  Array of unique child URLs
+ */
+function _discoverChildUrls(parentUrl, _html, $) {
+  const normalizedParent = _normalizeUrlForCompare(parentUrl);
+  const seen = new Set();
+  const children = [];
+
+  $("a[href]").each((_i, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+
+    const resolved = _resolveUrl(href, parentUrl);
+    if (!resolved || !resolved.startsWith("http")) return;
+
+    const normalized = _normalizeUrlForCompare(resolved);
+
+    // Must be a strict child (starts with parent but is not the parent itself)
+    if (normalized === normalizedParent) return;
+    if (!normalized.startsWith(normalizedParent)) return;
+
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    children.push(normalized);
+  });
+
+  return children;
+}
+
+/**
+ * Crawl child pages via BFS starting from rootUrl.
+ *
+ * @param {string} rootUrl     The starting URL
+ * @param {number} maxPages    Maximum total pages to fetch (default 50)
+ * @param {number} maxDepth    Maximum crawl depth (default 2)
+ * @returns {Promise<Array<{url:string, html:string, $:import('cheerio').CheerioAPI, sourceSite:string}>>}
+ */
+async function _crawlChildPages(rootUrl, maxPages = 50, maxDepth = 2) {
+  const cheerio = require("cheerio");
+  const visited = new Set();
+  const queue = [{ url: _normalizeUrlForCompare(rootUrl), depth: 0 }];
+  const results = [];
+
+  while (queue.length > 0 && results.length < maxPages) {
+    const { url, depth } = queue.shift();
+
+    if (visited.has(url)) continue;
+    visited.add(url);
+
+    console.log(
+      `Crawling ${url} (depth ${depth}, page ${results.length + 1}/${maxPages})`
+    );
+
+    const fetched = await _safeFetchHtml(url);
+    if (!fetched) continue;
+
+    let $;
+    try {
+      $ = cheerio.load(fetched.html);
+    } catch (cheerioErr) {
+      console.warn(`_crawlChildPages: cheerio parse error for ${url}:`, cheerioErr.message);
+      continue;
+    }
+
+    results.push({ url, html: fetched.html, $, sourceSite: fetched.sourceSite });
+
+    if (depth < maxDepth) {
+      const childUrls = _discoverChildUrls(rootUrl, fetched.html, $);
+      for (const childUrl of childUrls) {
+        if (!visited.has(childUrl) && results.length + queue.length < maxPages) {
+          queue.push({ url: childUrl, depth: depth + 1 });
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
