@@ -1,63 +1,65 @@
 #!/usr/bin/env bash
-# ada-tests.sh v2
+# ada-tests.sh v5.1
 #
-# Location (new):
-#   ./ada/tests/ada-tests.sh
+# Location: ./ada/tests/ada-tests.sh
 #
-# Secrets location (outside repo, one level above ./ada):
-#   ./ada-tests.secrets.sh   <-- secrets (NOT committed)
+# Secrets: read from ./ada/.env (dotenv format, NOT committed)
 #
-# Logs location (outside repo, same folder as secrets by default):
-#   ./ada-tests.log
-#   ./ada-tests.transcripts/
+# Logs: ./ada/test-results/ada-tests-XXX/ada-tests-<timestamp>.log
+#   - All detailed output goes to the log file
+#   - Terminal shows only PASS/FAIL summary + log path on failure
 #
-# Run from anywhere:
+# Run:
 #   bash ./ada/tests/ada-tests.sh                 # interactive menu
-#   bash ./ada/tests/ada-tests.sh smoke           # direct command (also logged)
+#   bash ./ada/tests/ada-tests.sh smoke           # direct command
 #   MODE=REAL STRICT_ON=1 bash ./ada/tests/ada-tests.sh smoke
-#
-# Optional env:
-#   ADA_TESTS_PAUSE=1       # always pause at end of command (anti-close)
-#   ADA_TESTS_NO_PAUSE=1    # never pause (override)
 #
 set -euo pipefail
 
 # ---------------------- Defaults ----------------------
 DEFAULT_LOCAL_PORT="4173"
+DEFAULT_BACKEND_PORT="3000"
 DEFAULT_DEPLOY_URL="https://abupet.github.io/ada/"
 DEFAULT_STRICT_ALLOW_HOSTS="cdnjs.cloudflare.com"
 # ------------------------------------------------------
 
 # Script is inside repo: <repo>/tests
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"            # <repo>
-OUT_DIR_DEFAULT="$(cd "$REPO_DIR_DEFAULT/.." && pwd)"       # parent folder of repo (where secrets live)
+REPO_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 REPO_DIR="${REPO_DIR:-"$REPO_DIR_DEFAULT"}"
-OUT_DIR="${OUT_DIR:-"$OUT_DIR_DEFAULT"}"
 
-LOG_FILE="$OUT_DIR/ada-tests.log"
-TRANSCRIPTS_DIR="$OUT_DIR/ada-tests.transcripts"
+# -------------------- Load .env from repo root --------------------
+ENV_FILE="$REPO_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  # Parse .env: skip comments and empty lines, export vars
+  while IFS='=' read -r key value; do
+    # Skip comments and empty
+    [[ -z "$key" || "$key" == \#* ]] && continue
+    # Trim whitespace
+    key="$(echo "$key" | xargs)"
+    # Skip invalid variable names (must be [a-zA-Z_][a-zA-Z0-9_]*)
+    [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || continue
+    # Remove surrounding quotes from value
+    value="$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+    # Only export if not already set (env takes precedence)
+    if [[ -z "${!key:-}" ]]; then
+      export "$key=$value"
+    fi
+  done < "$ENV_FILE"
+else
+  echo "⚠️  File .env non trovato: $ENV_FILE"
+  echo "   Crea ada/.env con almeno: ADA_TEST_PASSWORD=... e DATABASE_URL=..."
+fi
+# ------------------------------------------------------------------
 
 PORT="${PORT:-$DEFAULT_LOCAL_PORT}"
+BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 LOCAL_URL="${LOCAL_URL:-"http://localhost:${PORT}/index.html"}"
+BACKEND_URL="http://localhost:${BACKEND_PORT}"
 DEPLOY_URL="${DEPLOY_URL:-$DEFAULT_DEPLOY_URL}"
 
-# -------------------- Load secrets --------------------
-# Default secrets file is OUTSIDE the repo, next to the ./ada folder
-SECRETS_FILE="${SECRETS_FILE:-"$OUT_DIR/ada-tests.secrets.sh"}"
-if [[ -f "$SECRETS_FILE" ]]; then
-  # shellcheck source=/dev/null
-  source "$SECRETS_FILE"
-else
-  echo "⚠️  Secrets file not found: $SECRETS_FILE"
-  echo "   Create it one level above ./ada (same folder as ada-tests.log) with:"
-  echo "   export ADA_TEST_PASSWORD=\"...\""
-  echo "   (Optional) export DEPLOY_URL=\"https://abupet.github.io/ada/\""
-fi
-# ------------------------------------------------------
-
-# ---------------------- UI colors (NO background changes) ----------------------
+# ---------------------- UI colors ----------------------
 CLR_RESET=$'\e[0m'
 CLR_RED=$'\e[31m'
 CLR_GREEN=$'\e[32m'
@@ -69,28 +71,69 @@ CLR_BOLD=$'\e[1m'
 say()  { echo -e "${CLR_CYAN}👉${CLR_RESET} $*"; }
 warn() { echo -e "${CLR_YELLOW}⚠️${CLR_RESET} $*"; }
 die()  { echo -e "${CLR_RED}❌ $*${CLR_RESET}" >&2; exit 1; }
-# ------------------------------------------------------------------------------
+# -------------------------------------------------------
 
 if [[ ! -d "$REPO_DIR" ]]; then
-  echo -e "${CLR_RED}❌ Repo dir not found: $REPO_DIR${CLR_RESET}"
-  echo "   Expected repo at: $REPO_DIR_DEFAULT"
-  echo "   Override with: REPO_DIR=\"/path/to/ada\" bash ./ada/tests/ada-tests.sh status"
-  exit 1
+  die "Repo dir not found: $REPO_DIR"
 fi
-
 cd "$REPO_DIR"
-
-need_password() {
-  if [[ -z "${ADA_TEST_PASSWORD:-}" ]]; then
-    die "Missing ADA_TEST_PASSWORD. Put it in ada-tests.secrets.sh (outside repo) or set env var."
-  fi
-}
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
-# ---------------------- Runtime toggles (menu) ----------------------
-MODE="${MODE:-MOCK}"          # MOCK or REAL
-STRICT_ON="${STRICT_ON:-0}"   # 0/1, toggled by 's'
+need_password() {
+  if [[ -z "${ADA_TEST_PASSWORD:-}" && -z "${TEST_PASSWORD:-}" ]]; then
+    die "Missing ADA_TEST_PASSWORD. Impostala in ada/.env"
+  fi
+}
+
+# ---------------------- Session management ----------------------
+TEST_RESULTS_BASE="$REPO_DIR/test-results"
+mkdir -p "$TEST_RESULTS_BASE"
+
+init_session() {
+  # Find highest existing session number
+  local last_num=-1
+  local d
+  for d in "$TEST_RESULTS_BASE"/ada-tests-[0-9][0-9][0-9]; do
+    if [[ -d "$d" ]]; then
+      local num
+      num="$(basename "$d" | grep -oP '\d{3}$' || true)"
+      if [[ -n "$num" ]] && (( 10#$num > last_num )); then
+        last_num=$((10#$num))
+      fi
+    fi
+  done
+
+  local next_num=$(( last_num + 1 ))
+  SESSION_NUM="$(printf "%03d" "$next_num")"
+  SESSION_DIR="$TEST_RESULTS_BASE/ada-tests-${SESSION_NUM}"
+  mkdir -p "$SESSION_DIR"
+
+  SESSION_LOG="$SESSION_DIR/ada-tests-$(date +%Y%m%d_%H%M%S).log"
+  touch "$SESSION_LOG"
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Session ada-tests-${SESSION_NUM} started" >> "$SESSION_LOG"
+}
+
+# Initialize first session
+init_session
+
+# Convert path to Windows-style for display
+to_win_path() {
+  local p="$1"
+  if have_cmd cygpath; then
+    cygpath -w "$p"
+  else
+    # WSL/Git Bash: try manual conversion
+    echo "$p" | sed 's|^/c/|C:\\|; s|^/mnt/c/|C:\\|; s|/|\\|g'
+  fi
+}
+
+SESSION_LOG_WIN="$(to_win_path "$SESSION_LOG")"
+# ----------------------------------------------------------------
+
+# ---------------------- Runtime toggles ----------------------
+MODE="${MODE:-MOCK}"
+STRICT_ON="${STRICT_ON:-0}"
 STRICT_ALLOW_HOSTS_RUNTIME="${STRICT_ALLOW_HOSTS:-$DEFAULT_STRICT_ALLOW_HOSTS}"
 
 mode_label() {
@@ -100,11 +143,9 @@ mode_label() {
 strict_label() {
   if [[ "${STRICT_ON}" == "1" ]]; then echo "ON"; else echo "OFF"; fi
 }
+# -------------------------------------------------------------
 
-# Build env assignments for playwright runs
-# Args:
-#   $1 = base_url (optional)
-#   $2 = deployed_flag (0/1)
+# Build env assignments for playwright
 build_envs() {
   local base_url="${1:-}"
   local deployed="${2:-0}"
@@ -126,74 +167,6 @@ build_envs() {
 
   printf '%s\n' "${envs[@]}"
 }
-# ------------------------------------------------------
-
-# ---------------------- Logging (append, always) ----------------------
-ensure_log_file() {
-  if [[ ! -f "$LOG_FILE" ]]; then
-    : > "$LOG_FILE"
-  fi
-  mkdir -p "$TRANSCRIPTS_DIR" >/dev/null 2>&1 || true
-}
-
-ts() { date +"%Y-%m-%d %H:%M:%S"; }
-ts_compact() { date +"%Y%m%d_%H%M%S"; }
-
-log_header() {
-  local cmd="$1"
-  ensure_log_file
-  {
-    echo "================================================================================"
-    echo "[$(ts)] START cmd=$cmd  MODE=$(mode_label)  STRICT=$(strict_label)  REPO=$REPO_DIR"
-    if [[ "${STRICT_ON}" == "1" ]]; then
-      echo "[$(ts)] STRICT_ALLOW_HOSTS=$STRICT_ALLOW_HOSTS_RUNTIME"
-    fi
-  } >> "$LOG_FILE"
-}
-
-log_note() {
-  local msg="$1"
-  ensure_log_file
-  echo "[$(ts)] NOTE  $msg" >> "$LOG_FILE"
-}
-
-log_footer() {
-  local cmd="$1"
-  local rc="$2"
-  ensure_log_file
-  {
-    echo "[$(ts)] END   cmd=$cmd  rc=$rc"
-    echo
-  } >> "$LOG_FILE"
-}
-# ---------------------------------------------------------------------
-
-# ---------------------- Anti-close (pause) ----------------------
-should_pause() {
-  if [[ "${ADA_TESTS_NO_PAUSE:-0}" == "1" ]]; then return 1; fi
-  if [[ "${ADA_TESTS_PAUSE:-0}" == "1" ]]; then return 0; fi
-  if [[ ! -t 0 ]]; then return 0; fi
-  return 1
-}
-
-pause_if_needed() {
-  local rc="${1:-0}"
-  if should_pause; then
-    echo ""
-    if [[ "$rc" -eq 0 ]]; then
-      echo -e "${CLR_DIM}Premi un tasto per chiudere...${CLR_RESET}"
-    else
-      echo -e "${CLR_YELLOW}Il comando è terminato con errori (rc=$rc).${CLR_RESET}"
-      echo -e "${CLR_DIM}Premi un tasto per chiudere...${CLR_RESET}"
-    fi
-    if [[ -r /dev/tty ]]; then
-      IFS= read -rsn1 -p "" </dev/tty || true
-    else
-      IFS= read -rsn1 -p "" || true
-    fi
-  fi
-}
-# ----------------------------------------------------
 
 # ---------------------- Server checks ----------------------
 server_is_up() {
@@ -230,7 +203,7 @@ start_server_new_terminal() {
   if [[ -z "$repo_win" ]]; then repo_win="$REPO_DIR"; fi
   repo_win="${repo_win//$'\r'/}"
 
-  say "Avvio server in un altro terminale (background): npm run serve"
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Starting frontend server in new terminal" >> "$SESSION_LOG"
 
   if have_cmd powershell.exe; then
     powershell.exe -NoProfile -Command \
@@ -245,21 +218,18 @@ start_server_new_terminal() {
 wait_for_server() {
   local max_seconds="${1:-25}"
   local i=0
-  echo -e "${CLR_DIM}⏳ In attesa del server su: $LOCAL_URL (max ${max_seconds}s) ...${CLR_RESET}"
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Waiting for frontend on $LOCAL_URL (max ${max_seconds}s)" >> "$SESSION_LOG"
   while (( i < max_seconds )); do
     if server_is_up; then
-      echo ""
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] Frontend OK" >> "$SESSION_LOG"
       say "Server OK: $LOCAL_URL"
       return 0
     fi
-    local remaining=$((max_seconds - i))
-    echo -ne "${CLR_DIM}   ...ancora in attesa (${remaining}s)\r${CLR_RESET}"
     sleep 1
     ((i++))
   done
-  echo ""
-  warn "Server ancora non raggiungibile dopo ${max_seconds}s: $LOCAL_URL"
-  warn "Controlla la finestra 'ADA server' (errori npm / porta occupata / firewall)."
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Frontend TIMEOUT after ${max_seconds}s" >> "$SESSION_LOG"
+  warn "Server non raggiungibile dopo ${max_seconds}s: $LOCAL_URL"
   return 1
 }
 
@@ -269,109 +239,297 @@ ensure_server_running() {
     return 0
   fi
   if port_is_listening; then
-    warn "La porta $PORT è già in ascolto, ma $LOCAL_URL non risponde."
-    warn "Probabile: un altro processo sta usando la porta, oppure il server è in errore."
-    warn "Soluzione: chiudi il processo su porta $PORT oppure avvia correttamente npm run serve."
+    warn "Porta $PORT in ascolto ma $LOCAL_URL non risponde."
     return 1
   fi
   start_server_new_terminal
   wait_for_server 25
 }
 
-start_server_background_and_wait() {
-  if server_is_up; then
-    say "Server già attivo: $LOCAL_URL (non apro nuove finestre)"
+backend_is_up() {
+  if have_cmd curl; then
+    curl -fsS "$BACKEND_URL/api/health" >/dev/null 2>&1
+    return $?
+  fi
+  if have_cmd powershell.exe; then
+    powershell.exe -NoProfile -Command \
+      "try { (Invoke-WebRequest -UseBasicParsing '$BACKEND_URL/api/health').StatusCode -eq 200 } catch { exit 1 }" \
+      >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+start_backend_new_terminal() {
+  local repo_win
+  repo_win="$(cd "$REPO_DIR" && pwd -W 2>/dev/null || true)"
+  if [[ -z "$repo_win" ]]; then repo_win="$REPO_DIR"; fi
+  repo_win="${repo_win//$'\r'/}"
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Starting backend in new terminal" >> "$SESSION_LOG"
+
+  if have_cmd powershell.exe; then
+    powershell.exe -NoProfile -Command \
+      "Start-Process -FilePath 'cmd.exe' -WorkingDirectory '$repo_win' -ArgumentList '/k','set MODE=${MODE}&&set FRONTEND_ORIGIN=http://localhost:${PORT}&&set RATE_LIMIT_PER_MIN=600&&node backend/src/server.js' -WindowStyle Normal" \
+      >/dev/null 2>&1
     return 0
   fi
-  if port_is_listening; then
-    warn "La porta $PORT è già in ascolto (qualcuno la sta usando)."
-    warn "Non apro un'altra finestra server. Libera la porta o cambia PORT."
-    return 1
-  fi
-  start_server_new_terminal
-  wait_for_server 25
+
+  cmd.exe /c start "ADA backend" cmd.exe /k "cd /d \"$repo_win\" && set MODE=${MODE}&& set FRONTEND_ORIGIN=http://localhost:${PORT}&& set RATE_LIMIT_PER_MIN=600&& node backend/src/server.js"
 }
-# -----------------------------------------------------------
+
+wait_for_backend() {
+  local max_seconds="${1:-30}"
+  local i=0
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Waiting for backend on $BACKEND_URL/api/health (max ${max_seconds}s)" >> "$SESSION_LOG"
+  while (( i < max_seconds )); do
+    if backend_is_up; then
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] Backend OK" >> "$SESSION_LOG"
+      say "Backend OK: $BACKEND_URL"
+      return 0
+    fi
+    sleep 1
+    ((i++))
+  done
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Backend TIMEOUT after ${max_seconds}s" >> "$SESSION_LOG"
+  warn "Backend non raggiungibile dopo ${max_seconds}s: $BACKEND_URL"
+  return 1
+}
+
+ensure_backend_running() {
+  if backend_is_up; then
+    say "Backend già attivo: $BACKEND_URL"
+    return 0
+  fi
+  start_backend_new_terminal
+  wait_for_backend 30
+}
+
+ensure_all_servers_running() {
+  ensure_backend_running
+  ensure_server_running
+}
+
+# ---------------------- Logged test runner ----------------------
+# All output → log file. Terminal → spinner + elapsed time + live tail.
+#
+# DESIGN: The command output is piped through `tee -a` to the log file
+# so that even if the child process truncates stdout, the log survives.
+# A background spinner reads a SEPARATE tail-cache file to avoid any
+# interference with the main log.
+
+_spinner_pid=""
+_prev_exit_trap=""
+
+_start_spinner() {
+  local label="$1"
+  local tailfile="$2"
+  local start_epoch
+  start_epoch="$(date +%s)"
+  local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+  local i=0
+
+  while true; do
+    local now
+    now="$(date +%s)"
+    local diff=$(( now - start_epoch ))
+    local mins=$(( diff / 60 ))
+    local secs=$(( diff % 60 ))
+    local elapsed
+    if (( mins > 0 )); then
+      elapsed="${mins}m$(printf '%02d' $secs)s"
+    else
+      elapsed="${secs}s"
+    fi
+
+    # Grab last meaningful line from tail-cache
+    local last_line=""
+    if [[ -f "$tailfile" ]]; then
+      last_line="$(tail -20 "$tailfile" 2>/dev/null \
+        | grep -vE '^(===|---|^\[|^$|^Command:)' \
+        | tail -1 \
+        | cut -c1-60)" || true
+    fi
+
+    local display_line=""
+    if [[ -n "$last_line" ]]; then
+      display_line="  ${CLR_DIM}${last_line}${CLR_RESET}"
+    fi
+
+    printf "\r\e[2K  ${CLR_CYAN}${frames[$i]}${CLR_RESET} ${CLR_BOLD}%s${CLR_RESET}  ${CLR_YELLOW}[%s]${CLR_RESET}%s" \
+      "$label" "$elapsed" "$display_line"
+
+    i=$(( (i + 1) % ${#frames[@]} ))
+    sleep 0.3
+  done
+}
+
+_stop_spinner() {
+  if [[ -n "${_spinner_pid:-}" ]] && kill -0 "$_spinner_pid" 2>/dev/null; then
+    kill "$_spinner_pid" 2>/dev/null
+    wait "$_spinner_pid" 2>/dev/null || true
+  fi
+  _spinner_pid=""
+  printf "\r\e[2K"
+}
+
+run_and_log() {
+  local test_name="$1"
+  shift
+
+  # --- Write header directly to log (append, never truncate) ---
+  {
+    echo ""
+    echo "================================================================================"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] START: $test_name  MODE=$(mode_label)  STRICT=$(strict_label)"
+    echo "Command: $*"
+    echo "================================================================================"
+  } >> "$SESSION_LOG"
+
+  # Tail-cache: small rolling file for the spinner to read safely
+  local tail_cache
+  tail_cache="$(mktemp "${SESSION_DIR}/spinner-tail.XXXXXX")"
+
+  # Start spinner (reads from tail_cache, NOT from SESSION_LOG)
+  _start_spinner "$test_name" "$tail_cache" &
+  _spinner_pid=$!
+
+  # Stack-safe trap: preserve any previous EXIT trap
+  _prev_exit_trap="$(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//" || true)"
+  trap '_stop_spinner; eval "$_prev_exit_trap"' EXIT
+
+  local rc=0
+  local start_ts
+  start_ts="$(date +%s)"
+
+  set +e
+  # Use tee to append to log. Separately, a background job refreshes
+  # the tail-cache every second for the spinner to read.
+  (
+    # Refresh tail-cache periodically in background
+    while sleep 1; do
+      tail -5 "$SESSION_LOG" > "${tail_cache}" 2>/dev/null || true
+    done &
+    local _tail_refresh_pid=$!
+
+    "$@" 2>&1 | tee -a "$SESSION_LOG" >/dev/null
+
+    kill "$_tail_refresh_pid" 2>/dev/null || true
+    wait "$_tail_refresh_pid" 2>/dev/null || true
+    exit "${PIPESTATUS[0]}"
+  )
+  rc=$?
+  set -e
+
+  local end_ts
+  end_ts="$(date +%s)"
+  local total_secs=$(( end_ts - start_ts ))
+
+  # Stop spinner
+  _stop_spinner
+
+  # Clean up tail cache
+  rm -f "$tail_cache" "${tail_cache}.tmp" 2>/dev/null || true
+
+  # Restore original EXIT trap
+  if [[ -n "$_prev_exit_trap" ]]; then
+    trap "$_prev_exit_trap" EXIT
+  else
+    trap - EXIT
+  fi
+
+  # Format total duration
+  local dm=$(( total_secs / 60 ))
+  local ds=$(( total_secs % 60 ))
+  local dur_str
+  if (( dm > 0 )); then
+    dur_str="${dm}m$(printf '%02d' $ds)s"
+  else
+    dur_str="${ds}s"
+  fi
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] END: $test_name -> rc=$rc (${dur_str})" >> "$SESSION_LOG"
+  echo "" >> "$SESSION_LOG"
+
+  if [[ $rc -eq 0 ]]; then
+    echo -e "${CLR_GREEN}✅ ${test_name}: PASSED${CLR_RESET}  ${CLR_DIM}(${dur_str})${CLR_RESET}"
+  else
+    echo -e "${CLR_RED}❌ ${test_name}: FAILED${CLR_RESET}  ${CLR_DIM}(${dur_str})${CLR_RESET}"
+    echo -e "   Log: ${CLR_DIM}${SESSION_LOG_WIN}${CLR_RESET}"
+  fi
+  return $rc
+}
+# ----------------------------------------------------------------
 
 # ---------------------- Test runners ----------------------
 run_smoke_local() {
   need_password
-  ensure_server_running
-  say "Running SMOKE tests (local, $(mode_label), STRICT=$(strict_label)) ..."
+  ensure_all_servers_running
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
-  env "${envs[@]}" npx playwright test --project=chromium --grep @smoke
+  run_and_log "SMOKE (local, $(mode_label), STRICT=$(strict_label))" \
+    env "${envs[@]}" npx playwright test --project=chromium --grep @smoke
 }
 
 run_smoke_local_headed() {
   need_password
-  ensure_server_running
-  say "Running SMOKE tests (local, headed, $(mode_label), STRICT=$(strict_label)) ..."
+  ensure_all_servers_running
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
-  env "${envs[@]}" npx playwright test --project=chromium --grep @smoke --headed
+  run_and_log "SMOKE headed (local, $(mode_label))" \
+    env "${envs[@]}" npx playwright test --project=chromium --grep @smoke --headed
 }
 
 run_regression_local() {
   need_password
-  ensure_server_running
-  say "Running REGRESSION tests (local, $(mode_label), STRICT=$(strict_label)) ..."
+  ensure_all_servers_running
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
-  env "${envs[@]}" npx playwright test --project=chromium
+  run_and_log "REGRESSION (local, $(mode_label), STRICT=$(strict_label))" \
+    env "${envs[@]}" npx playwright test --project=chromium
 }
 
 run_long_local() {
   need_password
-  ensure_server_running
-  say "Running LONG tests @long (local, $(mode_label), STRICT=$(strict_label)) ..."
+  ensure_all_servers_running
   mapfile -t envs < <(build_envs "$LOCAL_URL" 0)
-  env "${envs[@]}" npx playwright test --project=chromium --grep @long
+  run_and_log "LONG @long (local, $(mode_label))" \
+    env "${envs[@]}" npx playwright test --project=chromium --grep @long
+}
+
+run_unit() {
+  run_and_log "UNIT tests" npm run test:unit
 }
 
 run_policy() {
-  say "Running POLICY checks ..."
-  node tests/policy/policy-checks.js
+  run_and_log "POLICY checks" node tests/policy/policy-checks.js
 }
 
 run_deployed() {
   need_password
-  say "Running DEPLOYED tests ($(mode_label), STRICT=$(strict_label)) against: $DEPLOY_URL"
   mapfile -t envs < <(build_envs "" 1)
-  env "${envs[@]}" npx playwright test --project=chromium --grep @deployed
+  run_and_log "DEPLOYED ($(mode_label), STRICT=$(strict_label))" \
+    env "${envs[@]}" npx playwright test --project=chromium --grep @deployed
 }
-
-# ---- Compatibility aliases (force strict ON for that run) ----
-run_smoke_strict_local() { local prev="${STRICT_ON}"; STRICT_ON=1; run_smoke_local; STRICT_ON="$prev"; }
-run_regression_strict_local() { local prev="${STRICT_ON}"; STRICT_ON=1; run_regression_local; STRICT_ON="$prev"; }
-run_deployed_strict() { local prev="${STRICT_ON}"; STRICT_ON=1; run_deployed; STRICT_ON="$prev"; }
-# -------------------------------------------------------------
 
 install_all() {
-  say "Installing deps (npm ci) ..."
-  npm ci
-  say "Installing Playwright browsers ..."
-  npx playwright install --with-deps
-  say "Done."
+  say "Installing deps..."
+  run_and_log "npm ci" npm ci
+  run_and_log "playwright install" npx playwright install --with-deps
 }
 
-# ---------------------- Levels ----------------------
-# Level 1: fastest + most useful checks for day-to-day work
-# Level 2: broader/longer checks (run when preparing release / after big changes)
-
 run_level1() {
-  # Policy checks are fast and catch secrets/network issues early
-  run_policy
-  # Local smoke (requires local server) — will run the @smoke suite
-  run_smoke_local
+  local failed=0
+  run_unit || failed=1
+  run_policy || failed=1
+  run_smoke_local || failed=1
+  return $failed
 }
 
 run_level2() {
-  # Full local regression
-  run_regression_local
-  # Deployed smoke (published app)
-  run_deployed
-  # Long tests (audio uploads etc.)
-  run_long_local
+  local failed=0
+  run_regression_local || failed=1
+  run_deployed || failed=1
+  run_long_local || failed=1
+  return $failed
 }
-# ----------------------------------------------------
 
 open_report() {
   say "Opening Playwright report..."
@@ -379,181 +537,81 @@ open_report() {
 }
 
 clean_artifacts() {
-  say "Cleaning Playwright artifacts..."
-  rm -rf playwright-report test-results .playwright .cache/ms-playwright 2>/dev/null || true
+  say "Cleaning artifacts..."
+  rm -rf playwright-report test-results/.playwright .cache/ms-playwright 2>/dev/null || true
   say "Done."
+}
+
+start_new_session() {
+  init_session
+  SESSION_LOG_WIN="$(to_win_path "$SESSION_LOG")"
+  say "Nuova sessione: ada-tests-${SESSION_NUM}"
+  say "Log: ${SESSION_LOG_WIN}"
+}
+
+analyze_with_claude() {
+  if [[ ! -f "$SESSION_LOG" ]]; then
+    warn "Nessun log per la sessione corrente."
+    return 1
+  fi
+
+  local win_log="${SESSION_LOG_WIN}"
+  say "Invocando Claude Code per analisi errori..."
+  say "Log: ${win_log}"
+
+  if have_cmd claude; then
+    claude "Ci sono errori o avvisi nei test automatici di ADA. Fai root-cause analysis leggendo questo file di log: ${win_log}"
+  elif have_cmd claude.exe; then
+    claude.exe "Ci sono errori o avvisi nei test automatici di ADA. Fai root-cause analysis leggendo questo file di log: ${win_log}"
+  else
+    warn "Comando 'claude' non trovato nel PATH."
+    warn "Installa Claude Code (https://docs.anthropic.com/en/docs/claude-code) e riprova."
+    return 1
+  fi
 }
 
 status() {
   echo "================ ADA TEST STATUS ================"
-  echo "Script dir:         $SCRIPT_DIR"
-  echo "Repo dir:           $REPO_DIR"
-  echo "Out dir:            $OUT_DIR"
+  echo "Repo:             $REPO_DIR"
+  echo "Session:          ada-tests-${SESSION_NUM}"
+  echo "Log:              ${SESSION_LOG_WIN}"
   echo "------------------------------------------------"
-  echo "Log file:           $LOG_FILE (append)"
-  echo "Transcripts dir:    $TRANSCRIPTS_DIR"
-  echo "Secrets file:       $SECRETS_FILE"
-  [[ -f "$SECRETS_FILE" ]] && echo "Secrets present:    ✅ yes" || echo "Secrets present:    ❌ no"
+  echo "Local URL:        $LOCAL_URL"
+  echo "Deploy URL:       $DEPLOY_URL"
+  echo "MODE:             $(mode_label)"
+  echo "STRICT_NETWORK:   $(strict_label)"
+  [[ -n "${ADA_TEST_PASSWORD:-}" ]] && echo "ADA_TEST_PASSWORD: ✅ set" || echo "ADA_TEST_PASSWORD: ❌ NOT set"
+  [[ -n "${TEST_VET_EMAIL:-}" ]] && echo "TEST_VET_EMAIL:    ✅ ${TEST_VET_EMAIL}" || echo "TEST_VET_EMAIL:    ❌ NOT set"
   echo "------------------------------------------------"
-  echo "Local URL:          $LOCAL_URL"
-  echo "Deploy URL:         $DEPLOY_URL"
-  echo "MODE:               $(mode_label)"
-  echo "STRICT_NETWORK:     $(strict_label)"
-  [[ "${STRICT_ON}" == "1" ]] && echo "STRICT_ALLOW_HOSTS: $STRICT_ALLOW_HOSTS_RUNTIME" || echo "STRICT_ALLOW_HOSTS: (n/a)"
-  [[ -n "${ADA_TEST_PASSWORD:-}" ]] && echo "ADA_TEST_PASSWORD:  ✅ set" || echo "ADA_TEST_PASSWORD:  ❌ NOT set"
-  echo "------------------------------------------------"
-  if server_is_up; then echo "Local server:       ✅ reachable"; else echo "Local server:       ❌ not reachable"; fi
-  if port_is_listening; then echo "Port ${PORT}:        ✅ LISTENING"; else echo "Port ${PORT}:        ❌ not listening"; fi
-  echo "------------------------------------------------"
-  echo -n "node: "; (have_cmd node && node -v) || echo "❌ missing"
-  echo -n "npm:  "; (have_cmd npm  && npm -v)  || echo "❌ missing"
-  echo -n "npx:  "; (have_cmd npx  && npx -v)  || echo "❌ missing"
+  if backend_is_up; then echo "Backend (${BACKEND_PORT}):   ✅ reachable"; else echo "Backend (${BACKEND_PORT}):   ❌ not reachable"; fi
+  if server_is_up; then echo "Frontend (${PORT}):  ✅ reachable"; else echo "Frontend (${PORT}):  ❌ not reachable"; fi
   echo "================================================="
 }
 
 # ---------------------- Command dispatcher ----------------------
-serve_foreground() { say "Starting local server (foreground) on port $PORT. Ctrl+C to stop."; npx http-server . -p "$PORT" -c-1; }
-
 run_cmd() {
   local cmd="${1:-}"
   case "$cmd" in
     status) status ;;
     install) install_all ;;
-    serve) serve_foreground ;;
-    start-server-bg) start_server_background_and_wait ;;
-
+    start-server-bg) ensure_all_servers_running ;;
     level1) run_level1 ;;
-
+    unit) run_unit ;;
     smoke) run_smoke_local ;;
     smoke-headed) run_smoke_local_headed ;;
-    smoke-strict) run_smoke_strict_local ;;
     level2) run_level2 ;;
-
     regression) run_regression_local ;;
-    regression-strict) run_regression_strict_local ;;
     long) run_long_local ;;
     policy) run_policy ;;
     deployed) run_deployed ;;
-    deployed-strict) run_deployed_strict ;;
-
     report) open_report ;;
     clean) clean_artifacts ;;
-
+    new-session) start_new_session ;;
+    analyze) analyze_with_claude ;;
     "" ) ;;
     *) die "Unknown command: $cmd" ;;
   esac
 }
-# ----------------------------------------------------------------
-
-# ---------------------- Logging wrapper (append) ----------------------
-# Strategy:
-# 1) If `script` exists: capture full output with pseudo-tty, append to ada-tests.log.
-# 2) Else: use PowerShell Start-Transcript to capture full output to per-run transcript file,
-#    and write a pointer to that transcript into ada-tests.log. (TTY preserved.)
-run_cmd_safe() {
-  local cmd="$1"
-  local rc=0
-
-  log_header "$cmd"
-
-  local transcript_file="$TRANSCRIPTS_DIR/$(ts_compact)_${cmd}.log"
-
-  if have_cmd script; then
-    local tmp
-    tmp="$(mktemp 2>/dev/null || printf "%s" "/tmp/ada-tests.$RANDOM.$RANDOM.out")"
-
-    export -f run_cmd say warn die have_cmd need_password \
-      server_is_up port_is_listening start_server_new_terminal wait_for_server \
-      ensure_server_running start_server_background_and_wait \
-      build_envs mode_label strict_label \
-      run_smoke_local run_smoke_local_headed run_regression_local run_long_local run_policy run_deployed \
-      run_smoke_strict_local run_regression_strict_local run_deployed_strict \
-      install_all open_report clean_artifacts status
-    export REPO_DIR PORT LOCAL_URL DEPLOY_URL MODE STRICT_ON STRICT_ALLOW_HOSTS_RUNTIME DEFAULT_STRICT_ALLOW_HOSTS ADA_TEST_PASSWORD
-
-    set +e
-    script -q -c "bash -lc 'cd \"${REPO_DIR}\"; run_cmd \"${cmd}\"'" "$tmp"
-    rc=$?
-    set -e
-
-    cat "$tmp" >> "$LOG_FILE" || true
-    rm -f "$tmp" >/dev/null 2>&1 || true
-  else
-    # PowerShell transcript fallback (full output to file)
-    if have_cmd powershell.exe; then
-      # Convert transcript path to Windows path for PowerShell
-      local transcript_win="$transcript_file"
-      if have_cmd cygpath; then
-        transcript_win="$(cygpath -w "$transcript_file")"
-      fi
-
-      log_note "Full output captured via PowerShell transcript: $transcript_file"
-
-      # Get Windows path to bash.exe so PowerShell can run it
-      local bash_posix bash_win
-      bash_posix="$(command -v bash || true)"
-      bash_win="$bash_posix"
-      if [[ -n "$bash_posix" ]] && have_cmd cygpath; then
-        bash_win="$(cygpath -w "$bash_posix")"
-      else
-        # fallback: ask Windows "where" for bash.exe
-        if have_cmd where.exe; then
-          bash_win="$(where.exe bash 2>/dev/null | head -n 1 | tr -d '\r' || true)"
-        fi
-      fi
-
-      if [[ -z "$bash_win" ]]; then
-        warn "Impossibile trovare bash.exe per PowerShell transcript fallback."
-        set +e
-        run_cmd "$cmd"
-        rc=$?
-        set -e
-      else
-        # Build bash command line (executed inside bash -lc)
-        local cmdline
-        # Important: script now lives INSIDE repo: $REPO_DIR/tests/ada-tests.sh
-        cmdline="cd \"$REPO_DIR\"; \"$REPO_DIR/tests/ada-tests.sh\" __run_cmd \"$cmd\""
-
-        set +e
-        powershell.exe -NoProfile -Command \
-          "\$ErrorActionPreference='Stop';
-            Start-Transcript -Path '$transcript_win' -Append | Out-Null;
-            try {
-              & '$bash_win' -lc '$cmdline';
-              \$rc=\$LASTEXITCODE
-            } catch {
-              Write-Host \$_ -ForegroundColor Red;
-              \$rc=1
-            } finally {
-              Stop-Transcript | Out-Null
-            }
-            exit \$rc"
-        rc=$?
-        set -e
-      fi
-    else
-      warn "Né 'script' né powershell.exe disponibili: output completo non catturabile. Eseguo comando senza transcript."
-      set +e
-      run_cmd "$cmd"
-      rc=$?
-      set -e
-    fi
-  fi
-
-  echo ""
-  if [[ $rc -eq 0 ]]; then
-    echo -e "${CLR_GREEN}AZIONE COMPLETATA SENZA ERRORI${CLR_RESET}"
-  else
-    echo -e "${CLR_RED}ERRORI PRESENTI.${CLR_RESET}"
-    echo -e "${CLR_DIM}Vedi log (append) in: $LOG_FILE${CLR_RESET}"
-  fi
-
-  log_footer "$cmd" "$rc"
-
-  pause_if_needed "$rc"
-  return $rc
-}
-# ---------------------------------------------------------------------
 
 # ---------------------- Menu ----------------------
 menu_level=1
@@ -561,89 +619,53 @@ clear_screen() { printf "\e[2J\e[H"; }
 
 wait_space_to_menu() {
   echo ""
-  echo -e "${CLR_DIM}Premi SPAZIO per pulire lo schermo e tornare al menu... (ESC per uscire)${CLR_RESET}"
+  echo -e "${CLR_DIM}Premi SPAZIO per tornare al menu... (ESC per uscire)${CLR_RESET}"
   local k=""
   while true; do
     IFS= read -rsn1 k
-    if [[ "$k" == " " ]]; then
-      clear_screen
-      return 0
-    fi
-    if [[ "$k" == $'\e' ]]; then
-      echo ""
-      echo "Bye 👋"
-      exit 0
-    fi
+    if [[ "$k" == " " ]]; then clear_screen; return 0; fi
+    if [[ "$k" == $'\e' ]]; then echo ""; echo "Bye 👋"; exit 0; fi
   done
 }
 
 read_choice() { local k=""; IFS= read -rsn1 k; printf "%s" "$k"; }
 
-print_help() {
-  echo -e "${CLR_BOLD}================ HELP (h) ================${CLR_RESET}"
-  echo ""
-  echo -e "${CLR_BOLD}Tasti rapidi${CLR_RESET}"
-  echo "  - m : MODE=MOCK"
-  echo "  - r : MODE=REAL (imposta ALLOW_OPENAI=1 nei test)"
-  echo "  - s : toggle STRICT_NETWORK ON/OFF"
-  echo ""
-  echo -e "${CLR_BOLD}LOG${CLR_RESET}"
-  echo ""
-  echo -e "${CLR_BOLD}LIVELLI${CLR_RESET}"
-  echo "  - Level 1 suite: policy + smoke locale (rapido, consigliato)"
-  echo "  - Level 2 suite: regression + deployed + long (più lento)"
-  echo "  - Header/footer sempre in: $LOG_FILE (append)"
-  echo "  - Output completo:"
-  echo "      * se c'è 'script' -> appeso direttamente nel log"
-  echo "      * altrimenti -> salvato in: $TRANSCRIPTS_DIR (PowerShell transcript) e linkato nel log"
-  echo ""
-  echo -e "${CLR_BOLD}ANTI-CHIUSURA${CLR_RESET}"
-  echo "  - Se stdin non è un TTY, lo script fa PAUSE a fine comando."
-  echo "  - Forza PAUSE: ADA_TESTS_PAUSE=1 | Disabilita: ADA_TESTS_NO_PAUSE=1"
-  echo ""
-  echo -e "${CLR_DIM}Premi SPAZIO per tornare al menu.${CLR_RESET}"
-  echo -e "${CLR_BOLD}==========================================${CLR_RESET}"
-}
-
 print_header() {
-  echo -e "${CLR_BOLD}================ ADA Tests (interactive) ================${CLR_RESET}"
-  echo "Repo:   $REPO_DIR"
-  echo "Out:    $OUT_DIR"
-  echo "Local:  $LOCAL_URL"
-  echo "Deploy: $DEPLOY_URL"
-  echo "--------------------------------------------------------"
-  echo -e "MODE:   ${CLR_BOLD}$(mode_label)${CLR_RESET}   |   STRICT_NETWORK: ${CLR_BOLD}$(strict_label)${CLR_RESET}  ${CLR_DIM}(m=MOCK r=REAL s=toggle)${CLR_RESET}"
-  if [[ "${STRICT_ON}" == "1" ]]; then
-    echo -e "${CLR_DIM}Allowlist: $STRICT_ALLOW_HOSTS_RUNTIME${CLR_RESET}"
-  fi
-  echo -e "${CLR_DIM}Log: $LOG_FILE (append)${CLR_RESET}"
-  echo "--------------------------------------------------------"
-  echo -e "${CLR_DIM}Tasti: h=help  ESC=esci  SPACE=menu  0=switch livello${CLR_RESET}"
-  echo "--------------------------------------------------------"
+  echo -e "${CLR_BOLD}==================== ADA Tests v5.1 ====================${CLR_RESET}"
+  echo "Repo:    $REPO_DIR"
+  echo "Session: ada-tests-${SESSION_NUM}"
+  echo "Log:     ${SESSION_LOG_WIN}"
+  echo "------------------------------------------------------"
+  echo -e "MODE: ${CLR_BOLD}$(mode_label)${CLR_RESET}  |  STRICT: ${CLR_BOLD}$(strict_label)${CLR_RESET}  ${CLR_DIM}(m=MOCK r=REAL s=toggle)${CLR_RESET}"
+  echo "------------------------------------------------------"
+  echo -e "${CLR_DIM}Tasti: h=help  ESC=esci  0=switch livello${CLR_RESET}"
+  echo "------------------------------------------------------"
 
   if [[ $menu_level -eq 1 ]]; then
-    echo -e "${CLR_BOLD}MENU LIVELLO 1 (test più utili)${CLR_RESET}"
-    echo "1) Level 1 suite (Policy + Smoke local)  [consigliato]"
-    echo "2) Smoke (local, $(mode_label), STRICT=$(strict_label))"
-    echo "3) Policy checks"
-    echo "4) Status"
-    echo "5) Open report"
-    echo "6) Clean artifacts"
+    echo -e "${CLR_BOLD}MENU LIVELLO 1${CLR_RESET}"
+    echo "1) Level 1 suite (Unit + Policy + Smoke)  [consigliato]"
+    echo "2) Smoke (local)"
+    echo "3) Unit tests"
+    echo "4) Policy checks"
+    echo "5) Status"
+    echo "6) Open report"
+    echo "7) Nuova sessione (nuovo log)"
+    echo "8) Analizza errori con Claude Code"
     echo "0) Vai a MENU LIVELLO 2"
   else
-    echo -e "${CLR_BOLD}MENU LIVELLO 2 (test aggiuntivi / setup)${CLR_RESET}"
+    echo -e "${CLR_BOLD}MENU LIVELLO 2${CLR_RESET}"
     echo "1) Level 2 suite (Regression + Deployed + Long)"
-    echo "2) Regression (local, $(mode_label), STRICT=$(strict_label))"
-    echo "3) Deployed ($(mode_label), STRICT=$(strict_label))"
-    echo "4) Long tests @long (local, $(mode_label), STRICT=$(strict_label))"
-    echo "5) Install (npm ci + playwright install)"
-    echo "6) Smoke headed (local, $(mode_label), STRICT=$(strict_label))"
-    echo "7) Start server in other terminal (background)"
+    echo "2) Regression (local)"
+    echo "3) Deployed"
+    echo "4) Long tests @long"
+    echo "5) Install (npm ci + playwright)"
+    echo "6) Smoke headed"
+    echo "7) Start servers"
+    echo "8) Clean artifacts"
     echo "0) Torna a MENU LIVELLO 1"
   fi
 
-  echo -e "${CLR_BOLD}========================================================${CLR_RESET}"
-  echo -e "${CLR_DIM}Premi un tasto per scegliere (senza INVIO).${CLR_RESET}"
+  echo -e "${CLR_BOLD}======================================================${CLR_RESET}"
 }
 
 menu_loop() {
@@ -654,7 +676,6 @@ menu_loop() {
     choice="$(read_choice)"
 
     if [[ "$choice" == $'\e' ]]; then echo ""; echo "Bye 👋"; exit 0; fi
-    if [[ "$choice" == "h" || "$choice" == "H" ]]; then echo ""; print_help; wait_space_to_menu; continue; fi
 
     if [[ "$choice" == "m" || "$choice" == "M" ]]; then MODE="MOCK"; clear_screen; continue; fi
     if [[ "$choice" == "r" || "$choice" == "R" ]]; then MODE="REAL"; clear_screen; continue; fi
@@ -670,43 +691,39 @@ menu_loop() {
 
     echo ""
 
-    # Never exit menu on failures (set -e)
     if [[ $menu_level -eq 1 ]]; then
       case "$choice" in
-        1) run_cmd_safe level1 || true; wait_space_to_menu ;;
-        2) run_cmd_safe smoke || true; wait_space_to_menu ;;
-        3) run_cmd_safe policy || true; wait_space_to_menu ;;
-        4) run_cmd_safe status || true; wait_space_to_menu ;;
-        5) run_cmd_safe report || true; wait_space_to_menu ;;
-        6) run_cmd_safe clean || true; wait_space_to_menu ;;
+        1) run_level1 || true; wait_space_to_menu ;;
+        2) run_smoke_local || true; wait_space_to_menu ;;
+        3) run_unit || true; wait_space_to_menu ;;
+        4) run_policy || true; wait_space_to_menu ;;
+        5) status; wait_space_to_menu ;;
+        6) open_report; wait_space_to_menu ;;
+        7) start_new_session; wait_space_to_menu ;;
+        8) analyze_with_claude; wait_space_to_menu ;;
+        "h"|"H") status; wait_space_to_menu ;;
         *) warn "Scelta non valida."; wait_space_to_menu ;;
       esac
     else
       case "$choice" in
-        1) run_cmd_safe level2 || true; wait_space_to_menu ;;
-        2) run_cmd_safe regression || true; wait_space_to_menu ;;
-        3) run_cmd_safe deployed || true; wait_space_to_menu ;;
-        4) run_cmd_safe long || true; wait_space_to_menu ;;
-        5) run_cmd_safe install || true; wait_space_to_menu ;;
-        6) run_cmd_safe smoke-headed || true; wait_space_to_menu ;;
-        7) run_cmd_safe start-server-bg || true; wait_space_to_menu ;;
+        1) run_level2 || true; wait_space_to_menu ;;
+        2) run_regression_local || true; wait_space_to_menu ;;
+        3) run_deployed || true; wait_space_to_menu ;;
+        4) run_long_local || true; wait_space_to_menu ;;
+        5) install_all || true; wait_space_to_menu ;;
+        6) run_smoke_local_headed || true; wait_space_to_menu ;;
+        7) ensure_all_servers_running || true; wait_space_to_menu ;;
+        8) clean_artifacts; wait_space_to_menu ;;
+        "h"|"H") status; wait_space_to_menu ;;
         *) warn "Scelta non valida."; wait_space_to_menu ;;
       esac
     fi
   done
 }
 
-# ---------------------- Special internal entry ----------------------
-# Used by PowerShell transcript fallback: re-run the internal command without menu.
-if [[ "${1:-}" == "__run_cmd" ]]; then
-  shift
-  run_cmd "${1:-}"
-  exit $?
-fi
-
 # ---------------------- CLI entrypoint ----------------------
 if [[ $# -eq 0 ]]; then
   menu_loop
 else
-  run_cmd_safe "$1"
+  run_cmd "$1"
 fi

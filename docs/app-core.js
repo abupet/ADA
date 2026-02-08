@@ -48,49 +48,34 @@ async function login() {
     const emailEl = document.getElementById('emailInput');
     const email = emailEl ? emailEl.value.trim() : '';
     const password = document.getElementById('passwordInput').value;
+
+    if (!email) {
+        const loginError = document.getElementById('loginError');
+        if (loginError) {
+            loginError.textContent = 'Inserisci la tua email';
+            loginError.style.display = 'block';
+        }
+        return;
+    }
+
     let token = '';
     let loginData = null;
 
     try {
-        if (email) {
-            // V2: multi-user login with email + password
-            const response = await fetch(`${API_BASE_URL}/auth/login/v2`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
-            if (response.ok) {
-                loginData = await response.json();
-                token = loginData?.token || '';
-            } else if (response.status === 503) {
-                // Database not configured — fall back to v1
-                const fallback = await fetch(`${API_BASE_URL}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
-                });
-                if (fallback.ok) {
-                    loginData = await fallback.json();
-                    token = loginData?.token || '';
-                }
-            }
-        } else {
-            // V1: legacy single-password login
-            const response = await fetch(`${API_BASE_URL}/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password })
-            });
-            if (response.ok) {
-                loginData = await response.json();
-                token = loginData?.token || '';
-            }
+        const response = await fetch(`${API_BASE_URL}/auth/login/v2`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        if (response.ok) {
+            loginData = await response.json();
+            token = loginData?.token || '';
         }
     } catch (e) {}
 
     if (token) {
         setAuthToken(token);
-        const sessionKey = btoa((email || 'legacy') + ':' + Date.now());
+        const sessionKey = btoa(email + ':' + Date.now());
         localStorage.setItem('ada_session', sessionKey);
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appContainer').classList.add('active');
@@ -99,7 +84,7 @@ async function login() {
     } else {
         const loginError = document.getElementById('loginError');
         if (loginError) {
-            loginError.textContent = email ? 'Email o password non validi' : 'Password errata';
+            loginError.textContent = 'Email o password non validi';
             loginError.style.display = 'block';
         }
     }

@@ -1,14 +1,10 @@
-
 import { test, expect } from "@playwright/test";
 import { blockOpenAI } from "./helpers/block-openai";
 import { captureHardErrors } from "./helpers/console";
 import { applyStrictNetwork } from "./helpers/strict-network";
 
 test("@deployed Published app: carica + login + visita ok", async ({ page, context }) => {
-  // STRICT_NETWORK=1: blocca rete non allowlisted (incl. OpenAI se ALLOW_OPENAI!=1)
   await applyStrictNetwork(page);
-
-  // Mock OpenAI (unless ALLOW_OPENAI=1)
   await blockOpenAI(page);
 
   await context.clearCookies();
@@ -21,20 +17,19 @@ test("@deployed Published app: carica + login + visita ok", async ({ page, conte
 
   const errors = captureHardErrors(page);
 
-  const pwd = process.env.ADA_TEST_PASSWORD;
-  if (!pwd) throw new Error("Missing ADA_TEST_PASSWORD env var");
-  const email = process.env.ADA_TEST_EMAIL || "";
+  const pwd = process.env.ADA_TEST_PASSWORD || process.env.TEST_PASSWORD;
+  if (!pwd) throw new Error("Missing ADA_TEST_PASSWORD or TEST_PASSWORD env var");
+
+  const email = process.env.ADA_TEST_EMAIL || process.env.TEST_VET_EMAIL;
+  if (!email) throw new Error("Missing ADA_TEST_EMAIL or TEST_VET_EMAIL env var");
 
   await page.goto("index.html", { waitUntil: "domcontentloaded" });
 
+  await expect(page.getByTestId("email-input")).toBeVisible();
   await expect(page.locator("#passwordInput")).toBeVisible();
   await expect(page.getByTestId("login-button")).toBeVisible();
 
-  // Fill email if provided (v2 multi-user login)
-  if (email) {
-    await page.getByTestId("email-input").fill(email);
-  }
-
+  await page.getByTestId("email-input").fill(email);
   await page.locator("#passwordInput").fill(pwd);
   await page.getByTestId("login-button").click();
 

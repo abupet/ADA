@@ -21,8 +21,6 @@ require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 const app = express();
 
 const {
-  ADA_LOGIN_PASSWORD,
-  ADA_TEST_PASSWORD,
   JWT_SECRET,
   FRONTEND_ORIGIN,
   TOKEN_TTL_SECONDS = "14400",
@@ -36,7 +34,6 @@ const {
 const ttlSeconds = Number.parseInt(TOKEN_TTL_SECONDS, 10) || 14400;
 const rateLimitPerMin = Number.parseInt(RATE_LIMIT_PER_MIN, 10) || 60;
 const isMockEnv = CI === "true" || MODE === "MOCK";
-const effectivePassword = ADA_LOGIN_PASSWORD || ADA_TEST_PASSWORD;
 const effectiveJwtSecret = isMockEnv ? JWT_SECRET || "dev-jwt-secret" : JWT_SECRET;
 const openaiKeyName = [
   "4f",
@@ -115,22 +112,6 @@ app.use((_req, res, next) => {
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
-});
-
-app.post("/auth/login", (req, res) => {
-  if (!effectivePassword || !effectiveJwtSecret) {
-    return res.status(500).json({ error: "Server not configured" });
-  }
-
-  const { password } = req.body ?? {};
-  if (password !== effectivePassword) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  const token = jwt.sign({ sub: "ada-user" }, effectiveJwtSecret, {
-    expiresIn: ttlSeconds,
-  });
-  return res.json({ token, expiresIn: ttlSeconds });
 });
 
 // --- Login V2: individual user auth with email/password (PR 1) ---
