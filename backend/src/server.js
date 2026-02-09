@@ -15,6 +15,7 @@ const { requireRole } = require("./rbac.middleware");
 const { adminRouter } = require("./admin.routes");
 const { dashboardRouter } = require("./dashboard.routes");
 const { seedRouter } = require("./seed.routes");
+const { tipsSourcesRouter } = require("./tips-sources.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -351,6 +352,8 @@ if (process.env.DATABASE_URL) {
   app.use(dashboardRouter({ requireAuth }));
   // --- Seed Engine routes (PR 14) ---
   app.use(seedRouter({ requireAuth, getOpenAiKey }));
+  // --- Tips Sources routes ---
+  app.use(tipsSourcesRouter({ requireAuth, getOpenAiKey }));
 }
 
 function getOpenAiKey() {

@@ -2543,6 +2543,363 @@
     }
 
     // =========================================================================
+    // Tips Sources Management (super_admin)
+    // =========================================================================
+
+    var _sourcesData = [];
+    var _sourcesFilter = ''; // '', 'active', 'inactive'
+    var _sourcesSearch = '';
+
+    function loadSuperadminSources(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '<p>Caricamento fonti...</p>';
+
+        fetchApi('/api/tips-sources?limit=100').then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        }).then(function(data) {
+            _sourcesData = data.sources || [];
+            _renderSourcesPage(container);
+        }).catch(function(err) {
+            container.innerHTML = '<p style="color:#dc2626;">Errore caricamento fonti: ' + _escapeHtml(err.message) + '</p>';
+        });
+    }
+
+    function _renderSourcesPage(container) {
+        var html = [];
+        // Toolbar
+        html.push('<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">');
+        html.push('<button class="btn btn-success" style="font-size:13px;" onclick="showCreateSourceForm()">+ Aggiungi Fonte</button>');
+        html.push('<button class="btn btn-primary" style="font-size:13px;" onclick="crawlAllSources()">Crawl Tutte</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:13px;" onclick="validateAllSources()">Valida Tutte</button>');
+        html.push('<select onchange="_sourcesFilterChange(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value=""' + (_sourcesFilter === '' ? ' selected' : '') + '>Tutte</option>');
+        html.push('<option value="active"' + (_sourcesFilter === 'active' ? ' selected' : '') + '>Solo attive</option>');
+        html.push('<option value="inactive"' + (_sourcesFilter === 'inactive' ? ' selected' : '') + '>Disattivate</option>');
+        html.push('</select>');
+        html.push('<input type="text" placeholder="Cerca..." value="' + _escapeHtml(_sourcesSearch) + '" oninput="_sourcesSearchChange(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;width:160px;">');
+        html.push('</div>');
+
+        // Filter sources
+        var filtered = _sourcesData.filter(function(s) {
+            if (_sourcesFilter === 'active' && !s.is_active) return false;
+            if (_sourcesFilter === 'inactive' && s.is_active) return false;
+            if (_sourcesSearch) {
+                var q = _sourcesSearch.toLowerCase();
+                return (s.display_name || '').toLowerCase().indexOf(q) >= 0 ||
+                       (s.domain || '').toLowerCase().indexOf(q) >= 0 ||
+                       (s.url || '').toLowerCase().indexOf(q) >= 0;
+            }
+            return true;
+        });
+
+        // Summary
+        var totalCount = _sourcesData.length;
+        var availCount = _sourcesData.filter(function(s) { return s.is_available && s.is_active; }).length;
+        var offlineCount = _sourcesData.filter(function(s) { return !s.is_available && s.is_active; }).length;
+        html.push('<div class="sources-summary">');
+        html.push('<span><strong>' + totalCount + '</strong> fonti totali</span>');
+        html.push('<span><strong>' + availCount + '</strong> disponibili</span>');
+        html.push('<span><strong>' + offlineCount + '</strong> non raggiungibili</span>');
+        html.push('<span><strong>' + filtered.length + '</strong> visualizzate</span>');
+        html.push('</div>');
+
+        // Cards
+        if (filtered.length === 0) {
+            html.push('<p style="color:#6b7280;text-align:center;padding:20px;">Nessuna fonte trovata.</p>');
+        }
+        filtered.forEach(function(s) {
+            var statusClass = 'unknown';
+            var statusLabel = 'Mai crawlato';
+            if (!s.is_active) { statusClass = 'disabled'; statusLabel = 'Disattivata'; }
+            else if (s.last_crawled_at && s.is_available) { statusClass = 'online'; statusLabel = 'Online'; }
+            else if (s.last_crawled_at && !s.is_available) { statusClass = 'offline'; statusLabel = 'Offline'; }
+
+            html.push('<div class="source-card">');
+            html.push('<div class="source-card-header">');
+            html.push('<div><span class="source-card-name">' + _escapeHtml(s.display_name || s.domain) + '</span> ');
+            html.push('<span class="source-card-domain">' + _escapeHtml(s.domain) + '</span></div>');
+            html.push('<span class="source-status-badge ' + statusClass + '">' + statusLabel + '</span>');
+            html.push('</div>');
+
+            // Meta
+            html.push('<div class="source-card-meta">');
+            if (s.last_crawled_at) {
+                html.push('Crawl: ' + new Date(s.last_crawled_at).toLocaleDateString('it-IT') + ' | ');
+            }
+            html.push('Freq: ' + _escapeHtml(s.crawl_frequency || 'monthly'));
+            if (s.language) html.push(' | Lingua: ' + _escapeHtml(s.language));
+            if (s.http_status) html.push(' | HTTP ' + s.http_status);
+            html.push('</div>');
+
+            // Topics
+            if (s.key_topics && s.key_topics.length > 0) {
+                html.push('<div class="source-card-topics">');
+                s.key_topics.slice(0, 8).forEach(function(t) {
+                    html.push('<span class="source-topic-tag">' + _escapeHtml(t) + '</span>');
+                });
+                html.push('</div>');
+            }
+
+            // Summary snippet
+            if (s.summary_it) {
+                html.push('<div style="font-size:12px;color:#555;margin-bottom:8px;max-height:40px;overflow:hidden;text-overflow:ellipsis;">' +
+                    _escapeHtml(s.summary_it.substring(0, 150)) + (s.summary_it.length > 150 ? '...' : '') + '</div>');
+            }
+
+            // Actions
+            var sid = _escapeHtml(s.source_id);
+            html.push('<div class="source-card-actions">');
+            html.push('<button class="btn-crawl" onclick="crawlSource(\'' + sid + '\')">Crawl</button>');
+            html.push('<button onclick="validateSource(\'' + sid + '\')">Valida</button>');
+            html.push('<button onclick="showEditSourceModal(\'' + sid + '\')">Modifica</button>');
+            html.push('<button onclick="showSourceDetailModal(\'' + sid + '\')">Dettaglio</button>');
+            html.push('<button style="color:#dc2626;border-color:#fca5a5;" onclick="deleteSource(\'' + sid + '\')">Elimina</button>');
+            html.push('</div>');
+
+            html.push('</div>');
+        });
+
+        container.innerHTML = html.join('');
+    }
+
+    function _sourcesFilterChange(val) {
+        _sourcesFilter = val;
+        var c = document.getElementById('superadmin-sources-content');
+        if (c) _renderSourcesPage(c);
+    }
+
+    function _sourcesSearchChange(val) {
+        _sourcesSearch = val;
+        var c = document.getElementById('superadmin-sources-content');
+        if (c) _renderSourcesPage(c);
+    }
+
+    function showSourceDetailModal(sourceId) {
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId)).then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        }).then(function(data) {
+            var s = data.source || {};
+            var logs = data.crawl_logs || [];
+            _showModal('Dettaglio: ' + (s.display_name || s.domain), function(container) {
+                var html = [];
+                html.push('<div style="font-size:13px;">');
+                html.push('<p><strong>URL:</strong> <a href="' + _escapeHtml(s.url) + '" target="_blank">' + _escapeHtml(s.url) + '</a></p>');
+                html.push('<p><strong>Dominio:</strong> ' + _escapeHtml(s.domain) + '</p>');
+                html.push('<p><strong>Lingua:</strong> ' + _escapeHtml(s.language || 'N/D') + '</p>');
+                html.push('<p><strong>HTTP Status:</strong> ' + (s.http_status || 'N/D') + '</p>');
+                html.push('<p><strong>Disponibile:</strong> ' + (s.is_available ? 'Si' : 'No') + '</p>');
+                html.push('<p><strong>Attiva:</strong> ' + (s.is_active ? 'Si' : 'No') + '</p>');
+                html.push('<p><strong>Frequenza crawl:</strong> ' + _escapeHtml(s.crawl_frequency || 'monthly') + '</p>');
+                html.push('<p><strong>Ultimo crawl:</strong> ' + (s.last_crawled_at ? new Date(s.last_crawled_at).toLocaleString('it-IT') : 'Mai') + '</p>');
+                html.push('<p><strong>Ultima validazione:</strong> ' + (s.last_validated_at ? new Date(s.last_validated_at).toLocaleString('it-IT') : 'Mai') + '</p>');
+                html.push('<p><strong>Contenuto cambiato:</strong> ' + (s.content_changed_at ? new Date(s.content_changed_at).toLocaleString('it-IT') : 'Mai') + '</p>');
+                if (s.crawl_error) html.push('<p style="color:#dc2626;"><strong>Errore:</strong> ' + _escapeHtml(s.crawl_error) + '</p>');
+                if (s.notes) html.push('<p><strong>Note:</strong> ' + _escapeHtml(s.notes) + '</p>');
+
+                // Topics
+                if (s.key_topics && s.key_topics.length > 0) {
+                    html.push('<p><strong>Argomenti:</strong></p><div class="source-card-topics" style="margin-bottom:8px;">');
+                    s.key_topics.forEach(function(t) { html.push('<span class="source-topic-tag">' + _escapeHtml(t) + '</span>'); });
+                    html.push('</div>');
+                }
+
+                // Summary
+                if (s.summary_it) {
+                    html.push('<div style="background:#f8fafc;padding:12px;border-radius:8px;margin:8px 0;">');
+                    html.push('<strong>Riassunto IT:</strong><br>' + _escapeHtml(s.summary_it));
+                    html.push('</div>');
+                }
+
+                // Crawl Logs
+                if (logs.length > 0) {
+                    html.push('<h4 style="margin-top:16px;">Ultimi Crawl Log</h4>');
+                    html.push('<table class="crawl-log-table"><tr><th>Data</th><th>Tipo</th><th>HTTP</th><th>Durata</th><th>Cambiamento</th><th>Errore</th></tr>');
+                    logs.forEach(function(l) {
+                        html.push('<tr>');
+                        html.push('<td>' + new Date(l.created_at).toLocaleString('it-IT') + '</td>');
+                        html.push('<td>' + _escapeHtml(l.crawl_type) + '</td>');
+                        html.push('<td>' + (l.http_status || '-') + '</td>');
+                        html.push('<td>' + (l.duration_ms ? l.duration_ms + 'ms' : '-') + '</td>');
+                        html.push('<td>' + (l.content_changed ? 'Si' : 'No') + '</td>');
+                        html.push('<td style="color:#dc2626;">' + _escapeHtml(l.error || '') + '</td>');
+                        html.push('</tr>');
+                    });
+                    html.push('</table>');
+                }
+
+                html.push('</div>');
+                container.innerHTML = html.join('');
+            });
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+        });
+    }
+
+    function showEditSourceModal(sourceId) {
+        var s = _sourcesData.find(function(x) { return x.source_id === sourceId; });
+        if (!s) return;
+        _showModal('Modifica: ' + (s.display_name || s.domain), function(container) {
+            var html = [];
+            html.push('<div style="display:flex;flex-direction:column;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL *</label>');
+            html.push('<input type="text" id="editSourceUrl" value="' + _escapeHtml(s.url) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome display *</label>');
+            html.push('<input type="text" id="editSourceName" value="' + _escapeHtml(s.display_name || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Frequenza crawl</label>');
+            html.push('<select id="editSourceFreq" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+            ['monthly', 'weekly', 'quarterly', 'manual'].forEach(function(f) {
+                html.push('<option value="' + f + '"' + (s.crawl_frequency === f ? ' selected' : '') + '>' + f + '</option>');
+            });
+            html.push('</select></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;"><input type="checkbox" id="editSourceActive"' + (s.is_active ? ' checked' : '') + '> Attiva</label></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Note</label>');
+            html.push('<textarea id="editSourceNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">' + _escapeHtml(s.notes || '') + '</textarea></div>');
+            html.push('<button class="btn btn-primary" onclick="saveSource(\'' + _escapeHtml(sourceId) + '\')">Salva</button>');
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function showCreateSourceForm() {
+        _showModal('Aggiungi Fonte', function(container) {
+            var html = [];
+            html.push('<div style="display:flex;flex-direction:column;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL * (https://...)</label>');
+            html.push('<input type="text" id="editSourceUrl" placeholder="https://www.example.com" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome display *</label>');
+            html.push('<input type="text" id="editSourceName" placeholder="Nome fonte" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Frequenza crawl</label>');
+            html.push('<select id="editSourceFreq" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+            ['monthly', 'weekly', 'quarterly', 'manual'].forEach(function(f) {
+                html.push('<option value="' + f + '">' + f + '</option>');
+            });
+            html.push('</select></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Note</label>');
+            html.push('<textarea id="editSourceNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea></div>');
+            html.push('<button class="btn btn-success" onclick="saveSource()">Crea Fonte</button>');
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function saveSource(sourceId) {
+        var url = (document.getElementById('editSourceUrl') || {}).value || '';
+        var name = (document.getElementById('editSourceName') || {}).value || '';
+        var freq = (document.getElementById('editSourceFreq') || {}).value || 'monthly';
+        var notes = (document.getElementById('editSourceNotes') || {}).value || '';
+
+        if (!url || !name) {
+            if (typeof showToast === 'function') showToast('URL e Nome sono obbligatori', 'error');
+            return;
+        }
+
+        var body = { url: url, display_name: name, crawl_frequency: freq, notes: notes };
+
+        if (sourceId) {
+            // Edit
+            var activeEl = document.getElementById('editSourceActive');
+            body.is_active = activeEl ? activeEl.checked : true;
+            fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function(r) {
+                if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Errore'); });
+                if (typeof showToast === 'function') showToast('Fonte aggiornata', 'success');
+                _closeModal();
+                loadSuperadminSources('superadmin-sources-content');
+            }).catch(function(err) {
+                if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+            });
+        } else {
+            // Create
+            fetchApi('/api/tips-sources', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function(r) {
+                if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Errore'); });
+                if (typeof showToast === 'function') showToast('Fonte creata', 'success');
+                _closeModal();
+                loadSuperadminSources('superadmin-sources-content');
+            }).catch(function(err) {
+                if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+            });
+        }
+    }
+
+    function deleteSource(sourceId) {
+        if (!confirm('Eliminare questa fonte? L\'azione non è reversibile.')) return;
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId), { method: 'DELETE' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            if (typeof showToast === 'function') showToast('Fonte eliminata', 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+        });
+    }
+
+    function crawlSource(sourceId) {
+        if (typeof showToast === 'function') showToast('Crawl in corso...', 'info');
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId) + '/crawl', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Crawl completato';
+            if (data.content_changed) msg += ' (contenuto aggiornato)';
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore crawl: ' + err.message, 'error');
+        });
+    }
+
+    function validateSource(sourceId) {
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId) + '/validate', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Validazione: ' + (data.is_available ? 'Online' : 'Offline') + ' (HTTP ' + (data.http_status || '?') + ')';
+            if (typeof showToast === 'function') showToast(msg, data.is_available ? 'success' : 'error');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore validazione: ' + err.message, 'error');
+        });
+    }
+
+    function crawlAllSources() {
+        if (!confirm('Avviare il crawl di tutte le fonti attive? Potrebbe richiedere diversi minuti.')) return;
+        if (typeof showToast === 'function') showToast('Crawl batch avviato...', 'info');
+        fetchApi('/api/tips-sources/crawl-all', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Crawl completato: ' + (data.results || []).length + ' fonti processate';
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore crawl batch: ' + err.message, 'error');
+        });
+    }
+
+    function validateAllSources() {
+        if (typeof showToast === 'function') showToast('Validazione batch avviata...', 'info');
+        fetchApi('/api/tips-sources/validate-all', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Validazione completata: ' + (data.results || []).length + ' fonti verificate';
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore validazione batch: ' + err.message, 'error');
+        });
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -2645,5 +3002,18 @@
     global.showPurchasePlaceholder = showPurchasePlaceholder;
     global.showWhyYouSeeThis       = showWhyYouSeeThis;
     global.showDismissPlaceholder  = showDismissPlaceholder;
+    // Tips Sources
+    global.loadSuperadminSources  = loadSuperadminSources;
+    global.showCreateSourceForm   = showCreateSourceForm;
+    global.showEditSourceModal    = showEditSourceModal;
+    global.showSourceDetailModal  = showSourceDetailModal;
+    global.deleteSource           = deleteSource;
+    global.crawlSource            = crawlSource;
+    global.validateSource         = validateSource;
+    global.crawlAllSources        = crawlAllSources;
+    global.validateAllSources     = validateAllSources;
+    global.saveSource             = saveSource;
+    global._sourcesFilterChange   = _sourcesFilterChange;
+    global._sourcesSearchChange   = _sourcesSearchChange;
 
 })(typeof window !== 'undefined' ? window : this);

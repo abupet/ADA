@@ -352,6 +352,9 @@ function navigateToPage(page) {
         if (page === 'superadmin-audit' && typeof loadSuperadminAudit === 'function') {
             loadSuperadminAudit('superadmin-audit-content');
         }
+        if (page === 'superadmin-sources' && typeof loadSuperadminSources === 'function') {
+            loadSuperadminSources('superadmin-sources-content');
+        }
     } catch(e) {}
 
     // Hide internal notes from proprietario (only vet sees them on SOAP page)
@@ -420,7 +423,7 @@ function applyRoleUI(role) {
     if (testDemoSection) testDemoSection.style.display = (_isSA && r === 'super_admin') ? '' : 'none';
 
     // Show super_admin-only nav items
-    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit'].forEach(function (id) {
+    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit', 'nav-superadmin-sources'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.style.display = (r === 'super_admin') ? '' : 'none';
     });
