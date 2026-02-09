@@ -1776,6 +1776,21 @@
             });
     }
 
+    var POLICY_KEYS = [
+        { key: 'max_impressions_per_week', label: 'Max impressioni/settimana' },
+        { key: 'max_impressions_per_day', label: 'Max impressioni/giorno' },
+        { key: 'debug_mode_enabled', label: 'Debug mode attivo' },
+        { key: 'openai_optimizations', label: 'Ottimizzazioni OpenAI (JSON)' },
+        { key: 'promo_cooldown_hours', label: 'Cooldown promo (ore)' },
+        { key: 'maintenance_mode', label: 'Modalità manutenzione' },
+    ];
+
+    function onPolicyKeyChange() {
+        var sel = document.getElementById('newPolicyKey');
+        var custom = document.getElementById('newPolicyKeyCustom');
+        if (custom) custom.style.display = (sel && sel.value === '__custom__') ? '' : 'none';
+    }
+
     function _renderPoliciesPage(container, policies) {
         var html = [];
 
@@ -1787,7 +1802,16 @@
         html.push('<div id="create-policy-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
         html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuova/Modifica Policy</h4>');
         html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label><input type="text" id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: max_impressions_per_day"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label>');
+        html.push('<select id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" onchange="onPolicyKeyChange()">');
+        html.push('<option value="">-- Seleziona --</option>');
+        POLICY_KEYS.forEach(function(pk) {
+            html.push('<option value="' + pk.key + '">' + _escapeHtml(pk.label + ' (' + pk.key + ')') + '</option>');
+        });
+        html.push('<option value="__custom__">Altro (personalizzato)...</option>');
+        html.push('</select>');
+        html.push('<input type="text" id="newPolicyKeyCustom" style="display:none;width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:6px;" placeholder="Chiave personalizzata">');
+        html.push('</div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Valore *</label><input type="text" id="newPolicyValue" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: 10"></div>');
         html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newPolicyDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione policy"></div>');
         html.push('</div>');
@@ -1820,7 +1844,10 @@
     function hidePolicyForm() { var f = document.getElementById('create-policy-form'); if (f) f.style.display = 'none'; }
 
     function savePolicy() {
-        var key = (document.getElementById('newPolicyKey') || {}).value || '';
+        var keyEl = document.getElementById('newPolicyKey');
+        var key = (keyEl && keyEl.value === '__custom__')
+            ? (document.getElementById('newPolicyKeyCustom') || {}).value || ''
+            : (keyEl || {}).value || '';
         var valueStr = (document.getElementById('newPolicyValue') || {}).value || '';
         if (!key) { if (typeof showToast === 'function') showToast('Chiave obbligatoria.', 'error'); return; }
 
@@ -2577,6 +2604,7 @@
     global.hidePolicyForm         = hidePolicyForm;
     global.savePolicy             = savePolicy;
     global.editPolicy             = editPolicy;
+    global.onPolicyKeyChange      = onPolicyKeyChange;
     // Tags
     global.loadSuperadminTags     = loadSuperadminTags;
     global.showCreateTagForm      = showCreateTagForm;

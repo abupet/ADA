@@ -10,6 +10,7 @@ const {
   buildDocumentPrompt,
   getVisitTypesForPet,
   getDocTypesForPet,
+  generatePhotosForPet,
 } = require('./seed.petgen');
 
 // ---------------------------------------------------------------------------
@@ -617,24 +618,8 @@ async function _runSeedJob(pool, config, openAiKey) {
       }
       medsMap[pet._petId] = meds;
 
-      // --- Photos (placeholder SVGs) ---
-      const photos = [];
-      const colors = ['#4A90D9', '#E74C3C', '#27AE60', '#F39C12', '#8E44AD', '#1ABC9C'];
-      for (let p = 0; p < config.photosPerPet; p++) {
-        const color = colors[(i + p) % colors.length];
-        const initial = (pet.name || 'P')[0].toUpperCase();
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <circle cx="100" cy="100" r="90" fill="${color}" />
-  <text x="100" y="115" text-anchor="middle" font-size="72" font-family="Arial" fill="white">${initial}</text>
-</svg>`;
-        photos.push({
-          type: 'placeholder_svg',
-          label: `${pet.name} photo ${p + 1}`,
-          svg,
-          created_at: _randomPastDate(60).toISOString(),
-        });
-      }
-      photosMap[pet._petId] = photos;
+      // --- Photos (deterministic placeholder SVGs per species) ---
+      photosMap[pet._petId] = generatePhotosForPet(pet, config.photosPerPet);
 
       // --- Diary (combine anamnesis, pathologies, meds) ---
       const diaryParts = [];

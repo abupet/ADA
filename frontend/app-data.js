@@ -239,6 +239,16 @@ function loadData() {
 async function generateDiary() {
     showProgress(true);
     const patient = getPatientData();
+    // Fallback: if ownerName empty in DOM, read from pet object in memory (fix for seed pets)
+    if (!patient.ownerName) {
+        try {
+            const petId = (typeof getCurrentPetId === 'function') ? getCurrentPetId() : null;
+            if (petId && typeof getPetById === 'function') {
+                const pet = await getPetById(petId);
+                if (pet?.patient?.ownerName) patient.ownerName = pet.patient.ownerName;
+            }
+        } catch (_) {}
+    }
     const lifestyle = getLifestyleData();
     const vetName = (typeof getVetName === 'function') ? getVetName() : '';
     const generatedDate = new Date().toLocaleDateString('it-IT');
@@ -274,10 +284,12 @@ ${patientInfo}
 
 ISTRUZIONI:
 Scrivi un profilo sanitario professionale e sintetico.
-Per OGNI informazione clinica rilevante (diagnosi, trattamenti, parametri vitali anomali), indica tra parentesi quadre la FONTE e la DATA da cui è tratta, nel formato [Fonte: <tipo referto>, Data: <gg/mm/aaaa>].
-Esempio: "Il paziente presenta dermatite atopica [Fonte: Visita dermatologica, Data: 15/01/2026]."
-Se un dato proviene dai Parametri Vitali, indica [Fonte: Parametri Vitali, Data: <data>].
-Se un dato proviene dai Farmaci attivi, indica [Fonte: Farmaci in corso].
+Per OGNI informazione clinica rilevante (diagnosi, trattamenti, parametri vitali anomali), indica un riferimento numerico tra parentesi quadre (es. [1], [2]).
+Se più informazioni provengono dalla stessa fonte (stesso tipo referto e stessa data), usano lo stesso numero.
+A fine documento, dopo una riga "---", scrivi la sezione "Fonti:" con la legenda:
+[N]: <tipo referto>, Data: <gg/mm/aaaa>
+Se un dato proviene dai Parametri Vitali, indica [N]: Parametri Vitali, Data: <data>.
+Se un dato proviene dai Farmaci attivi, indica [N]: Farmaci in corso.
 Se inserisci una firma, usa il nome veterinario "${vetName || '[Nome del Veterinario]'}" e la data "${generatedDate}".`;
     } else {
         prompt = `Genera un profilo sanitario semplice e chiaro per il proprietario di un animale.
@@ -313,6 +325,8 @@ Chiudi con: "Il team AbuPet".`;
             content = content.replace(/\[Data\]/gi, generatedDate);
         }
         document.getElementById('diaryText').value = content;
+        // Auto-save: prevent loss if user navigates away before manual save
+        try { if (typeof saveDiary === 'function') saveDiary(); } catch (_e) {}
         trackChatUsage(diaryModel, data.usage);
         saveApiUsage();
         updateCostDisplay();
