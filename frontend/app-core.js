@@ -263,8 +263,7 @@ function navigateToPage(page) {
     // PR 3: Redirect appointment to home
     if (page === 'appointment') page = getDefaultPageForRole();
 
-    var _saDebugAccess = typeof isSuperAdmin === 'function' && isSuperAdmin();
-    if (page === 'debug' && !debugLogEnabled && !_saDebugAccess) page = getDefaultPageForRole();
+    if (page === 'debug' && !debugLogEnabled) page = getDefaultPageForRole();
 
     // PR 5: Route guard — check role permissions
     if (typeof isPageAllowedForRole === 'function' && !isPageAllowedForRole(page)) {
@@ -627,8 +626,7 @@ function restoreTextDrafts() {
 function restoreLastPage() {
     const lastPage = localStorage.getItem('ada_current_page');
     const scrollPosition = localStorage.getItem('ada_scroll_position');
-    var _saCanDebug = typeof isSuperAdmin === 'function' && isSuperAdmin();
-    const safePage = (!debugLogEnabled && !_saCanDebug && lastPage === 'debug') ? 'recording' : lastPage;
+    const safePage = (!debugLogEnabled && lastPage === 'debug') ? 'recording' : lastPage;
 
     if (safePage) {
         navigateToPage(safePage);
@@ -1473,8 +1471,6 @@ function updateSettingsSystemVisibility() {
 
 function updateDebugToolsVisibility() {
     const dbg = !!debugLogEnabled;
-    var _saAccess = typeof isSuperAdmin === 'function' && isSuperAdmin();
-    var showDebug = dbg || _saAccess;
     const el1 = document.getElementById('debugTestTools');
     const el2 = document.getElementById('audioCacheTools');
     const nav = document.getElementById('nav-debug');
@@ -1482,18 +1478,17 @@ function updateDebugToolsVisibility() {
     const runtime = document.getElementById('chunkingRuntime');
     if (el1) el1.style.display = dbg ? '' : 'none';
     if (el2) el2.style.display = dbg ? '' : 'none';
-    if (nav) nav.style.display = showDebug ? '' : 'none';
-    if (page) page.style.display = showDebug ? '' : 'none';
+    if (nav) nav.style.display = dbg ? '' : 'none';
+    if (page) page.style.display = dbg ? '' : 'none';
     if (!dbg && runtime) runtime.style.display = 'none';
 
-    if (!showDebug) {
+    if (!dbg) {
         const activePage = document.querySelector('.page.active');
         if (activePage && activePage.id === 'page-debug') {
             navigateToPage('recording');
         }
     }
 
-    // Refresh cache info when shown
     if (dbg) {
         try { if (typeof updateAudioCacheInfo === 'function') updateAudioCacheInfo(); } catch (e) {}
     }

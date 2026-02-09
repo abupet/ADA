@@ -43,7 +43,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             );
             res.json({ sources: rows });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("GET /api/tips-sources/active-urls error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -69,7 +70,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             );
             res.json({ source_id: source.source_id, display_name: source.display_name, url: source.url, is_available, http_status, summary_it: source.summary_it, last_crawled_at: source.last_crawled_at });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("GET /api/tips-sources/:id/check-live error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -98,7 +100,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             const countRes = await pool.query(`SELECT COUNT(*) as total FROM tips_sources ${where}`, params);
             res.json({ sources: rows, total: parseInt(countRes.rows[0]?.total || 0) });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("GET /api/tips-sources error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -113,7 +116,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             );
             res.json({ source: rows[0], crawl_logs: logs.rows });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("GET /api/tips-sources/:id error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -130,7 +134,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             res.status(201).json({ source: rows[0] });
         } catch (e) {
             if (e.code === '23505') return res.status(409).json({ error: "URL already exists" });
-            res.status(500).json({ error: e.message });
+            console.error("POST /api/tips-sources error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -161,7 +166,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             if (rows.length === 0) return res.status(404).json({ error: "not_found" });
             res.json({ source: rows[0] });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("PUT /api/tips-sources/:id error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -172,7 +178,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             if (rowCount === 0) return res.status(404).json({ error: "not_found" });
             res.json({ deleted: true });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("DELETE /api/tips-sources/:id error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -184,7 +191,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             const result = await _crawlSource(rows[0], getOpenAiKey, req.user?.sub || 'admin');
             res.json(result);
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("POST /api/tips-sources/:id/crawl error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -200,7 +208,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             }
             res.json({ results, total: results.length });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("POST /api/tips-sources/crawl-all error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -212,7 +221,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             const result = await _validateSource(rows[0]);
             res.json(result);
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("POST /api/tips-sources/:id/validate error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 
@@ -228,7 +238,8 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             }
             res.json({ results, total: results.length });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            console.error("POST /api/tips-sources/validate-all error", e);
+            res.status(500).json({ error: "server_error" });
         }
     });
 

@@ -1153,6 +1153,7 @@
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="catalogSearch()">Cerca</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="catalogSearchReset()">Reset</button>');
         html.push('<button class="btn btn-success" style="font-size:12px;" onclick="bulkPublishDraft()">Pubblica tutti i draft</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="previewPromoItem()" title="Anteprima sequenziale prodotti filtrati">👁️ Anteprima</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
         html.push('</div>');
@@ -2347,28 +2348,73 @@
                 html.push('<td>' + _escapeHtml(r.name || r.promo_item_id) + '</td>');
                 html.push('<td>' + _urlStatusIcon(r.image_url_status) + '</td>');
                 html.push('<td>' + _urlStatusIcon(r.product_url_status) + '</td>');
-                html.push('<td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="setItemStatusFromReport(\'' + _escapeHtml(r.promo_item_id) + '\')">→ Draft</button></td>');
+                html.push('<td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="setItemStatusFromReport(\'' + _escapeHtml(r.promo_item_id) + '\', this)">\u2192 Draft</button></td>');
                 html.push('</tr>');
             });
             html.push('</table>');
-            html.push('<div style="margin-top:12px;"><button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button></div>');
+            html.push('<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">');
+            html.push('<button class="btn btn-danger" style="font-size:12px;" onclick="draftAllFromReport(this)">Draft Tutti</button>');
+            html.push('<span style="flex:1;"></span>');
+            html.push('<button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button>');
+            html.push('</div>');
             container.innerHTML = html.join('');
         });
     }
 
-    function setItemStatusFromReport(itemId) {
+    function setItemStatusFromReport(itemId, btnEl) {
         var tenantId = _getAdminTenantId();
         if (!tenantId) return;
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = '...'; }
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'draft' })
         }).then(function(r) {
             if (r.ok) {
+                if (btnEl) {
+                    btnEl.textContent = '\u2713 Draft';
+                    btnEl.style.background = '#16a34a';
+                    btnEl.style.color = '#fff';
+                    btnEl.style.borderColor = '#16a34a';
+                }
                 showToast('Prodotto spostato a draft', 'success');
                 loadAdminCatalog();
+            } else {
+                if (btnEl) { btnEl.disabled = false; btnEl.textContent = '\u2192 Draft'; }
+                showToast('Errore nel cambio stato', 'error');
             }
+        }).catch(function() {
+            if (btnEl) { btnEl.disabled = false; btnEl.textContent = '\u2192 Draft'; }
+            showToast('Errore di rete', 'error');
         });
+    }
+
+    function draftAllFromReport(btnEl) {
+        var modal = document.querySelector('.modal-overlay');
+        if (!modal) return;
+        var draftButtons = [];
+        modal.querySelectorAll('button').forEach(function(b) {
+            if (b.textContent.trim() === '\u2192 Draft' && !b.disabled) draftButtons.push(b);
+        });
+        if (draftButtons.length === 0) {
+            showToast('Nessun prodotto da spostare a draft', 'info');
+            return;
+        }
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'In corso... 0/' + draftButtons.length; }
+        var done = 0;
+        draftButtons.forEach(function(b) {
+            b.click();
+            done++;
+            if (btnEl) btnEl.textContent = 'In corso... ' + done + '/' + draftButtons.length;
+        });
+        setTimeout(function() {
+            if (btnEl) {
+                btnEl.textContent = '\u2713 Completato';
+                btnEl.style.background = '#16a34a';
+                btnEl.style.color = '#fff';
+                btnEl.style.borderColor = '#16a34a';
+            }
+        }, 1500);
     }
 
     // =========================================================================
@@ -2382,6 +2428,8 @@
         if (itemId) {
             var idx = _filteredPreviewItems.findIndex(function (i) { return i.promo_item_id === itemId; });
             if (idx >= 0) _previewIndex = idx;
+        } else {
+            _previewIndex = 0;
         }
         _renderPreviewModal();
     }
@@ -2420,7 +2468,12 @@
             if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" onclick="showPurchasePlaceholder(\'' + _escapeHtml(item.promo_item_id) + '\')">Acquista</button>');
             html.push('<button type="button" class="promo-btn promo-btn--info" onclick="showWhyYouSeeThis(\'' + _escapeHtml(item.promo_item_id) + '\')">Perché vedi questo?</button>');
             html.push('<button type="button" class="promo-btn promo-btn--dismiss" onclick="showDismissPlaceholder()">Non mi interessa</button>');
-            html.push('</div></div></div>');
+            html.push('</div>');
+
+            // AI explanation — between card content and technical details
+            html.push('<div id="ai-explanation-preview" style="margin-top:8px;"></div>');
+
+            html.push('</div></div>');
 
             // TECHNICAL DETAILS
             html.push('<div style="margin-top:20px;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">');
@@ -2443,14 +2496,13 @@
             }
             html.push('</div>');
 
-            // ACTIONS
-            html.push('<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">');
+            // ACTIONS — Verifica URL + Chiudi on same row
+            html.push('<div style="margin-top:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">');
             html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateItemUrls(\'' + _escapeHtml(item.promo_item_id) + '\')">Verifica URL</button>');
             html.push('<span id="url-validation-result" style="font-size:12px;"></span>');
+            html.push('<span style="flex:1;"></span>');
+            html.push('<button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button>');
             html.push('</div>');
-            html.push('<div id="ai-explanation-preview" style="margin-top:8px;"></div>');
-
-            html.push('<div style="margin-top:16px;text-align:center;"><button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button></div>');
             container.innerHTML = html.join('');
         });
     }
@@ -2485,6 +2537,7 @@
                 '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
                 '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
                 '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
+                '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="previewPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')">← Torna all\'anteprima</button>' +
                 '</div></div>';
         });
     }
@@ -2556,13 +2609,19 @@
         container.innerHTML = '<p>Caricamento fonti...</p>';
 
         fetchApi('/api/tips-sources?limit=100').then(function(resp) {
+            if (resp.status === 403) {
+                container.innerHTML = '<p style="color:#dc2626;">Accesso negato \u2014 questa sezione richiede il ruolo super_admin.</p>';
+                return null;
+            }
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             return resp.json();
         }).then(function(data) {
+            if (!data) return;
             _sourcesData = data.sources || [];
             _renderSourcesPage(container);
         }).catch(function(err) {
-            container.innerHTML = '<p style="color:#dc2626;">Errore caricamento fonti: ' + _escapeHtml(err.message) + '</p>';
+            container.innerHTML = '<p style="color:#dc2626;">Errore caricamento fonti: ' + _escapeHtml(err.message) + '</p>' +
+                '<p style="font-size:12px;color:#888;margin-top:8px;">Possibili cause: migrazione 011_tips_sources_cache.sql non applicata, oppure database non raggiungibile.</p>';
         });
     }
 
@@ -2999,6 +3058,7 @@
     global.filterCatalogCategory   = filterCatalogCategory;
     global.filterCatalogSpecies    = filterCatalogSpecies;
     global.setItemStatusFromReport = setItemStatusFromReport;
+    global.draftAllFromReport      = draftAllFromReport;
     global.showPurchasePlaceholder = showPurchasePlaceholder;
     global.showWhyYouSeeThis       = showWhyYouSeeThis;
     global.showDismissPlaceholder  = showDismissPlaceholder;

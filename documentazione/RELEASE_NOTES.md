@@ -1,5 +1,22 @@
 # Release Notes (cumulative)
 
+## v7.3.3 (2026-02-10)
+- Security: RBAC su tutte le 9 route di seed.routes.js — solo `super_admin` può avviare seed job, wipe, config, promo search/scrape/import/tenants
+- Security: Rimosso leak di `e.message` verso il client in seed.routes.js (6 occorrenze) e tips-sources.routes.js (11 occorrenze) — ora restituisce `"server_error"` con log server-side
+- Security: Validazione input su `/api/chat` — whitelist modelli (`gpt-4o-mini`, `gpt-4o`), cap `max_tokens` a 4096, sanitizzazione `temperature`, validazione `messages` obbligatorie
+- Security: Validazione input su `/api/tts` — whitelist modelli e voci, limite input 4096 caratteri, sanitizzazione payload
+- Security: 3 nuovi test automatici (SEC-10 RBAC seed, SEC-11 no e.message leaks, SEC-12 AI endpoint validation)
+- Fix: Debug mode globale — il toggle OFF nasconde il menu Debug per TUTTI gli utenti incluso super_admin (prima super_admin vedeva sempre il menu)
+  - Rimosso bypass `_saAccess` da `updateDebugToolsVisibility()`, navigation guard e `restoreLastPage()`
+  - Settings > Sistema card resta visibile e modificabile per super_admin (invariato)
+- UX: Pagina Acquisto (simulata) — aggiunto pulsante "← Torna all'anteprima" per tornare alla preview del prodotto
+- UX: Preview prodotto — "Verifica URL" e "Chiudi" sulla stessa riga con flexbox
+- UX: Preview prodotto — spiegazione AI "Perché vedi questo?" ora appare tra la card prodotto e i dettagli tecnici (prima era in fondo)
+- UX: Catalogo — nuovo pulsante "👁️ Anteprima" nella toolbar per preview sequenziale di tutti i prodotti filtrati
+- UX: Report validazione URL — pulsante "→ Draft" ora mostra feedback visivo (✓ Draft verde) con gestione errori
+- UX: Report validazione URL — nuovo pulsante "Draft Tutti" per spostare tutti i prodotti problematici a draft in batch con indicatore progresso
+- UX: Fonti Tips — errore 403 mostra messaggio "Accesso negato — ruolo super_admin richiesto" anziché errore generico; errore 500 mostra hint migrazione SQL
+
 ## v7.3.2 (2026-02-09)
 - Feat: Tips Sources — sistema di pre-elaborazione, caching e gestione delle fonti esterne per Tips & Tricks
   - Nuova tabella `tips_sources` con campi URL, dominio, summary IT, key_topics, crawl status, e validazione
