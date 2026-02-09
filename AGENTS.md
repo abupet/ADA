@@ -89,7 +89,7 @@ Il file `frontend/index.html` contiene un inline script che rileva automaticamen
 
 ---
 
-## 5. Sistemi chiave (v7.2.12)
+## 5. Sistemi chiave (v7.3.2)
 
 ### Sistema ruoli
 - Due ruoli: `veterinario`, `proprietario`

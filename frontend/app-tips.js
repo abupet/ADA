@@ -296,24 +296,29 @@ async function generateTipsTricks() {
     tipsData = [];
     renderTips();
 
-    const allowedSources = [
-        'https://www.avma.org',
-        'https://www.aaha.org',
-        'https://www.aspca.org',
-        'https://www.rspca.org.uk',
-        'https://www.akc.org',
-        'https://icatcare.org',
-        'https://www.vet.cornell.edu',
-        'https://www.anicura.it',
-        'https://www.enpa.org',
-        'https://www.purina.it',
-        'https://www.royalcanin.com/it',
-        'https://www.bluvet.it',
-        'https://www.fecava.org',
-        'https://www.enci.it',
-        'https://www.anmvi.it',
-        'https://www.petmd.com'
-    ];
+    // Load active sources from DB with fallback to hardcoded list
+    let allowedSources;
+    let _cachedActiveSources = [];
+    try {
+        const srcResp = await fetchApi('/api/tips-sources/active-urls');
+        if (srcResp.ok) {
+            const srcData = await srcResp.json();
+            _cachedActiveSources = srcData.sources || [];
+            allowedSources = _cachedActiveSources
+                .filter(s => s.is_available)
+                .map(s => s.url);
+        }
+    } catch (_) {}
+    if (!allowedSources || allowedSources.length === 0) {
+        allowedSources = [
+            'https://www.avma.org', 'https://www.aaha.org', 'https://www.aspca.org',
+            'https://www.rspca.org.uk', 'https://www.akc.org', 'https://icatcare.org',
+            'https://www.vet.cornell.edu', 'https://www.anicura.it', 'https://www.enpa.org',
+            'https://www.purina.it', 'https://www.royalcanin.com/it', 'https://www.bluvet.it',
+            'https://www.fecava.org', 'https://www.enci.it', 'https://www.anmvi.it',
+            'https://www.petmd.com'
+        ];
+    }
 
     const forbiddenTerms = ['anicura', 'bluvet', 'ani cura'];
     const allowedDomains = allowedSources.map(s => {
@@ -438,9 +443,35 @@ function renderTips() {
             <div class="tip-card-reason">💡 <strong>Perché per il tuo pet:</strong> ${tip.reason || 'Consiglio personalizzato'}</div>
             <div class="tip-card-footer">
                 <span class="tip-card-source">${tip.sourceUrl ? 'Fonte verificata' : 'Fonte non indicata'}</span>
-                ${tip.sourceUrl ? `<a href="${tip.sourceUrl}" target="_blank" class="tip-card-link">🔗 Approfondisci</a>` : ''}
+                ${tip.sourceUrl ? `<a href="#" onclick="openTipSource('${(tip.sourceUrl || '').replace(/'/g, "\\'")}'); return false;" class="tip-card-link">🔗 Approfondisci</a>` : ''}
             </div>
         </div>
         `;
     }).join('');
+}
+
+async function openTipSource(url) {
+    try {
+        const resp = await fetchApi('/api/tips-sources/active-urls');
+        if (resp.ok) {
+            const data = await resp.json();
+            const source = (data.sources || []).find(function(s) { return url.startsWith(s.url); });
+            if (source && source.source_id) {
+                const check = await fetchApi('/api/tips-sources/' + source.source_id + '/check-live');
+                if (check.ok) {
+                    const info = await check.json();
+                    if (!info.is_available) {
+                        var lastDate = info.last_crawled_at
+                            ? new Date(info.last_crawled_at).toLocaleDateString('it-IT') : 'N/D';
+                        var msg = 'Fonte (' + (info.display_name || url) + ') non raggiungibile.\n\n' +
+                            'Ultimo accesso: ' + lastDate + '\n\n' +
+                            (info.summary_it ? 'Riassunto:\n' + info.summary_it.substring(0, 500) + '\n\n' : '') +
+                            'Aprire comunque il link?';
+                        if (!confirm(msg)) return;
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+    window.open(url, '_blank');
 }

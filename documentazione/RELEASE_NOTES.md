@@ -1,5 +1,31 @@
 # Release Notes (cumulative)
 
+## v7.3.2 (2026-02-09)
+- Feat: Tips Sources — sistema di pre-elaborazione, caching e gestione delle fonti esterne per Tips & Tricks
+  - Nuova tabella `tips_sources` con campi URL, dominio, summary IT, key_topics, crawl status, e validazione
+  - Nuova tabella `tips_sources_crawl_log` per tracciare ogni crawl con durata, errori e cambiamenti contenuto
+  - Seed iniziale con 16 fonti veterinarie (AVMA, AAHA, ASPCA, RSPCA, AKC, iCatCare, Cornell Vet, etc.)
+  - DB: Migration `sql/011_tips_sources_cache.sql`
+- Feat: Backend routes per gestione fonti (`tips-sources.routes.js`)
+  - CRUD completo per super_admin (GET lista paginata, GET dettaglio, POST crea, PUT modifica, DELETE elimina)
+  - Crawl singolo e batch: fetch URL, estrazione testo HTML, hash SHA-256, summary GPT-4o-mini se contenuto cambiato
+  - Validazione singola e batch: HEAD check rapido con aggiornamento stato
+  - Route pubblica `GET /api/tips-sources/active-urls` per frontend tips (any auth)
+  - Route pubblica `GET /api/tips-sources/:id/check-live` per validazione on-demand click utente
+- Feat: Frontend tips dinamiche (`app-tips.js`)
+  - Fonti caricate dal DB con fallback all'array hardcoded se DB non disponibile
+  - `openTipSource()`: click su link verifica disponibilita' fonte; se offline, mostra riassunto e chiede conferma
+  - Context fonti con summary incluso nel prompt per tips piu' accurati
+- Feat: Pagina admin "Fonti Tips" per super_admin (`app-admin.js`)
+  - Lista fonti con card (stato online/offline/disattivata/mai crawlato, dominio, frequenza, topics, summary)
+  - Filtri per stato (tutte/attive/disattivate) e ricerca testuale
+  - Riepilogo contatori: totali, disponibili, non raggiungibili
+  - Modal dettaglio con tutti i campi + ultimi crawl log in tabella
+  - Modal crea/modifica fonte con form (URL, nome, frequenza, attiva, note)
+  - Azioni: Crawl singolo, Valida singolo, Crawl batch, Valida batch, Elimina
+  - Nuova voce nav "Fonti Tips" visibile solo per super_admin
+- CSS: Stili dedicati per source-card, status badge, topic tags, crawl-log-table, sources-summary
+
 ## v7.2.21 (2026-02-09)
 - Feat: Campo `extended_description` per prodotti promozionali — descrizione dettagliata usata dal motore AI per generare spiegazioni personalizzate migliori (non visibile al cliente)
   - Nuova colonna `extended_description TEXT` in `promo_items`
