@@ -21,9 +21,11 @@
             <h1>ADA</h1>
             <p>AI Driven AbuPet</p>
             <p id="loginVersion" class="login-version" style="position:absolute; bottom:10px; right:15px; font-size:11px; color:#fff; margin:0; opacity:0.7;"></p>
-            <input type="email" id="emailInput" placeholder="Email" data-testid="email-input" onkeypress="if(event.key==='Enter')document.getElementById('passwordInput').focus()">
-            <input type="password" id="passwordInput" placeholder="Password" onkeypress="if(event.key==='Enter')login()">
-            <button class="btn btn-primary" id="loginButton" onclick="login()" data-testid="login-button">Accedi</button>
+            <form onsubmit="event.preventDefault(); login();" autocomplete="on">
+            <input type="email" id="emailInput" placeholder="Email" data-testid="email-input" autocomplete="username" onkeypress="if(event.key==='Enter')document.getElementById('passwordInput').focus()">
+            <input type="password" id="passwordInput" placeholder="Password" autocomplete="current-password" onkeypress="if(event.key==='Enter')login()">
+            <button type="submit" class="btn btn-primary" id="loginButton" data-testid="login-button">Accedi</button>
+            </form>
             <div id="loginSpinner" style="display:none; margin-top:12px; text-align:center;">
                 <div class="login-spinner"></div>
                 <p id="loginSpinnerText" style="font-size:13px; color:#888; margin-top:8px;"></p>
@@ -1392,6 +1394,7 @@
     <div id="changePasswordModal" class="modal">
         <div class="modal-content">
             <h3>🔒 Cambia Password</h3>
+            <form onsubmit="event.preventDefault(); submitChangePassword();" autocomplete="on">
             <div class="form-group">
                 <label>Password attuale</label>
                 <input type="password" id="cpCurrentPassword" placeholder="Password attuale" autocomplete="current-password">
@@ -1406,9 +1409,10 @@
             </div>
             <p id="cpError" style="color:var(--error); font-size:13px; display:none; margin-bottom:10px;"></p>
             <div class="button-row">
-                <button class="btn btn-success" onclick="submitChangePassword()" data-testid="submit-change-password-button">✅ Cambia</button>
-                <button class="btn btn-secondary" onclick="closeChangePasswordModal()" data-testid="cancel-change-password-button">❌ Annulla</button>
+                <button type="submit" class="btn btn-success" data-testid="submit-change-password-button">✅ Cambia</button>
+                <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()" data-testid="cancel-change-password-button">❌ Annulla</button>
             </div>
+            </form>
         </div>
     </div>
 
