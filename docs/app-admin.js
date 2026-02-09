@@ -18,6 +18,23 @@
     var ADMIN_CSS_INJECTED = false;
     var _dashboardData = null;
 
+    // Translation maps: internal value → Italian label
+    var SPECIES_LABELS = { dog: 'Cane', cat: 'Gatto', rabbit: 'Coniglio', ferret: 'Furetto', bird: 'Uccello', reptile: 'Rettile' };
+    var LIFECYCLE_LABELS = { puppy: 'Cucciolo/Kitten', adult: 'Adulto', senior: 'Senior' };
+    var CATEGORY_LABELS = { food_general: 'Cibo generico', food_clinical: 'Dieta clinica', supplement: 'Integratore', antiparasitic: 'Antiparassitario', accessory: 'Accessorio', service: 'Servizio' };
+
+    function _translateSpecies(arr) {
+        if (!Array.isArray(arr)) return '';
+        return arr.map(function (s) { return SPECIES_LABELS[s] || s; }).join(', ');
+    }
+    function _translateLifecycle(arr) {
+        if (!Array.isArray(arr)) return '';
+        return arr.map(function (l) { return LIFECYCLE_LABELS[l] || l; }).join(', ');
+    }
+    function _translateCategory(cat) {
+        return CATEGORY_LABELS[cat] || cat || '';
+    }
+
     // =========================================================================
     // CSS injection
     // =========================================================================
@@ -261,6 +278,8 @@
 
     var _wizardParsedItems = [];
 
+    var _wizardPreviewIndex = 0;
+
     function initCsvWizard(containerId) {
         var container = document.getElementById(containerId);
         if (!container) return;
@@ -271,11 +290,26 @@
             '<div class="wizard-step">',
             '<h4>Step 1: Carica file CSV</h4>',
             '<p>Formato: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority</p>',
+            '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">',
+            '<div>',
+            '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>',
+            '<select id="wizardCsvTenant" style="padding:8px;border:1px solid #ddd;border-radius:6px;min-width:180px;"></select>',
+            '</div>',
+            '<div>',
+            '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Modalità import</label>',
+            '<label style="display:block;font-size:13px;"><input type="radio" name="wizardCsvMode" value="replace"> Sostituisci importazione precedente</label>',
+            '<label style="display:block;font-size:13px;"><input type="radio" name="wizardCsvMode" value="append" checked> Aggiungi all\'esistente (append)</label>',
+            '</div>',
+            '</div>',
+            '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">',
             '<input type="file" id="csvFileInput" accept=".csv,.txt" onchange="handleCsvUpload(event)">',
+            '<button class="btn btn-secondary" onclick="downloadCsvTemplate()" style="font-size:12px;">Scarica template CSV</button>',
+            '</div>',
             '</div>',
             '<div id="wizard-step-2" class="wizard-step" style="display:none;">',
             '<h4>Step 2: Anteprima</h4>',
             '<div id="wizard-preview" class="wizard-preview"></div>',
+            '<div id="wizard-card-preview" style="margin-top:12px;"></div>',
             '<div style="margin-top:12px;">',
             '<button class="btn btn-secondary" onclick="wizardDryRun()">Verifica (dry run)</button>',
             '<button class="btn btn-primary" onclick="wizardImport()" style="margin-left:8px;">Importa</button>',
@@ -288,6 +322,38 @@
         ];
 
         container.innerHTML = html.join('');
+
+        // Load tenants for the CSV wizard
+        _loadWizardTenants('wizardCsvTenant');
+    }
+
+    function _loadWizardTenants(selectId) {
+        fetchApi('/api/seed/promo/tenants').then(function (r) { return r.ok ? r.json() : { tenants: [] }; })
+            .then(function (data) {
+                var sel = document.getElementById(selectId);
+                if (!sel) return;
+                sel.innerHTML = '';
+                (data.tenants || []).forEach(function (t) {
+                    var opt = document.createElement('option');
+                    opt.value = t.tenant_id;
+                    opt.textContent = t.name;
+                    sel.appendChild(opt);
+                });
+            }).catch(function () {});
+    }
+
+    function downloadCsvTemplate() {
+        var csvContent = 'name,category,species,lifecycle_target,description,image_url,product_url,tags_include,tags_exclude,priority\n'
+            + '"Royal Canin Maxi Adult",food_general,"dog","adult","Cibo secco per cani adulti taglia grande (26-44 kg). Ricetta con EPA e DHA per pelle e manto sani.",https://example.com/img/rc-maxi.jpg,https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult,,0\n'
+            + '"Hill\'s Prescription Diet k/d",food_clinical,"cat","senior","Dieta clinica per gatti con insufficienza renale. Ridotto contenuto di fosforo e sodio.",https://example.com/img/hills-kd.jpg,https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry,clinical:renal,,5\n'
+            + '"Frontline Tri-Act",antiparasitic,"dog","puppy|adult|senior","Antiparassitario spot-on per cani. Protezione completa contro pulci, zecche e zanzare per 4 settimane.",https://example.com/img/frontline.jpg,https://www.frontlinecombo.it/prodotti/tri-act,,,3\n';
+        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'promo_items_template.csv';
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     function handleCsvUpload(event) {
@@ -312,20 +378,151 @@
             if (preview) {
                 var html = '<p>' + _wizardParsedItems.length + ' righe trovate.</p>';
                 html += '<table>';
-                html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th></tr>';
-                _wizardParsedItems.slice(0, 10).forEach(function (item, idx) {
+                html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th></th></tr>';
+                _wizardParsedItems.forEach(function (item, idx) {
+                    var speciesArr = typeof item.species === 'string' ? item.species.split('|') : (Array.isArray(item.species) ? item.species : []);
+                    var lcArr = typeof item.lifecycle_target === 'string' ? item.lifecycle_target.split('|') : (Array.isArray(item.lifecycle_target) ? item.lifecycle_target : []);
                     html += '<tr><td>' + (idx + 1) + '</td><td>' + _escapeHtml(item.name || '') +
-                        '</td><td>' + _escapeHtml(item.category || '') +
-                        '</td><td>' + _escapeHtml(String(item.species || '')) + '</td></tr>';
+                        '</td><td>' + _escapeHtml(_translateCategory(item.category)) +
+                        '</td><td>' + _escapeHtml(_translateSpecies(speciesArr)) +
+                        '</td><td>' + _escapeHtml(_translateLifecycle(lcArr)) +
+                        '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escapeHtml((item.description || '').slice(0, 80)) +
+                        '</td><td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="wizardEditItem(' + idx + ')">Modifica</button></td></tr>';
                 });
-                if (_wizardParsedItems.length > 10) {
-                    html += '<tr><td colspan="4">... e altri ' + (_wizardParsedItems.length - 10) + '</td></tr>';
-                }
                 html += '</table>';
                 preview.innerHTML = html;
             }
+
+            // Show navigable card preview
+            _wizardPreviewIndex = 0;
+            _renderWizardCardPreview();
         };
         reader.readAsText(file);
+    }
+
+    function _renderWizardCardPreview() {
+        var container = document.getElementById('wizard-card-preview');
+        if (!container || _wizardParsedItems.length === 0) return;
+        var idx = _wizardPreviewIndex;
+        var p = _wizardParsedItems[idx];
+        var speciesArr = typeof p.species === 'string' ? p.species.split('|') : (Array.isArray(p.species) ? p.species : []);
+        var lcArr = typeof p.lifecycle_target === 'string' ? p.lifecycle_target.split('|') : (Array.isArray(p.lifecycle_target) ? p.lifecycle_target : []);
+
+        var html = '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px;background:#fff;max-width:400px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+        html += '<button class="btn btn-secondary" style="padding:4px 10px;" onclick="wizardPreviewNav(-1)">&lt;</button>';
+        html += '<span style="font-size:12px;color:#888;">Prodotto ' + (idx + 1) + ' di ' + _wizardParsedItems.length + '</span>';
+        html += '<button class="btn btn-secondary" style="padding:4px 10px;" onclick="wizardPreviewNav(1)">&gt;</button>';
+        html += '</div>';
+        html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo pet</span>';
+        if (p.image_url) {
+            html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _escapeHtml(p.image_url) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
+        }
+        html += '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + _escapeHtml(p.name || '') + '</div>';
+        html += '<div style="font-size:12px;color:#666;margin-bottom:6px;">' + _escapeHtml(p.description || '') + '</div>';
+        html += '<div style="font-size:11px;color:#888;">Specie: ' + _escapeHtml(_translateSpecies(speciesArr)) + ' | Lifecycle: ' + _escapeHtml(_translateLifecycle(lcArr)) + '</div>';
+        html += '<div style="margin-top:8px;"><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="wizardEditItem(' + idx + ')">Modifica</button></div>';
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    function wizardPreviewNav(delta) {
+        _wizardPreviewIndex += delta;
+        if (_wizardPreviewIndex < 0) _wizardPreviewIndex = _wizardParsedItems.length - 1;
+        if (_wizardPreviewIndex >= _wizardParsedItems.length) _wizardPreviewIndex = 0;
+        _renderWizardCardPreview();
+    }
+
+    function wizardEditItem(idx) {
+        var item = _wizardParsedItems[idx];
+        if (!item) return;
+        var speciesOptions = ['dog', 'cat', 'rabbit', 'ferret', 'bird', 'reptile'];
+        var lifecycleOptions = ['puppy', 'adult', 'senior'];
+        var categoryOptions = ['food_general', 'food_clinical', 'supplement', 'antiparasitic', 'accessory', 'service'];
+        var speciesArr = typeof item.species === 'string' ? item.species.split('|') : (Array.isArray(item.species) ? item.species : []);
+        var lcArr = typeof item.lifecycle_target === 'string' ? item.lifecycle_target.split('|') : (Array.isArray(item.lifecycle_target) ? item.lifecycle_target : []);
+
+        _showModal('Modifica Prodotto CSV — Riga ' + (idx + 1), function (container) {
+            var html = [];
+            html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome</label><input type="text" id="wizEditName" value="' + _escapeHtml(item.name || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Categoria</label><select id="wizEditCategory" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+            categoryOptions.forEach(function (c) {
+                html.push('<option value="' + c + '"' + (item.category === c ? ' selected' : '') + '>' + _escapeHtml(CATEGORY_LABELS[c] || c) + '</option>');
+            });
+            html.push('</select></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="wizEditDesc" value="' + _escapeHtml(item.description || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="wizEditUrl" value="' + _escapeHtml(item.product_url || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="wizEditImg" value="' + _escapeHtml(item.image_url || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Priorità</label><input type="number" id="wizEditPriority" value="' + (parseInt(item.priority) || 0) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('</div>');
+
+            html.push('<div style="margin-top:12px;"><label style="font-size:12px;font-weight:600;">Specie target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
+            speciesOptions.forEach(function (s) {
+                var checked = speciesArr.indexOf(s) !== -1 ? ' checked' : '';
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="wizEditSpecies" value="' + s + '"' + checked + '>' + _escapeHtml(SPECIES_LABELS[s] || s) + '</label>');
+            });
+            html.push('</div></div>');
+
+            html.push('<div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Lifecycle target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
+            lifecycleOptions.forEach(function (lc) {
+                var checked = lcArr.indexOf(lc) !== -1 ? ' checked' : '';
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="wizEditLifecycle" value="' + lc + '"' + checked + '>' + _escapeHtml(LIFECYCLE_LABELS[lc] || lc) + '</label>');
+            });
+            html.push('</div></div>');
+
+            html.push('<div style="margin-top:16px;"><button class="btn btn-success" onclick="_saveWizardItemEdit(' + idx + ')">Salva</button> <button class="btn btn-secondary" onclick="_closeModal()">Annulla</button></div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function _saveWizardItemEdit(idx) {
+        var item = _wizardParsedItems[idx];
+        if (!item) return;
+        item.name = (document.getElementById('wizEditName') || {}).value || '';
+        item.category = (document.getElementById('wizEditCategory') || {}).value || '';
+        item.description = (document.getElementById('wizEditDesc') || {}).value || '';
+        item.product_url = (document.getElementById('wizEditUrl') || {}).value || '';
+        item.image_url = (document.getElementById('wizEditImg') || {}).value || '';
+        item.priority = (document.getElementById('wizEditPriority') || {}).value || '0';
+
+        var species = [];
+        var boxes = document.querySelectorAll('.wizEditSpecies:checked');
+        for (var i = 0; i < boxes.length; i++) species.push(boxes[i].value);
+        item.species = species.join('|');
+
+        var lifecycle = [];
+        var lcBoxes = document.querySelectorAll('.wizEditLifecycle:checked');
+        for (var j = 0; j < lcBoxes.length; j++) lifecycle.push(lcBoxes[j].value);
+        item.lifecycle_target = lifecycle.join('|');
+
+        _closeModal();
+        // Re-render preview
+        handleCsvUpload({ target: { files: [] } }); // fake re-render
+        // Manually re-render since no file
+        var step2 = document.getElementById('wizard-step-2');
+        if (step2) step2.style.display = '';
+        var preview = document.getElementById('wizard-preview');
+        if (preview) {
+            var html = '<p>' + _wizardParsedItems.length + ' righe trovate.</p>';
+            html += '<table>';
+            html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th></th></tr>';
+            _wizardParsedItems.forEach(function (it, i) {
+                var speciesArr = typeof it.species === 'string' ? it.species.split('|') : (Array.isArray(it.species) ? it.species : []);
+                var lcArr = typeof it.lifecycle_target === 'string' ? it.lifecycle_target.split('|') : (Array.isArray(it.lifecycle_target) ? it.lifecycle_target : []);
+                html += '<tr><td>' + (i + 1) + '</td><td>' + _escapeHtml(it.name || '') +
+                    '</td><td>' + _escapeHtml(_translateCategory(it.category)) +
+                    '</td><td>' + _escapeHtml(_translateSpecies(speciesArr)) +
+                    '</td><td>' + _escapeHtml(_translateLifecycle(lcArr)) +
+                    '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escapeHtml((it.description || '').slice(0, 80)) +
+                    '</td><td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="wizardEditItem(' + i + ')">Modifica</button></td></tr>';
+            });
+            html += '</table>';
+            preview.innerHTML = html;
+        }
+        _wizardPreviewIndex = idx;
+        _renderWizardCardPreview();
+        if (typeof showToast === 'function') showToast('Riga ' + (idx + 1) + ' aggiornata.', 'success');
     }
 
     function _parseCsv(text) {
@@ -382,11 +579,17 @@
     function _wizardSubmit(dryRun) {
         if (_wizardParsedItems.length === 0) return;
 
-        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        // Use wizard tenant selector if available, otherwise JWT tenant
+        var wizTenantSel = document.getElementById('wizardCsvTenant');
+        var tenantId = wizTenantSel && wizTenantSel.value ? wizTenantSel.value : null;
+        if (!tenantId) tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId) {
             if (typeof showToast === 'function') showToast('Tenant non configurato.', 'error');
             return;
         }
+
+        var modeRadio = document.querySelector('input[name="wizardCsvMode"]:checked');
+        var mode = modeRadio ? modeRadio.value : 'append';
 
         var step3 = document.getElementById('wizard-step-3');
         var results = document.getElementById('wizard-results');
@@ -396,7 +599,7 @@
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/import/promo-items', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: _wizardParsedItems, dry_run: dryRun })
+            body: JSON.stringify({ items: _wizardParsedItems, dry_run: dryRun, mode: mode })
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -876,17 +1079,17 @@
         html.push('<div><label style="font-size:12px;font-weight:600;">Nome *</label><input type="text" id="newItemName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Nome prodotto"></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Categoria *</label><select id="newItemCategory" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
         ['food_general', 'food_clinical', 'supplement', 'antiparasitic', 'accessory', 'service'].forEach(function (c) {
-            html.push('<option value="' + c + '">' + c + '</option>');
+            html.push('<option value="' + c + '">' + _escapeHtml(CATEGORY_LABELS[c] || c) + '</option>');
         });
         html.push('</select></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Specie</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">');
         ['dog', 'cat', 'rabbit', 'ferret', 'bird', 'reptile'].forEach(function (s) {
-            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemSpecies" value="' + s + '">' + s + '</label>');
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemSpecies" value="' + s + '">' + _escapeHtml(SPECIES_LABELS[s] || s) + '</label>');
         });
         html.push('</div></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Lifecycle</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">');
         ['puppy', 'adult', 'senior'].forEach(function (lc) {
-            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemLifecycle" value="' + lc + '">' + lc + '</label>');
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemLifecycle" value="' + lc + '">' + _escapeHtml(LIFECYCLE_LABELS[lc] || lc) + '</label>');
         });
         html.push('</div></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newItemDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione"></div>');
@@ -907,9 +1110,9 @@
                 var statusColor = { draft: '#888', in_review: '#eab308', published: '#16a34a', retired: '#dc2626' }[item.status] || '#888';
                 html.push('<tr>');
                 html.push('<td>' + _escapeHtml(item.name) + '</td>');
-                html.push('<td>' + _escapeHtml(item.category) + '</td>');
-                html.push('<td>' + _escapeHtml(Array.isArray(item.species) ? item.species.join(', ') : '') + '</td>');
-                html.push('<td>' + _escapeHtml(Array.isArray(item.lifecycle_target) ? item.lifecycle_target.join(', ') : '') + '</td>');
+                html.push('<td>' + _escapeHtml(_translateCategory(item.category)) + '</td>');
+                html.push('<td>' + _escapeHtml(_translateSpecies(item.species)) + '</td>');
+                html.push('<td>' + _escapeHtml(_translateLifecycle(item.lifecycle_target)) + '</td>');
                 html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
                 html.push('<td>' + (item.priority || 0) + '</td>');
                 html.push('<td style="white-space:nowrap;">');
@@ -1034,7 +1237,7 @@
             html.push('<div><label style="font-size:12px;font-weight:600;">Nome</label><input type="text" id="editItemName" value="' + _escapeHtml(item.name || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
             html.push('<div><label style="font-size:12px;font-weight:600;">Categoria</label><select id="editItemCategory" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
             categoryOptions.forEach(function (c) {
-                html.push('<option value="' + c + '"' + (item.category === c ? ' selected' : '') + '>' + c + '</option>');
+                html.push('<option value="' + c + '"' + (item.category === c ? ' selected' : '') + '>' + _escapeHtml(CATEGORY_LABELS[c] || c) + '</option>');
             });
             html.push('</select></div>');
             html.push('<div><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="editItemDescription" value="' + _escapeHtml(item.description || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
@@ -1048,7 +1251,7 @@
             html.push('<div style="margin-top:12px;"><label style="font-size:12px;font-weight:600;">Specie target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
             speciesOptions.forEach(function (s) {
                 var checked = itemSpecies.indexOf(s) !== -1 ? ' checked' : '';
-                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemSpecies" value="' + s + '"' + checked + '>' + s + '</label>');
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemSpecies" value="' + s + '"' + checked + '>' + _escapeHtml(SPECIES_LABELS[s] || s) + '</label>');
             });
             html.push('</div></div>');
 
@@ -1057,7 +1260,7 @@
             html.push('<div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Lifecycle target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
             lifecycleOptions.forEach(function (lc) {
                 var checked = itemLifecycle.indexOf(lc) !== -1 ? ' checked' : '';
-                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemLifecycle" value="' + lc + '"' + checked + '>' + lc + '</label>');
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemLifecycle" value="' + lc + '"' + checked + '>' + _escapeHtml(LIFECYCLE_LABELS[lc] || lc) + '</label>');
             });
             html.push('</div></div>');
 
@@ -1721,6 +1924,10 @@
     global.handleCsvUpload        = handleCsvUpload;
     global.wizardDryRun           = wizardDryRun;
     global.wizardImport           = wizardImport;
+    global.downloadCsvTemplate    = downloadCsvTemplate;
+    global.wizardPreviewNav       = wizardPreviewNav;
+    global.wizardEditItem         = wizardEditItem;
+    global._saveWizardItemEdit    = _saveWizardItemEdit;
     // Catalog
     global.loadAdminCatalog       = loadAdminCatalog;
     global.showCreateItemForm     = showCreateItemForm;

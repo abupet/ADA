@@ -1,5 +1,27 @@
 # Release Notes (cumulative)
 
+## v7.2.16 (2026-02-09)
+- Feat: Seed Promo Wizard — selezione tenant e modalità import (replace/append)
+  - Nuovo endpoint `GET /api/seed/promo/tenants` per lista tenant disponibili
+  - `importProductsToCatalog()` ora accetta `options.tenantId` e `options.mode`
+  - Modalità `replace`: cancella `promo_items` con `promo_item_id LIKE 'seed-%'` prima dell'inserimento
+  - `/api/seed/promo/import` ora accetta `tenantId` e `mode` dal body
+- Feat: Seed Promo Wizard — preview navigabile prodotti come li vedrebbe il cliente
+  - Card preview con badge "Consigliato per il tuo pet", immagine, nome, descrizione
+  - Navigazione `< >` tra prodotti con contatore "Prodotto N di M"
+  - Pulsante "Modifica" per ogni prodotto: apre modal con form in italiano
+  - Checkbox includi/escludi per ogni prodotto nella preview
+- Feat: Traduzioni italiano — specie, lifecycle e categoria in tutti i form e tabelle
+  - Nuove mappe `SPECIES_LABELS`, `LIFECYCLE_LABELS`, `CATEGORY_LABELS` in app-admin.js
+  - Form creazione/modifica prodotto: label italiani su checkbox e select
+  - Tabella catalogo: colonne Specie, Lifecycle, Categoria tradotte in italiano
+- Feat: CSV Import Wizard — miglioramenti completi
+  - Step 1: selettore tenant, modalità import, pulsante "Scarica template CSV"
+  - Step 2: tabella anteprima con tutte le colonne + preview navigabile stile cliente
+  - Pulsante "Modifica" per ogni riga CSV con modal form pre-compilato in italiano
+  - Step 3: passa `tenantId` e `mode` al backend
+  - Template CSV con 3 prodotti demo veterinari in italiano
+
 ## v7.2.15 (2026-02-09)
 - Feat: Seed Engine Promo — crawling ricorsivo pagine figlie prima dell'estrazione prodotti
   - Nuova funzione `_discoverChildUrls()`: estrae link figli dalla pagina madre (URL che iniziano con l'URL madre)

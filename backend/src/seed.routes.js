@@ -106,9 +106,26 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const { importProductsToCatalog } = require('./seed.promogen');
             const { getPool } = require('./db');
             const pool = getPool();
-            const products = (req.body || {}).products || [];
-            const result = await importProductsToCatalog(pool, products);
+            const body = req.body || {};
+            const products = body.products || [];
+            const tenantId = body.tenantId || null;
+            const mode = body.mode || 'append';
+            const result = await importProductsToCatalog(pool, products, { tenantId, mode });
             return res.json(result);
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    });
+
+    // GET /api/seed/promo/tenants — List available tenants for the seed promo wizard
+    router.get('/api/seed/promo/tenants', requireAuth, async (req, res) => {
+        try {
+            const { getPool } = require('./db');
+            const pool = getPool();
+            const result = await pool.query(
+                "SELECT tenant_id, name FROM tenants WHERE status='active' ORDER BY name"
+            );
+            return res.json({ tenants: result.rows });
         } catch (e) {
             return res.status(500).json({ error: e.message });
         }

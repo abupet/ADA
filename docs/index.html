@@ -1272,6 +1272,22 @@
                         📥 Estrai prodotti dai siti selezionati
                     </button>
                     <div id="seedScrapeResults" style="display:none;"></div>
+                    <!-- Opzioni import (tenant + mode) — mostrate dopo scraping -->
+                    <div id="seedPromoOptions" style="display:none;margin-top:12px;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;">
+                            <div>
+                                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>
+                                <select id="seedPromoTenant" style="padding:8px;border:1px solid #ddd;border-radius:6px;min-width:180px;"></select>
+                            </div>
+                            <div>
+                                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Modalità import</label>
+                                <label style="display:block;font-size:13px;"><input type="radio" name="seedPromoMode" value="replace"> Sostituisci importazione precedente</label>
+                                <label style="display:block;font-size:13px;"><input type="radio" name="seedPromoMode" value="append" checked> Aggiungi all'esistente (append)</label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Preview navigabile prodotti — mostrata dopo scraping -->
+                    <div id="seedPromoPreview" style="display:none;margin-top:12px;"></div>
                 </div>
             </div>
 
