@@ -470,6 +470,282 @@ function adminRouter({ requireAuth }) {
     }
   );
 
+  // ==============================
+  // SUPERADMIN: TENANT DATA RESET
+  // ==============================
+
+  router.post(
+    "/api/superadmin/tenants/:tenantId/reset",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      const client = await pool.connect();
+      try {
+        const { tenantId } = req.params;
+
+        // Verify tenant exists
+        const tenantCheck = await client.query(
+          "SELECT tenant_id FROM tenants WHERE tenant_id = $1 LIMIT 1",
+          [tenantId]
+        );
+        if (!tenantCheck.rows[0]) {
+          client.release();
+          return res.status(404).json({ error: "tenant_not_found" });
+        }
+
+        await client.query("BEGIN");
+
+        const deleted = {};
+
+        // 1. promo_event_daily_stats
+        const r1 = await client.query(
+          "DELETE FROM promo_event_daily_stats WHERE tenant_id = $1",
+          [tenantId]
+        );
+        deleted.promo_event_daily_stats = r1.rowCount;
+
+        // 2. promo_events
+        const r2 = await client.query(
+          "DELETE FROM promo_events WHERE tenant_id = $1",
+          [tenantId]
+        );
+        deleted.promo_events = r2.rowCount;
+
+        // 3. campaign_items (via campaigns)
+        const r3 = await client.query(
+          "DELETE FROM campaign_items WHERE campaign_id IN (SELECT campaign_id FROM promo_campaigns WHERE tenant_id = $1)",
+          [tenantId]
+        );
+        deleted.campaign_items = r3.rowCount;
+
+        // 4. promo_campaigns
+        const r4 = await client.query(
+          "DELETE FROM promo_campaigns WHERE tenant_id = $1",
+          [tenantId]
+        );
+        deleted.promo_campaigns = r4.rowCount;
+
+        // 5. brand_products_staging (via brand_ingest_jobs)
+        const r5 = await client.query(
+          "DELETE FROM brand_products_staging WHERE job_id IN (SELECT job_id FROM brand_ingest_jobs WHERE tenant_id = $1)",
+          [tenantId]
+        );
+        deleted.brand_products_staging = r5.rowCount;
+
+        // 6. brand_ingest_jobs
+        const r6 = await client.query(
+          "DELETE FROM brand_ingest_jobs WHERE tenant_id = $1",
+          [tenantId]
+        );
+        deleted.brand_ingest_jobs = r6.rowCount;
+
+        // 7. promo_item_versions (via promo_items)
+        const r7 = await client.query(
+          "DELETE FROM promo_item_versions WHERE promo_item_id IN (SELECT promo_item_id FROM promo_items WHERE tenant_id = $1)",
+          [tenantId]
+        );
+        deleted.promo_item_versions = r7.rowCount;
+
+        // 8. promo_items
+        const r8 = await client.query(
+          "DELETE FROM promo_items WHERE tenant_id = $1",
+          [tenantId]
+        );
+        deleted.promo_items = r8.rowCount;
+
+        // 9. tenant_budgets
+        const r9 = await client.query(
+          "DELETE FROM tenant_budgets WHERE tenant_id = $1",
+          [tenantId]
+        );
+        deleted.tenant_budgets = r9.rowCount;
+
+        await client.query("COMMIT");
+
+        await _auditLog(pool, req.promoAuth, "tenant.reset", tenantId, "tenant", { deleted });
+
+        res.json({ success: true, deleted });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.error("POST /api/superadmin/tenants/:tenantId/reset error", e);
+        res.status(500).json({ error: "server_error", message: e.message });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
+  // ==============================
+  // ADMIN: DELETE PROMO EVENTS
+  // ==============================
+
+  router.delete(
+    "/api/admin/promo-events",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      const client = await pool.connect();
+      try {
+        const tenantId = req.query.tenant_id;
+        if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
+
+        await client.query("BEGIN");
+
+        const r1 = await client.query(
+          "DELETE FROM promo_event_daily_stats WHERE tenant_id = $1",
+          [tenantId]
+        );
+        const r2 = await client.query(
+          "DELETE FROM promo_events WHERE tenant_id = $1",
+          [tenantId]
+        );
+
+        await client.query("COMMIT");
+
+        await _auditLog(pool, req.promoAuth, "promo_events.delete_all", tenantId, "promo_events", {
+          daily_stats: r1.rowCount, events: r2.rowCount
+        });
+
+        res.json({ success: true, deleted: { promo_event_daily_stats: r1.rowCount, promo_events: r2.rowCount } });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.error("DELETE /api/admin/promo-events error", e);
+        res.status(500).json({ error: "server_error" });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
+  // ==============================
+  // ADMIN: DELETE CATALOG (ALL / SINGLE)
+  // ==============================
+
+  router.delete(
+    "/api/admin/catalog/:itemId",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      const client = await pool.connect();
+      try {
+        const { itemId } = req.params;
+
+        await client.query("BEGIN");
+        await client.query("DELETE FROM campaign_items WHERE promo_item_id = $1", [itemId]);
+        await client.query("DELETE FROM promo_item_versions WHERE promo_item_id = $1", [itemId]);
+        const r = await client.query("DELETE FROM promo_items WHERE promo_item_id = $1", [itemId]);
+        await client.query("COMMIT");
+
+        await _auditLog(pool, req.promoAuth, "catalog_item.delete", itemId, "promo_item", {});
+
+        res.json({ success: true, deleted: r.rowCount });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.error("DELETE /api/admin/catalog/:itemId error", e);
+        res.status(500).json({ error: "server_error" });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
+  router.delete(
+    "/api/admin/catalog",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      const client = await pool.connect();
+      try {
+        const tenantId = req.query.tenant_id;
+        if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
+
+        await client.query("BEGIN");
+        await client.query(
+          "DELETE FROM campaign_items WHERE promo_item_id IN (SELECT promo_item_id FROM promo_items WHERE tenant_id = $1)",
+          [tenantId]
+        );
+        await client.query(
+          "DELETE FROM promo_item_versions WHERE promo_item_id IN (SELECT promo_item_id FROM promo_items WHERE tenant_id = $1)",
+          [tenantId]
+        );
+        const r = await client.query("DELETE FROM promo_items WHERE tenant_id = $1", [tenantId]);
+        await client.query("COMMIT");
+
+        await _auditLog(pool, req.promoAuth, "catalog.delete_all", tenantId, "promo_items", { count: r.rowCount });
+
+        res.json({ success: true, deleted: r.rowCount });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.error("DELETE /api/admin/catalog error", e);
+        res.status(500).json({ error: "server_error" });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
+  // ==============================
+  // ADMIN: DELETE CAMPAIGNS (ALL / SINGLE)
+  // ==============================
+
+  router.delete(
+    "/api/admin/campaigns/:campaignId",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      const client = await pool.connect();
+      try {
+        const { campaignId } = req.params;
+
+        await client.query("BEGIN");
+        await client.query("DELETE FROM campaign_items WHERE campaign_id = $1", [campaignId]);
+        const r = await client.query("DELETE FROM promo_campaigns WHERE campaign_id = $1", [campaignId]);
+        await client.query("COMMIT");
+
+        await _auditLog(pool, req.promoAuth, "campaign.delete", campaignId, "campaign", {});
+
+        res.json({ success: true, deleted: r.rowCount });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.error("DELETE /api/admin/campaigns/:campaignId error", e);
+        res.status(500).json({ error: "server_error" });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
+  router.delete(
+    "/api/admin/campaigns",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      const client = await pool.connect();
+      try {
+        const tenantId = req.query.tenant_id;
+        if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
+
+        await client.query("BEGIN");
+        await client.query(
+          "DELETE FROM campaign_items WHERE campaign_id IN (SELECT campaign_id FROM promo_campaigns WHERE tenant_id = $1)",
+          [tenantId]
+        );
+        const r = await client.query("DELETE FROM promo_campaigns WHERE tenant_id = $1", [tenantId]);
+        await client.query("COMMIT");
+
+        await _auditLog(pool, req.promoAuth, "campaigns.delete_all", tenantId, "campaigns", { count: r.rowCount });
+
+        res.json({ success: true, deleted: r.rowCount });
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => {});
+        console.error("DELETE /api/admin/campaigns error", e);
+        res.status(500).json({ error: "server_error" });
+      } finally {
+        client.release();
+      }
+    }
+  );
+
   return router;
 }
 

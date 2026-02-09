@@ -450,6 +450,51 @@
         });
     }
 
+    // --- Feature 3: Load sites from TXT file ---
+    function seedLoadSitesFromFile(event) {
+        var file = event.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var text = e.target.result;
+            var lines = text.split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+            var validUrls = lines.filter(function (l) { return l.indexOf('http://') === 0 || l.indexOf('https://') === 0; });
+            if (validUrls.length === 0) {
+                if (typeof showToast === 'function') showToast('Nessun URL valido trovato nel file. Assicurati che ogni riga contenga un URL completo (es. https://www.esempio.com)', 'error');
+                return;
+            }
+            validUrls.forEach(function (url) {
+                _discoveredSites.push({ url: url, name: url, description: 'Da file TXT', selected: true, index: _discoveredSites.length });
+            });
+            _renderBrandResults();
+            var scrapeBtn = document.getElementById('seedScrapeBtn');
+            if (scrapeBtn) scrapeBtn.style.display = 'inline-block';
+            if (typeof showToast === 'function') showToast(validUrls.length + ' siti caricati dal file', 'success');
+        };
+        reader.readAsText(file);
+    }
+
+    // --- Feature 3: Reset promo section ---
+    function seedResetPromoSection() {
+        if (!confirm('Vuoi azzerare tutti i siti web trovati e i prodotti proposti in questa sezione?')) return;
+        _discoveredSites = [];
+        _discoveredProducts = [];
+        var ids = ['seedBrandResults', 'seedScrapeResults', 'seedPromoOptions', 'seedPromoPreview'];
+        ids.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        var scrapeBtn = document.getElementById('seedScrapeBtn');
+        if (scrapeBtn) scrapeBtn.style.display = 'none';
+        var brandInput = document.getElementById('seedBrandInput');
+        if (brandInput) brandInput.value = '';
+        var extraInput = document.getElementById('seedExtraSiteInput');
+        if (extraInput) extraInput.value = '';
+        var fileInput = document.getElementById('seedSitesFileInput');
+        if (fileInput) fileInput.value = '';
+        if (typeof showToast === 'function') showToast('Sezione promo azzerata', 'success');
+    }
+
     // --- Init: attach input listeners for estimate ---
     function _initEstimateListeners() {
         var ids = ['seedPetCount', 'seedSoapPerPet', 'seedDocsPerPet'];
@@ -481,5 +526,7 @@
     global.seedEditProduct = seedEditProduct;
     global.seedSaveProductEdit = seedSaveProductEdit;
     global._renderPromoPreview = _renderPromoPreview;
+    global.seedLoadSitesFromFile = seedLoadSitesFromFile;
+    global.seedResetPromoSection = seedResetPromoSection;
 
 })(typeof window !== 'undefined' ? window : this);
