@@ -1187,6 +1187,11 @@
             html.push('<option value="' + s + '"' + (_catalogSpeciesFilter === s ? ' selected' : '') + '>' + _translateSpecies(s) + '</option>');
         });
         html.push('</select>');
+        var _hasAdvancedFilter = _catalogPriorityFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        if (_hasAdvancedFilter) {
+            var _filteredCount = _getFilteredCatalogItems().length;
+            html.push('<span style="color:#1d4ed8;font-size:12px;font-weight:600;">' + _filteredCount + '/' + _catalogItems.length + ' visibili</span>');
+        }
         html.push('</div>');
 
         // Create item form (hidden)
@@ -1220,13 +1225,14 @@
         html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="createPromoItem()">Crea</button> <button class="btn btn-secondary" onclick="hideCreateItemForm()">Annulla</button></div>');
         html.push('</div>');
 
-        // Items table
-        if (_catalogItems.length === 0) {
+        // Items table (apply advanced filters)
+        var displayItems = _getFilteredCatalogItems();
+        if (displayItems.length === 0) {
             html.push('<p style="color:#888;">Nessun prodotto trovato.</p>');
         } else {
             html.push('<table class="admin-table">');
             html.push('<tr><th>Nome</th><th>Categoria</th><th>Lifecycle</th><th>Stato</th><th>Pr.</th><th>Img</th><th>Ext.</th><th>Azioni</th></tr>');
-            _catalogItems.forEach(function (item) {
+            displayItems.forEach(function (item) {
                 var statusColor = { draft: '#888', in_review: '#eab308', published: '#16a34a', retired: '#dc2626' }[item.status] || '#888';
                 html.push('<tr>');
                 html.push('<td>' + _escapeHtml(item.name) + ' <small style="color:#888;">(' + _escapeHtml(_translateSpecies(item.species)) + ')</small></td>');
@@ -1281,11 +1287,17 @@
         });
     }
 
-    function filterCatalogPriority(val) { _catalogPriorityFilter = val; loadAdminCatalog(); }
-    function filterCatalogImage(val) { _catalogImageFilter = val; loadAdminCatalog(); }
-    function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; loadAdminCatalog(); }
-    function filterCatalogCategory(val) { _catalogCategoryFilter = val; loadAdminCatalog(); }
-    function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; loadAdminCatalog(); }
+    function _rerenderCatalog() {
+        var container = document.getElementById('admin-catalog-content');
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (container && tenantId) _renderCatalogPage(container, tenantId);
+    }
+    function filterCatalogPriority(val) { _catalogPriorityFilter = val; _rerenderCatalog(); }
+    function filterCatalogImage(val) { _catalogImageFilter = val; _rerenderCatalog(); }
+    function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; _rerenderCatalog(); }
+    function filterCatalogCategory(val) { _catalogCategoryFilter = val; _rerenderCatalog(); }
+    function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; _rerenderCatalog(); }
 
     function showCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = ''; }
     function hideCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = 'none'; }
