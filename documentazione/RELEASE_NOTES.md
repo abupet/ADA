@@ -1,5 +1,34 @@
 # Release Notes (cumulative)
 
+## v7.2.21 (2026-02-09)
+- Feat: Campo `extended_description` per prodotti promozionali — descrizione dettagliata usata dal motore AI per generare spiegazioni personalizzate migliori (non visibile al cliente)
+  - Nuova colonna `extended_description TEXT` in `promo_items`
+  - Supporto in tutti gli endpoint di import (CSV, XLSX, wizard, csv-confirm), create e update
+  - `explanation.service.js` ora usa `extended_description` quando disponibile per il prompt OpenAI
+  - Textarea per extended_description nei modal di creazione, modifica e wizard import
+  - Indicatore ✅/❌ nella tabella catalogo e nell'anteprima CSV
+  - Template CSV e XLSX aggiornati con colonna `extended_description`
+- Feat: Preview catalogo — anteprima card prodotto come appare al cliente
+  - Modal navigabile con card identica alla vista cliente (immagine, nome, descrizione, spiegazione AI placeholder)
+  - Dettagli tecnici collapsibili (categoria, specie, lifecycle, tags, extended description)
+  - Pulsante "Testa spiegazione AI" per generare una spiegazione con pet di test
+  - Pulsante "Verifica URL" per validare immagine e product_url
+- Feat: Validazione URL — verifica on-demand e batch di `image_url` e `product_url`
+  - Nuovo endpoint `POST /api/admin/:tenantId/validate-urls` con HEAD request e timeout 5s
+  - Nuovo endpoint `POST /api/admin/cron/validate-urls` (super_admin) per validazione settimanale
+  - Colonne `url_check_status JSONB` e `url_last_checked_at` in `promo_items`
+  - Verifica singola nel modal preview e verifica bulk nel catalogo
+  - Report URL rotti in modal dedicato
+- Feat: Catalog UX migliorata
+  - Ricerca per nome nella tabella catalogo
+  - Bulk publish: pubblica tutti i prodotti draft con un click
+  - Specie mostrata accanto al nome per distinguere prodotti con nome simile
+  - Colonne Img e Ext. con indicatori visivi
+  - Contatore "Salute Catalogo" nella dashboard (senza immagine, senza ext. desc., URL rotti)
+- Fix: Parser import — supporto separatore `|` (pipe) oltre a `,` nei campi multi-valore (species, lifecycle_target, tags_include, tags_exclude) con nuovo helper `_splitMultiValue()`
+- DB: 3 nuovi tag clinici nel Tag Dictionary: `clinical:cardiac`, `clinical:endocrine`, `clinical:hepatic`
+- DB: Migration `010_extended_desc_url_check.sql`
+
 ## v7.2.20 (2026-02-09)
 - Refactor: rinominata directory `docs/` → `frontend/` per chiarezza (era la SPA, non documentazione)
 - Refactor: spostata documentazione utente (README, RELEASE_NOTES, TEST_PLAN, VERIFY_TOKEN) in `documentazione/`
