@@ -186,6 +186,9 @@ async function initApp() {
     try { renderAccountInfo(); } catch(e) {}
     try { updateSettingsSectionsVisibility(); } catch(e) {}
 
+    // Load global debug mode from server (overrides local setting)
+    try { await loadGlobalDebugMode(); } catch(e) {}
+
     // Initialize documents module (PR 8)
     try { if (typeof initDocuments === 'function') initDocuments(); } catch(e) {}
 
@@ -1194,12 +1197,36 @@ function initDebugLogSetting() {
 function toggleDebugLog(enabled) {
     debugLogEnabled = enabled;
     localStorage.setItem('ada_debug_log', enabled ? 'true' : 'false');
+
+    // If super_admin, persist globally via policies
+    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+        fetchApi('/api/superadmin/policies/debug_mode_enabled', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: enabled, description: 'Debug mode for all users' })
+        }).catch(function() {});
+    }
+
     showToast(enabled ? 'Log debug attivato' : 'Log debug disattivato', 'success');
 
     // Debug ON exposes test-only UI tools (long audio/text loaders) and audio cache controls
     try { updateDebugToolsVisibility(); } catch (e) {}
     try { updateSettingsSystemVisibility(); } catch (e) {}
     try { if (typeof refreshAudioCacheInfo === 'function') refreshAudioCacheInfo(); } catch (e) {}
+}
+
+async function loadGlobalDebugMode() {
+    try {
+        const resp = await fetchApi('/api/settings/debug-mode');
+        if (resp.ok) {
+            const data = await resp.json();
+            debugLogEnabled = !!data.debug_mode_enabled;
+            const cb = document.getElementById('debugLogEnabled');
+            if (cb) cb.checked = debugLogEnabled;
+            updateSettingsSystemVisibility();
+            updateDebugToolsVisibility();
+        }
+    } catch (_) {}
 }
 
 // ============================================

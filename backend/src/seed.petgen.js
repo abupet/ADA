@@ -1835,6 +1835,44 @@ function getDocTypesForPet(pet) {
 // 6. EXPORTS
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 6b. PHOTO PLACEHOLDERS (deterministic SVG per species)
+// ---------------------------------------------------------------------------
+
+const SPECIES_PHOTO_PLACEHOLDERS = {};
+
+function _buildPlaceholderSvg(emoji, label, colors) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${colors[0]}"/><stop offset="100%" stop-color="${colors[1]}"/></linearGradient></defs><rect width="400" height="400" fill="url(#g)" rx="20"/><text x="200" y="180" font-size="120" text-anchor="middle">${emoji}</text><text x="200" y="300" font-size="24" fill="white" text-anchor="middle" font-family="sans-serif">${label}</text></svg>`;
+}
+
+function getPhotoPlaceholder(species) {
+    if (!SPECIES_PHOTO_PLACEHOLDERS[species]) {
+        const map = {
+            dog: ['\uD83D\uDC36', 'Cane', ['#4A90D9','#2C5F9E']],
+            cat: ['\uD83D\uDC31', 'Gatto', ['#D9864A','#9E5F2C']],
+            rabbit: ['\uD83D\uDC30', 'Coniglio', ['#6DC94A','#3E8F2C']],
+        };
+        const [emoji, label, colors] = map[species] || ['\uD83D\uDC3E', 'Pet', ['#D94A8F','#9E2C5F']];
+        const svg = _buildPlaceholderSvg(emoji, label, colors);
+        SPECIES_PHOTO_PLACEHOLDERS[species] = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
+    }
+    return SPECIES_PHOTO_PLACEHOLDERS[species];
+}
+
+function generatePhotosForPet(pet, count) {
+    const base = getPhotoPlaceholder(pet.species);
+    const photos = [];
+    for (let i = 0; i < count; i++) {
+        photos.push({
+            id: `photo-${pet._petId || pet.petId || 'x'}-${i}`,
+            dataUrl: base,
+            caption: `Foto ${i + 1} di ${pet.name}`,
+            date: new Date().toISOString(),
+        });
+    }
+    return photos;
+}
+
 module.exports = {
   generatePetCohort,
   buildSoapPrompt,
@@ -1842,4 +1880,6 @@ module.exports = {
   getVisitTypesForPet,
   getDocTypesForPet,
   BREED_PATHOLOGIES,
+  generatePhotosForPet,
+  getPhotoPlaceholder,
 };

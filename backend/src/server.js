@@ -314,6 +314,26 @@ app.post("/api/telemetry/events", (_req, res) => {
   res.status(204).end();
 });
 
+// --- Global debug mode setting (accessible to all authenticated users) ---
+app.get("/api/settings/debug-mode", requireAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.json({ debug_mode_enabled: true });
+  }
+  try {
+    const { getPool } = require("./db");
+    const pool = getPool();
+    const result = await pool.query(
+      "SELECT policy_value FROM global_policies WHERE policy_key = 'debug_mode_enabled'"
+    );
+    const enabled = result.rows.length > 0
+      ? result.rows[0].policy_value === 'true' || result.rows[0].policy_value === true
+      : true;
+    res.json({ debug_mode_enabled: enabled });
+  } catch (e) {
+    res.json({ debug_mode_enabled: true });
+  }
+});
+
 // --- Pets routes (offline sync + CRUD) ---
 // CI may run without DATABASE_URL; avoid crashing the server in that case.
 if (process.env.DATABASE_URL) {

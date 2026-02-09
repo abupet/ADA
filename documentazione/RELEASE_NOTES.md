@@ -26,6 +26,27 @@
   - Nuova voce nav "Fonti Tips" visibile solo per super_admin
 - CSS: Stili dedicati per source-card, status badge, topic tags, crawl-log-table, sources-summary
 
+## v7.3.1 (2026-02-09)
+- Feat: Catalogo — filtri avanzati per priorità, immagine, extended description, categoria e specie con dropdown nella barra filtri
+- Feat: Catalogo — preview navigabile ora opera sulla lista filtrata (navigazione solo tra prodotti visibili)
+- Feat: Report validazione URL — pulsante "→ Draft" per spostare rapidamente prodotti con URL rotti a stato draft
+- Feat: Preview — pulsante "Acquista" ora apre una pagina e-commerce simulata (placeholder) con form spedizione e pagamento
+- Feat: Preview — pulsante "Perché vedi questo?" ora attiva la generazione della spiegazione AI con banner di avviso test
+- Feat: Preview — pulsante "Non mi interessa" ora mostra pagina feedback placeholder con conferma
+- Rimosso pulsante "Testa spiegazione AI" dai dettagli tecnici (integrato in "Perché vedi questo?")
+
+## v7.3.0 (2026-02-09)
+- Fix: Profilo Sanitario — auto-save immediato dopo generazione per evitare perdita del testo se l'utente naviga altrove prima del salvataggio manuale
+- Fix: Profilo Sanitario — fallback ownerName dal pet object in IndexedDB per pet creati via seed engine (risolveva "Proprietario: N/D")
+- Feat: Profilo Sanitario (vet) — fonti numerate con riferimenti [1], [2] e sezione "Fonti:" a piè di pagina al posto delle citazioni inline ripetute
+- Feat: Debug flag globale — il flag "Debug attivo" viene ora salvato in `global_policies` dal super_admin e letto da tutti gli utenti al login, rendendolo globale anziché locale al browser
+  - Nuovo endpoint `GET /api/settings/debug-mode` accessibile a tutti gli utenti autenticati
+  - `toggleDebugLog()` del super_admin persiste automaticamente via `PUT /api/superadmin/policies/debug_mode_enabled`
+  - `loadGlobalDebugMode()` chiamata all'avvio dell'app dopo il login
+- Fix: Coda chunk piena con file grandi — in modalità upload file, la coda aspetta che si liberi spazio (backpressure con timeout 90s) anziché fermare la registrazione
+- Fix: Foto placeholder seed engine — SVG deterministici per specie con emoji e gradiente, identici tra backend (`seed.petgen.js`) e frontend (`app-testdata.js`), che producono `data:image/svg+xml;base64` validi
+- Feat: Policies admin — chiave policy ora selezionabile da dropdown con 6 chiavi predefinite + opzione "Altro" per chiavi personalizzate
+
 ## v7.2.21 (2026-02-09)
 - Feat: Campo `extended_description` per prodotti promozionali — descrizione dettagliata usata dal motore AI per generare spiegazioni personalizzate migliori (non visibile al cliente)
   - Nuova colonna `extended_description TEXT` in `promo_items`

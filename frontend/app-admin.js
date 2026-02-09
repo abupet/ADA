@@ -1093,6 +1093,12 @@
     var _catalogTotal = 0;
     var _catalogStatusFilter = '';
     var _catalogSearchTerm = '';
+    var _catalogPriorityFilter = '';
+    var _catalogImageFilter = '';
+    var _catalogExtDescFilter = '';
+    var _catalogCategoryFilter = '';
+    var _catalogSpeciesFilter = '';
+    var _filteredPreviewItems = [];
 
     function loadAdminCatalog(containerId) {
         var container = document.getElementById(containerId || 'admin-catalog-content');
@@ -1149,6 +1155,38 @@
         html.push('<button class="btn btn-success" style="font-size:12px;" onclick="bulkPublishDraft()">Pubblica tutti i draft</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
+        html.push('</div>');
+
+        // Advanced filters row
+        html.push('<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">');
+        html.push('<select onchange="filterCatalogPriority(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Priorità: Tutte</option>');
+        [0,1,2,3,4,5].forEach(function(p) {
+            html.push('<option value="' + p + '"' + (_catalogPriorityFilter === String(p) ? ' selected' : '') + '>' + p + '</option>');
+        });
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogImage(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Immagine: Tutte</option>');
+        html.push('<option value="with"' + (_catalogImageFilter === 'with' ? ' selected' : '') + '>Con immagine</option>');
+        html.push('<option value="without"' + (_catalogImageFilter === 'without' ? ' selected' : '') + '>Senza immagine</option>');
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogExtDesc(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Ext. Desc: Tutte</option>');
+        html.push('<option value="with"' + (_catalogExtDescFilter === 'with' ? ' selected' : '') + '>Con Extended</option>');
+        html.push('<option value="without"' + (_catalogExtDescFilter === 'without' ? ' selected' : '') + '>Senza Extended</option>');
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogCategory(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Categoria: Tutte</option>');
+        ['food_general','food_clinical','supplement','antiparasitic','accessory','service'].forEach(function(c) {
+            html.push('<option value="' + c + '"' + (_catalogCategoryFilter === c ? ' selected' : '') + '>' + _translateCategory(c) + '</option>');
+        });
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogSpecies(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Specie: Tutte</option>');
+        ['dog','cat','rabbit','all'].forEach(function(s) {
+            html.push('<option value="' + s + '"' + (_catalogSpeciesFilter === s ? ' selected' : '') + '>' + _translateSpecies(s) + '</option>');
+        });
+        html.push('</select>');
         html.push('</div>');
 
         // Create item form (hidden)
@@ -1229,6 +1267,25 @@
 
         container.innerHTML = html.join('');
     }
+
+    function _getFilteredCatalogItems() {
+        return _catalogItems.filter(function(item) {
+            if (_catalogPriorityFilter !== '' && String(item.priority || 0) !== _catalogPriorityFilter) return false;
+            if (_catalogImageFilter === 'with' && !item.image_url) return false;
+            if (_catalogImageFilter === 'without' && item.image_url) return false;
+            if (_catalogExtDescFilter === 'with' && !item.extended_description) return false;
+            if (_catalogExtDescFilter === 'without' && item.extended_description) return false;
+            if (_catalogCategoryFilter && item.category !== _catalogCategoryFilter) return false;
+            if (_catalogSpeciesFilter && item.species !== _catalogSpeciesFilter) return false;
+            return true;
+        });
+    }
+
+    function filterCatalogPriority(val) { _catalogPriorityFilter = val; loadAdminCatalog(); }
+    function filterCatalogImage(val) { _catalogImageFilter = val; loadAdminCatalog(); }
+    function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; loadAdminCatalog(); }
+    function filterCatalogCategory(val) { _catalogCategoryFilter = val; loadAdminCatalog(); }
+    function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; loadAdminCatalog(); }
 
     function showCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = ''; }
     function hideCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = 'none'; }
@@ -1719,6 +1776,21 @@
             });
     }
 
+    var POLICY_KEYS = [
+        { key: 'max_impressions_per_week', label: 'Max impressioni/settimana' },
+        { key: 'max_impressions_per_day', label: 'Max impressioni/giorno' },
+        { key: 'debug_mode_enabled', label: 'Debug mode attivo' },
+        { key: 'openai_optimizations', label: 'Ottimizzazioni OpenAI (JSON)' },
+        { key: 'promo_cooldown_hours', label: 'Cooldown promo (ore)' },
+        { key: 'maintenance_mode', label: 'Modalità manutenzione' },
+    ];
+
+    function onPolicyKeyChange() {
+        var sel = document.getElementById('newPolicyKey');
+        var custom = document.getElementById('newPolicyKeyCustom');
+        if (custom) custom.style.display = (sel && sel.value === '__custom__') ? '' : 'none';
+    }
+
     function _renderPoliciesPage(container, policies) {
         var html = [];
 
@@ -1730,7 +1802,16 @@
         html.push('<div id="create-policy-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
         html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuova/Modifica Policy</h4>');
         html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label><input type="text" id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: max_impressions_per_day"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label>');
+        html.push('<select id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" onchange="onPolicyKeyChange()">');
+        html.push('<option value="">-- Seleziona --</option>');
+        POLICY_KEYS.forEach(function(pk) {
+            html.push('<option value="' + pk.key + '">' + _escapeHtml(pk.label + ' (' + pk.key + ')') + '</option>');
+        });
+        html.push('<option value="__custom__">Altro (personalizzato)...</option>');
+        html.push('</select>');
+        html.push('<input type="text" id="newPolicyKeyCustom" style="display:none;width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:6px;" placeholder="Chiave personalizzata">');
+        html.push('</div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Valore *</label><input type="text" id="newPolicyValue" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: 10"></div>');
         html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newPolicyDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione policy"></div>');
         html.push('</div>');
@@ -1763,7 +1844,10 @@
     function hidePolicyForm() { var f = document.getElementById('create-policy-form'); if (f) f.style.display = 'none'; }
 
     function savePolicy() {
-        var key = (document.getElementById('newPolicyKey') || {}).value || '';
+        var keyEl = document.getElementById('newPolicyKey');
+        var key = (keyEl && keyEl.value === '__custom__')
+            ? (document.getElementById('newPolicyKeyCustom') || {}).value || ''
+            : (keyEl || {}).value || '';
         var valueStr = (document.getElementById('newPolicyValue') || {}).value || '';
         if (!key) { if (typeof showToast === 'function') showToast('Chiave obbligatoria.', 'error'); return; }
 
@@ -2257,17 +2341,33 @@
         _showModal('Report Validazione URL — ' + broken.length + ' problemi su ' + results.length + ' prodotti', function (container) {
             var html = [];
             html.push('<table class="admin-table">');
-            html.push('<tr><th>Prodotto</th><th>Immagine</th><th>URL Prodotto</th></tr>');
+            html.push('<tr><th>Prodotto</th><th>Immagine</th><th>URL Prodotto</th><th>Azione</th></tr>');
             broken.forEach(function (r) {
                 html.push('<tr>');
                 html.push('<td>' + _escapeHtml(r.name || r.promo_item_id) + '</td>');
                 html.push('<td>' + _urlStatusIcon(r.image_url_status) + '</td>');
                 html.push('<td>' + _urlStatusIcon(r.product_url_status) + '</td>');
+                html.push('<td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="setItemStatusFromReport(\'' + _escapeHtml(r.promo_item_id) + '\')">→ Draft</button></td>');
                 html.push('</tr>');
             });
             html.push('</table>');
             html.push('<div style="margin-top:12px;"><button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button></div>');
             container.innerHTML = html.join('');
+        });
+    }
+
+    function setItemStatusFromReport(itemId) {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'draft' })
+        }).then(function(r) {
+            if (r.ok) {
+                showToast('Prodotto spostato a draft', 'success');
+                loadAdminCatalog();
+            }
         });
     }
 
@@ -2278,15 +2378,16 @@
     var _previewIndex = 0;
 
     function previewPromoItem(itemId) {
+        _filteredPreviewItems = _getFilteredCatalogItems();
         if (itemId) {
-            var idx = _catalogItems.findIndex(function (i) { return i.promo_item_id === itemId; });
+            var idx = _filteredPreviewItems.findIndex(function (i) { return i.promo_item_id === itemId; });
             if (idx >= 0) _previewIndex = idx;
         }
         _renderPreviewModal();
     }
 
     function _renderPreviewModal() {
-        var item = _catalogItems[_previewIndex];
+        var item = _filteredPreviewItems[_previewIndex];
         if (!item) return;
 
         _showModal('Anteprima Prodotto — come appare al cliente', function (container) {
@@ -2295,7 +2396,7 @@
             // Navigation
             html.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">');
             html.push('<button class="btn btn-secondary" onclick="_previewNav(-1)" style="padding:6px 14px;">Precedente</button>');
-            html.push('<span style="font-size:12px;color:#888;">Prodotto ' + (_previewIndex + 1) + ' di ' + _catalogItems.length + '</span>');
+            html.push('<span style="font-size:12px;color:#888;">Prodotto ' + (_previewIndex + 1) + ' di ' + _filteredPreviewItems.length + '</span>');
             html.push('<button class="btn btn-secondary" onclick="_previewNav(1)" style="padding:6px 14px;">Successivo</button>');
             html.push('</div>');
 
@@ -2316,9 +2417,9 @@
             html.push('<div class="promo-explanation" style="font-style:italic;color:#888;">[Spiegazione AI personalizzata — generata in base al profilo del paziente]</div>');
 
             html.push('<div class="promo-actions">');
-            if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" disabled>Acquista</button>');
-            html.push('<button type="button" class="promo-btn promo-btn--info" disabled>Perché vedi questo?</button>');
-            html.push('<button type="button" class="promo-btn promo-btn--dismiss" disabled>Non mi interessa</button>');
+            if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" onclick="showPurchasePlaceholder(\'' + _escapeHtml(item.promo_item_id) + '\')">Acquista</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--info" onclick="showWhyYouSeeThis(\'' + _escapeHtml(item.promo_item_id) + '\')">Perché vedi questo?</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--dismiss" onclick="showDismissPlaceholder()">Non mi interessa</button>');
             html.push('</div></div></div>');
 
             // TECHNICAL DETAILS
@@ -2345,7 +2446,6 @@
             // ACTIONS
             html.push('<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">');
             html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateItemUrls(\'' + _escapeHtml(item.promo_item_id) + '\')">Verifica URL</button>');
-            html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="previewExplanation(\'' + _escapeHtml(item.promo_item_id) + '\')">Testa spiegazione AI</button>');
             html.push('<span id="url-validation-result" style="font-size:12px;"></span>');
             html.push('</div>');
             html.push('<div id="ai-explanation-preview" style="margin-top:8px;"></div>');
@@ -2357,9 +2457,55 @@
 
     function _previewNav(delta) {
         _previewIndex += delta;
-        if (_previewIndex < 0) _previewIndex = _catalogItems.length - 1;
-        if (_previewIndex >= _catalogItems.length) _previewIndex = 0;
+        if (_previewIndex < 0) _previewIndex = _filteredPreviewItems.length - 1;
+        if (_previewIndex >= _filteredPreviewItems.length) _previewIndex = 0;
         _renderPreviewModal();
+    }
+
+    function showPurchasePlaceholder(itemId) {
+        var item = _catalogItems.find(function(i) { return i.promo_item_id === itemId; }) || {};
+        _showModal('Pagina di Acquisto (Simulata)', function(container) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                '<div style="color:#dc2626;font-weight:600;border:2px dashed #dc2626;padding:10px;border-radius:8px;margin-bottom:20px;">' +
+                'Questa è una pagina simulata per test. Nessun acquisto reale verrà effettuato.</div>' +
+                '<div style="max-width:400px;margin:0 auto;text-align:left;">' +
+                (item.image_url ? '<img src="' + _escapeHtml(item.image_url) + '" style="width:100%;border-radius:8px;margin-bottom:12px;" onerror="this.style.display=\'none\'">' : '') +
+                '<h4 style="margin:0 0 8px;">' + _escapeHtml(item.name || '') + '</h4>' +
+                '<p style="color:#555;font-size:13px;">' + _escapeHtml(item.description || '') + '</p><hr>' +
+                '<p><strong>Prezzo:</strong> €XX,XX (placeholder)</p>' +
+                '<label>Quantità: <input type="number" value="1" min="1" max="10" style="width:60px;padding:4px;"></label><hr>' +
+                '<h4>Dati di spedizione</h4>' +
+                '<input placeholder="Nome e Cognome" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Indirizzo" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Città" style="flex:2;padding:8px;border:1px solid #ddd;border-radius:6px;"></div><hr>' +
+                '<h4>Metodo di pagamento</h4>' +
+                '<input placeholder="Numero carta" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;">' +
+                '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
+                '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
+                '</div></div>';
+        });
+    }
+
+    function showWhyYouSeeThis(itemId) {
+        var container = document.getElementById('ai-explanation-preview');
+        if (!container) return;
+        container.innerHTML = '<div style="padding:12px;background:#fef3c7;border-radius:8px;border:1px solid #f59e0b;margin-bottom:8px;">' +
+            '<strong>Spiegazione solo per test</strong> — generata con un pet di prova, non riflette un utente reale.</div>';
+        if (typeof previewExplanation === 'function') previewExplanation(itemId);
+    }
+
+    function showDismissPlaceholder() {
+        _showModal('Feedback ricevuto', function(container) {
+            container.innerHTML = '<div style="text-align:center;padding:30px;">' +
+                '<h3>Grazie per il tuo feedback!</h3>' +
+                '<p style="font-size:16px;color:#555;margin:16px 0;">' +
+                'Abbiamo preso nota della tua preferenza.<br>Non ti mostreremo più questo prodotto.</p>' +
+                '<p style="font-size:13px;color:#888;">Continuiamo a migliorare i suggerimenti per te e il tuo pet.</p>' +
+                '<button class="btn btn-primary" style="margin-top:20px;" onclick="_closeModal()">Chiudi</button></div>';
+        });
     }
 
     function previewExplanation(itemId) {
@@ -2815,6 +2961,7 @@
     global.hidePolicyForm         = hidePolicyForm;
     global.savePolicy             = savePolicy;
     global.editPolicy             = editPolicy;
+    global.onPolicyKeyChange      = onPolicyKeyChange;
     // Tags
     global.loadSuperadminTags     = loadSuperadminTags;
     global.showCreateTagForm      = showCreateTagForm;
@@ -2845,6 +2992,16 @@
     global.bulkPublishDraft       = bulkPublishDraft;
     global.catalogSearch          = catalogSearch;
     global.catalogSearchReset     = catalogSearchReset;
+    // PR 2: Advanced filters + preview actions
+    global.filterCatalogPriority   = filterCatalogPriority;
+    global.filterCatalogImage      = filterCatalogImage;
+    global.filterCatalogExtDesc    = filterCatalogExtDesc;
+    global.filterCatalogCategory   = filterCatalogCategory;
+    global.filterCatalogSpecies    = filterCatalogSpecies;
+    global.setItemStatusFromReport = setItemStatusFromReport;
+    global.showPurchasePlaceholder = showPurchasePlaceholder;
+    global.showWhyYouSeeThis       = showWhyYouSeeThis;
+    global.showDismissPlaceholder  = showDismissPlaceholder;
     // Tips Sources
     global.loadSuperadminSources  = loadSuperadminSources;
     global.showCreateSourceForm   = showCreateSourceForm;
