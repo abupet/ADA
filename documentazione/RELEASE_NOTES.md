@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v7.2.20 (2026-02-09)
+- Refactor: rinominata directory `docs/` → `frontend/` per chiarezza (era la SPA, non documentazione)
+- Refactor: spostata documentazione utente (README, RELEASE_NOTES, TEST_PLAN, VERIFY_TOKEN) in `documentazione/`
+- Nuovo `README.md` minimale nella root con link a documentazione e guide agente
+- AGENTS.md v4: aggiunta sezione "Ambienti" con tabella dev/prod, workflow di sviluppo, migrazioni DB, routing frontend
+- CLAUDE.md: aggiornato target branch PR a `dev`, aggiornati tutti i path a `frontend/` e `documentazione/`
+- Aggiornati tutti i riferimenti a `docs/` in: workflows CI, labeler, package.json, cache-bust, test unit, PR template
+
 ## v7.2.19 (2026-02-09)
 - Feat: Tenant Data Reset — pulsante "Azzera dati" nella pagina Gestione Tenant per cancellare tutti i contenuti di un tenant (catalogo, campagne, eventi, statistiche) mantenendo le associazioni utente
   - Nuovo endpoint `POST /api/superadmin/tenants/:tenantId/reset` con transazione SQL

@@ -5,8 +5,8 @@
 Before starting any work, **read `AGENTS.md`** and follow all its rules.
 Key mandatory rules:
 - **Versioning**: every merge to GitHub MUST bump the version (increment Z by 1 unless told otherwise)
-- **Release notes**: update `RELEASE_NOTES.md` with every version change
-- **Version locations**: `docs/config.js` (ADA_VERSION), `AGENTS.md` (section 2), `RELEASE_NOTES.md`
+- **Release notes**: update `documentazione/RELEASE_NOTES.md` with every version change
+- **Version locations**: `frontend/config.js` (ADA_VERSION), `AGENTS.md` (section 2), `documentazione/RELEASE_NOTES.md`
 - **Definition of done**: requirements implemented, CI green, release notes updated, **automated tests verified/updated**
 
 ## Post-Push CI Workflow (ALWAYS follow this)
@@ -22,7 +22,8 @@ Never wait for the user to paste CI logs. Always check CI results autonomously.
 
 ## PR and Merge Workflow
 
-- After CI passes, **automatically create a PR** with `gh pr create`
+- **Target branch**: feature PRs target `dev` (not `main`). Only `dev → main` PRs are for production releases.
+- After CI passes, **automatically create a PR** with `gh pr create --base dev`
 - **Read Codex reviews**: after PR creation, check for reviews with `gh api repos/abupet/ada/pulls/<N>/comments` and `gh api repos/abupet/ada/issues/<N>/comments`. If Codex (or other bots) left feedback, evaluate it and address valid issues before requesting merge
 - For **merge**, always ask the user for confirmation first
 - Use `gh pr merge` with the appropriate merge strategy after approval
@@ -53,11 +54,11 @@ Before making ANY code change, read the relevant files:
 
 ### Always read (every task):
 - **`AGENTS.md`** — source of truth: architecture, rules, versioning, forbidden actions
-- **`TEST_PLAN.md`** — 18 manual tests describing expected behavior of every feature
+- **`documentazione/TEST_PLAN.md`** — 18 manual tests describing expected behavior of every feature
 
 ### Read when touching specific areas:
-- **`docs/decisions/ADR-PETS-PULL-MERGE.md`** — if modifying sync, pets, `app-pets.js`, `sync-engine.js`, or `pets-sync-bootstrap.js`
-- **`RELEASE_NOTES.md`** — if bumping version (to check current state)
+- **`frontend/decisions/ADR-PETS-PULL-MERGE.md`** — if modifying sync, pets, `app-pets.js`, `sync-engine.js`, or `pets-sync-bootstrap.js`
+- **`documentazione/RELEASE_NOTES.md`** — if bumping version (to check current state)
 
 ### Read when creating PRs:
 - **`.github/pull_request_template.md`** — use its checklist format in PR descriptions

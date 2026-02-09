@@ -1,9 +1,9 @@
 /**
  * scripts/cache-bust.js
- * Auto-appends a cache-busting query param to local JS/CSS assets referenced by docs/index.html.
+ * Auto-appends a cache-busting query param to local JS/CSS assets referenced by frontend/index.html.
  *
  * Usage:
- *   node scripts/cache-bust.js --file docs/index.html --id <cacheBustId>
+ *   node scripts/cache-bust.js --file frontend/index.html --id <cacheBustId>
  *
  * If --id is omitted, it uses process.env.CACHE_BUST or falls back to current timestamp.
  */
@@ -16,7 +16,7 @@ function getArg(name) {
   return process.argv[idx + 1] || null;
 }
 
-const file = getArg("--file") || "docs/index.html";
+const file = getArg("--file") || "frontend/index.html";
 const id =
   getArg("--id") ||
   process.env.CACHE_BUST ||

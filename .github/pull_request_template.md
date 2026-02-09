@@ -14,7 +14,7 @@ Describe what this PR changes and why.
 ## Checklist (required)
 - [ ] CI (PR) is green
 - [ ] No secrets committed (policy checks pass)
-- [ ] Release notes updated in `RELEASE_NOTES.md` (cumulative), if user-facing change
+- [ ] Release notes updated in `documentazione/RELEASE_NOTES.md` (cumulative), if user-facing change
 - [ ] Tests added/updated where appropriate
 
 ## Testing notes
