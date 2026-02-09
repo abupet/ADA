@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v7.2.17 (2026-02-09)
+- Fix: Rimosso `GH_TOKEN` env da `ci-real.yml`, sostituito con `GITHUB_TOKEN` per evitare interferenze con Claude Code CLI
+
 ## v7.2.16 (2026-02-09)
 - Feat: Seed Promo Wizard — selezione tenant e modalità import (replace/append)
   - Nuovo endpoint `GET /api/seed/promo/tenants` per lista tenant disponibili
