@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v7.2.18 (2026-02-09)
+- UX: Spinner di caricamento durante il login per feedback visivo (cold start backend Render)
+  - Bottone "Accedi" disabilitato durante la richiesta per evitare doppi click
+  - Con Debug attivo: messaggi progressivi con contatore secondi ("In attesa della risposta del server", "Il server si sta avviando", "Avvio del server in corso")
+  - Senza Debug: solo spinner animato senza testo
+
 ## v7.2.17 (2026-02-09)
 - Fix: Rimosso `GH_TOKEN` env da `ci-real.yml`, sostituito con `GITHUB_TOKEN` per evitare interferenze con Claude Code CLI
 

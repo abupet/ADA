@@ -48,15 +48,39 @@ async function login() {
     const emailEl = document.getElementById('emailInput');
     const email = emailEl ? emailEl.value.trim() : '';
     const password = document.getElementById('passwordInput').value;
+    const loginError = document.getElementById('loginError');
+    const loginBtn = document.getElementById('loginButton');
+    const spinnerWrap = document.getElementById('loginSpinner');
+    const spinnerText = document.getElementById('loginSpinnerText');
+
+    if (loginError) loginError.style.display = 'none';
 
     if (!email) {
-        const loginError = document.getElementById('loginError');
         if (loginError) {
             loginError.textContent = 'Inserisci la tua email';
             loginError.style.display = 'block';
         }
         return;
     }
+
+    // Show spinner, disable button
+    if (loginBtn) loginBtn.disabled = true;
+    if (spinnerWrap) spinnerWrap.style.display = 'block';
+    if (spinnerText) spinnerText.textContent = '';
+
+    const isDebug = (typeof debugLogEnabled !== 'undefined' && debugLogEnabled);
+    let elapsed = 0;
+    const tickId = setInterval(() => {
+        elapsed++;
+        if (!isDebug || !spinnerText) return;
+        if (elapsed <= 3) {
+            spinnerText.textContent = `In attesa della risposta del server\u2026 (${elapsed}s)`;
+        } else if (elapsed <= 15) {
+            spinnerText.textContent = `Il server si sta avviando\u2026 (${elapsed}s)`;
+        } else {
+            spinnerText.textContent = `Avvio del server in corso, ancora un momento\u2026 (${elapsed}s)`;
+        }
+    }, 1000);
 
     let token = '';
     let loginData = null;
@@ -73,6 +97,10 @@ async function login() {
         }
     } catch (e) {}
 
+    clearInterval(tickId);
+    if (loginBtn) loginBtn.disabled = false;
+    if (spinnerWrap) spinnerWrap.style.display = 'none';
+
     if (token) {
         setAuthToken(token);
         const sessionKey = btoa(email + ':' + Date.now());
@@ -82,7 +110,6 @@ async function login() {
         loadData();
         initApp();
     } else {
-        const loginError = document.getElementById('loginError');
         if (loginError) {
             loginError.textContent = 'Email o password non validi';
             loginError.style.display = 'block';
