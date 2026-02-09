@@ -116,7 +116,7 @@
     var _photoCache = {};
 
     function _generatePhotoDataUrl(species, index) {
-        // Generate a simple SVG placeholder with species icon and number
+        // Generate a deterministic SVG placeholder per species (matches backend seed.petgen.js)
         var colors = {
             'Cane': ['#4A90D9', '#2C5F9E'],
             'Gatto': ['#D9864A', '#9E5F2C'],
@@ -126,7 +126,6 @@
         var pair = colors[species] || colors['Altro'];
         var icons = { 'Cane': '\uD83D\uDC36', 'Gatto': '\uD83D\uDC31', 'Coniglio': '\uD83D\uDC30', 'Altro': '\uD83D\uDC3E' };
         var icon = icons[species] || icons['Altro'];
-        var n = (index % 20) + 1;
         var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">' +
             '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
             '<stop offset="0%" stop-color="' + pair[0] + '"/>' +
@@ -134,8 +133,7 @@
             '</linearGradient></defs>' +
             '<rect width="400" height="400" fill="url(#g)" rx="20"/>' +
             '<text x="200" y="180" font-size="120" text-anchor="middle">' + icon + '</text>' +
-            '<text x="200" y="280" font-size="28" fill="white" text-anchor="middle" font-family="sans-serif">' + species + ' #' + n + '</text>' +
-            '<text x="200" y="340" font-size="18" fill="rgba(255,255,255,0.6)" text-anchor="middle" font-family="sans-serif">Test Photo</text>' +
+            '<text x="200" y="300" font-size="24" fill="white" text-anchor="middle" font-family="sans-serif">' + species + '</text>' +
             '</svg>';
         return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
     }
