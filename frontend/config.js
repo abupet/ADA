@@ -45,7 +45,7 @@ async function fetchApi(path, options = {}) {
         var response = await fetch(API_BASE_URL + path, { ...options, headers: headers });
         var durationMs = Date.now() - startMs;
 
-        if (response.status === 401) {
+        if (response.status === 401 && token) {
             clearAuthToken();
             if (typeof handleAuthFailure === 'function') handleAuthFailure();
         }
@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.2.19';
+const ADA_VERSION = '7.2.20';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

@@ -8,7 +8,7 @@ const fs = require("fs");
 
 // Extract _petToPatch from the source file
 // (it's not exported, so we eval the function definition)
-const srcPath = path.join(__dirname, "../../docs/pets-sync-step4.js");
+const srcPath = path.join(__dirname, "../../frontend/pets-sync-step4.js");
 const src = fs.readFileSync(srcPath, "utf8");
 
 // Extract just the _petToPatch function

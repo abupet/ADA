@@ -18,9 +18,7 @@ tests:
 frontend:
   - changed-files:
       - any-glob-to-any-file:
-          - "index.html"
-          - "src/**"
-          - "public/**"
+          - "frontend/**"
           - "**/*.css"
 
 backend:
@@ -34,4 +32,4 @@ docs:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.md"
-          - "docs/**"
+          - "documentazione/**"

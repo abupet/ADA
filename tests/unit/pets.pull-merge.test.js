@@ -7,7 +7,7 @@ const path = require('path');
 // Load module in a JSDOM-less environment: it attaches to global window.
 // We simulate window.
 global.window = global.window || {};
-require(path.join(__dirname, '../../docs/pets-sync-merge.js'));
+require(path.join(__dirname, '../../frontend/pets-sync-merge.js'));
 
 const { normalizePetFromServer, mergePetLocalWithRemote } = global.window.PetsSyncMerge;
 

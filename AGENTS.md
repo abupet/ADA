@@ -1,4 +1,4 @@
-# AGENTS.md v3
+# AGENTS.md v4
 # Guida operativa per lo sviluppo di ADA
 
 Questo file è la **fonte di verità operativa** per chiunque lavori su ADA (umano o agente AI).
@@ -13,8 +13,8 @@ In ordine di priorità:
 1. Questo file (`AGENTS.md`)
 2. Codebase e test esistenti
 3. CI feedback (GitHub Actions)
-4. `RELEASE_NOTES.md` per storico versioni
-5. `README.md` per setup e avvio
+4. `documentazione/RELEASE_NOTES.md` per storico versioni
+5. `documentazione/README.md` per setup e avvio
 
 ---
 
@@ -22,7 +22,7 @@ In ordine di priorità:
 
 ADA è una SPA vanilla JS con backend Express.
 
-**Frontend** (`docs/`):
+**Frontend** (`frontend/`):
 - No moduli/bundler; tutti i file caricati via `<script>` in `index.html`
 - Pattern IIFE: `(function(global) { ... })(window)`
 - Moduli principali: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `sync-engine.js`, `app-promo.js`, `app-observability.js`
@@ -35,25 +35,61 @@ ADA è una SPA vanilla JS con backend Express.
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 7.2.19
+**Versione corrente:** 7.2.20
 
 ---
 
-## 3. Regole di sviluppo
+## 3. Ambienti
 
-### 3.1 Branching
+ADA opera con due ambienti separati:
+
+| | Produzione | Sviluppo |
+|---|---|---|
+| **Branch** | `main` (protetto, richiede PR) | `dev` (protetto, richiede PR) |
+| **Frontend** | GitHub Pages: https://abupet.github.io/ada/ | Netlify: https://ada-dev.netlify.app |
+| **Backend** | Render: https://ada-au40.onrender.com | Render: https://ada-backend-dev.onrender.com |
+| **Database** | PostgreSQL su Render (Frankfurt) | PostgreSQL su Neon.tech (Frankfurt) |
+
+### Workflow di sviluppo
+
+1. Crea feature branch da `dev`: `git checkout -b feature/xxx`
+2. Lavora e committa
+3. Crea PR verso `dev` → CI deve passare → merge
+4. Testa su ambiente dev (Netlify)
+5. Quando stabile: crea PR `dev → main` → CI deve passare → merge → deploy produzione
+6. Dopo merge in main, riallinea dev: `git checkout dev && git merge main && git push origin dev`
+
+### Migrazioni database
+
+Le migrazioni NON sono automatiche. Nuovi file SQL in `sql/`:
+1. Applicare prima sul DB dev (Neon.tech)
+2. Testare su ambiente dev
+3. Applicare sul DB prod (Render) prima o durante il merge in main
+
+### Routing frontend dev/prod
+
+Il file `frontend/index.html` contiene un inline script che rileva automaticamente l'ambiente:
+- hostname contiene `netlify.app` → backend dev
+- hostname contiene `github.io` → backend prod
+- localhost → backend locale
+
+---
+
+## 4. Regole di sviluppo
+
+### 4.1 Branching
 - Non lavorare mai su `main`
 - Branch dedicato per ogni attività
 - Naming: `feat/<descrizione>`, `fix/<descrizione>`, `ci/<descrizione>`
 
-### 3.2 Commit
+### 4.2 Commit
 - Piccoli e mirati
 - Messaggi chiari e descrittivi
 - Non includere modifiche non correlate
 
 ---
 
-## 4. Sistemi chiave (v7.2.12)
+## 5. Sistemi chiave (v7.2.12)
 
 ### Sistema ruoli
 - Due ruoli: `veterinario`, `proprietario`
@@ -67,7 +103,7 @@ ADA è una SPA vanilla JS con backend Express.
   - **Sync engine generico**: outbox in IndexedDB `ada_sync` → `pushAll()` → `/api/sync/push`
 - Auto-sync in `pets-sync-bootstrap.js`: online → push+pull, interval 60s, startup
 - Pull skips merge per pet con outbox pending (local wins)
-- ADR di riferimento: `docs/decisions/ADR-PETS-PULL-MERGE.md`
+- ADR di riferimento: `frontend/decisions/ADR-PETS-PULL-MERGE.md`
 
 ### Documenti
 - Upload: PDF, JPG, PNG, WebP (max 10 MB)
@@ -89,17 +125,17 @@ ADA è una SPA vanilla JS con backend Express.
 
 ---
 
-## 5. Regole funzionali non negoziabili
+## 6. Regole funzionali non negoziabili
 
 ### Versionamento (regola vincolante)
 - La versione dell'applicazione segue il formato **`vX.Y.Z`**
 - **Ogni volta** che una qualunque modifica del codice viene mergata in GitHub, la versione **deve** cambiare
 - Solo il proprietario del progetto può decidere quando e come modificare **X** o **Y**; in quel caso **Z = 0**
 - Se non viene data indicazione diversa, si incrementa **Z di 1**
-- La versione corrente è indicata in questo file (sezione 2) e in `RELEASE_NOTES.md`
+- La versione corrente è indicata in questo file (sezione 2) e in `documentazione/RELEASE_NOTES.md`
 
 ### Release notes
-- Deve esistere **un solo** file `RELEASE_NOTES.md` (cumulativo)
+- Deve esistere **un solo** file `documentazione/RELEASE_NOTES.md` (cumulativo)
 - Ogni release aggiunge una nuova sezione `## vX.Y.Z`
 - Non creare file di release notes separati
 
@@ -117,9 +153,9 @@ Devono funzionare sempre:
 
 ---
 
-## 6. Testing
+## 7. Testing
 
-### 6.1 Test locali (obbligatori prima della PR)
+### 7.1 Test locali (obbligatori prima della PR)
 ```bash
 npm ci
 npm run serve          # http://localhost:4173
@@ -133,19 +169,19 @@ npx playwright test
 
 `.env` locali ammessi ma mai committati.
 
-### 6.2 Piano test manuale
-Vedi `TEST_PLAN.md` per test step-by-step.
+### 7.2 Piano test manuale
+Vedi `documentazione/TEST_PLAN.md` per test step-by-step.
 
 ---
 
-## 7. CI su GitHub
+## 8. CI su GitHub
 
-### 7.1 CI (PR) — obbligatoria
+### 8.1 CI (PR) — obbligatoria
 - Trigger: ogni Pull Request
 - MODE=MOCK, STRICT_NETWORK=0
 - **Gate di merge** (branch protection)
 
-### 7.2 CI (REAL)
+### 8.2 CI (REAL)
 Trigger:
 - Nightly automatica
 - Label `run-real` su PR
@@ -153,7 +189,7 @@ Trigger:
 
 Configurazione: MODE=REAL, STRICT_NETWORK=1, ALLOW_OPENAI=1, STRICT_ALLOW_HOSTS=cdnjs.cloudflare.com
 
-### 7.3 Gestione fallimenti CI
+### 8.3 Gestione fallimenti CI
 1. Leggere il commento automatico sulla PR
 2. Aprire il run linkato
 3. Identificare la causa (primo errore reale)
@@ -164,7 +200,7 @@ Non aggirare mai i test.
 
 ---
 
-## 8. Divieti espliciti
+## 9. Divieti espliciti
 
 - Non usare `ada-tests.sh` in CI GitHub
 - Non disabilitare o saltare test per "far passare la build"
@@ -174,13 +210,13 @@ Non aggirare mai i test.
 
 ---
 
-## 9. Definition of done
+## 10. Definition of done
 
 Un cambiamento è completo solo quando:
 - Requisiti implementati
 - CI (PR) verde
 - Eventuali CI (REAL) verdi
-- `RELEASE_NOTES.md` aggiornato (se cambiamento user-facing)
+- `documentazione/RELEASE_NOTES.md` aggiornato (se cambiamento user-facing)
 - **Test automatici verificati e aggiornati** (se cambiamento user-facing o comportamentale): controllare che i test E2E esistenti in `tests/` coprano il nuovo comportamento; aggiungere o aggiornare i test se necessario
 
 ---

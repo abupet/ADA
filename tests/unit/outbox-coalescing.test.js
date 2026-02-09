@@ -6,7 +6,7 @@ const assert = require("assert");
 const path = require("path");
 
 // Load the real production coalescing module
-const { coalesceOutboxOp } = require(path.join(__dirname, "../../docs/pets-coalesce.js"));
+const { coalesceOutboxOp } = require(path.join(__dirname, "../../frontend/pets-coalesce.js"));
 
 assert.strictEqual(typeof coalesceOutboxOp, "function", "coalesceOutboxOp must be exported");
 
