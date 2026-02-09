@@ -143,13 +143,16 @@ test.describe("Promo system smoke tests", () => {
 
     await login(page);
 
-    // Check that admin functions are loaded
+    // Check that admin functions are loaded (including new wizard/CSV globals)
     const adminGlobals = await page.evaluate(() => {
       return {
         loadAdminDashboard: typeof (window as any).loadAdminDashboard,
         exportPromoCsv: typeof (window as any).exportPromoCsv,
         initCsvWizard: typeof (window as any).initCsvWizard,
         handleCsvUpload: typeof (window as any).handleCsvUpload,
+        downloadCsvTemplate: typeof (window as any).downloadCsvTemplate,
+        wizardPreviewNav: typeof (window as any).wizardPreviewNav,
+        wizardEditItem: typeof (window as any).wizardEditItem,
       };
     });
 
@@ -157,6 +160,36 @@ test.describe("Promo system smoke tests", () => {
     expect(adminGlobals.exportPromoCsv).toBe("function");
     expect(adminGlobals.initCsvWizard).toBe("function");
     expect(adminGlobals.handleCsvUpload).toBe("function");
+    expect(adminGlobals.downloadCsvTemplate).toBe("function");
+    expect(adminGlobals.wizardPreviewNav).toBe("function");
+    expect(adminGlobals.wizardEditItem).toBe("function");
+
+    expect(errors, errors.join("\n")).toHaveLength(0);
+  });
+
+  test("@smoke Seed promo wizard globals are available after login", async ({ page }) => {
+    const errors = captureHardErrors(page);
+    await setupPromoMocks(page);
+
+    await login(page);
+
+    const seedGlobals = await page.evaluate(() => {
+      return {
+        seedSearchBrand: typeof (window as any).seedSearchBrand,
+        seedScrapeSites: typeof (window as any).seedScrapeSites,
+        seedConfirmProducts: typeof (window as any).seedConfirmProducts,
+        seedPreviewNav: typeof (window as any).seedPreviewNav,
+        seedEditProduct: typeof (window as any).seedEditProduct,
+        seedSaveProductEdit: typeof (window as any).seedSaveProductEdit,
+      };
+    });
+
+    expect(seedGlobals.seedSearchBrand).toBe("function");
+    expect(seedGlobals.seedScrapeSites).toBe("function");
+    expect(seedGlobals.seedConfirmProducts).toBe("function");
+    expect(seedGlobals.seedPreviewNav).toBe("function");
+    expect(seedGlobals.seedEditProduct).toBe("function");
+    expect(seedGlobals.seedSaveProductEdit).toBe("function");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });

@@ -742,7 +742,7 @@ function _resolveUrl(href, base) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. importProductsToCatalog(pool, products)
+// 4. importProductsToCatalog(pool, products, options)
 // ---------------------------------------------------------------------------
 
 /**
@@ -750,29 +750,60 @@ function _resolveUrl(href, base) {
  * campaign_items.
  *
  * - promo_item_id = "seed-" + random 8-char hex
- * - tenant_id     = first existing tenant or "seed-tenant"
+ * - tenant_id     = options.tenantId or first existing tenant or "seed-tenant"
  * - campaign       = one campaign per import run (utm_campaign = 'seed_import_YYYYMMDD')
  *
  * @param {import('pg').Pool} pool
  * @param {Array<Object>} products
- * @returns {Promise<{imported: number, campaignId: string}>}
+ * @param {{tenantId?: string, mode?: string}} [options]
+ * @returns {Promise<{imported: number, campaignId: string, deleted: number}>}
  */
-async function importProductsToCatalog(pool, products) {
+async function importProductsToCatalog(pool, products, options) {
   if (!Array.isArray(products) || products.length === 0) {
-    return { imported: 0, campaignId: null };
+    return { imported: 0, campaignId: null, deleted: 0 };
   }
 
+  var opts = options || {};
+  var mode = opts.mode === "replace" ? "replace" : "append";
+
   // --- Resolve tenant_id ---
-  let tenantId = "seed-tenant";
-  try {
-    const tenantResult = await pool.query(
-      "SELECT tenant_id FROM tenants ORDER BY created_at ASC LIMIT 1"
-    );
-    if (tenantResult.rows[0]) {
-      tenantId = tenantResult.rows[0].tenant_id;
+  let tenantId = opts.tenantId || null;
+  if (!tenantId) {
+    tenantId = "seed-tenant";
+    try {
+      const tenantResult = await pool.query(
+        "SELECT tenant_id FROM tenants ORDER BY created_at ASC LIMIT 1"
+      );
+      if (tenantResult.rows[0]) {
+        tenantId = tenantResult.rows[0].tenant_id;
+      }
+    } catch (_e) {
+      // Use fallback "seed-tenant"
     }
-  } catch (_e) {
-    // Use fallback "seed-tenant"
+  }
+
+  // --- Replace mode: delete existing seed items for this tenant ---
+  let deleted = 0;
+  if (mode === "replace") {
+    try {
+      // Delete campaign_items linked to seed promo_items for this tenant
+      await pool.query(
+        `DELETE FROM campaign_items WHERE promo_item_id IN (
+           SELECT promo_item_id FROM promo_items
+           WHERE tenant_id = $1 AND promo_item_id LIKE 'seed-%'
+         )`,
+        [tenantId]
+      );
+      // Delete seed promo_items
+      const delResult = await pool.query(
+        `DELETE FROM promo_items WHERE tenant_id = $1 AND promo_item_id LIKE 'seed-%'`,
+        [tenantId]
+      );
+      deleted = delResult.rowCount || 0;
+      console.log(`importProductsToCatalog: replace mode — deleted ${deleted} seed items for tenant ${tenantId}`);
+    } catch (delErr) {
+      console.warn("importProductsToCatalog: replace delete error:", delErr.message);
+    }
   }
 
   // --- Create or reuse today's seed campaign ---
@@ -861,7 +892,7 @@ async function importProductsToCatalog(pool, products) {
     }
   }
 
-  return { imported, campaignId };
+  return { imported, campaignId, deleted };
 }
 
 // ---------------------------------------------------------------------------
