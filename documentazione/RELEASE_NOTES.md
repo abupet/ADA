@@ -25,6 +25,9 @@
   - Azioni: Crawl singolo, Valida singolo, Crawl batch, Valida batch, Elimina
   - Nuova voce nav "Fonti Tips" visibile solo per super_admin
 - CSS: Stili dedicati per source-card, status badge, topic tags, crawl-log-table, sources-summary
+- **MIGRAZIONI PROD PENDENTI** (da applicare sul DB prod Render/Frankfurt prima del merge `dev -> main`):
+  1. `sql/010_extended_desc_url_check.sql` (da v7.2.21 — aggiunge `extended_description`, `url_check_status`, `url_last_checked_at` a `promo_items`)
+  2. `sql/011_tips_sources_cache.sql` (da v7.3.2 — crea tabelle `tips_sources` e `tips_sources_crawl_log`, seed 16 fonti)
 
 ## v7.3.1 (2026-02-09)
 - Feat: Catalogo — filtri avanzati per priorità, immagine, extended description, categoria e specie con dropdown nella barra filtri
