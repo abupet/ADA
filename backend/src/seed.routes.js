@@ -1,11 +1,13 @@
 const express = require('express');
 const { startSeedJob, getJobStatus, cancelJob, wipeSeededData } = require('./seed.service');
+const { requireRole } = require('./rbac.middleware');
 
 function seedRouter({ requireAuth, getOpenAiKey }) {
     const router = express.Router();
+    const adminRoles = ['super_admin'];
 
     // POST /api/seed/start — Start async seed job
-    router.post('/api/seed/start', requireAuth, async (req, res) => {
+    router.post('/api/seed/start', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { getPool } = require('./db');
             const pool = getPool();
@@ -24,24 +26,25 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             }
             return res.json({ jobId: result.jobId, status: 'started' });
         } catch (e) {
-            return res.status(500).json({ error: e.message });
+            console.error("POST /api/seed/start error", e);
+            return res.status(500).json({ error: "server_error" });
         }
     });
 
     // GET /api/seed/status — Poll current job status
-    router.get('/api/seed/status', requireAuth, (req, res) => {
+    router.get('/api/seed/status', requireAuth, requireRole(adminRoles), (req, res) => {
         const status = getJobStatus();
         return res.json(status || { status: 'idle' });
     });
 
     // POST /api/seed/cancel — Cancel running job
-    router.post('/api/seed/cancel', requireAuth, (req, res) => {
+    router.post('/api/seed/cancel', requireAuth, requireRole(adminRoles), (req, res) => {
         cancelJob();
         return res.json({ status: 'cancel_requested' });
     });
 
     // POST /api/seed/wipe — Delete all seeded data
-    router.post('/api/seed/wipe', requireAuth, async (req, res) => {
+    router.post('/api/seed/wipe', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { getPool } = require('./db');
             const pool = getPool();
@@ -49,12 +52,13 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const result = await wipeSeededData(pool, ownerUserId);
             return res.json({ status: 'wiped', details: result });
         } catch (e) {
-            return res.status(500).json({ error: e.message });
+            console.error("POST /api/seed/wipe error", e);
+            return res.status(500).json({ error: "server_error" });
         }
     });
 
     // GET /api/seed/config — Return default configuration
-    router.get('/api/seed/config', requireAuth, (req, res) => {
+    router.get('/api/seed/config', requireAuth, requireRole(adminRoles), (req, res) => {
         return res.json({
             petCount: 10,
             soapPerPet: 3,
@@ -75,7 +79,7 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
     // ============================================
 
     // POST /api/seed/promo/search-brand — Search brand sites
-    router.post('/api/seed/promo/search-brand', requireAuth, async (req, res) => {
+    router.post('/api/seed/promo/search-brand', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { searchBrandSites } = require('./seed.promogen');
             const brands = (req.body || {}).brands || '';
@@ -83,12 +87,13 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const result = await searchBrandSites(brands, openAiKey);
             return res.json(result);
         } catch (e) {
-            return res.status(500).json({ error: e.message });
+            console.error("POST /api/seed/promo/search-brand error", e);
+            return res.status(500).json({ error: "server_error" });
         }
     });
 
     // POST /api/seed/promo/scrape-sites — Scrape products from sites
-    router.post('/api/seed/promo/scrape-sites', requireAuth, async (req, res) => {
+    router.post('/api/seed/promo/scrape-sites', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { scrapeProductsFromSites } = require('./seed.promogen');
             const siteUrls = (req.body || {}).siteUrls || [];
@@ -96,12 +101,13 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const result = await scrapeProductsFromSites(siteUrls, openAiKey);
             return res.json({ products: result });
         } catch (e) {
-            return res.status(500).json({ error: e.message });
+            console.error("POST /api/seed/promo/scrape-sites error", e);
+            return res.status(500).json({ error: "server_error" });
         }
     });
 
     // POST /api/seed/promo/import — Import selected products to catalog
-    router.post('/api/seed/promo/import', requireAuth, async (req, res) => {
+    router.post('/api/seed/promo/import', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { importProductsToCatalog } = require('./seed.promogen');
             const { getPool } = require('./db');
@@ -113,12 +119,13 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const result = await importProductsToCatalog(pool, products, { tenantId, mode });
             return res.json(result);
         } catch (e) {
-            return res.status(500).json({ error: e.message });
+            console.error("POST /api/seed/promo/import error", e);
+            return res.status(500).json({ error: "server_error" });
         }
     });
 
     // GET /api/seed/promo/tenants — List available tenants for the seed promo wizard
-    router.get('/api/seed/promo/tenants', requireAuth, async (req, res) => {
+    router.get('/api/seed/promo/tenants', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { getPool } = require('./db');
             const pool = getPool();
@@ -127,7 +134,8 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             );
             return res.json({ tenants: result.rows });
         } catch (e) {
-            return res.status(500).json({ error: e.message });
+            console.error("GET /api/seed/promo/tenants error", e);
+            return res.status(500).json({ error: "server_error" });
         }
     });
 

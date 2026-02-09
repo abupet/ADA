@@ -463,7 +463,28 @@ app.post("/api/chat", async (req, res) => {
         usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       });
     }
-    return await proxyOpenAiRequest(res, "chat/completions", req.body);
+    // --- Input validation (security hardening) ---
+    const body = req.body || {};
+    const ALLOWED_CHAT_MODELS = ["gpt-4o-mini", "gpt-4o"];
+    const MAX_CHAT_TOKENS = 4096;
+
+    if (body.model && !ALLOWED_CHAT_MODELS.includes(body.model)) {
+      return res.status(400).json({ error: "model_not_allowed", allowed: ALLOWED_CHAT_MODELS });
+    }
+
+    const sanitizedPayload = {
+      model: ALLOWED_CHAT_MODELS.includes(body.model) ? body.model : "gpt-4o-mini",
+      messages: body.messages,
+      temperature: body.temperature !== undefined ? Math.min(Math.max(Number(body.temperature) || 0, 0), 2) : undefined,
+      max_tokens: body.max_tokens ? Math.min(Number(body.max_tokens) || MAX_CHAT_TOKENS, MAX_CHAT_TOKENS) : MAX_CHAT_TOKENS,
+    };
+    Object.keys(sanitizedPayload).forEach(k => sanitizedPayload[k] === undefined && delete sanitizedPayload[k]);
+
+    if (!sanitizedPayload.messages || !Array.isArray(sanitizedPayload.messages) || sanitizedPayload.messages.length === 0) {
+      return res.status(400).json({ error: "messages_required" });
+    }
+
+    return await proxyOpenAiRequest(res, "chat/completions", sanitizedPayload);
   } catch (error) {
     return res.status(500).json({ error: "Chat proxy failed" });
   }
@@ -556,6 +577,25 @@ app.post("/api/tts", async (req, res) => {
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
 
+  const body = req.body || {};
+  const ALLOWED_TTS_MODELS = ["tts-1", "tts-1-hd"];
+  const ALLOWED_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+  const MAX_TTS_INPUT_LENGTH = 4096;
+
+  if (!body.input || typeof body.input !== "string" || body.input.trim().length === 0) {
+    return res.status(400).json({ error: "input_required" });
+  }
+  if (body.input.length > MAX_TTS_INPUT_LENGTH) {
+    return res.status(400).json({ error: "input_too_long", max_length: MAX_TTS_INPUT_LENGTH });
+  }
+
+  const sanitizedPayload = {
+    model: ALLOWED_TTS_MODELS.includes(body.model) ? body.model : "tts-1",
+    input: body.input.trim(),
+    voice: ALLOWED_VOICES.includes(body.voice) ? body.voice : "alloy",
+    response_format: body.response_format === "opus" ? "opus" : "mp3",
+  };
+
   let response;
   try {
     response = await fetch(`${openaiBaseUrl}/audio/speech`, {
@@ -564,7 +604,7 @@ app.post("/api/tts", async (req, res) => {
         Authorization: `Bearer ${oaKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(req.body ?? {}),
+      body: JSON.stringify(sanitizedPayload),
     });
   } catch (error) {
     return res.status(502).json({ error: "OpenAI request failed" });

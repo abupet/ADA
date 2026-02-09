@@ -329,6 +329,61 @@
   })();
 
   // ---------------------------------------------------------------------------
+  // SEC-10  Seed routes must have RBAC
+  // ---------------------------------------------------------------------------
+
+  (function checkSeedRoutesRbac() {
+    const CHECK = "SEC-10";
+    const seedFile = path.resolve(__dirname, "../../backend/src/seed.routes.js");
+    if (!fs.existsSync(seedFile)) { warn(CHECK, "seed.routes.js not found"); return; }
+    const content = fs.readFileSync(seedFile, "utf8");
+    if (!content.includes("requireRole")) {
+      fail(CHECK, "seed.routes.js missing requireRole"); return;
+    }
+    const routeCount = (content.match(/router\.(get|post|put|patch|delete)\(/g) || []).length;
+    const rbacCount = (content.match(/requireRole\(adminRoles\)/g) || []).length;
+    if (rbacCount < routeCount) fail(CHECK, routeCount + " routes but only " + rbacCount + " with requireRole");
+    else pass(CHECK, "All seed routes RBAC-protected");
+  })();
+
+  // ---------------------------------------------------------------------------
+  // SEC-11  No e.message leaked to client
+  // ---------------------------------------------------------------------------
+
+  (function checkNoErrorMessageLeaks() {
+    const CHECK = "SEC-11";
+    const backendDir = path.resolve(__dirname, "../../backend/src");
+    const files = fs.readdirSync(backendDir).filter(function(f) { return f.endsWith(".routes.js") || f === "server.js"; });
+    let leaks = 0;
+    for (const file of files) {
+      const lines = fs.readFileSync(path.join(backendDir, file), "utf8").split("\n");
+      lines.forEach(function(line, i) {
+        if (/res\.status\(\d+\)\.json\(\s*\{\s*error:\s*e\.message/i.test(line)) {
+          fail(CHECK, file + ":" + (i+1) + " leaks e.message"); leaks++;
+        }
+      });
+    }
+    if (leaks === 0) pass(CHECK, "No e.message leaks in routes");
+  })();
+
+  // ---------------------------------------------------------------------------
+  // SEC-12  AI endpoints must not forward raw req.body
+  // ---------------------------------------------------------------------------
+
+  (function checkAiEndpointValidation() {
+    const CHECK = "SEC-12";
+    const serverFile = path.resolve(__dirname, "../../backend/src/server.js");
+    if (!fs.existsSync(serverFile)) { warn(CHECK, "server.js not found"); return; }
+    const content = fs.readFileSync(serverFile, "utf8");
+    if (content.includes('proxyOpenAiRequest(res, "chat/completions", req.body)')) fail(CHECK, "raw req.body to chat");
+    else if (!content.includes("ALLOWED_CHAT_MODELS")) fail(CHECK, "missing ALLOWED_CHAT_MODELS");
+    else pass(CHECK, "Chat endpoint validated");
+    if (/body:\s*JSON\.stringify\(req\.body/.test(content)) fail(CHECK, "raw req.body to TTS");
+    else if (!content.includes("ALLOWED_TTS_MODELS")) fail(CHECK, "missing ALLOWED_TTS_MODELS");
+    else pass(CHECK, "TTS endpoint validated");
+  })();
+
+  // ---------------------------------------------------------------------------
   // Summary
   // ---------------------------------------------------------------------------
 
