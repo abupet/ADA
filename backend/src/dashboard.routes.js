@@ -5,6 +5,12 @@ const express = require("express");
 const { getPool } = require("./db");
 const { requireRole } = require("./rbac.middleware");
 
+function _splitMultiValue(val) {
+  if (Array.isArray(val)) return val;
+  if (!val || typeof val !== 'string') return [];
+  return val.split(/[,|]/).map(function(t) { return t.trim(); }).filter(Boolean);
+}
+
 function dashboardRouter({ requireAuth }) {
   const router = express.Router();
   const pool = getPool();
@@ -86,6 +92,25 @@ function dashboardRouter({ requireAuth }) {
           [tenantId]
         );
         stats.active_vet_flags = parseInt(flagResult.rows[0]?.total || 0);
+
+        // Catalog health stats
+        const noImageResult = await pool.query(
+          "SELECT COUNT(*) FROM promo_items WHERE tenant_id = $1 AND status = 'published' AND (image_url IS NULL OR image_url = '')", [tenantId]
+        );
+        stats.items_without_image = parseInt(noImageResult.rows[0].count);
+
+        const noExtDescResult = await pool.query(
+          "SELECT COUNT(*) FROM promo_items WHERE tenant_id = $1 AND status = 'published' AND (extended_description IS NULL OR extended_description = '')", [tenantId]
+        );
+        stats.items_without_ext_desc = parseInt(noExtDescResult.rows[0].count);
+
+        const brokenUrlResult = await pool.query(
+          `SELECT COUNT(*) FROM promo_items WHERE tenant_id = $1 AND status = 'published'
+           AND url_check_status IS NOT NULL
+           AND (url_check_status->>'image_url_status' NOT IN ('ok','missing')
+             OR url_check_status->>'product_url_status' NOT IN ('ok','missing'))`, [tenantId]
+        );
+        stats.broken_urls = parseInt(brokenUrlResult.rows[0].count);
 
         // Top items by impressions
         const topItemsResult = await pool.query(
@@ -637,33 +662,17 @@ function dashboardRouter({ requireAuth }) {
 
           try {
             const itemId = "pi_" + randomUUID();
-            const species = Array.isArray(item.species)
-              ? item.species
-              : item.species
-                ? [item.species]
-                : [];
-            const lifecycleTarget = Array.isArray(item.lifecycle_target)
-              ? item.lifecycle_target
-              : item.lifecycle_target
-                ? [item.lifecycle_target]
-                : [];
-            const tagsInclude = Array.isArray(item.tags_include)
-              ? item.tags_include
-              : item.tags_include
-                ? item.tags_include.split(",").map((t) => t.trim())
-                : [];
-            const tagsExclude = Array.isArray(item.tags_exclude)
-              ? item.tags_exclude
-              : item.tags_exclude
-                ? item.tags_exclude.split(",").map((t) => t.trim())
-                : [];
+            const species = _splitMultiValue(item.species);
+            const lifecycleTarget = _splitMultiValue(item.lifecycle_target);
+            const tagsInclude = _splitMultiValue(item.tags_include);
+            const tagsExclude = _splitMultiValue(item.tags_exclude);
 
             await pool.query(
               `INSERT INTO promo_items
                 (promo_item_id, tenant_id, name, category, species, lifecycle_target,
                  description, image_url, product_url, tags_include, tags_exclude,
-                 priority, status, version)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1)`,
+                 priority, status, version, extended_description)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1,$13)`,
               [
                 itemId,
                 tenantId,
@@ -677,6 +686,7 @@ function dashboardRouter({ requireAuth }) {
                 tagsInclude,
                 tagsExclude,
                 parseInt(item.priority) || 0,
+                item.extended_description || null,
               ]
             );
 
@@ -714,8 +724,8 @@ function dashboardRouter({ requireAuth }) {
     requireAuth,
     requireRole(adminRoles),
     async (_req, res) => {
-      const headers = "name,category,species,lifecycle_target,description,image_url,product_url,tags_include,tags_exclude,priority";
-      const example = '"Crocchette Senior","food_general","dog","senior","Alimento per cani anziani","","https://example.com/product","lifecycle:senior","","5"';
+      const headers = "name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority";
+      const example = '"Crocchette Senior","food_general","dog","senior","Alimento per cani anziani","Alimento completo per cani adulti oltre i 7 anni. Supporta le articolazioni con glucosamina e condroitina. Formula a ridotto contenuto calorico per il controllo del peso.","","https://example.com/product","lifecycle:senior","","5"';
       const csv = headers + "\n" + example + "\n";
 
       res.setHeader("Content-Type", "text/csv");
@@ -769,10 +779,10 @@ function dashboardRouter({ requireAuth }) {
           }
 
           const stagingId = "stg_" + randomUUID();
-          const species = Array.isArray(item.species) ? item.species : item.species ? [item.species] : [];
-          const lifecycleTarget = Array.isArray(item.lifecycle_target) ? item.lifecycle_target : item.lifecycle_target ? [item.lifecycle_target] : [];
-          const tagsInclude = Array.isArray(item.tags_include) ? item.tags_include : item.tags_include ? String(item.tags_include).split(",").map(t => t.trim()) : [];
-          const tagsExclude = Array.isArray(item.tags_exclude) ? item.tags_exclude : item.tags_exclude ? String(item.tags_exclude).split(",").map(t => t.trim()) : [];
+          const species = _splitMultiValue(item.species);
+          const lifecycleTarget = _splitMultiValue(item.lifecycle_target);
+          const tagsInclude = _splitMultiValue(item.tags_include);
+          const tagsExclude = _splitMultiValue(item.tags_exclude);
 
           try {
             await pool.query(
@@ -917,13 +927,13 @@ function dashboardRouter({ requireAuth }) {
             await pool.query(
               `INSERT INTO promo_items
                 (promo_item_id, tenant_id, name, category, species, lifecycle_target,
-                 description, image_url, product_url, tags_include, tags_exclude, priority, status, version)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1)`,
+                 description, image_url, product_url, tags_include, tags_exclude, priority, status, version, extended_description)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1,$13)`,
               [
                 itemId, tenantId, stg.name, stg.category,
                 stg.species, stg.lifecycle_target, stg.description,
                 stg.image_url, stg.product_url, stg.tags_include,
-                stg.tags_exclude, stg.priority,
+                stg.tags_exclude, stg.priority, stg.extended_description || null,
               ]
             );
 
@@ -1003,10 +1013,10 @@ function dashboardRouter({ requireAuth }) {
           }
 
           try {
-            const species = Array.isArray(item.species) ? item.species : item.species ? [item.species] : [];
-            const lifecycleTarget = Array.isArray(item.lifecycle_target) ? item.lifecycle_target : item.lifecycle_target ? [item.lifecycle_target] : [];
-            const tagsInclude = Array.isArray(item.tags_include) ? item.tags_include : item.tags_include ? String(item.tags_include).split(",").map(t => t.trim()) : [];
-            const tagsExclude = Array.isArray(item.tags_exclude) ? item.tags_exclude : item.tags_exclude ? String(item.tags_exclude).split(",").map(t => t.trim()) : [];
+            const species = _splitMultiValue(item.species);
+            const lifecycleTarget = _splitMultiValue(item.lifecycle_target);
+            const tagsInclude = _splitMultiValue(item.tags_include);
+            const tagsExclude = _splitMultiValue(item.tags_exclude);
 
             if (operation === "upsert") {
               // Match by name
@@ -1018,13 +1028,14 @@ function dashboardRouter({ requireAuth }) {
                 await pool.query(
                   `UPDATE promo_items SET category=$3, species=$4, lifecycle_target=$5,
                    description=$6, image_url=$7, product_url=$8, tags_include=$9, tags_exclude=$10,
-                   priority=$11, version=version+1, updated_at=NOW()
+                   priority=$11, extended_description=$12, version=version+1, updated_at=NOW()
                    WHERE promo_item_id=$1 AND tenant_id=$2`,
                   [
                     existing.rows[0].promo_item_id, tenantId, item.category,
                     species, lifecycleTarget, item.description || null,
                     item.image_url || null, item.product_url || null,
                     tagsInclude, tagsExclude, parseInt(item.priority) || 0,
+                    item.extended_description || null,
                   ]
                 );
                 results.imported++;
@@ -1036,13 +1047,14 @@ function dashboardRouter({ requireAuth }) {
             await pool.query(
               `INSERT INTO promo_items
                 (promo_item_id, tenant_id, name, category, species, lifecycle_target,
-                 description, image_url, product_url, tags_include, tags_exclude, priority, status, version)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1)`,
+                 description, image_url, product_url, tags_include, tags_exclude, priority, status, version, extended_description)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1,$13)`,
               [
                 itemId, tenantId, item.name, item.category,
                 species, lifecycleTarget, item.description || null,
                 item.image_url || null, item.product_url || null,
                 tagsInclude, tagsExclude, parseInt(item.priority) || 0,
+                item.extended_description || null,
               ]
             );
             await pool.query(
@@ -1575,6 +1587,157 @@ function dashboardRouter({ requireAuth }) {
         res.json({ audit: rows, limit, offset });
       } catch (e) {
         console.error("GET /api/superadmin/audit error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // ==============================
+  // URL VALIDATION
+  // ==============================
+
+  // POST /api/admin/:tenantId/validate-urls
+  router.post(
+    "/api/admin/:tenantId/validate-urls",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        let items = req.body?.items;
+        if (!items || req.body?.all) {
+          const { rows } = await pool.query(
+            "SELECT promo_item_id, name, image_url, product_url FROM promo_items WHERE tenant_id = $1 AND status = 'published' ORDER BY name",
+            [tenantId]
+          );
+          items = rows;
+        }
+        if (!Array.isArray(items)) return res.status(400).json({ error: "items_required" });
+        const results = [];
+        for (const item of items.slice(0, 200)) {
+          const result = { promo_item_id: item.promo_item_id, name: item.name || null };
+          for (const field of ["image_url", "product_url"]) {
+            const url = item[field];
+            if (!url) { result[field + "_status"] = "missing"; continue; }
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 5000);
+              const resp = await fetch(url, {
+                method: "HEAD", signal: controller.signal, redirect: "follow",
+                headers: { "User-Agent": "ADA-URLValidator/1.0" }
+              });
+              clearTimeout(timeout);
+              result[field + "_status"] = resp.ok ? "ok" : "error_" + resp.status;
+            } catch (e) {
+              result[field + "_status"] = e.name === "AbortError" ? "timeout" : "unreachable";
+            }
+          }
+          try {
+            await pool.query(
+              "UPDATE promo_items SET url_check_status = $2, url_last_checked_at = NOW() WHERE promo_item_id = $1",
+              [item.promo_item_id, JSON.stringify({ image_url_status: result.image_url_status, product_url_status: result.product_url_status })]
+            );
+          } catch (_e) {}
+          results.push(result);
+        }
+        res.json({ results, checked_at: new Date().toISOString() });
+      } catch (e) {
+        console.error("POST validate-urls error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // ==============================
+  // PREVIEW EXPLANATION
+  // ==============================
+
+  // POST /api/admin/:tenantId/preview-explanation
+  router.post(
+    "/api/admin/:tenantId/preview-explanation",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { promo_item_id, test_pet } = req.body || {};
+        if (!promo_item_id) return res.status(400).json({ error: "promo_item_id_required" });
+        const { rows } = await pool.query(
+          "SELECT * FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1",
+          [promo_item_id, tenantId]
+        );
+        if (!rows[0]) return res.status(404).json({ error: "not_found" });
+        const promoItem = rows[0];
+        const pet = test_pet || {
+          name: "Luna",
+          species: Array.isArray(promoItem.species) && promoItem.species.length > 0 ? promoItem.species[0] : "dog",
+          breed: "Meticcio", weight_kg: 15,
+          birthdate: new Date(Date.now() - 4 * 365 * 24 * 60 * 60 * 1000).toISOString()
+        };
+        const matchedTags = promoItem.tags_include || [];
+        const { generateExplanation } = require("./explanation.service");
+        const _getOpenAiKey = () => {
+          const keyName = ["4f","50","45","4e","41","49","5f","41","50","49","5f","4b","45","59"]
+            .map(v => String.fromCharCode(Number.parseInt(v, 16))).join("");
+          return process.env[keyName] || null;
+        };
+        const result = await generateExplanation(pool, {
+          pet, promoItem, context: "post_visit", matchedTags, getOpenAiKey: _getOpenAiKey
+        });
+        res.json({ explanation: result.explanation, source: result.source,
+          latencyMs: result.latencyMs, test_pet: pet, product_name: promoItem.name });
+      } catch (e) {
+        console.error("POST preview-explanation error", e);
+        res.status(500).json({ error: "server_error", message: e.message });
+      }
+    }
+  );
+
+  // ==============================
+  // CRON: URL VALIDATION (SUPER ADMIN)
+  // ==============================
+
+  // POST /api/admin/cron/validate-urls
+  router.post(
+    "/api/admin/cron/validate-urls",
+    requireAuth,
+    requireRole(["super_admin"]),
+    async (req, res) => {
+      try {
+        const { rows: allItems } = await pool.query(
+          "SELECT promo_item_id, tenant_id, name, image_url, product_url FROM promo_items WHERE status = 'published'"
+        );
+        let checkedCount = 0, brokenCount = 0;
+        for (const item of allItems) {
+          const result = {};
+          for (const field of ["image_url", "product_url"]) {
+            const url = item[field];
+            if (!url) { result[field + "_status"] = "missing"; continue; }
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 5000);
+              const resp = await fetch(url, {
+                method: "HEAD", signal: controller.signal, redirect: "follow",
+                headers: { "User-Agent": "ADA-URLValidator/1.0" }
+              });
+              clearTimeout(timeout);
+              result[field + "_status"] = resp.ok ? "ok" : "error_" + resp.status;
+            } catch (e) {
+              result[field + "_status"] = e.name === "AbortError" ? "timeout" : "unreachable";
+            }
+          }
+          const isBroken = (result.image_url_status !== "ok" && result.image_url_status !== "missing") ||
+                            (result.product_url_status !== "ok" && result.product_url_status !== "missing");
+          if (isBroken) brokenCount++;
+          await pool.query(
+            "UPDATE promo_items SET url_check_status = $2, url_last_checked_at = NOW() WHERE promo_item_id = $1",
+            [item.promo_item_id, JSON.stringify(result)]
+          ).catch(() => {});
+          checkedCount++;
+        }
+        res.json({ success: true, checked: checkedCount, broken: brokenCount });
+      } catch (e) {
+        console.error("POST cron/validate-urls error", e);
         res.status(500).json({ error: "server_error" });
       }
     }

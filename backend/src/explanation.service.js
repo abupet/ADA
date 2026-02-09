@@ -110,7 +110,7 @@ Sii professionale, empatico e conciso. Non dare consigli medici specifici.`;
 
     const userPrompt = `Pet: ${JSON.stringify(petSummary)}
 Prodotto: ${promoItem?.name || "Prodotto"} (${promoItem?.category || "generico"})
-Descrizione prodotto: ${promoItem?.description || "N/A"}
+Descrizione prodotto: ${promoItem?.extended_description || promoItem?.description || "N/A"}
 Contesto: ${context || "generico"}
 
 Rispondi con questo JSON:
