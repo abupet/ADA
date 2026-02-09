@@ -140,9 +140,12 @@ function logout() {
 }
 
 function handleAuthFailure() {
+    // Guard: skip if already on login screen (prevents clearing fields on repeated 401s)
+    const loginScreen = document.getElementById('loginScreen');
+    if (loginScreen && loginScreen.style.display === 'flex') return;
+
     localStorage.removeItem('ada_session');
     clearAuthToken();
-    const loginScreen = document.getElementById('loginScreen');
     const appContainer = document.getElementById('appContainer');
     if (appContainer) appContainer.classList.remove('active');
     if (loginScreen) loginScreen.style.display = 'flex';
@@ -151,11 +154,6 @@ function handleAuthFailure() {
         loginError.textContent = 'Sessione scaduta. Accedi di nuovo.';
         loginError.style.display = 'block';
     }
-    // Clear login form fields
-    const emailInput = document.getElementById('emailInput');
-    if (emailInput) emailInput.value = '';
-    const passwordInput = document.getElementById('passwordInput');
-    if (passwordInput) passwordInput.value = '';
 }
 
 // ============================================
