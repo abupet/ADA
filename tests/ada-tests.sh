@@ -34,10 +34,14 @@ ENV_FILE="$REPO_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
   # Parse .env: skip comments and empty lines, export vars
   while IFS='=' read -r key value; do
+    # Strip Windows carriage returns
+    key="${key//$'\r'/}"
+    value="${value//$'\r'/}"
     # Skip comments and empty
     [[ -z "$key" || "$key" == \#* ]] && continue
     # Trim whitespace
     key="$(echo "$key" | xargs)"
+    [[ -z "$key" ]] && continue
     # Remove surrounding quotes from value
     value="$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
     # Only export if not already set (env takes precedence)
