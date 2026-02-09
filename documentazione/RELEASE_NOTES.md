@@ -28,6 +28,7 @@
 - Fix: Parser import — supporto separatore `|` (pipe) oltre a `,` nei campi multi-valore (species, lifecycle_target, tags_include, tags_exclude) con nuovo helper `_splitMultiValue()`
 - DB: 3 nuovi tag clinici nel Tag Dictionary: `clinical:cardiac`, `clinical:endocrine`, `clinical:hepatic`
 - DB: Migration `010_extended_desc_url_check.sql`
+- ⚠️ **MIGRAZIONE PROD PENDENTE**: prima del merge `dev → main`, applicare `sql/010_extended_desc_url_check.sql` sul DB prod (Render/Frankfurt)
 
 ## v7.2.20 (2026-02-09)
 - Refactor: rinominata directory `docs/` → `frontend/` per chiarezza (era la SPA, non documentazione)
