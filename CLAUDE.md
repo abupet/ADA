@@ -37,6 +37,16 @@ Never wait for the user to paste CI logs. Always check CI results autonomously.
 - Frontend serve: `npm run serve` (port 4173)
 - Backend: `node backend/src/server.js` (port 3000)
 
+## Running Tests Locally (ALWAYS follow this)
+
+Before running Playwright tests locally, **always start the servers first**:
+
+1. `npm run serve` (background — port 4173)
+2. `MODE=MOCK node backend/src/server.js` (background — port 3000)
+3. **Then** run `npx playwright test --grep "@smoke"`
+
+Do NOT use `npm run test:ci` on Windows (has `spawnSync` ENOENT issues). Use `npx playwright test` directly.
+
 ## Mandatory Reads Before Coding (ALWAYS follow this)
 
 Before making ANY code change, read the relevant files:
