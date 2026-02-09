@@ -231,7 +231,8 @@
 
         // Export button
         html.push('<div class="admin-section">');
-        html.push('<button class="btn btn-secondary" onclick="exportPromoCsv(\'' + period + '\')">📥 Esporta CSV eventi</button>');
+        html.push('<button class="btn btn-secondary" onclick="exportPromoCsv(\'' + period + '\')">📥 Esporta CSV eventi</button> ');
+        html.push('<button class="btn btn-secondary" onclick="exportPromoXlsx(\'' + period + '\')">📥 Esporta XLSX</button>');
         html.push('</div>');
 
         container.innerHTML = html.join('');
@@ -288,8 +289,8 @@
 
         var html = [
             '<div class="wizard-step">',
-            '<h4>Step 1: Carica file CSV</h4>',
-            '<p>Formato: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority</p>',
+            '<h4>Step 1: Carica file</h4>',
+            '<p>Formato accettato: CSV o XLSX. Colonne: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority</p>',
             '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">',
             '<div>',
             '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>',
@@ -302,8 +303,9 @@
             '</div>',
             '</div>',
             '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">',
-            '<input type="file" id="csvFileInput" accept=".csv,.txt" onchange="handleCsvUpload(event)">',
+            '<input type="file" id="csvFileInput" accept=".csv,.txt,.xlsx,.xls" onchange="handleCsvUpload(event)">',
             '<button class="btn btn-secondary" onclick="downloadCsvTemplate()" style="font-size:12px;">Scarica template CSV</button>',
+            '<button class="btn btn-secondary" onclick="downloadXlsxTemplate()" style="font-size:12px;margin-left:4px;">Scarica template XLSX</button>',
             '</div>',
             '</div>',
             '<div id="wizard-step-2" class="wizard-step" style="display:none;">',
@@ -360,44 +362,71 @@
         var file = event.target.files[0];
         if (!file) return;
 
+        var ext = file.name.split('.').pop().toLowerCase();
+
+        if (ext === 'xlsx' || ext === 'xls') {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    var data = new Uint8Array(e.target.result);
+                    var workbook = XLSX.read(data, { type: 'array' });
+                    var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    _wizardParsedItems = XLSX.utils.sheet_to_json(firstSheet);
+                    if (_wizardParsedItems.length === 0) {
+                        if (typeof showToast === 'function') showToast('File vuoto o formato non valido.', 'error');
+                        return;
+                    }
+                    _showCsvPreview();
+                } catch (err) {
+                    if (typeof showToast === 'function') showToast('Errore nella lettura del file XLSX: ' + err.message, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            return;
+        }
+
         var reader = new FileReader();
         reader.onload = function (e) {
             var text = e.target.result;
             _wizardParsedItems = _parseCsv(text);
 
             if (_wizardParsedItems.length === 0) {
-                if (typeof showToast === 'function') showToast('CSV vuoto o formato non valido.', 'error');
+                if (typeof showToast === 'function') showToast('File vuoto o formato non valido.', 'error');
                 return;
             }
 
-            // Show preview
-            var step2 = document.getElementById('wizard-step-2');
-            if (step2) step2.style.display = '';
-
-            var preview = document.getElementById('wizard-preview');
-            if (preview) {
-                var html = '<p>' + _wizardParsedItems.length + ' righe trovate.</p>';
-                html += '<table>';
-                html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th></th></tr>';
-                _wizardParsedItems.forEach(function (item, idx) {
-                    var speciesArr = typeof item.species === 'string' ? item.species.split('|') : (Array.isArray(item.species) ? item.species : []);
-                    var lcArr = typeof item.lifecycle_target === 'string' ? item.lifecycle_target.split('|') : (Array.isArray(item.lifecycle_target) ? item.lifecycle_target : []);
-                    html += '<tr><td>' + (idx + 1) + '</td><td>' + _escapeHtml(item.name || '') +
-                        '</td><td>' + _escapeHtml(_translateCategory(item.category)) +
-                        '</td><td>' + _escapeHtml(_translateSpecies(speciesArr)) +
-                        '</td><td>' + _escapeHtml(_translateLifecycle(lcArr)) +
-                        '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escapeHtml((item.description || '').slice(0, 80)) +
-                        '</td><td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="wizardEditItem(' + idx + ')">Modifica</button></td></tr>';
-                });
-                html += '</table>';
-                preview.innerHTML = html;
-            }
-
-            // Show navigable card preview
-            _wizardPreviewIndex = 0;
-            _renderWizardCardPreview();
+            _showCsvPreview();
         };
         reader.readAsText(file);
+    }
+
+    function _showCsvPreview() {
+        // Show preview
+        var step2 = document.getElementById('wizard-step-2');
+        if (step2) step2.style.display = '';
+
+        var preview = document.getElementById('wizard-preview');
+        if (preview) {
+            var html = '<p>' + _wizardParsedItems.length + ' righe trovate.</p>';
+            html += '<table>';
+            html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th></th></tr>';
+            _wizardParsedItems.forEach(function (item, idx) {
+                var speciesArr = typeof item.species === 'string' ? item.species.split('|') : (Array.isArray(item.species) ? item.species : []);
+                var lcArr = typeof item.lifecycle_target === 'string' ? item.lifecycle_target.split('|') : (Array.isArray(item.lifecycle_target) ? item.lifecycle_target : []);
+                html += '<tr><td>' + (idx + 1) + '</td><td>' + _escapeHtml(item.name || '') +
+                    '</td><td>' + _escapeHtml(_translateCategory(item.category)) +
+                    '</td><td>' + _escapeHtml(_translateSpecies(speciesArr)) +
+                    '</td><td>' + _escapeHtml(_translateLifecycle(lcArr)) +
+                    '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escapeHtml((item.description || '').slice(0, 80)) +
+                    '</td><td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="wizardEditItem(' + idx + ')">Modifica</button></td></tr>';
+            });
+            html += '</table>';
+            preview.innerHTML = html;
+        }
+
+        // Show navigable card preview
+        _wizardPreviewIndex = 0;
+        _renderWizardCardPreview();
     }
 
     function _renderWizardCardPreview() {
@@ -706,7 +735,10 @@
                 }
 
                 // Edit name
-                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="promptEditTenant(\'' + _escapeHtml(tenant.tenant_id) + '\', \'' + _escapeHtml(tenant.name) + '\')">Modifica</button>');
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="promptEditTenant(\'' + _escapeHtml(tenant.tenant_id) + '\', \'' + _escapeHtml(tenant.name) + '\')">Modifica</button> ');
+
+                // Reset tenant data
+                html.push('<button class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="resetTenantData(\'' + _escapeHtml(tenant.tenant_id) + '\', \'' + _escapeHtml(tenant.name) + '\')">🗑️ Azzera dati</button>');
 
                 html.push('</td>');
                 html.push('</tr>');
@@ -789,6 +821,23 @@
             loadSuperadminTenants();
         }).catch(function () {
             if (typeof showToast === 'function') showToast('Errore aggiornamento tenant.', 'error');
+        });
+    }
+
+    function resetTenantData(tenantId, tenantName) {
+        if (!confirm('Sei sicuro di voler azzerare tutti i dati del tenant «' + tenantName + '»? Verranno cancellati catalogo, campagne, eventi e statistiche. Le associazioni utente rimarranno attive.')) return;
+        if (!confirm('ATTENZIONE: Questa operazione è irreversibile. Confermi di voler procedere?')) return;
+
+        fetchApi('/api/superadmin/tenants/' + encodeURIComponent(tenantId) + '/reset', {
+            method: 'POST'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function (data) {
+            if (typeof showToast === 'function') showToast('Dati del tenant azzerati con successo', 'success');
+            loadSuperadminTenants();
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore durante l\'azzeramento: ' + e.message, 'error');
         });
     }
 
@@ -1063,6 +1112,7 @@
         // Actions bar
         html.push('<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">');
         html.push('<button class="btn btn-primary" onclick="showCreateItemForm()">+ Nuovo Prodotto</button>');
+        html.push('<button class="btn btn-danger" style="font-size:12px;" onclick="adminDeleteAllCatalogItems()">🗑️ Cancella tutto il catalogo</button>');
         html.push('<select onchange="filterCatalogStatus(this.value)" style="padding:6px 12px;border:1px solid #ddd;border-radius:6px;">');
         html.push('<option value=""' + (!_catalogStatusFilter ? ' selected' : '') + '>Tutti</option>');
         ['draft', 'in_review', 'published', 'retired'].forEach(function (s) {
@@ -1125,6 +1175,7 @@
                     html.push('<button class="btn ' + btnClass + '" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="transitionItem(\'' + _escapeHtml(item.promo_item_id) + '\',\'' + t + '\')">' + t + '</button>');
                 });
                 html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')">Modifica</button>');
+                html.push('<button class="btn btn-danger" style="padding:2px 8px;font-size:11px;margin-left:4px;" onclick="adminDeleteCatalogItem(\'' + _escapeHtml(item.promo_item_id) + '\')">🗑️</button>');
                 html.push('</td></tr>');
             });
             html.push('</table>');
@@ -1352,6 +1403,7 @@
 
         html.push('<div style="margin-bottom:16px;">');
         html.push('<button class="btn btn-primary" onclick="showCreateCampaignForm()">+ Nuova Campagna</button>');
+        html.push('<button class="btn btn-danger" style="font-size:12px;margin-left:8px;" onclick="adminDeleteAllCampaigns()">🗑️ Cancella tutte le campagne</button>');
         html.push('</div>');
 
         // Create campaign form (hidden)
@@ -1392,7 +1444,8 @@
                     html.push('<button class="btn btn-success" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="updateCampaignStatus(\'' + _escapeHtml(camp.campaign_id) + '\',\'active\')">Riprendi</button>');
                 }
                 html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="manageCampaignItems(\'' + _escapeHtml(camp.campaign_id) + '\')">Prodotti</button>');
-                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="editCampaign(\'' + _escapeHtml(camp.campaign_id) + '\')">Modifica</button>');
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="editCampaign(\'' + _escapeHtml(camp.campaign_id) + '\')">Modifica</button>');
+                html.push('<button class="btn btn-danger" style="padding:2px 8px;font-size:11px;" onclick="adminDeleteCampaign(\'' + _escapeHtml(camp.campaign_id) + '\')">🗑️</button>');
                 html.push('</td></tr>');
             });
             html.push('</table>');
@@ -1914,6 +1967,152 @@
     }
 
     // =========================================================================
+    // XLSX Template + Export
+    // =========================================================================
+
+    function downloadXlsxTemplate() {
+        if (typeof XLSX === 'undefined') {
+            if (typeof showToast === 'function') showToast('Libreria SheetJS non disponibile.', 'error');
+            return;
+        }
+        var data = [
+            { name: 'Royal Canin Maxi Adult', category: 'food_general', species: 'dog', lifecycle_target: 'adult', description: 'Cibo secco per cani adulti taglia grande (26-44 kg). Ricetta con EPA e DHA per pelle e manto sani.', image_url: 'https://example.com/img/rc-maxi.jpg', product_url: 'https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult', tags_include: '', tags_exclude: '', priority: 0 },
+            { name: "Hill's Prescription Diet k/d", category: 'food_clinical', species: 'cat', lifecycle_target: 'senior', description: 'Dieta clinica per gatti con insufficienza renale. Ridotto contenuto di fosforo e sodio.', image_url: 'https://example.com/img/hills-kd.jpg', product_url: 'https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry', tags_include: 'clinical:renal', tags_exclude: '', priority: 5 },
+            { name: 'Frontline Tri-Act', category: 'antiparasitic', species: 'dog', lifecycle_target: 'puppy|adult|senior', description: 'Antiparassitario spot-on per cani. Protezione completa contro pulci, zecche e zanzare per 4 settimane.', image_url: 'https://example.com/img/frontline.jpg', product_url: 'https://www.frontlinecombo.it/prodotti/tri-act', tags_include: '', tags_exclude: '', priority: 3 }
+        ];
+        var ws = XLSX.utils.json_to_sheet(data);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Prodotti');
+        XLSX.writeFile(wb, 'promo_items_template.xlsx');
+    }
+
+    function exportPromoXlsx(period) {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) return;
+
+        var p = period || '30d';
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/export/events?period=' + p, { method: 'GET' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function (csvText) {
+                if (typeof XLSX === 'undefined') {
+                    if (typeof showToast === 'function') showToast('Libreria SheetJS non disponibile.', 'error');
+                    return;
+                }
+                var wb = XLSX.read(csvText, { type: 'string' });
+                XLSX.writeFile(wb, 'promo_events_' + tenantId + '_' + p + '.xlsx');
+            })
+            .catch(function () {
+                if (typeof showToast === 'function') showToast('Errore nel download XLSX.', 'error');
+            });
+    }
+
+    // =========================================================================
+    // Delete functions: Dashboard, Catalog, Campaigns
+    // =========================================================================
+
+    function _getAdminTenantId() {
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        return tenantId;
+    }
+
+    function adminDeleteAllDashboardData() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) {
+            if (typeof showToast === 'function') showToast('Seleziona un tenant prima.', 'error');
+            return;
+        }
+        if (!confirm('Sei sicuro di voler cancellare TUTTI gli eventi promozionali di questo tenant? Questa operazione è irreversibile.')) return;
+
+        fetchApi('/api/admin/promo-events?tenant_id=' + encodeURIComponent(tenantId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Tutti gli eventi cancellati con successo.', 'success');
+            loadAdminDashboard('admin-dashboard-content');
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore nella cancellazione: ' + e.message, 'error');
+        });
+    }
+
+    function adminDeleteAllCatalogItems() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        if (!confirm('Cancellare TUTTI i prodotti dal catalogo?')) return;
+        if (!confirm('Operazione irreversibile. Confermi?')) return;
+
+        fetchApi('/api/admin/catalog?tenant_id=' + encodeURIComponent(tenantId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Catalogo cancellato con successo.', 'success');
+            loadAdminCatalog();
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore nella cancellazione: ' + e.message, 'error');
+        });
+    }
+
+    function adminDeleteCatalogItem(itemId) {
+        if (!confirm('Cancellare questo prodotto dal catalogo?')) return;
+
+        fetchApi('/api/admin/catalog/' + encodeURIComponent(itemId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Prodotto cancellato.', 'success');
+            loadAdminCatalog();
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore nella cancellazione: ' + e.message, 'error');
+        });
+    }
+
+    function adminDeleteAllCampaigns() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        if (!confirm('Cancellare TUTTE le campagne di questo tenant?')) return;
+        if (!confirm('Operazione irreversibile. Confermi?')) return;
+
+        fetchApi('/api/admin/campaigns?tenant_id=' + encodeURIComponent(tenantId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Tutte le campagne cancellate con successo.', 'success');
+            loadAdminCampaigns();
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore nella cancellazione: ' + e.message, 'error');
+        });
+    }
+
+    function adminDeleteCampaign(campaignId) {
+        if (!confirm('Cancellare questa campagna?')) return;
+
+        fetchApi('/api/admin/campaigns/' + encodeURIComponent(campaignId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function () {
+            if (typeof showToast === 'function') showToast('Campagna cancellata.', 'success');
+            loadAdminCampaigns();
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore nella cancellazione: ' + e.message, 'error');
+        });
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -1960,6 +2159,7 @@
     global.createTenant           = createTenant;
     global.toggleTenantStatus     = toggleTenantStatus;
     global.promptEditTenant       = promptEditTenant;
+    global.resetTenantData        = resetTenantData;
     // Users
     global.loadSuperadminUsers    = loadSuperadminUsers;
     global.showCreateUserForm     = showCreateUserForm;
@@ -1986,5 +2186,14 @@
     global.auditResetFilter       = auditResetFilter;
     global.auditPrevPage          = auditPrevPage;
     global.auditNextPage          = auditNextPage;
+    // XLSX
+    global.downloadXlsxTemplate   = downloadXlsxTemplate;
+    global.exportPromoXlsx        = exportPromoXlsx;
+    // Delete functions
+    global.adminDeleteAllDashboardData = adminDeleteAllDashboardData;
+    global.adminDeleteAllCatalogItems  = adminDeleteAllCatalogItems;
+    global.adminDeleteCatalogItem      = adminDeleteCatalogItem;
+    global.adminDeleteAllCampaigns     = adminDeleteAllCampaigns;
+    global.adminDeleteCampaign         = adminDeleteCampaign;
 
 })(typeof window !== 'undefined' ? window : this);

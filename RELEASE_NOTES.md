@@ -1,5 +1,22 @@
 # Release Notes (cumulative)
 
+## v7.2.19 (2026-02-09)
+- Feat: Tenant Data Reset — pulsante "Azzera dati" nella pagina Gestione Tenant per cancellare tutti i contenuti di un tenant (catalogo, campagne, eventi, statistiche) mantenendo le associazioni utente
+  - Nuovo endpoint `POST /api/superadmin/tenants/:tenantId/reset` con transazione SQL
+  - Doppia conferma di sicurezza nel frontend
+- Feat: Importa/Esporta XLSX — il menu "Importa CSV" diventa "Importa file" e supporta sia CSV che Excel (.xlsx/.xls)
+  - Aggiunta libreria SheetJS per parsing e generazione file Excel
+  - Nuovo pulsante "Scarica template XLSX" nel wizard di importazione
+  - Nuovo pulsante "Esporta XLSX" nella dashboard promo accanto all'export CSV esistente
+- Feat: Import siti web da file TXT nel Seed Engine — possibilità di caricare un file .txt con URL di siti web (uno per riga)
+  - Altezze campi input uniformate nella sezione promo del Seed Engine
+  - Nuovo pulsante "Azzera siti e prodotti proposti" per reset della sezione
+- Feat: Cancellazione dati nelle pagine Dashboard Promo, Catalogo Prodotti e Campagne
+  - Dashboard: pulsante "Cancella tutti gli eventi" con endpoint `DELETE /api/admin/promo-events`
+  - Catalogo: pulsanti "Cancella tutto il catalogo" e "Cancella singolo prodotto" con endpoint `DELETE /api/admin/catalog`
+  - Campagne: pulsanti "Cancella tutte le campagne" e "Cancella singola campagna" con endpoint `DELETE /api/admin/campaigns`
+  - Tutte le operazioni di cancellazione multi-tabella usano transazioni SQL
+
 ## v7.2.18 (2026-02-09)
 - UX: Spinner di caricamento durante il login per feedback visivo (cold start backend Render)
   - Bottone "Accedi" disabilitato durante la richiesta per evitare doppi click
