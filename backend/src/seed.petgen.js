@@ -1888,8 +1888,165 @@ function generatePhotosForPet(pet, count) {
     return photos;
 }
 
+// ---------------------------------------------------------------------------
+// 5b. generateDemoCohort(tenantProducts) — 3 complementary demo profiles
+// ---------------------------------------------------------------------------
+
+function generateDemoCohort(tenantProducts) {
+  const profiles = [
+    {
+      label: 'healthy_young',
+      name: 'Luna',
+      species: 'dog',
+      breed: 'Labrador Retriever',
+      sex: 'F',
+      birthdate: _demoBirthdate(2),
+      weightKg: 28.5,
+      ownerName: 'Marco Bianchi',
+      ownerPhone: '+39 333 1234567',
+      microchip: '380260000000001',
+      numPathologies: 0,
+    },
+    {
+      label: 'clinical_adult',
+      name: 'Micio',
+      species: 'cat',
+      breed: 'Persiano',
+      sex: 'M',
+      birthdate: _demoBirthdate(7),
+      weightKg: 5.8,
+      ownerName: 'Anna Rossi',
+      ownerPhone: '+39 347 9876543',
+      microchip: '380260000000002',
+      numPathologies: 2,
+    },
+    {
+      label: 'senior_complex',
+      name: 'Rex',
+      species: 'dog',
+      breed: 'Golden Retriever',
+      sex: 'M',
+      birthdate: _demoBirthdate(12),
+      weightKg: 29.0,
+      ownerName: 'Luigi Verdi',
+      ownerPhone: '+39 339 5551234',
+      microchip: '380260000000003',
+      numPathologies: 3,
+    },
+  ];
+
+  const pets = [];
+
+  for (const profile of profiles) {
+    const breedData = BREED_PATHOLOGIES[profile.breed];
+    const breedPathologies = breedData ? breedData.pathologies : [];
+    const selectedPathologies = breedPathologies.slice(0, profile.numPathologies);
+
+    let weightKg = profile.weightKg;
+    for (const p of selectedPathologies) {
+      if (p.vitalAnomalies && p.vitalAnomalies.weight === 'high') {
+        weightKg = +(weightKg * 1.25).toFixed(1);
+      } else if (p.vitalAnomalies && p.vitalAnomalies.weight === 'tendency_high') {
+        weightKg = +(weightKg * 1.12).toFixed(1);
+      } else if (p.vitalAnomalies && p.vitalAnomalies.weight === 'low') {
+        weightKg = +(weightKg * 0.78).toFixed(1);
+      } else if (p.vitalAnomalies && p.vitalAnomalies.weight === 'tendency_low') {
+        weightKg = +(weightKg * 0.9).toFixed(1);
+      }
+    }
+
+    const medications = [];
+    for (const pa of selectedPathologies) {
+      for (const m of pa.typicalMeds) {
+        if (m.name !== 'N/A' && !m.name.startsWith('Fisioterapia') && !m.name.startsWith('Monitoraggio')) {
+          medications.push({
+            name: m.name,
+            dosage: m.dosage,
+            frequency: m.frequency,
+            duration: m.duration,
+            instructions: m.instructions,
+            forCondition: pa.name,
+          });
+        }
+      }
+    }
+
+    const knownConditions = selectedPathologies.map(pa => pa.name);
+
+    const lifestyle = {
+      environment: profile.label === 'healthy_young' ? 'casa con giardino' : 'appartamento',
+      household: 'famiglia',
+      activityLevel: profile.label === 'senior_complex' ? 'bassa' : profile.label === 'healthy_young' ? 'alta' : 'media',
+      dietType: knownConditions.length > 0 ? 'dieta clinica' : 'crocchette premium',
+      dietPreferences: [],
+      knownConditions,
+      currentMeds: medications.map(m => m.name),
+      behaviorNotes: [],
+      location: 'Roma',
+      sterilized: true,
+      outdoorAccess: profile.species === 'dog' ? 'outdoor con passeggiate' : 'indoor only',
+      cohabitants: [],
+      feedingSchedule: '2 pasti/giorno',
+      waterSource: 'ciotola + fontanella',
+      lastVaccination: new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0],
+      insuranceActive: profile.label === 'clinical_adult',
+    };
+
+    for (const pa of selectedPathologies) {
+      if (pa.name.includes('renale') || pa.name.includes('CKD') || pa.name.includes('PKD')) {
+        lifestyle.dietPreferences.push('dieta renale');
+      }
+      if (pa.name.includes('Obesità') || pa.name.includes('sovrappeso')) {
+        lifestyle.dietPreferences.push('dieta ipocalorica');
+      }
+    }
+
+    const petId = 'demo-' + profile.label;
+
+    const pet = {
+      petId,
+      name: profile.name,
+      species: profile.species,
+      breed: profile.breed,
+      sex: profile.sex,
+      birthdate: profile.birthdate,
+      weightKg,
+      ownerName: profile.ownerName,
+      ownerPhone: profile.ownerPhone,
+      microchip: profile.microchip,
+      lifestyle,
+      pathologies: selectedPathologies.map(pa => ({
+        name: pa.name,
+        clinicalKeywords: pa.clinicalKeywords,
+        vitalAnomalies: pa.vitalAnomalies,
+        promoTags: pa.promoTags,
+        soapContext: pa.soapContext,
+        docTypes: pa.docTypes,
+      })),
+      medications,
+      diary: '',
+      ownerDiary: '',
+      _demoLabel: profile.label,
+    };
+
+    pet.diary = buildVetDiary(pet, selectedPathologies);
+    pet.ownerDiary = buildOwnerDiary(pet, selectedPathologies);
+
+    pets.push(pet);
+  }
+
+  return pets;
+}
+
+function _demoBirthdate(ageYears) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - ageYears);
+  return d.toISOString().split('T')[0];
+}
+
 module.exports = {
   generatePetCohort,
+  generateDemoCohort,
   buildSoapPrompt,
   buildDocumentPrompt,
   getVisitTypesForPet,

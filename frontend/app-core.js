@@ -317,11 +317,25 @@ function navigateToPage(page) {
             if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
             if (page === 'qna') renderPromoSlot('qna-promo-container', 'faq_view');
         }
+        // Nutrition slot (multi-service)
+        if (typeof renderNutritionSlot === 'function') {
+            if (page === 'patient') renderNutritionSlot('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
+        if (typeof renderNutritionValidation === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
+            renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
+            // Insurance slot (multi-service)
+            if (typeof renderInsuranceSlot === 'function' && promoRole === 'proprietario') {
+                if (page === 'patient') renderInsuranceSlot('patient-insurance-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+            }
         if (typeof renderVetFlagButton === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
             renderVetFlagButton('patient-vet-flag-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
         if (typeof renderConsentBanner === 'function' && page === 'settings') {
             renderConsentBanner('settings-consent-container');
+        }
+        if (typeof renderConsentCenter === 'function' && page === 'settings') {
+            renderConsentCenter('settings-consent-container');
         }
         // Admin pages (PR 4)
         if (page === 'admin-dashboard' && typeof loadAdminDashboard === 'function') {

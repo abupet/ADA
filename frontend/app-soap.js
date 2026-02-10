@@ -945,6 +945,22 @@ function saveSOAP() {
     saveData();
     updateHistoryBadge();
     renderHistory();
+
+    // Insurance claim hook (multi-service)
+    if (typeof checkInsuranceCoverage === 'function') {
+        try {
+            var _petId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
+            if (_petId) {
+                checkInsuranceCoverage(_petId).then(function(result) {
+                    if (result && result.covered) {
+                        if (typeof showToast === 'function') {
+                            showToast('Il tuo pet è assicurato. Puoi generare un rimborso per questa visita.', 'info');
+                        }
+                    }
+                }).catch(function() {});
+            }
+        } catch(_e) {}
+    }
 }
 
 function exportTXT() {

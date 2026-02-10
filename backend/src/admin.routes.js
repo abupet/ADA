@@ -47,6 +47,13 @@ function adminRouter({ requireAuth }) {
           paramIdx++;
         }
 
+        const serviceType = req.query.service_type || null;
+        if (serviceType) {
+          query += ` AND service_type = $${paramIdx}`;
+          params.push(serviceType);
+          paramIdx++;
+        }
+
         query += " ORDER BY updated_at DESC LIMIT $" + paramIdx + " OFFSET $" + (paramIdx + 1);
         params.push(limit, offset);
 
@@ -64,6 +71,11 @@ function adminRouter({ requireAuth }) {
         if (search) {
           countQuery += ` AND (LOWER(name) LIKE $${countIdx} OR LOWER(description) LIKE $${countIdx})`;
           countParams.push('%' + search.toLowerCase() + '%');
+          countIdx++;
+        }
+        if (serviceType) {
+          countQuery += ` AND service_type = $${countIdx}`;
+          countParams.push(serviceType);
           countIdx++;
         }
         const countResult = await pool.query(countQuery, countParams);
@@ -118,6 +130,9 @@ function adminRouter({ requireAuth }) {
           tags_include = [],
           tags_exclude = [],
           priority = 0,
+          service_type = 'promo',
+          nutrition_data = null,
+          insurance_data = null,
         } = req.body || {};
 
         if (!name || !category) {
@@ -128,13 +143,17 @@ function adminRouter({ requireAuth }) {
         const { rows } = await pool.query(
           `INSERT INTO promo_items
             (promo_item_id, tenant_id, name, category, species, lifecycle_target,
-             description, image_url, product_url, tags_include, tags_exclude, priority, status, version, extended_description)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1,$13)
+             description, image_url, product_url, tags_include, tags_exclude, priority, status, version, extended_description,
+             service_type, nutrition_data, insurance_data)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1,$13,$14,$15,$16)
            RETURNING *`,
           [
             itemId, tenantId, name, category, species, lifecycle_target,
             description, image_url, product_url, tags_include, tags_exclude, priority,
             extended_description,
+            service_type,
+            nutrition_data ? JSON.stringify(nutrition_data) : null,
+            insurance_data ? JSON.stringify(insurance_data) : null,
           ]
         );
 
@@ -175,7 +194,7 @@ function adminRouter({ requireAuth }) {
         const allowed = [
           "name", "category", "species", "lifecycle_target", "description",
           "image_url", "product_url", "tags_include", "tags_exclude", "priority",
-          "extended_description",
+          "extended_description", "service_type", "nutrition_data", "insurance_data",
         ];
         const sets = [];
         const params = [itemId, tenantId];

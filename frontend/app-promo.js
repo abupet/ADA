@@ -19,6 +19,7 @@
  * New globals:
  *   renderPromoDetail(containerId, recommendation) -> void
  *   renderConsentBanner(containerId) -> void
+ *   renderConsentCenter(containerId) -> void
  *   renderVetFlagButton(containerId, petId) -> void
  */
 
@@ -168,7 +169,27 @@
             '.promo-btn--vet-flag:hover { background: #b91c1c; }',
             '.promo-consent-banner { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin: 12px 0; font-size: 13px; }',
             '.promo-consent-actions { margin-top: 10px; display: flex; gap: 8px; }',
-            '.promo-loader-slot { min-height: 40px; }'
+            '.promo-loader-slot { min-height: 40px; }',
+            '.consent-center-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin: 16px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }',
+            '.consent-center-title { font-size: 18px; font-weight: 700; color: #1e3a5f; margin-bottom: 4px; }',
+            '.consent-center-subtitle { font-size: 13px; color: #888; margin-bottom: 18px; }',
+            '.consent-service-block { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-bottom: 14px; }',
+            '.consent-service-header { display: flex; align-items: center; justify-content: space-between; }',
+            '.consent-service-info { display: flex; align-items: center; gap: 10px; flex: 1; }',
+            '.consent-service-icon { font-size: 22px; }',
+            '.consent-service-label { font-size: 15px; font-weight: 600; color: #1e3a5f; }',
+            '.consent-service-desc { font-size: 12px; color: #666; margin-top: 2px; }',
+            '.consent-toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }',
+            '.consent-toggle input { opacity: 0; width: 0; height: 0; }',
+            '.consent-toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 24px; transition: background 0.2s; }',
+            '.consent-toggle-slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }',
+            '.consent-toggle input:checked + .consent-toggle-slider { background: #16a34a; }',
+            '.consent-toggle input:checked + .consent-toggle-slider:before { transform: translateX(20px); }',
+            '.consent-toggle input:focus-visible + .consent-toggle-slider { outline: 2px solid #1e3a5f; outline-offset: 2px; }',
+            '.consent-tenant-list { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f0f0; }',
+            '.consent-tenant-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 6px 34px; }',
+            '.consent-tenant-name { font-size: 13px; color: #444; }',
+            '.consent-warning { font-size: 11px; color: #b45309; font-style: italic; margin-top: 6px; padding-left: 34px; display: none; }'
         ].join('\n');
 
         var style = document.createElement('style');
@@ -758,6 +779,171 @@
     }
 
     // =========================================================================
+    // Consent Center
+    // =========================================================================
+
+    function renderConsentCenter(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+
+        _injectPromoStyles();
+
+        var SERVICE_TYPES = {
+            promo: { icon: '\uD83C\uDFAF', label: 'Promozioni', description: 'Suggerimenti prodotti personalizzati per il tuo pet', consent_type: 'marketing_global', warning: 'Disattivando le promozioni non riceverai pi\u00F9 suggerimenti personalizzati.' },
+            nutrition: { icon: '\uD83E\uDD57', label: 'Nutrizione', description: 'Piani nutrizionali personalizzati generati dall\'AI e validati dal veterinario', consent_type: 'nutrition_plan', warning: 'Disattivando la nutrizione non verranno generati piani nutrizionali.' },
+            insurance: { icon: '\uD83D\uDEE1\uFE0F', label: 'Assicurazione', description: 'Copertura assicurativa con valutazione del rischio basata sui dati clinici', consent_type: 'insurance_data_sharing', warning: 'Disattivando l\'assicurazione i tuoi dati non verranno condivisi con partner assicurativi.' }
+        };
+
+        container.innerHTML = '<div class="promo-loader-slot" style="text-align:center;padding:20px;color:#888;">Caricamento preferenze...</div>';
+
+        Promise.all([
+            fetchApi('/api/promo/consent', { method: 'GET' }).then(function (r) { return r.ok ? r.json() : { consents: [] }; }),
+            fetchApi('/api/promo/consent/services', { method: 'GET' }).then(function (r) { return r.ok ? r.json() : { services: [] }; })
+        ]).then(function (results) {
+            var consentData = results[0];
+            var servicesData = results[1];
+
+            var consents = consentData.consents || [];
+            var services = servicesData.services || [];
+
+            var consentMap = {};
+            consents.forEach(function (c) {
+                var key = c.consent_type + ':' + (c.scope || 'global');
+                consentMap[key] = c.status === 'opted_in';
+            });
+
+            var tenantsByType = {};
+            services.forEach(function (svc) {
+                var svcType = svc.service_type || svc.type;
+                if (!svcType) return;
+                if (!tenantsByType[svcType]) tenantsByType[svcType] = [];
+                tenantsByType[svcType].push(svc);
+            });
+
+            var html = [
+                '<div class="consent-center-card">',
+                '<div class="consent-center-title">Centro Privacy</div>',
+                '<div class="consent-center-subtitle">Gestisci i consensi per i servizi ADA</div>'
+            ];
+
+            var serviceKeys = Object.keys(SERVICE_TYPES);
+            for (var si = 0; si < serviceKeys.length; si++) {
+                var sKey = serviceKeys[si];
+                var sType = SERVICE_TYPES[sKey];
+                var globalKey = sType.consent_type + ':global';
+                var isGlobalOn = consentMap[globalKey] !== undefined ? consentMap[globalKey] : false;
+                var toggleId = 'consent-toggle-' + sKey;
+                var warningId = 'consent-warning-' + sKey;
+                var tenantBlockId = 'consent-tenants-' + sKey;
+
+                html.push('<div class="consent-service-block" data-service-key="' + _escapeHtml(sKey) + '">');
+                html.push('  <div class="consent-service-header">');
+                html.push('    <div class="consent-service-info">');
+                html.push('      <span class="consent-service-icon">' + sType.icon + '</span>');
+                html.push('      <div>');
+                html.push('        <div class="consent-service-label">' + _escapeHtml(sType.label) + '</div>');
+                html.push('        <div class="consent-service-desc">' + _escapeHtml(sType.description) + '</div>');
+                html.push('      </div>');
+                html.push('    </div>');
+                html.push('    <label class="consent-toggle">');
+                html.push('      <input type="checkbox" id="' + toggleId + '" data-consent-type="' + _escapeHtml(sType.consent_type) + '" data-scope="global"' + (isGlobalOn ? ' checked' : '') + '>');
+                html.push('      <span class="consent-toggle-slider"></span>');
+                html.push('    </label>');
+                html.push('  </div>');
+                html.push('  <div class="consent-warning" id="' + warningId + '">' + _escapeHtml(sType.warning) + '</div>');
+
+                var tenants = tenantsByType[sKey] || [];
+                if (tenants.length > 0) {
+                    html.push('  <div class="consent-tenant-list" id="' + tenantBlockId + '" style="' + (isGlobalOn ? '' : 'display:none;') + '">');
+                    for (var ti = 0; ti < tenants.length; ti++) {
+                        var tenant = tenants[ti];
+                        var tenantName = tenant.tenant_name || tenant.brand_name || tenant.name || 'Partner';
+                        var tenantScope = tenant.tenant_id || tenant.scope || tenantName;
+                        var tenantKey = sType.consent_type + ':' + tenantScope;
+                        var isTenantOn = consentMap[tenantKey] !== undefined ? consentMap[tenantKey] : isGlobalOn;
+                        var tenantToggleId = 'consent-toggle-' + sKey + '-' + ti;
+
+                        html.push('    <div class="consent-tenant-row">');
+                        html.push('      <span class="consent-tenant-name">' + _escapeHtml(tenantName) + '</span>');
+                        html.push('      <label class="consent-toggle">');
+                        html.push('        <input type="checkbox" id="' + tenantToggleId + '" data-consent-type="' + _escapeHtml(sType.consent_type) + '" data-scope="' + _escapeHtml(tenantScope) + '"' + (isTenantOn ? ' checked' : '') + '>');
+                        html.push('        <span class="consent-toggle-slider"></span>');
+                        html.push('      </label>');
+                        html.push('    </div>');
+                    }
+                    html.push('  </div>');
+                }
+
+                html.push('</div>');
+            }
+
+            html.push('</div>');
+            container.innerHTML = html.join('\n');
+
+            var allToggles = container.querySelectorAll('input[data-consent-type]');
+            for (var idx = 0; idx < allToggles.length; idx++) {
+                (function (toggle) {
+                    toggle.addEventListener('change', function () {
+                        var consentType = toggle.getAttribute('data-consent-type');
+                        var scope = toggle.getAttribute('data-scope');
+                        var newStatus = toggle.checked ? 'opted_in' : 'opted_out';
+
+                        fetchApi('/api/promo/consent', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ consent_type: consentType, scope: scope, status: newStatus })
+                        }).then(function (r) {
+                            if (r.ok) {
+                                if (_fnExists('showToast')) showToast('Preferenza aggiornata.', 'success');
+                            } else {
+                                toggle.checked = !toggle.checked;
+                                if (_fnExists('showToast')) showToast('Errore nell\'aggiornamento.', 'error');
+                            }
+                        }).catch(function () {
+                            toggle.checked = !toggle.checked;
+                            if (_fnExists('showToast')) showToast('Errore di rete.', 'error');
+                        });
+
+                        if (scope === 'global') {
+                            var sBlock = toggle.closest('.consent-service-block');
+                            if (sBlock) {
+                                var svcKey = sBlock.getAttribute('data-service-key');
+                                var warningEl = document.getElementById('consent-warning-' + svcKey);
+                                var tenantListEl = document.getElementById('consent-tenants-' + svcKey);
+
+                                if (warningEl) {
+                                    warningEl.style.display = toggle.checked ? 'none' : 'block';
+                                }
+                                if (tenantListEl) {
+                                    tenantListEl.style.display = toggle.checked ? '' : 'none';
+                                    if (!toggle.checked) {
+                                        var tenantToggles = tenantListEl.querySelectorAll('input[data-consent-type]');
+                                        for (var t = 0; t < tenantToggles.length; t++) {
+                                            if (tenantToggles[t].checked) {
+                                                tenantToggles[t].checked = false;
+                                                var tConsentType = tenantToggles[t].getAttribute('data-consent-type');
+                                                var tScope = tenantToggles[t].getAttribute('data-scope');
+                                                fetchApi('/api/promo/consent', {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ consent_type: tConsentType, scope: tScope, status: 'opted_out' })
+                                                }).catch(function () { /* ignore */ });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })(allToggles[idx]);
+            }
+
+        }).catch(function () {
+            container.innerHTML = '<div class="consent-center-card" style="text-align:center;color:#888;">Impossibile caricare le preferenze. Riprova pi\u00F9 tardi.</div>';
+        });
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -766,6 +952,7 @@
     global.renderPromoSlot         = renderPromoSlot;
     global.renderPromoDetail       = renderPromoDetail;
     global.renderConsentBanner     = renderConsentBanner;
+    global.renderConsentCenter     = renderConsentCenter;
     global.renderVetFlagButton     = renderVetFlagButton;
 
 })(typeof window !== 'undefined' ? window : this);
