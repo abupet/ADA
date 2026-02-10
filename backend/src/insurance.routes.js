@@ -36,6 +36,7 @@ function insuranceRouter({ requireAuth }) {
       const score = await computeRiskScore(pool, petId);
       res.json({ score, cached: false });
     } catch (e) {
+      if (e.code === "42P01") return res.json({ score: null, cached: false });
       console.error("GET /api/insurance/risk-score/:petId error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -54,6 +55,7 @@ function insuranceRouter({ requireAuth }) {
 
       res.json({ policy: rows[0] || null });
     } catch (e) {
+      if (e.code === "42P01") return res.json({ policy: null });
       console.error("GET /api/insurance/coverage/:petId error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -94,6 +96,7 @@ function insuranceRouter({ requireAuth }) {
 
       res.status(201).json({ policy: rows[0], risk_score: score });
     } catch (e) {
+      if (e.code === "42P01") return res.status(503).json({ error: "service_not_available" });
       console.error("POST /api/insurance/quote/:petId error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -129,6 +132,7 @@ function insuranceRouter({ requireAuth }) {
 
       res.status(201).json(rows[0]);
     } catch (e) {
+      if (e.code === "42P01") return res.status(503).json({ error: "service_not_available" });
       console.error("POST /api/insurance/claim/:petId error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -147,6 +151,7 @@ function insuranceRouter({ requireAuth }) {
 
       res.json({ claims: rows });
     } catch (e) {
+      if (e.code === "42P01") return res.json({ claims: [] });
       console.error("GET /api/insurance/claims/:petId error", e);
       res.status(500).json({ error: "server_error" });
     }

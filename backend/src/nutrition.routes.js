@@ -30,6 +30,8 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
 
       res.json({ plan });
     } catch (e) {
+      // Table may not exist yet (migration not applied)
+      if (e.code === "42P01") return res.json({ plan: null });
       console.error("GET /api/nutrition/plan/:petId error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -46,6 +48,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
 
       res.json({ plan });
     } catch (e) {
+      if (e.code === "42P01") return res.json({ plan: null });
       console.error("GET /api/nutrition/plan/:petId/pending error", e);
       res.status(500).json({ error: "server_error" });
     }
