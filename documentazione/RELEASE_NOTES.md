@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.0.0 (2026-02-10)
+- Feat: Architettura multi-servizio completa — ADA supporta ora 3 tipi di servizio: promo, nutrizione e assicurazione
+- Test: `smoke.multi-service.spec.ts` — 7 test E2E per globals nutrizione/assicurazione, consent center, container DOM, demo mode UI
+- Test: `risk-scoring.service.test.js` — 17 test unitari per tutti i sub-score del risk scoring (age, breed, history, meds, weight)
+- Test: `nutrition.consent.test.js` — 9 test unitari per `isNutritionAllowed()` e `isInsuranceAllowed()` (global/brand/pending)
+- Test: `eligibility.service-type.test.js` — 4 test unitari per verifica contesti `nutrition_review`/`insurance_review` e campo `service_types`
+- Test: Tutti i test unitari esistenti continuano a passare (consent, eligibility, rbac, tag, outbox, pets)
+- Test: Policy checks e security checks passano tutti
+- Version: Bump finale a 8.0.0 — completamento roadmap multi-servizio
+
 ## v7.7.0 (2026-02-10)
 - Feat: Demo Mode nel Seed Engine — generazione rapida di 3 pet demo complementari con dati multi-servizio
 - Backend: `generateDemoCohort()` in `seed.petgen.js` — 3 profili deterministic: healthy_young (Labrador 2 anni), clinical_adult (Persiano 7 anni con patologie), senior_complex (Golden Retriever 12 anni multi-patologico)
