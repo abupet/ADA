@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v7.3.5 (2026-02-10)
+- Infra: Migrazione frontend dev da Netlify a GitHub Pages (`abupet.github.io/ada-dev/`) tramite repo dedicato `abupet/ada-dev`
+- Infra: Aggiunto workflow `sync-dev-frontend.yml` per sincronizzazione automatica frontend dev → repo `ada-dev` ad ogni push su `dev`
+- Fix: Env detection in `index.html` e `runtime-config.js` — da `hostname.includes("netlify.app")` a `pathname.startsWith("/ada-dev")`
+- Fix: `ada-tests.sh` — aggiornato DEV_DEPLOY_URL a GitHub Pages
+- Docs: Aggiornato `AGENTS.md` con nuovi URL ambiente dev
+
 ## v7.3.4 (2026-02-10)
 - Fix: Catalogo — paginazione corretta con filtri avanzati client-side (priorita, immagine, ext desc, categoria, specie). Quando i filtri sono attivi il server carica tutti i prodotti e la paginazione avviene localmente
 - Fix: Catalogo — il pulsante "Reset" ora resetta anche tutti i filtri avanzati (priorita, immagine, ext desc, categoria, specie), non solo la ricerca testuale
