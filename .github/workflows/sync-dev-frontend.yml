@@ -45,8 +45,9 @@ jobs:
           sed -i 's|url=/ada/|url=/ada-dev/|g' 404.html
           sed -i 's|replace("/ada/")|replace("/ada-dev/")|g' 404.html
 
-          # runtime-config.js: netlify detection → path detection
+          # runtime-config.js + index.html inline script: netlify detection → path detection
           sed -i 's|window.location.hostname.includes("netlify.app")|window.location.pathname.startsWith("/ada-dev")|g' runtime-config.js
+          sed -i 's|window.location.hostname.includes("netlify.app")|window.location.pathname.startsWith("/ada-dev")|g' index.html
 
       - name: Commit and push
         run: |
