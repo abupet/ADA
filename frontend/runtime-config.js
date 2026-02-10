@@ -1,4 +1,4 @@
-// runtime-config.js v2
+// runtime-config.js v3
 // Purpose: allow configuring the backend base URL at runtime (no rebuild) for GitHub Pages deployments.
 //
 // Priority order:
