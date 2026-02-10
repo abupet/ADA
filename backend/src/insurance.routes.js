@@ -20,7 +20,7 @@ function insuranceRouter({ requireAuth }) {
   router.get("/api/insurance/risk-score/:petId", requireAuth, async (req, res) => {
     try {
       const { petId } = req.params;
-      if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+      if (!petId || !isValidUuid(petId)) return res.json({ score: null, cached: false });
 
       // Check for recent score (within 7 days)
       const recent = await pool.query(
@@ -46,7 +46,7 @@ function insuranceRouter({ requireAuth }) {
   router.get("/api/insurance/coverage/:petId", requireAuth, async (req, res) => {
     try {
       const { petId } = req.params;
-      if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+      if (!petId || !isValidUuid(petId)) return res.json({ policy: null });
 
       const { rows } = await pool.query(
         "SELECT * FROM insurance_policies WHERE pet_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1",
@@ -142,7 +142,7 @@ function insuranceRouter({ requireAuth }) {
   router.get("/api/insurance/claims/:petId", requireAuth, async (req, res) => {
     try {
       const { petId } = req.params;
-      if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+      if (!petId || !isValidUuid(petId)) return res.json({ claims: [] });
 
       const { rows } = await pool.query(
         "SELECT * FROM insurance_claims WHERE pet_id = $1 ORDER BY created_at DESC",

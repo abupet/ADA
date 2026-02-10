@@ -23,7 +23,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   router.get("/api/nutrition/plan/:petId", requireAuth, async (req, res) => {
     try {
       const { petId } = req.params;
-      if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+      if (!petId || !isValidUuid(petId)) return res.json({ plan: null });
 
       const plan = await getActivePlan(pool, petId);
       if (!plan) return res.json({ plan: null });
@@ -41,7 +41,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   router.get("/api/nutrition/plan/:petId/pending", requireAuth, async (req, res) => {
     try {
       const { petId } = req.params;
-      if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+      if (!petId || !isValidUuid(petId)) return res.json({ plan: null });
 
       const plan = await getPendingPlan(pool, petId);
       if (!plan) return res.json({ plan: null });
