@@ -16,6 +16,7 @@ const { adminRouter } = require("./admin.routes");
 const { dashboardRouter } = require("./dashboard.routes");
 const { seedRouter } = require("./seed.routes");
 const { tipsSourcesRouter } = require("./tips-sources.routes");
+const { nutritionRouter } = require("./nutrition.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -356,6 +357,8 @@ if (process.env.DATABASE_URL) {
   app.use(seedRouter({ requireAuth, getOpenAiKey }));
   // --- Tips Sources routes ---
   app.use(tipsSourcesRouter({ requireAuth, getOpenAiKey }));
+  // --- Nutrition routes ---
+  app.use(nutritionRouter({ requireAuth, getOpenAiKey }));
 }
 
 function getOpenAiKey() {

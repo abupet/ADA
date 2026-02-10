@@ -1,4 +1,4 @@
-// ADA v7.4.0 - Configuration
+// ADA v7.5.0 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 
@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.4.0';
+const ADA_VERSION = '7.5.0';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v7.5.0 (2026-02-10)
+- Feat: Modulo Nutrizione — piani nutrizionali personalizzati generati dall'AI e validati dal veterinario
+- Backend: `nutrition.service.js` — generazione piani con OpenAI (GPT-4o-mini), calcolo fabbisogno calorico, suggerimento prodotti dal catalogo
+- Backend: `nutrition.routes.js` — API complete: GET piano attivo/pending, POST genera/valida/rifiuta, PATCH modifica piano
+- Frontend: `app-nutrition.js` — card piano nutrizionale per proprietario (kcal, prodotti, dosi, note cliniche) con tema verde (#16a34a)
+- Frontend: Card validazione nutrizionale per veterinario con pulsanti Valida/Modifica/Rifiuta
+- HTML: Container `patient-nutrition-container` nella pagina Dati Pet
+- Wiring: rendering automatico slot nutrizione in `app-core.js` `navigateToPage()`
+
 ## v7.4.0 (2026-02-10)
 - Feat: Architettura multi-servizio — infrastruttura per tre tipi di servizio: `promo`, `nutrition`, `insurance`
 - DB: Migration `sql/012_services_nutrition_insurance.sql` — aggiunge `service_type`, `nutrition_data`, `insurance_data` a `promo_items`; aggiunge `service_type` a `promo_events`; crea tabelle `nutrition_plans`, `insurance_risk_scores`, `insurance_policies`, `insurance_claims`

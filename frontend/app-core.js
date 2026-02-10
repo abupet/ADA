@@ -317,6 +317,13 @@ function navigateToPage(page) {
             if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
             if (page === 'qna') renderPromoSlot('qna-promo-container', 'faq_view');
         }
+        // Nutrition slot (multi-service)
+        if (typeof renderNutritionSlot === 'function') {
+            if (page === 'patient') renderNutritionSlot('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
+        if (typeof renderNutritionValidation === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
+            renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
         if (typeof renderVetFlagButton === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
             renderVetFlagButton('patient-vet-flag-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
