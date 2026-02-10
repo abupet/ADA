@@ -253,7 +253,7 @@ test.describe("Multi-service architecture smoke tests", () => {
     const errors = captureHardErrors(page);
     await setupMultiServiceMocks(page);
 
-    await login(page);
+    await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
     await navigateTo(page, "seed");
     await expect(page.locator("#page-seed.active")).toBeVisible({ timeout: 10_000 });
 
