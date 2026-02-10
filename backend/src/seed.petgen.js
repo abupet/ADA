@@ -1482,6 +1482,25 @@ function generatePetCohort(count, opts = {}) {
     if (species === "cat" && rng() > 0.6) behaviorNotes.push(pick(["timido con gli estranei", "marca il territorio", "graffia i mobili", "molto vocale", "affettuoso e socievole"], rng));
     if (species === "rabbit" && rng() > 0.6) behaviorNotes.push(pick(["tende a rosicchiare i cavi", "fa binky quando è contento", "timido ma curioso", "scava molto", "si lascia manipolare facilmente"], rng));
 
+    const outdoorAccessMap = {
+      dog: 'outdoor con passeggiate',
+      cat: rng() > 0.4 ? 'indoor/outdoor' : 'indoor only',
+      rabbit: 'indoor con recinto',
+    };
+    const cohabitantsOptions = {
+      dog: ['altro cane', 'gatto', 'coniglio'],
+      cat: ['altro gatto', 'cane'],
+      rabbit: ['altro coniglio', 'cavia'],
+    };
+    const cohabitants = [];
+    if (rng() > 0.5) {
+      const cnt = Math.floor(rng() * 3) + 1;
+      const opts = cohabitantsOptions[species] || ['altro animale'];
+      for (let ci = 0; ci < cnt; ci++) cohabitants.push(pick(opts, rng));
+    }
+    const daysAgo = Math.floor(rng() * 365);
+    const lastVaccDate = new Date(); lastVaccDate.setDate(lastVaccDate.getDate() - daysAgo);
+
     const lifestyle = {
       environment: pick(ENVIRONMENTS, rng),
       household: pick(HOUSEHOLDS, rng),
@@ -1492,6 +1511,13 @@ function generatePetCohort(count, opts = {}) {
       currentMeds: medications.map(m => m.name),
       behaviorNotes,
       location: pick(LOCATIONS, rng),
+      sterilized: rng() > 0.3,
+      outdoorAccess: outdoorAccessMap[species] || 'indoor',
+      cohabitants,
+      feedingSchedule: pick(['2 pasti/giorno', '3 pasti/giorno', 'alimentazione libera', '2 pasti + snack'], rng),
+      waterSource: pick(['ciotola', 'fontanella', 'ciotola + fontanella'], rng),
+      lastVaccination: lastVaccDate.toISOString().split('T')[0],
+      insuranceActive: rng() > 0.7,
     };
 
     // Add diet preferences for pathologies
@@ -1839,24 +1865,13 @@ function getDocTypesForPet(pet) {
 // 6b. PHOTO PLACEHOLDERS (deterministic SVG per species)
 // ---------------------------------------------------------------------------
 
-const SPECIES_PHOTO_PLACEHOLDERS = {};
-
-function _buildPlaceholderSvg(emoji, label, colors) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${colors[0]}"/><stop offset="100%" stop-color="${colors[1]}"/></linearGradient></defs><rect width="400" height="400" fill="url(#g)" rx="20"/><text x="200" y="180" font-size="120" text-anchor="middle">${emoji}</text><text x="200" y="300" font-size="24" fill="white" text-anchor="middle" font-family="sans-serif">${label}</text></svg>`;
-}
-
 function getPhotoPlaceholder(species) {
-    if (!SPECIES_PHOTO_PLACEHOLDERS[species]) {
-        const map = {
-            dog: ['\uD83D\uDC36', 'Cane', ['#4A90D9','#2C5F9E']],
-            cat: ['\uD83D\uDC31', 'Gatto', ['#D9864A','#9E5F2C']],
-            rabbit: ['\uD83D\uDC30', 'Coniglio', ['#6DC94A','#3E8F2C']],
-        };
-        const [emoji, label, colors] = map[species] || ['\uD83D\uDC3E', 'Pet', ['#D94A8F','#9E2C5F']];
-        const svg = _buildPlaceholderSvg(emoji, label, colors);
-        SPECIES_PHOTO_PLACEHOLDERS[species] = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
-    }
-    return SPECIES_PHOTO_PLACEHOLDERS[species];
+    const file = {
+        dog: 'placeholder-dog.svg',
+        cat: 'placeholder-cat.svg',
+        rabbit: 'placeholder-rabbit.svg',
+    }[species] || 'placeholder-pet.svg';
+    return '/api/seed-assets/' + file;
 }
 
 function generatePhotosForPet(pet, count) {

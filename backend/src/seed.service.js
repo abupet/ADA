@@ -761,6 +761,11 @@ async function _runSeedJob(pool, config, openAiKey) {
         owner_phone: pet.ownerPhone,
         microchip: pet.microchip,
         visit_date: lastVisitDate,
+        sex: pet.sex,
+        birthdate: pet.birthdate,
+        species: pet.species,
+        breed: pet.breed,
+        weightKg: pet.weightKg,
       };
 
       try {

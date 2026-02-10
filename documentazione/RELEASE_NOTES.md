@@ -1,5 +1,25 @@
 # Release Notes (cumulative)
 
+## v7.3.4 (2026-02-10)
+- Fix: Catalogo — paginazione corretta con filtri avanzati client-side (priorita, immagine, ext desc, categoria, specie). Quando i filtri sono attivi il server carica tutti i prodotti e la paginazione avviene localmente
+- Fix: Catalogo — il pulsante "Reset" ora resetta anche tutti i filtri avanzati (priorita, immagine, ext desc, categoria, specie), non solo la ricerca testuale
+- Fix: Report validazione URL — il pulsante "Draft" ora usa correttamente POST `/transition` invece di PUT (risolveva "Errore nel cambio stato")
+- Fix: Backend — aggiunta transizione `published -> draft` per consentire agli admin di riportare in bozza prodotti con URL rotti
+- Feat: Report validazione URL — aggiunta colonna "Stato" nella tabella per mostrare lo stato corrente di ogni prodotto
+- Feat: Feedback visivo click — animazione CSS flash (0.25s + scale 0.97) su tutti i pulsanti dell'app, con classe `.btn--loading` per operazioni asincrone
+- Feat: Pulsante "Verifica URL" mostra spinner di caricamento durante la verifica
+- Feat: Policy — descrizione contestuale: selezionando una policy key dalla dropdown appare un box con spiegazione dell'effetto e formato valore atteso
+- Feat: Anteprima prodotto — pulsanti Acquista/Perche vedi questo?/Non mi interessa ora con spaziatura uniforme (flex, gap 12px, justify space-between)
+- Feat: Tenant selector globale — dropdown selezione tenant disponibile direttamente nelle pagine Catalogo e Campagne per super_admin (non serve piu' passare dalla Dashboard)
+- Feat: Export catalogo dati reali — i pulsanti "Scarica file CSV/XLSX" ora esportano i prodotti effettivi del tenant selezionato (con colonne status e extended_description). Fallback al template vuoto se il tenant non ha prodotti
+- Feat: Seed Engine — foto placeholder ora servite come file SVG statici via `/api/seed-assets/` invece di data URI base64 inline
+- Feat: Seed Engine — dati lifestyle Pet arricchiti: sterilizzato, accesso esterno, coinquilini animali, piano alimentare, fonte acqua, ultima vaccinazione, assicurazione
+- Feat: Seed Engine — campi base (sex, birthdate, species, breed, weightKg) inclusi in extra_data per ridondanza frontend
+- UX: Spaziatura header pagine Catalogo e Campagne (margin-bottom 20px)
+- UX: Debug dropdown super_admin — dimensioni ridotte (auto width, min 220px, max 350px) invece di width 100%
+- CI: Test dual-environment — `ada-tests.sh` supporta toggle ambiente prod/dev (tasto `e`), mostra URL e ambiente nello status
+- CI: `ci-real.yml` v9 — matrix strategy per testare prod e dev in parallelo con secrets separati (`DATABASE_URL_DEV`, `DEPLOY_URL_DEV`), artifact names univoci per ambiente, titolo issue con ambiente
+
 ## v7.3.3 (2026-02-10)
 - Security: RBAC su tutte le 9 route di seed.routes.js — solo `super_admin` può avviare seed job, wipe, config, promo search/scrape/import/tenants
 - Security: Rimosso leak di `e.message` verso il client in seed.routes.js (6 occorrenze) e tips-sources.routes.js (11 occorrenze) — ora restituisce `"server_error"` con log server-side

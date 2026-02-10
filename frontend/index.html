@@ -1019,7 +1019,8 @@
                     <h2>Catalogo Prodotti</h2>
                 </div>
                 <div class="card">
-                    <p style="color:#666;">Gestisci i prodotti promozionali dal pannello admin.</p>
+                    <p style="color:#666;margin-bottom:20px;">Gestisci i prodotti promozionali dal pannello admin.</p>
+                    <div id="catalog-tenant-selector"></div>
                     <div id="admin-catalog-content"></div>
                 </div>
             </div>
@@ -1030,7 +1031,8 @@
                     <h2>Campagne</h2>
                 </div>
                 <div class="card">
-                    <p style="color:#666;">Gestisci le campagne promozionali.</p>
+                    <p style="color:#666;margin-bottom:20px;">Gestisci le campagne promozionali.</p>
+                    <div id="campaigns-tenant-selector"></div>
                     <div id="admin-campaigns-content"></div>
                 </div>
             </div>
@@ -1122,7 +1124,7 @@
                     </div>
                     <div id="superAdminRoleSelector" style="display:none; margin-top:10px;">
                         <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruolo attivo (super admin)</label>
-                        <select id="superAdminRoleSelect" onchange="onSuperAdminRoleChange(this.value)" style="width:100%;">
+                        <select id="superAdminRoleSelect" onchange="onSuperAdminRoleChange(this.value)" style="width:auto;min-width:220px;max-width:350px;padding:8px 12px;font-size:14px;">
                             <option value="veterinario">🩺 Veterinario</option>
                             <option value="proprietario">🐾 Proprietario</option>
                             <option value="admin_brand">📊 Admin Brand</option>

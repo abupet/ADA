@@ -149,7 +149,7 @@
             '.promo-detail-section { margin-bottom: 8px; }',
             '.promo-detail-label { font-weight: 600; color: #444; }',
             '.promo-disclaimer { font-size: 11px; color: #999; font-style: italic; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; }',
-            '.promo-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }',
+            '.promo-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 12px; }',
             '.promo-btn {',
             '  display: inline-block; padding: 8px 18px; font-size: 13px;',
             '  font-weight: 600; border: none; border-radius: 8px;',

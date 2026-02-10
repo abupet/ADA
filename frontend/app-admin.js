@@ -182,6 +182,45 @@
         loadAdminDashboard(containerId, period);
     }
 
+    function _renderPageTenantSelector(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
+        var jwtTenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (jwtRole !== 'super_admin') {
+            if (jwtTenantId) container.innerHTML = '<span style="font-size:12px;color:#888;">Tenant: <strong>' + _escapeHtml(jwtTenantId) + '</strong></span>';
+            return;
+        }
+        fetchApi('/api/superadmin/tenants')
+            .then(function(r) { return r.ok ? r.json() : { tenants: [] }; })
+            .then(function(data) {
+                var tenants = data.tenants || [];
+                if (tenants.length === 0) { container.innerHTML = '<span style="font-size:12px;color:#888;">Nessun tenant configurato</span>'; return; }
+                if (!_selectedDashboardTenant) _selectedDashboardTenant = tenants[0].tenant_id;
+                var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">';
+                html += '<span style="font-size:12px;font-weight:600;color:#1e3a5f;">Tenant:</span>';
+                html += '<select onchange="switchPageTenant(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">';
+                tenants.forEach(function(t) {
+                    var selected = t.tenant_id === _selectedDashboardTenant ? ' selected' : '';
+                    html += '<option value="' + _escapeHtml(t.tenant_id) + '"' + selected + '>' + _escapeHtml(t.name) + '</option>';
+                });
+                html += '</select></div>';
+                container.innerHTML = html;
+            })
+            .catch(function() {});
+    }
+
+    function switchPageTenant(tenantId) {
+        _selectedDashboardTenant = tenantId;
+        var activePage = document.querySelector('.page[style*="display: block"], .page[style*="display:block"]');
+        if (activePage) {
+            var pageId = activePage.id;
+            if (pageId === 'page-admin-catalog') loadAdminCatalog();
+            else if (pageId === 'page-admin-campaigns') loadAdminCampaigns();
+            else if (pageId === 'page-admin-dashboard') loadAdminDashboard('admin-dashboard-content');
+        }
+    }
+
     function _renderDashboard(container, data, period) {
         var s = data.stats;
 
@@ -318,8 +357,8 @@
             '</div>',
             '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">',
             '<input type="file" id="csvFileInput" accept=".csv,.txt,.xlsx,.xls" onchange="handleCsvUpload(event)">',
-            '<button class="btn btn-secondary" onclick="downloadCsvTemplate()" style="font-size:12px;">Scarica template CSV</button>',
-            '<button class="btn btn-secondary" onclick="downloadXlsxTemplate()" style="font-size:12px;margin-left:4px;">Scarica template XLSX</button>',
+            '<button class="btn btn-secondary" onclick="downloadCatalogCsv()" style="font-size:12px;">Scarica file CSV</button>',
+            '<button class="btn btn-secondary" onclick="downloadCatalogXlsx()" style="font-size:12px;margin-left:4px;">Scarica file XLSX</button>',
             '</div>',
             '</div>',
             '<div id="wizard-step-2" class="wizard-step" style="display:none;">',
@@ -370,6 +409,117 @@
         a.download = 'promo_items_template.csv';
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    function _csvEscape(str) {
+        if (!str) return '';
+        if (str.indexOf(',') !== -1 || str.indexOf('"') !== -1 || str.indexOf('\n') !== -1) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    }
+
+    function _csvArrayField(val) {
+        if (Array.isArray(val)) return '"' + val.join('|') + '"';
+        if (typeof val === 'string' && val.indexOf(',') !== -1) return '"' + val + '"';
+        return val || '';
+    }
+
+    function _getWizardTenantId() {
+        var sel = document.getElementById('wizardCsvTenant');
+        if (sel && sel.value) return sel.value;
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        return tenantId;
+    }
+
+    function downloadCatalogCsv() {
+        var tenantId = _getWizardTenantId();
+        if (!tenantId) { downloadCsvTemplate(); return; }
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=1&limit=9999')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.items || data.items.length === 0) {
+                    if (typeof showToast === 'function') showToast('Nessun prodotto da esportare. Scarico il template vuoto.', 'info');
+                    downloadCsvTemplate();
+                    return;
+                }
+                var headers = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority,status';
+                var lines = [headers];
+                data.items.forEach(function(item) {
+                    var row = [
+                        _csvEscape(item.name || ''),
+                        item.category || '',
+                        _csvArrayField(item.species),
+                        _csvArrayField(item.lifecycle_target),
+                        _csvEscape(item.description || ''),
+                        _csvEscape(item.extended_description || ''),
+                        item.image_url || '',
+                        item.product_url || '',
+                        _csvArrayField(item.tags_include),
+                        _csvArrayField(item.tags_exclude),
+                        item.priority || 0,
+                        item.status || 'draft',
+                    ].join(',');
+                    lines.push(row);
+                });
+                var csvContent = lines.join('\n');
+                var blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'catalogo_' + tenantId + '.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                if (typeof showToast === 'function') showToast(data.items.length + ' prodotti esportati in CSV', 'success');
+            })
+            .catch(function() {
+                if (typeof showToast === 'function') showToast('Errore nel download. Scarico il template.', 'error');
+                downloadCsvTemplate();
+            });
+    }
+
+    function downloadCatalogXlsx() {
+        var tenantId = _getWizardTenantId();
+        if (!tenantId) { downloadXlsxTemplate(); return; }
+        if (typeof XLSX === 'undefined') {
+            if (typeof showToast === 'function') showToast('Libreria SheetJS non disponibile.', 'error');
+            return;
+        }
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=1&limit=9999')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.items || data.items.length === 0) {
+                    if (typeof showToast === 'function') showToast('Nessun prodotto. Scarico template vuoto.', 'info');
+                    downloadXlsxTemplate();
+                    return;
+                }
+                var sheetData = data.items.map(function(item) {
+                    return {
+                        name: item.name || '',
+                        category: item.category || '',
+                        species: Array.isArray(item.species) ? item.species.join('|') : (item.species || ''),
+                        lifecycle_target: Array.isArray(item.lifecycle_target) ? item.lifecycle_target.join('|') : (item.lifecycle_target || ''),
+                        description: item.description || '',
+                        extended_description: item.extended_description || '',
+                        image_url: item.image_url || '',
+                        product_url: item.product_url || '',
+                        tags_include: Array.isArray(item.tags_include) ? item.tags_include.join('|') : (item.tags_include || ''),
+                        tags_exclude: Array.isArray(item.tags_exclude) ? item.tags_exclude.join('|') : (item.tags_exclude || ''),
+                        priority: item.priority || 0,
+                        status: item.status || 'draft',
+                    };
+                });
+                var ws = XLSX.utils.json_to_sheet(sheetData);
+                var wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Prodotti');
+                XLSX.writeFile(wb, 'catalogo_' + tenantId + '.xlsx');
+                if (typeof showToast === 'function') showToast(data.items.length + ' prodotti esportati in XLSX', 'success');
+            })
+            .catch(function() {
+                if (typeof showToast === 'function') showToast('Errore download XLSX.', 'error');
+                downloadXlsxTemplate();
+            });
     }
 
     function handleCsvUpload(event) {
@@ -1105,6 +1255,7 @@
         if (!container) return;
 
         _injectAdminStyles();
+        _renderPageTenantSelector('catalog-tenant-selector');
 
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
@@ -1121,9 +1272,12 @@
 
         container.innerHTML = '<p style="color:#888;">Caricamento catalogo...</p>';
 
+        var hasClientFilters = _catalogPriorityFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var limit = hasClientFilters ? 9999 : 20;
+        var page = hasClientFilters ? 1 : _catalogPage;
         var statusParam = _catalogStatusFilter ? '&status=' + _catalogStatusFilter : '';
         var searchParam = _catalogSearchTerm ? '&search=' + encodeURIComponent(_catalogSearchTerm) : '';
-        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + _catalogPage + '&limit=20' + statusParam + searchParam)
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + page + '&limit=' + limit + statusParam + searchParam)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
                 if (!data) { container.innerHTML = '<p style="color:#888;">Nessun dato.</p>'; return; }
@@ -1227,7 +1381,9 @@
         html.push('</div>');
 
         // Items table (apply advanced filters)
-        var displayItems = _getFilteredCatalogItems();
+        var _hasClientFilters = _catalogPriorityFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var allFilteredItems = _getFilteredCatalogItems();
+        var displayItems = _hasClientFilters ? allFilteredItems.slice((_catalogPage - 1) * 20, _catalogPage * 20) : allFilteredItems;
         if (displayItems.length === 0) {
             html.push('<p style="color:#888;">Nessun prodotto trovato.</p>');
         } else {
@@ -1262,7 +1418,7 @@
             html.push('</table>');
 
             // Pagination
-            var totalPages = Math.ceil(_catalogTotal / 20);
+            var totalPages = _hasClientFilters ? Math.ceil(allFilteredItems.length / 20) : Math.ceil(_catalogTotal / 20);
             if (totalPages > 1) {
                 html.push('<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;">');
                 for (var p = 1; p <= totalPages; p++) {
@@ -1483,6 +1639,7 @@
         if (!container) return;
 
         _injectAdminStyles();
+        _renderPageTenantSelector('campaigns-tenant-selector');
 
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
@@ -1790,18 +1947,33 @@
     }
 
     var POLICY_KEYS = [
-        { key: 'max_impressions_per_week', label: 'Max impressioni/settimana' },
-        { key: 'max_impressions_per_day', label: 'Max impressioni/giorno' },
-        { key: 'debug_mode_enabled', label: 'Debug mode attivo' },
-        { key: 'openai_optimizations', label: 'Ottimizzazioni OpenAI (JSON)' },
-        { key: 'promo_cooldown_hours', label: 'Cooldown promo (ore)' },
-        { key: 'maintenance_mode', label: 'Modalità manutenzione' },
+        { key: 'max_impressions_per_week', label: 'Max impressioni/settimana', active: true, desc: 'ATTIVA \u2014 Limita il numero massimo di impressioni promozionali mostrate a ciascun proprietario per settimana. Valore: intero (es: 10). Se superato, il sistema promo non mostra pi\u00f9 card fino alla settimana successiva.' },
+        { key: 'max_impressions_per_day', label: 'Max impressioni/giorno', active: true, desc: 'ATTIVA \u2014 Limita le impressioni promozionali giornaliere per proprietario. Valore: intero (es: 3). Funziona in combinazione con il limite settimanale.' },
+        { key: 'debug_mode_enabled', label: 'Debug mode attivo', active: true, desc: 'ATTIVA \u2014 Abilita la pagina Debug nella navigazione per tutti gli utenti del tenant. Valore: true/false. Mostra strumenti di diagnostica, log, metriche API e test audio.' },
+        { key: 'openai_optimizations', label: 'Ottimizzazioni OpenAI (JSON)', active: true, desc: 'ATTIVA \u2014 Configurazione JSON per le ottimizzazioni delle chiamate OpenAI (cache prompt, batching, modello). Valore: oggetto JSON (es: {"model":"gpt-4o-mini","cache":true}). Modifica il comportamento di trascrizione e generazione SOAP.' },
+        { key: 'promo_cooldown_hours', label: 'Cooldown promo (ore)', active: true, desc: 'ATTIVA \u2014 Ore di attesa tra una impressione e l\'altra per lo stesso prodotto allo stesso utente. Valore: intero (es: 24). Previene la ripetizione eccessiva dello stesso suggerimento.' },
+        { key: 'maintenance_mode', label: 'Modalit\u00e0 manutenzione', active: true, desc: 'ATTIVA \u2014 Quando abilitata (true), l\'app mostra un banner di manutenzione e disabilita le operazioni di scrittura. Valore: true/false.' },
     ];
 
     function onPolicyKeyChange() {
         var sel = document.getElementById('newPolicyKey');
         var custom = document.getElementById('newPolicyKeyCustom');
+        var descEl = document.getElementById('policyKeyDescription');
         if (custom) custom.style.display = (sel && sel.value === '__custom__') ? '' : 'none';
+        if (descEl) {
+            var pk = POLICY_KEYS.find(function(p) { return p.key === (sel ? sel.value : ''); });
+            if (pk && pk.desc) {
+                descEl.textContent = pk.desc;
+                descEl.style.display = '';
+                if (!pk.active) {
+                    descEl.style.background = '#fef9c3'; descEl.style.borderColor = '#fde047'; descEl.style.color = '#854d0e';
+                } else {
+                    descEl.style.background = '#f0fdf4'; descEl.style.borderColor = '#bbf7d0'; descEl.style.color = '#166534';
+                }
+            } else {
+                descEl.style.display = 'none';
+            }
+        }
     }
 
     function _renderPoliciesPage(container, policies) {
@@ -1824,6 +1996,7 @@
         html.push('<option value="__custom__">Altro (personalizzato)...</option>');
         html.push('</select>');
         html.push('<input type="text" id="newPolicyKeyCustom" style="display:none;width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:6px;" placeholder="Chiave personalizzata">');
+        html.push('<div id="policyKeyDescription" style="display:none;margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;line-height:1.5;color:#166534;"></div>');
         html.push('</div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Valore *</label><input type="text" id="newPolicyValue" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: 10"></div>');
         html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newPolicyDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione policy"></div>');
@@ -2263,6 +2436,12 @@
 
     function catalogSearchReset() {
         _catalogSearchTerm = '';
+        _catalogStatusFilter = '';
+        _catalogPriorityFilter = '';
+        _catalogImageFilter = '';
+        _catalogExtDescFilter = '';
+        _catalogCategoryFilter = '';
+        _catalogSpeciesFilter = '';
         var el = document.getElementById('catalogSearchInput');
         if (el) el.value = '';
         _catalogPage = 1;
@@ -2319,6 +2498,10 @@
     function validateAllCatalogUrls() {
         var tenantId = _getAdminTenantId();
         if (!tenantId || _catalogItems.length === 0) return;
+        var btns = document.querySelectorAll('button');
+        var verifyBtn = null;
+        btns.forEach(function(b) { if (b.textContent.includes('Verifica URL')) verifyBtn = b; });
+        if (verifyBtn) verifyBtn.classList.add('btn--loading');
         if (typeof showToast === 'function') showToast('Verifica URL in corso per ' + _catalogItems.length + ' prodotti...', 'info');
         var batch = _catalogItems.map(function (i) {
             return { promo_item_id: i.promo_item_id, name: i.name, image_url: i.image_url, product_url: i.product_url };
@@ -2328,6 +2511,7 @@
             body: JSON.stringify({ items: batch })
         }).then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {
+            if (verifyBtn) verifyBtn.classList.remove('btn--loading');
             if (!data || !data.results) {
                 if (typeof showToast === 'function') showToast('Errore nella verifica.', 'error');
                 return;
@@ -2342,6 +2526,7 @@
                 _showUrlValidationReport(data.results);
             }
         }).catch(function () {
+            if (verifyBtn) verifyBtn.classList.remove('btn--loading');
             if (typeof showToast === 'function') showToast('Errore di rete.', 'error');
         });
     }
@@ -2351,13 +2536,15 @@
             return (r.image_url_status !== 'ok' && r.image_url_status !== 'missing') ||
                    (r.product_url_status !== 'ok' && r.product_url_status !== 'missing');
         });
-        _showModal('Report Validazione URL — ' + broken.length + ' problemi su ' + results.length + ' prodotti', function (container) {
+        _showModal('Report Validazione URL \u2014 ' + broken.length + ' problemi su ' + results.length + ' prodotti', function (container) {
             var html = [];
             html.push('<table class="admin-table">');
-            html.push('<tr><th>Prodotto</th><th>Immagine</th><th>URL Prodotto</th><th>Azione</th></tr>');
+            html.push('<tr><th>Prodotto</th><th>Stato</th><th>Immagine</th><th>URL Prodotto</th><th>Azione</th></tr>');
             broken.forEach(function (r) {
-                html.push('<tr>');
+                var item = _catalogItems.find(function(i) { return i.promo_item_id === r.promo_item_id; });
+                html.push('<tr id="url-row-' + _escapeHtml(r.promo_item_id) + '">');
                 html.push('<td>' + _escapeHtml(r.name || r.promo_item_id) + '</td>');
+                html.push('<td><span style="font-size:11px;padding:2px 6px;border-radius:4px;background:#f1f5f9;">' + _escapeHtml(item ? item.status : '?') + '</span></td>');
                 html.push('<td>' + _urlStatusIcon(r.image_url_status) + '</td>');
                 html.push('<td>' + _urlStatusIcon(r.product_url_status) + '</td>');
                 html.push('<td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="setItemStatusFromReport(\'' + _escapeHtml(r.promo_item_id) + '\', this)">\u2192 Draft</button></td>');
@@ -2377,27 +2564,25 @@
         var tenantId = _getAdminTenantId();
         if (!tenantId) return;
         if (btnEl) { btnEl.disabled = true; btnEl.textContent = '...'; }
-        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
-            method: 'PUT',
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId) + '/transition', {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'draft' })
         }).then(function(r) {
-            if (r.ok) {
-                if (btnEl) {
-                    btnEl.textContent = '\u2713 Draft';
-                    btnEl.style.background = '#16a34a';
-                    btnEl.style.color = '#fff';
-                    btnEl.style.borderColor = '#16a34a';
-                }
-                showToast('Prodotto spostato a draft', 'success');
-                loadAdminCatalog();
-            } else {
-                if (btnEl) { btnEl.disabled = false; btnEl.textContent = '\u2192 Draft'; }
-                showToast('Errore nel cambio stato', 'error');
+            if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'HTTP ' + r.status); });
+            return r.json();
+        }).then(function() {
+            if (btnEl) {
+                btnEl.textContent = '\u2713 Draft';
+                btnEl.style.background = '#16a34a';
+                btnEl.style.color = '#fff';
+                btnEl.style.borderColor = '#16a34a';
             }
-        }).catch(function() {
+            showToast('Prodotto spostato a draft', 'success');
+            loadAdminCatalog();
+        }).catch(function(err) {
             if (btnEl) { btnEl.disabled = false; btnEl.textContent = '\u2192 Draft'; }
-            showToast('Errore di rete', 'error');
+            showToast('Errore: ' + err.message, 'error');
         });
     }
 
@@ -2476,10 +2661,10 @@
             if (item.description) html.push('<div style="font-size:13px;color:#555;margin:4px 0 8px;">' + _escapeHtml(item.description) + '</div>');
             html.push('<div class="promo-explanation" style="font-style:italic;color:#888;">[Spiegazione AI personalizzata — generata in base al profilo del paziente]</div>');
 
-            html.push('<div class="promo-actions">');
-            if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" onclick="showPurchasePlaceholder(\'' + _escapeHtml(item.promo_item_id) + '\')">Acquista</button>');
-            html.push('<button type="button" class="promo-btn promo-btn--info" onclick="showWhyYouSeeThis(\'' + _escapeHtml(item.promo_item_id) + '\')">Perché vedi questo?</button>');
-            html.push('<button type="button" class="promo-btn promo-btn--dismiss" onclick="showDismissPlaceholder()">Non mi interessa</button>');
+            html.push('<div class="promo-actions" style="display:flex;justify-content:space-between;gap:12px;margin-top:12px;">');
+            if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" style="flex:1;text-align:center;padding:10px 16px;" onclick="showPurchasePlaceholder(\'' + _escapeHtml(item.promo_item_id) + '\')">Acquista</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--info" style="flex:1;text-align:center;padding:10px 16px;" onclick="showWhyYouSeeThis(\'' + _escapeHtml(item.promo_item_id) + '\')">Perch\u00e9 vedi questo?</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--dismiss" style="flex:1;text-align:center;padding:10px 16px;" onclick="showDismissPlaceholder()">Non mi interessa</button>');
             html.push('</div>');
 
             // AI explanation — between card content and technical details
@@ -2982,6 +3167,9 @@
     global.wizardDryRun           = wizardDryRun;
     global.wizardImport           = wizardImport;
     global.downloadCsvTemplate    = downloadCsvTemplate;
+    global.downloadCatalogCsv     = downloadCatalogCsv;
+    global.downloadCatalogXlsx    = downloadCatalogXlsx;
+    global.switchPageTenant       = switchPageTenant;
     global.wizardPreviewNav       = wizardPreviewNav;
     global.wizardEditItem         = wizardEditItem;
     global._saveWizardItemEdit    = _saveWizardItemEdit;
