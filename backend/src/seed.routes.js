@@ -1,5 +1,5 @@
 const express = require('express');
-const { startSeedJob, getJobStatus, cancelJob, wipeSeededData } = require('./seed.service');
+const { startSeedJob, startDemoJob, getJobStatus, cancelJob, wipeSeededData } = require('./seed.service');
 const { requireRole } = require('./rbac.middleware');
 
 function seedRouter({ requireAuth, getOpenAiKey }) {
@@ -72,6 +72,29 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             rabbitPct: 10,
             mode: 'fresh'
         });
+    });
+
+    // POST /api/seed/start-demo — Start demo mode job
+    router.post('/api/seed/start-demo', requireAuth, requireRole(adminRoles), async (req, res) => {
+        try {
+            const { getPool } = require('./db');
+            const pool = getPool();
+
+            const config = req.body || {};
+            if (!config.ownerUserId && req.user && req.user.sub) {
+                config.ownerUserId = req.user.sub;
+            }
+            const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
+
+            const result = startDemoJob(pool, config, openAiKey);
+            if (result.error === 'already_running') {
+                return res.status(409).json({ error: 'A seed job is already running' });
+            }
+            return res.json({ jobId: result.jobId, status: 'started', mode: 'demo' });
+        } catch (e) {
+            console.error("POST /api/seed/start-demo error", e);
+            return res.status(500).json({ error: "server_error" });
+        }
     });
 
     // ============================================

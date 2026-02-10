@@ -1329,6 +1329,34 @@
                         </button>
                     </div>
                 </div>
+                <!-- Card Demo Mode -->
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="font-weight:600;display:block;margin-bottom:8px;">🎭 Demo Mode — Generazione rapida multi-servizio</label>
+                    <p style="font-size:12px;color:#666;margin-bottom:10px;">
+                        Genera 3 pet demo complementari con dati promo, piani nutrizionali e proposte assicurative. Ideale per dimostrazioni.
+                    </p>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>
+                            <select id="seedDemoTenant" style="padding:8px;border:1px solid #ddd;border-radius:6px;min-width:180px;" onfocus="seedLoadDemoTenants()">
+                                <option value="">— Seleziona tenant —</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Servizi da attivare</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:16px;font-size:13px;">
+                            <input type="checkbox" id="seedDemoPromo" checked> Promo
+                        </label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:16px;font-size:13px;">
+                            <input type="checkbox" id="seedDemoNutrition" checked> Nutrizione
+                        </label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;">
+                            <input type="checkbox" id="seedDemoInsurance" checked> Assicurazione
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="seedStartDemo()">🎭 Avvia Demo</button>
+                </div>
             </div>
 
             <!-- Page: Costs -->

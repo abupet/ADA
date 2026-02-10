@@ -495,6 +495,60 @@
         if (typeof showToast === 'function') showToast('Sezione promo azzerata', 'success');
     }
 
+    // --- Demo Mode ---
+    function seedStartDemo() {
+        var tenantSel = document.getElementById('seedDemoTenant');
+        var tenantId = tenantSel && tenantSel.value ? tenantSel.value : null;
+        if (!tenantId) {
+            if (typeof showToast === 'function') showToast('Seleziona un tenant per la demo', 'error');
+            return;
+        }
+
+        var services = [];
+        if (document.getElementById('seedDemoPromo') && document.getElementById('seedDemoPromo').checked) services.push('promo');
+        if (document.getElementById('seedDemoNutrition') && document.getElementById('seedDemoNutrition').checked) services.push('nutrition');
+        if (document.getElementById('seedDemoInsurance') && document.getElementById('seedDemoInsurance').checked) services.push('insurance');
+
+        if (services.length === 0) {
+            if (typeof showToast === 'function') showToast('Seleziona almeno un servizio', 'error');
+            return;
+        }
+
+        fetchApi('/api/seed/start-demo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenantId: tenantId, services: services })
+        }).then(function (resp) {
+            if (resp.status === 409) {
+                if (typeof showToast === 'function') showToast('Un job è già in esecuzione', 'error');
+                return;
+            }
+            return resp.json();
+        }).then(function (data) {
+            if (data && data.jobId) {
+                if (typeof showToast === 'function') showToast('Demo avviata: ' + data.jobId, 'success');
+                _startPolling();
+            }
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore avvio demo: ' + e.message, 'error');
+        });
+    }
+
+    function seedLoadDemoTenants() {
+        fetchApi('/api/seed/promo/tenants').then(function (r) { return r.ok ? r.json() : { tenants: [] }; })
+            .then(function (data) {
+                var sel = document.getElementById('seedDemoTenant');
+                if (!sel) return;
+                sel.innerHTML = '<option value="">— Seleziona tenant —</option>';
+                (data.tenants || []).forEach(function (t) {
+                    var opt = document.createElement('option');
+                    opt.value = t.tenant_id;
+                    opt.textContent = t.name;
+                    sel.appendChild(opt);
+                });
+            }).catch(function () {});
+    }
+
     // --- Init: attach input listeners for estimate ---
     function _initEstimateListeners() {
         var ids = ['seedPetCount', 'seedSoapPerPet', 'seedDocsPerPet'];
@@ -528,5 +582,7 @@
     global._renderPromoPreview = _renderPromoPreview;
     global.seedLoadSitesFromFile = seedLoadSitesFromFile;
     global.seedResetPromoSection = seedResetPromoSection;
+    global.seedStartDemo = seedStartDemo;
+    global.seedLoadDemoTenants = seedLoadDemoTenants;
 
 })(typeof window !== 'undefined' ? window : this);

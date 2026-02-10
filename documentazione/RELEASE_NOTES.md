@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v7.7.0 (2026-02-10)
+- Feat: Demo Mode nel Seed Engine — generazione rapida di 3 pet demo complementari con dati multi-servizio
+- Backend: `generateDemoCohort()` in `seed.petgen.js` — 3 profili deterministic: healthy_young (Labrador 2 anni), clinical_adult (Persiano 7 anni con patologie), senior_complex (Golden Retriever 12 anni multi-patologico)
+- Backend: `startDemoJob()` in `seed.service.js` — fasi demo 10-12: setup cohort + promo events, generazione piani nutrizionali auto-validati, proposte assicurative con risk score
+- Backend: `POST /api/seed/start-demo` in `seed.routes.js` — endpoint per avviare il job demo con selezione tenant e servizi
+- Frontend: UI Demo Mode in `app-seed.js` — pannello con selettore tenant, checkbox servizi (promo/nutrizione/assicurazione), pulsante avvio
+- HTML: Card "Demo Mode" nella pagina Seed Engine con controlli interattivi
+- Auto-consent: il demo imposta automaticamente tutti i consensi (promo, nutrition, insurance) per l'utente demo
+
 ## v7.6.0 (2026-02-10)
 - Feat: Modulo Assicurazione — valutazione rischio, preventivi e gestione sinistri per pet
 - Backend: `risk-scoring.service.js` — calcolo punteggio rischio 0-100 con breakdown (età, razza, storia clinica, farmaci, peso) e classi di rischio (low/medium/high/very_high)
