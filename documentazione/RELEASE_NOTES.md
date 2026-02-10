@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v7.6.0 (2026-02-10)
+- Feat: Modulo Assicurazione — valutazione rischio, preventivi e gestione sinistri per pet
+- Backend: `risk-scoring.service.js` — calcolo punteggio rischio 0-100 con breakdown (età, razza, storia clinica, farmaci, peso) e classi di rischio (low/medium/high/very_high)
+- Backend: `insurance.routes.js` — API complete: GET risk-score, GET coverage, POST quote, POST claim, GET claims
+- Frontend: `app-insurance.js` — card assicurazione per proprietario con tema blu (#1e40af), visualizzazione copertura o punteggio rischio
+- Frontend: Hook SOAP — dopo il salvataggio di un referto, notifica se il pet è assicurato per generare un rimborso
+- HTML: Container `patient-insurance-container` nella pagina Dati Pet
+- Wiring: rendering automatico slot assicurazione in `app-core.js` `navigateToPage()`
+
 ## v7.5.0 (2026-02-10)
 - Feat: Modulo Nutrizione — piani nutrizionali personalizzati generati dall'AI e validati dal veterinario
 - Backend: `nutrition.service.js` — generazione piani con OpenAI (GPT-4o-mini), calcolo fabbisogno calorico, suggerimento prodotti dal catalogo
