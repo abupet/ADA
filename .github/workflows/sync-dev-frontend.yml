@@ -27,7 +27,7 @@ jobs:
       - name: Sync frontend files
         run: |
           # Clean existing files (except .git and .github)
-          find ada-dev-repo -maxdepth 1 -not -name '.git' -not -name '.github' -not -name '.' -not -name '..' -exec rm -rf {} +
+          find ada-dev-repo -mindepth 1 -maxdepth 1 -not -name '.git' -not -name '.github' -exec rm -rf {} +
 
           # Copy frontend
           cp -r frontend/* ada-dev-repo/
