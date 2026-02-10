@@ -1610,3 +1610,41 @@ textarea.readonly-transcription:focus {
 .crawl-log-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:12px; }
 .crawl-log-table th,.crawl-log-table td { padding:6px 10px; border-bottom:1px solid #e5e7eb; text-align:left; }
 .crawl-log-table th { background:#f8fafc; font-weight:600; color:#475569; }
+
+/* === Button click feedback (global) === */
+@keyframes btn-click-flash {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.btn:active,
+.admin-period-btn:active,
+.promo-btn:active,
+button:active {
+    animation: btn-click-flash 0.25s ease-out;
+    transform: scale(0.97);
+}
+
+/* Loading state for async buttons */
+.btn--loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+.btn--loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    width: 14px;
+    height: 14px;
+    margin-top: -7px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: btn-spin 0.6s linear infinite;
+}
+@keyframes btn-spin {
+    to { transform: rotate(360deg); }
+}

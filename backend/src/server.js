@@ -76,6 +76,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+// Static seed-assets (placeholder images for seed engine)
+app.use('/api/seed-assets', express.static(path.join(__dirname, 'seed-assets')));
 // Higher JSON limit for pet sync (photos are base64 in payload)
 app.use("/api/sync/pets/push", express.json({ limit: "50mb" }));
 app.use(express.json({ limit: "2mb" }));

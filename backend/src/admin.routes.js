@@ -235,7 +235,7 @@ function adminRouter({ requireAuth }) {
         const validTransitions = {
           draft: ["in_review"],
           in_review: ["published", "draft"],
-          published: ["retired"],
+          published: ["retired", "draft"],
           retired: ["draft"],
         };
 

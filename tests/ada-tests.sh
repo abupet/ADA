@@ -138,12 +138,32 @@ MODE="${MODE:-MOCK}"
 STRICT_ON="${STRICT_ON:-0}"
 STRICT_ALLOW_HOSTS_RUNTIME="${STRICT_ALLOW_HOSTS:-$DEFAULT_STRICT_ALLOW_HOSTS}"
 
+# Environment: prod | dev
+ADA_ENV="${ADA_ENV:-prod}"
+DEV_DEPLOY_URL="${DEV_DEPLOY_URL:-https://dev--ada-app.netlify.app/}"
+DEV_BACKEND_URL="${DEV_BACKEND_URL:-https://ada-backend-dev.onrender.com}"
+
+_apply_env_urls() {
+  if [[ "${ADA_ENV}" == "dev" ]]; then
+    DEPLOY_URL="${DEV_DEPLOY_URL}"
+    BACKEND_DEPLOY_URL="${DEV_BACKEND_URL}"
+  else
+    DEPLOY_URL="${DEPLOY_URL:-$DEFAULT_DEPLOY_URL}"
+    BACKEND_DEPLOY_URL="${PROD_BACKEND_URL:-https://ada-au40.onrender.com}"
+  fi
+}
+_apply_env_urls
+
 mode_label() {
   if [[ "${MODE^^}" == "REAL" ]]; then echo "REAL"; else echo "MOCK"; fi
 }
 
 strict_label() {
   if [[ "${STRICT_ON}" == "1" ]]; then echo "ON"; else echo "OFF"; fi
+}
+
+env_label() {
+  if [[ "${ADA_ENV}" == "dev" ]]; then echo "DEV"; else echo "PROD"; fi
 }
 # -------------------------------------------------------------
 
@@ -458,8 +478,10 @@ status() {
   echo "Session:          ada-tests-${SESSION_NUM}"
   echo "Log:              ${SESSION_LOG_WIN}"
   echo "------------------------------------------------"
+  echo "Environment:      $(env_label)"
   echo "Local URL:        $LOCAL_URL"
   echo "Deploy URL:       $DEPLOY_URL"
+  echo "Backend URL:      ${BACKEND_DEPLOY_URL:-N/A}"
   echo "MODE:             $(mode_label)"
   echo "STRICT_NETWORK:   $(strict_label)"
   [[ -n "${ADA_TEST_PASSWORD:-}" ]] && echo "ADA_TEST_PASSWORD: ✅ set" || echo "ADA_TEST_PASSWORD: ❌ NOT set"
@@ -518,7 +540,7 @@ print_header() {
   echo "Session: ada-tests-${SESSION_NUM}"
   echo "Log:     ${SESSION_LOG_WIN}"
   echo "------------------------------------------------------"
-  echo -e "MODE: ${CLR_BOLD}$(mode_label)${CLR_RESET}  |  STRICT: ${CLR_BOLD}$(strict_label)${CLR_RESET}  ${CLR_DIM}(m=MOCK r=REAL s=toggle)${CLR_RESET}"
+  echo -e "ENV: ${CLR_BOLD}$(env_label)${CLR_RESET}  |  MODE: ${CLR_BOLD}$(mode_label)${CLR_RESET}  |  STRICT: ${CLR_BOLD}$(strict_label)${CLR_RESET}  ${CLR_DIM}(e=env m=MOCK r=REAL s=toggle)${CLR_RESET}"
   echo "------------------------------------------------------"
   echo -e "${CLR_DIM}Tasti: h=help  ESC=esci  0=switch livello${CLR_RESET}"
   echo "------------------------------------------------------"
@@ -564,6 +586,10 @@ menu_loop() {
     if [[ "$choice" == "s" || "$choice" == "S" ]]; then
       if [[ "${STRICT_ON}" == "1" ]]; then STRICT_ON=0; else STRICT_ON=1; fi
       clear_screen; continue
+    fi
+    if [[ "$choice" == "e" || "$choice" == "E" ]]; then
+      if [[ "${ADA_ENV}" == "prod" ]]; then ADA_ENV=dev; else ADA_ENV=prod; fi
+      _apply_env_urls; clear_screen; continue
     fi
 
     if [[ "$choice" == "0" ]]; then
