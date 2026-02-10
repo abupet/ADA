@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v7.4.0 (2026-02-10)
+- Feat: Architettura multi-servizio — infrastruttura per tre tipi di servizio: `promo`, `nutrition`, `insurance`
+- DB: Migration `sql/012_services_nutrition_insurance.sql` — aggiunge `service_type`, `nutrition_data`, `insurance_data` a `promo_items`; aggiunge `service_type` a `promo_events`; crea tabelle `nutrition_plans`, `insurance_risk_scores`, `insurance_policies`, `insurance_claims`
+- Feat: Eligibility Engine v2 — supporto parametro `serviceType` in `selectPromo()`, nuovi contesti `nutrition_review` e `insurance_review`, campo `service_types` nelle context rules
+- Feat: Consent v2 — nuovi tipi di consenso: `nutrition_plan`, `nutrition_brand`, `insurance_data_sharing`, `insurance_brand` con helpers `isNutritionAllowed()` e `isInsuranceAllowed()`
+- Feat: Nuovo endpoint `GET /api/promo/consent/services` — restituisce i tipi di servizio con i tenant attivi (da prodotti pubblicati)
+- Feat: Centro Privacy (Consent Center) — nuova sezione in Impostazioni con toggle per servizio (Promozioni/Nutrizione/Assicurazione) e toggle per singolo brand/tenant
+- Feat: Catalogo Admin — filtro per `service_type` (dropdown Promo/Nutrizione/Assicurazione), badge colorato per tipo servizio nella tabella, supporto `service_type` in creazione/modifica prodotti
+- Feat: Import/Export — colonna `service_type` in CSV e XLSX (template e export)
+- **MIGRAZIONE PENDENTE**: prima del merge `dev -> main`, applicare `sql/012_services_nutrition_insurance.sql` sul DB prod
+
 ## v7.3.5 (2026-02-10)
 - Infra: Migrazione frontend dev da Netlify a GitHub Pages (`abupet.github.io/ada-dev/`) tramite repo dedicato `abupet/ada-dev`
 - Infra: Aggiunto workflow `sync-dev-frontend.yml` per sincronizzazione automatica frontend dev → repo `ada-dev` ad ogni push su `dev`

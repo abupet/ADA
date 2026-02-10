@@ -343,7 +343,7 @@
         var html = [
             '<div class="wizard-step">',
             '<h4>Step 1: Carica file</h4>',
-            '<p>Formato accettato: CSV o XLSX. Colonne: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority</p>',
+            '<p>Formato accettato: CSV o XLSX. Colonne: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority, service_type</p>',
             '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">',
             '<div>',
             '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>',
@@ -398,10 +398,10 @@
     }
 
     function downloadCsvTemplate() {
-        var csvContent = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority\n'
-            + '"Royal Canin Maxi Adult",food_general,"dog","adult","Cibo secco per cani adulti taglia grande","Alimento completo per cani adulti di taglia grande (26-44 kg). Formula con EPA e DHA per pelle e manto sani. Crocchette adattate alla mascella dei cani grandi.",https://example.com/img/rc-maxi.jpg,https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult,,0\n'
-            + '"Hill\'s Prescription Diet k/d",food_clinical,"cat","senior","Dieta clinica per gatti con insufficienza renale","Alimento dietetico completo per gatti adulti. Formulato per il supporto della funzione renale in caso di insufficienza renale cronica. Ridotto contenuto di fosforo e sodio. Elevato contenuto di acidi grassi omega-3.",https://example.com/img/hills-kd.jpg,https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry,clinical:renal,,5\n'
-            + '"Frontline Tri-Act",antiparasitic,"dog","puppy|adult|senior","Antiparassitario spot-on per cani","Soluzione spot-on per cani. Protezione completa contro pulci, zecche, zanzare, pappataci e mosche cavalline per 4 settimane. Azione repellente e insetticida.",https://example.com/img/frontline.jpg,https://www.frontlinecombo.it/prodotti/tri-act,,,3\n';
+        var csvContent = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority,service_type\n'
+            + '"Royal Canin Maxi Adult",food_general,"dog","adult","Cibo secco per cani adulti taglia grande","Alimento completo per cani adulti di taglia grande (26-44 kg). Formula con EPA e DHA per pelle e manto sani. Crocchette adattate alla mascella dei cani grandi.",https://example.com/img/rc-maxi.jpg,https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult,,0,promo\n'
+            + '"Hill\'s Prescription Diet k/d",food_clinical,"cat","senior","Dieta clinica per gatti con insufficienza renale","Alimento dietetico completo per gatti adulti. Formulato per il supporto della funzione renale in caso di insufficienza renale cronica. Ridotto contenuto di fosforo e sodio. Elevato contenuto di acidi grassi omega-3.",https://example.com/img/hills-kd.jpg,https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry,clinical:renal,,5,promo\n'
+            + '"Frontline Tri-Act",antiparasitic,"dog","puppy|adult|senior","Antiparassitario spot-on per cani","Soluzione spot-on per cani. Protezione completa contro pulci, zecche, zanzare, pappataci e mosche cavalline per 4 settimane. Azione repellente e insetticida.",https://example.com/img/frontline.jpg,https://www.frontlinecombo.it/prodotti/tri-act,,,3,promo\n';
         var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -444,7 +444,7 @@
                     downloadCsvTemplate();
                     return;
                 }
-                var headers = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority,status';
+                var headers = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority,status,service_type';
                 var lines = [headers];
                 data.items.forEach(function(item) {
                     var row = [
@@ -460,6 +460,7 @@
                         _csvArrayField(item.tags_exclude),
                         item.priority || 0,
                         item.status || 'draft',
+                        item.service_type || 'promo',
                     ].join(',');
                     lines.push(row);
                 });
@@ -508,6 +509,7 @@
                         tags_exclude: Array.isArray(item.tags_exclude) ? item.tags_exclude.join('|') : (item.tags_exclude || ''),
                         priority: item.priority || 0,
                         status: item.status || 'draft',
+                        service_type: item.service_type || 'promo',
                     };
                 });
                 var ws = XLSX.utils.json_to_sheet(sheetData);
@@ -1244,6 +1246,7 @@
     var _catalogStatusFilter = '';
     var _catalogSearchTerm = '';
     var _catalogPriorityFilter = '';
+    var _catalogServiceTypeFilter = '';
     var _catalogImageFilter = '';
     var _catalogExtDescFilter = '';
     var _catalogCategoryFilter = '';
@@ -1272,12 +1275,13 @@
 
         container.innerHTML = '<p style="color:#888;">Caricamento catalogo...</p>';
 
-        var hasClientFilters = _catalogPriorityFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var hasClientFilters = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
         var limit = hasClientFilters ? 9999 : 20;
         var page = hasClientFilters ? 1 : _catalogPage;
         var statusParam = _catalogStatusFilter ? '&status=' + _catalogStatusFilter : '';
         var searchParam = _catalogSearchTerm ? '&search=' + encodeURIComponent(_catalogSearchTerm) : '';
-        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + page + '&limit=' + limit + statusParam + searchParam)
+        var serviceTypeParam = _catalogServiceTypeFilter ? '&service_type=' + encodeURIComponent(_catalogServiceTypeFilter) : '';
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + page + '&limit=' + limit + statusParam + searchParam + serviceTypeParam)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
                 if (!data) { container.innerHTML = '<p style="color:#888;">Nessun dato.</p>'; return; }
@@ -1314,6 +1318,13 @@
 
         // Advanced filters row
         html.push('<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">');
+        html.push('<select onchange="filterCatalogServiceType(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Servizio: Tutti</option>');
+        ['promo','nutrition','insurance'].forEach(function(st) {
+            var stLabels = {promo:'Promo',nutrition:'Nutrizione',insurance:'Assicurazione'};
+            html.push('<option value="' + st + '"' + (_catalogServiceTypeFilter === st ? ' selected' : '') + '>' + (stLabels[st]||st) + '</option>');
+        });
+        html.push('</select>');
         html.push('<select onchange="filterCatalogPriority(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
         html.push('<option value="">Priorità: Tutte</option>');
         [0,1,2,3,4,5].forEach(function(p) {
@@ -1342,7 +1353,7 @@
             html.push('<option value="' + s + '"' + (_catalogSpeciesFilter === s ? ' selected' : '') + '>' + _translateSpecies(s) + '</option>');
         });
         html.push('</select>');
-        var _hasAdvancedFilter = _catalogPriorityFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var _hasAdvancedFilter = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
         if (_hasAdvancedFilter) {
             var _filteredCount = _getFilteredCatalogItems().length;
             html.push('<span style="color:#1d4ed8;font-size:12px;font-weight:600;">' + _filteredCount + '/' + _catalogItems.length + ' visibili</span>');
@@ -1373,6 +1384,9 @@
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="newItemUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="newItemImageUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Priorita</label><input type="number" id="newItemPriority" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" value="0"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><select id="newItemServiceType" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+        html.push('<option value="promo">Promo</option><option value="nutrition">Nutrizione</option><option value="insurance">Assicurazione</option>');
+        html.push('</select></div>');
         html.push('</div>');
         html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
         html.push('<textarea id="newItemExtDesc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;"></textarea>');
@@ -1381,7 +1395,7 @@
         html.push('</div>');
 
         // Items table (apply advanced filters)
-        var _hasClientFilters = _catalogPriorityFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var _hasClientFilters = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
         var allFilteredItems = _getFilteredCatalogItems();
         var displayItems = _hasClientFilters ? allFilteredItems.slice((_catalogPage - 1) * 20, _catalogPage * 20) : allFilteredItems;
         if (displayItems.length === 0) {
@@ -1392,7 +1406,13 @@
             displayItems.forEach(function (item) {
                 var statusColor = { draft: '#888', in_review: '#eab308', published: '#16a34a', retired: '#dc2626' }[item.status] || '#888';
                 html.push('<tr>');
-                html.push('<td>' + _escapeHtml(item.name) + ' <small style="color:#888;">(' + _escapeHtml(_translateSpecies(item.species)) + ')</small></td>');
+                var _stBadge = '';
+                if (item.service_type && item.service_type !== 'promo') {
+                    var _stColors = {nutrition:'#0d9488',insurance:'#7c3aed'};
+                    var _stLabels = {nutrition:'Nutrizione',insurance:'Assicurazione'};
+                    _stBadge = ' <span style="display:inline-block;background:' + (_stColors[item.service_type]||'#888') + ';color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;vertical-align:middle;">' + (_stLabels[item.service_type]||item.service_type) + '</span>';
+                }
+                html.push('<td>' + _escapeHtml(item.name) + _stBadge + ' <small style="color:#888;">(' + _escapeHtml(_translateSpecies(item.species)) + ')</small></td>');
                 html.push('<td>' + _escapeHtml(_translateCategory(item.category)) + '</td>');
                 html.push('<td>' + _escapeHtml(_translateLifecycle(item.lifecycle_target)) + '</td>');
                 html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
@@ -1434,6 +1454,7 @@
     function _getFilteredCatalogItems() {
         return _catalogItems.filter(function(item) {
             if (_catalogPriorityFilter !== '' && String(item.priority || 0) !== _catalogPriorityFilter) return false;
+            if (_catalogServiceTypeFilter !== '' && (item.service_type || 'promo') !== _catalogServiceTypeFilter) return false;
             if (_catalogImageFilter === 'with' && !item.image_url) return false;
             if (_catalogImageFilter === 'without' && item.image_url) return false;
             if (_catalogExtDescFilter === 'with' && !item.extended_description) return false;
@@ -1450,6 +1471,7 @@
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
         if (container && tenantId) _renderCatalogPage(container, tenantId);
     }
+    function filterCatalogServiceType(val) { _catalogServiceTypeFilter = val; loadAdminCatalog(); }
     function filterCatalogPriority(val) { _catalogPriorityFilter = val; _rerenderCatalog(); }
     function filterCatalogImage(val) { _catalogImageFilter = val; _rerenderCatalog(); }
     function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; _rerenderCatalog(); }
@@ -1498,7 +1520,8 @@
                 extended_description: (document.getElementById('newItemExtDesc') || {}).value || null,
                 product_url: (document.getElementById('newItemUrl') || {}).value || null,
                 image_url: (document.getElementById('newItemImageUrl') || {}).value || null,
-                priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0
+                priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0,
+                service_type: (document.getElementById('newItemServiceType') || {}).value || 'promo'
             })
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2288,9 +2311,9 @@
             return;
         }
         var data = [
-            { name: 'Royal Canin Maxi Adult', category: 'food_general', species: 'dog', lifecycle_target: 'adult', description: 'Cibo secco per cani adulti taglia grande', extended_description: 'Alimento completo per cani adulti di taglia grande (26-44 kg). Formula con EPA e DHA per pelle e manto sani.', image_url: 'https://example.com/img/rc-maxi.jpg', product_url: 'https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult', tags_include: '', tags_exclude: '', priority: 0 },
-            { name: "Hill's Prescription Diet k/d", category: 'food_clinical', species: 'cat', lifecycle_target: 'senior', description: 'Dieta clinica per gatti con insufficienza renale', extended_description: 'Alimento dietetico completo per gatti adulti. Supporto della funzione renale. Ridotto contenuto di fosforo e sodio.', image_url: 'https://example.com/img/hills-kd.jpg', product_url: 'https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry', tags_include: 'clinical:renal', tags_exclude: '', priority: 5 },
-            { name: 'Frontline Tri-Act', category: 'antiparasitic', species: 'dog', lifecycle_target: 'puppy|adult|senior', description: 'Antiparassitario spot-on per cani', extended_description: 'Soluzione spot-on. Protezione completa contro pulci, zecche, zanzare, pappataci e mosche cavalline per 4 settimane.', image_url: 'https://example.com/img/frontline.jpg', product_url: 'https://www.frontlinecombo.it/prodotti/tri-act', tags_include: '', tags_exclude: '', priority: 3 }
+            { name: 'Royal Canin Maxi Adult', category: 'food_general', species: 'dog', lifecycle_target: 'adult', description: 'Cibo secco per cani adulti taglia grande', extended_description: 'Alimento completo per cani adulti di taglia grande (26-44 kg). Formula con EPA e DHA per pelle e manto sani.', image_url: 'https://example.com/img/rc-maxi.jpg', product_url: 'https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult', tags_include: '', tags_exclude: '', priority: 0, service_type: 'promo' },
+            { name: "Hill's Prescription Diet k/d", category: 'food_clinical', species: 'cat', lifecycle_target: 'senior', description: 'Dieta clinica per gatti con insufficienza renale', extended_description: 'Alimento dietetico completo per gatti adulti. Supporto della funzione renale. Ridotto contenuto di fosforo e sodio.', image_url: 'https://example.com/img/hills-kd.jpg', product_url: 'https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry', tags_include: 'clinical:renal', tags_exclude: '', priority: 5, service_type: 'promo' },
+            { name: 'Frontline Tri-Act', category: 'antiparasitic', species: 'dog', lifecycle_target: 'puppy|adult|senior', description: 'Antiparassitario spot-on per cani', extended_description: 'Soluzione spot-on. Protezione completa contro pulci, zecche, zanzare, pappataci e mosche cavalline per 4 settimane.', image_url: 'https://example.com/img/frontline.jpg', product_url: 'https://www.frontlinecombo.it/prodotti/tri-act', tags_include: '', tags_exclude: '', priority: 3, service_type: 'promo' }
         ];
         var ws = XLSX.utils.json_to_sheet(data);
         var wb = XLSX.utils.book_new();
@@ -2438,6 +2461,7 @@
         _catalogSearchTerm = '';
         _catalogStatusFilter = '';
         _catalogPriorityFilter = '';
+        _catalogServiceTypeFilter = '';
         _catalogImageFilter = '';
         _catalogExtDescFilter = '';
         _catalogCategoryFilter = '';
@@ -3252,6 +3276,7 @@
     global.catalogSearch          = catalogSearch;
     global.catalogSearchReset     = catalogSearchReset;
     // PR 2: Advanced filters + preview actions
+    global.filterCatalogServiceType = filterCatalogServiceType;
     global.filterCatalogPriority   = filterCatalogPriority;
     global.filterCatalogImage      = filterCatalogImage;
     global.filterCatalogExtDesc    = filterCatalogExtDesc;

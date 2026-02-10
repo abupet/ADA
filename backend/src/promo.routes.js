@@ -549,6 +549,10 @@ function promoRouter({ requireAuth }) {
         "marketing_global",
         "marketing_brand",
         "clinical_tags",
+        "nutrition_plan",
+        "nutrition_brand",
+        "insurance_data_sharing",
+        "insurance_brand",
       ];
       if (!validTypes.includes(consent_type)) {
         return res.status(400).json({ error: "invalid_consent_type" });
@@ -607,7 +611,10 @@ function promoRouter({ requireAuth }) {
           .json({ error: "consent_type_and_status_required" });
       }
 
-      const validTypes = ["marketing_global", "marketing_brand", "clinical_tags"];
+      const validTypes = [
+        "marketing_global", "marketing_brand", "clinical_tags",
+        "nutrition_plan", "nutrition_brand", "insurance_data_sharing", "insurance_brand",
+      ];
       if (!validTypes.includes(consent_type)) {
         return res.status(400).json({ error: "invalid_consent_type" });
       }
@@ -630,6 +637,43 @@ function promoRouter({ requireAuth }) {
     } catch (e) {
       console.error("POST /api/promo/consent/ack error", e);
       res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // =======================================================
+  // GET /api/promo/consent/services
+  // Returns service_types with their active tenants (from published promo_items)
+  // =======================================================
+  router.get("/api/promo/consent/services", requireAuth, async (req, res) => {
+    if (!pool) {
+      return res.json({ services: [] });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT pi.service_type, pi.tenant_id, t.name AS tenant_name
+         FROM promo_items pi
+         JOIN tenants t ON t.tenant_id = pi.tenant_id
+         WHERE pi.status = 'published'
+         ORDER BY pi.service_type, t.name`
+      );
+
+      // Group by service_type
+      const serviceMap = {};
+      for (const row of rows) {
+        if (!serviceMap[row.service_type]) {
+          serviceMap[row.service_type] = { service_type: row.service_type, tenants: [] };
+        }
+        serviceMap[row.service_type].tenants.push({
+          tenant_id: row.tenant_id,
+          name: row.tenant_name,
+        });
+      }
+
+      res.json({ services: Object.values(serviceMap) });
+    } catch (e) {
+      console.error("GET /api/promo/consent/services error", e);
+      res.json({ services: [] });
     }
   });
 

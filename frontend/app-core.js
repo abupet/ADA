@@ -323,6 +323,9 @@ function navigateToPage(page) {
         if (typeof renderConsentBanner === 'function' && page === 'settings') {
             renderConsentBanner('settings-consent-container');
         }
+        if (typeof renderConsentCenter === 'function' && page === 'settings') {
+            renderConsentCenter('settings-consent-container');
+        }
         // Admin pages (PR 4)
         if (page === 'admin-dashboard' && typeof loadAdminDashboard === 'function') {
             loadAdminDashboard('admin-dashboard-content', '30d');
