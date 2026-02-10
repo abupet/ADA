@@ -1566,7 +1566,7 @@
     <script>
       if (!window.ADA_API_BASE_URL && !["localhost", "127.0.0.1"].includes(window.location.hostname)) {
         //window.ADA_API_BASE_URL = "https://ada-au40.onrender.com";
-		var isDevEnv = window.location.hostname.includes("netlify.app");
+		var isDevEnv = window.location.pathname.startsWith("/ada-dev");
         window.ADA_API_BASE_URL = isDevEnv
           ? "https://ada-backend-dev.onrender.com"
           : "https://ada-au40.onrender.com";

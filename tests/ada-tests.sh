@@ -140,7 +140,7 @@ STRICT_ALLOW_HOSTS_RUNTIME="${STRICT_ALLOW_HOSTS:-$DEFAULT_STRICT_ALLOW_HOSTS}"
 
 # Environment: prod | dev
 ADA_ENV="${ADA_ENV:-prod}"
-DEV_DEPLOY_URL="${DEV_DEPLOY_URL:-https://dev--ada-app.netlify.app/}"
+DEV_DEPLOY_URL="${DEV_DEPLOY_URL:-https://abupet.github.io/ada-dev/}"
 DEV_BACKEND_URL="${DEV_BACKEND_URL:-https://ada-backend-dev.onrender.com}"
 
 _apply_env_urls() {
