@@ -35,7 +35,7 @@ ADA è una SPA vanilla JS con backend Express.
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 7.3.4
+**Versione corrente:** 7.3.5
 
 ---
 
@@ -46,7 +46,7 @@ ADA opera con due ambienti separati:
 | | Produzione | Sviluppo |
 |---|---|---|
 | **Branch** | `main` (protetto, richiede PR) | `dev` (protetto, richiede PR) |
-| **Frontend** | GitHub Pages: https://abupet.github.io/ada/ | Netlify: https://ada-dev.netlify.app |
+| **Frontend** | GitHub Pages: https://abupet.github.io/ada/ | GitHub Pages: https://abupet.github.io/ada-dev/ |
 | **Backend** | Render: https://ada-au40.onrender.com | Render: https://ada-backend-dev.onrender.com |
 | **Database** | PostgreSQL su Render (Frankfurt) | PostgreSQL su Neon.tech (Frankfurt) |
 
@@ -55,7 +55,7 @@ ADA opera con due ambienti separati:
 1. Crea feature branch da `dev`: `git checkout -b feature/xxx`
 2. Lavora e committa
 3. Crea PR verso `dev` → CI deve passare → merge
-4. Testa su ambiente dev (Netlify)
+4. Testa su ambiente dev (GitHub Pages ada-dev)
 5. Quando stabile: crea PR `dev → main` → CI deve passare → merge → deploy produzione
 6. Dopo merge in main, riallinea dev: `git checkout dev && git merge main && git push origin dev`
 
@@ -69,8 +69,8 @@ Le migrazioni NON sono automatiche. Nuovi file SQL in `sql/`:
 ### Routing frontend dev/prod
 
 Il file `frontend/index.html` contiene un inline script che rileva automaticamente l'ambiente:
-- hostname contiene `netlify.app` → backend dev
-- hostname contiene `github.io` → backend prod
+- pathname inizia con `/ada-dev` → backend dev
+- hostname contiene `github.io` (path `/ada/`) → backend prod
 - localhost → backend locale
 
 ---

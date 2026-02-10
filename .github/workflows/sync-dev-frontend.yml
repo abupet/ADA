@@ -1,0 +1,59 @@
+# .github/workflows/sync-dev-frontend.yml
+name: Sync dev frontend to ada-dev repo
+
+on:
+  push:
+    branches: ["dev"]
+    paths:
+      - "frontend/**"
+      - "scripts/cache-bust.js"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ada (dev branch)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Checkout ada-dev repo
+        uses: actions/checkout@v4
+        with:
+          repository: abupet/ada-dev
+          token: ${{ secrets.ADA_DEV_SYNC_TOKEN }}
+          path: ada-dev-repo
+
+      - name: Sync frontend files
+        run: |
+          # Clean existing files (except .git and .github)
+          find ada-dev-repo -maxdepth 1 -not -name '.git' -not -name '.github' -not -name '.' -not -name '..' -exec rm -rf {} +
+
+          # Copy frontend
+          cp -r frontend/* ada-dev-repo/
+
+          # Copy cache-bust script
+          mkdir -p ada-dev-repo/scripts
+          cp scripts/cache-bust.js ada-dev-repo/scripts/
+
+      - name: Apply ada-dev overrides
+        run: |
+          cd ada-dev-repo
+
+          # 404.html: /ada → /ada-dev
+          sed -i 's|var basePath = "/ada"|var basePath = "/ada-dev"|g' 404.html
+          sed -i 's|url=/ada/|url=/ada-dev/|g' 404.html
+          sed -i 's|replace("/ada/")|replace("/ada-dev/")|g' 404.html
+
+          # runtime-config.js: netlify detection → path detection
+          sed -i 's|window.location.hostname.includes("netlify.app")|window.location.pathname.startsWith("/ada-dev")|g' runtime-config.js
+
+      - name: Commit and push
+        run: |
+          cd ada-dev-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          # Only commit if there are changes
+          git diff --staged --quiet || git commit -m "sync: frontend from ada dev branch (${{ github.sha }})"
+          git push
