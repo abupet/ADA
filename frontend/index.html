@@ -1665,7 +1665,7 @@
     <script src="app-testdata.js"></script>
     <script src="app-seed.js"></script>
 <script>
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
     window.addEventListener('load', function() {
         navigator.serviceWorker.register('./sw.js')
             .catch(function() {});
