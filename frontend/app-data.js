@@ -67,8 +67,12 @@ function capturePhoto() {
 
 function _photoSrc(photo) {
     if (!photo) return '';
-    if (typeof photo === 'string') return photo;
-    return photo.dataUrl || photo.url || '';
+    var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.url || '');
+    // Relative API paths need the backend base URL (frontend may be on different host, e.g. GitHub Pages)
+    if (src.startsWith('/api/') && typeof API_BASE_URL !== 'undefined') {
+        src = API_BASE_URL + src;
+    }
+    return src;
 }
 
 function renderPhotos() {
