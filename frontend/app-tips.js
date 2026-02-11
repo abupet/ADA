@@ -256,7 +256,7 @@ VINCOLI IMPORTANTI:
 8. DIVERSITA FONTI: NON usare piu del 50% delle fonti dallo stesso sito web. Distribuisci le fonti equamente.
 9. FONTI: sourceUrl deve essere UNA delle fonti autorizzate qui sotto (esattamente).
 10. RAZZA: Usa SOLO la razza indicata nel profilo pet. Se la razza e "N/D" o vuota, NON inventarne una: parla in termini generici della specie. NON aggiungere dettagli sulla razza che non siano nel profilo.
-11. CONTENUTI PRE-ELABORATI: Basa i consigli sui contenuti pre-elaborati forniti sotto ogni URL. Usa quei riassunti come fonte primaria di informazioni.
+11. CONTENUTI PRE-ELABORATI: Basa i consigli ESCLUSIVAMENTE sui contenuti pre-elaborati forniti sotto ogni URL. NON inventare informazioni non presenti nei riassunti. Se un riassunto è assente per una fonte, NON usare quella fonte.
 
 CATEGORIE DA COPRIRE (almeno 5 categorie diverse):
 - Curiosita sulla razza/specie
@@ -310,10 +310,16 @@ async function generateTipsTricks() {
         const srcResp = await fetchApi('/api/tips-sources/active-urls');
         if (srcResp.ok) {
             const srcData = await srcResp.json();
-            _cachedActiveSources = srcData.sources || [];
-            allowedSources = _cachedActiveSources
-                .filter(s => s.is_available)
-                .map(s => s.url);
+            const allActive = srcData.sources || [];
+            const withSummary = allActive.filter(s => s.is_available && s.summary_it);
+            _cachedActiveSources = withSummary;
+            allowedSources = withSummary.map(s => s.url);
+
+            // Visual indicator: show how many sources have pre-elaborated content
+            const metaDiv = document.getElementById('tipsMeta');
+            if (metaDiv) {
+                metaDiv.innerHTML = 'Fonti pre-elaborate: ' + withSummary.length + '/' + allActive.filter(s => s.is_available).length + ' \u2713';
+            }
         }
     } catch (_) {}
     if (!allowedSources || allowedSources.length === 0) {

@@ -122,13 +122,37 @@ function communicationRouter({ requireAuth }) {
     }
   });
 
+  // --- Users lookup (for recipient dropdown) ---
+
+  // GET /api/communication/users?role=vet|owner — list users by role
+  router.get("/api/communication/users", requireAuth, async (req, res) => {
+    try {
+      const roleParam = req.query.role;
+      if (!roleParam || !["vet", "owner"].includes(roleParam)) {
+        return res.status(400).json({ error: "invalid_role", message: "role must be vet or owner" });
+      }
+      const dbRole = roleParam === "vet" ? "veterinario" : "proprietario";
+      const { rows } = await pool.query(
+        "SELECT user_id, email, display_name FROM users WHERE base_role = $1 AND status = 'active' ORDER BY display_name, email",
+        [dbRole]
+      );
+      res.json({ users: rows });
+    } catch (e) {
+      if (e.code === "42P01") {
+        return res.json({ users: [] });
+      }
+      console.error("GET /api/communication/users error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // --- Conversations ---
 
   // POST /api/communication/conversations - create a new conversation
   router.post("/api/communication/conversations", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-      const { pet_id, vet_user_id, subject } = req.body;
+      const { pet_id, vet_user_id, owner_override_id, subject } = req.body;
 
       if (!pet_id || !isValidUuid(pet_id)) {
         return res.status(400).json({ error: "invalid_pet_id" });
@@ -136,12 +160,23 @@ function communicationRouter({ requireAuth }) {
 
       const conversationId = crypto.randomUUID();
 
+      // If owner_override_id is set, current user is vet, recipient is owner
+      // Otherwise, current user is owner, vet_user_id is the recipient
+      let ownerUserId, vetUserId;
+      if (owner_override_id && isValidUuid(owner_override_id)) {
+        vetUserId = userId;
+        ownerUserId = owner_override_id;
+      } else {
+        ownerUserId = userId;
+        vetUserId = vet_user_id || null;
+      }
+
       const { rows } = await pool.query(
         "INSERT INTO conversations " +
         "(conversation_id, pet_id, owner_user_id, vet_user_id, subject, status) " +
         "VALUES ($1, $2, $3, $4, $5, 'active') " +
         "RETURNING *",
-        [conversationId, pet_id, userId, vet_user_id || null, subject || null]
+        [conversationId, pet_id, ownerUserId, vetUserId, subject || null]
       );
 
       res.status(201).json(rows[0]);

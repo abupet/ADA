@@ -2970,6 +2970,9 @@
             if (s.last_crawled_at) {
                 html.push('Crawl: ' + new Date(s.last_crawled_at).toLocaleDateString('it-IT') + ' | ');
             }
+            if (s.content_changed_at) {
+                html.push('Ultimo agg. contenuto: ' + new Date(s.content_changed_at).toLocaleDateString('it-IT') + ' | ');
+            }
             html.push('Freq: ' + _escapeHtml(s.crawl_frequency || 'monthly'));
             if (s.language) html.push(' | Lingua: ' + _escapeHtml(s.language));
             if (s.http_status) html.push(' | HTTP ' + s.http_status);

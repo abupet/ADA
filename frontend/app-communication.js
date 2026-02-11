@@ -223,29 +223,116 @@ function _commRenderConvList(conversations) {
 // =========================================================================
 // New conversation form
 // =========================================================================
-function _commShowNewForm(containerId) {
+async function _commShowNewForm(containerId) {
     var area = document.getElementById('comm-new-form-area');
     if (!area) return;
+
+    // Determine recipient type options based on current role
+    var role = _commGetRole();
+    var recipientTypeOptions = '';
+    if (role === 'proprietario') {
+        recipientTypeOptions = '<option value="vet">Veterinario</option>';
+    } else if (role === 'veterinario') {
+        recipientTypeOptions = '<option value="owner">Proprietario</option>';
+    } else {
+        // super_admin or other: show both
+        recipientTypeOptions = '<option value="vet">Veterinario</option><option value="owner">Proprietario</option>';
+    }
+
     area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
-        '<label for="comm-new-pet">Animale (ID pet)</label>' +
-        '<input type="text" id="comm-new-pet" placeholder="ID del paziente" />' +
+        '<label for="comm-new-pet">Animale</label>' +
+        '<select id="comm-new-pet"><option value="">Caricamento...</option></select>' +
+        '<label for="comm-new-recipient-type">Tipo destinatario</label>' +
+        '<select id="comm-new-recipient-type" onchange="_commLoadRecipients()">' +
+        '<option value="">-- Seleziona --</option>' + recipientTypeOptions + '</select>' +
+        '<label for="comm-new-recipient">Destinatario</label>' +
+        '<select id="comm-new-recipient" disabled><option value="">-- Seleziona prima il tipo --</option></select>' +
         '<label for="comm-new-subject">Oggetto (opzionale)</label>' +
         '<input type="text" id="comm-new-subject" placeholder="Es: Controllo post-operatorio" />' +
         '<div style="margin-top:14px;display:flex;gap:8px;">' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation(\'' + containerId + '\')">Crea</button>' +
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
         '</div></div>';
+
+    // Populate pet dropdown from IndexedDB
+    var petSelect = document.getElementById('comm-new-pet');
+    if (petSelect && typeof getAllPets === 'function') {
+        try {
+            var pets = await getAllPets();
+            if (Array.isArray(pets) && pets.length > 0) {
+                var optHtml = '<option value="">-- Seleziona animale --</option>';
+                for (var i = 0; i < pets.length; i++) {
+                    var p = pets[i];
+                    var label = _commEscape((p.name || 'Pet') + ' (' + (p.species || '') + ')' + (p.breed ? ' - ' + p.breed : ''));
+                    optHtml += '<option value="' + _commEscape(p.id) + '">' + label + '</option>';
+                }
+                petSelect.innerHTML = optHtml;
+            } else {
+                petSelect.innerHTML = '<option value="">Nessun animale trovato</option>';
+            }
+        } catch (_) {
+            petSelect.innerHTML = '<option value="">Errore caricamento animali</option>';
+        }
+    }
+}
+
+async function _commLoadRecipients() {
+    var typeSelect = document.getElementById('comm-new-recipient-type');
+    var recipientSelect = document.getElementById('comm-new-recipient');
+    if (!typeSelect || !recipientSelect) return;
+
+    var roleParam = typeSelect.value;
+    if (!roleParam) {
+        recipientSelect.disabled = true;
+        recipientSelect.innerHTML = '<option value="">-- Seleziona prima il tipo --</option>';
+        return;
+    }
+
+    recipientSelect.disabled = true;
+    recipientSelect.innerHTML = '<option value="">Caricamento...</option>';
+
+    try {
+        var resp = await fetch(_commApiBase() + '/api/communication/users?role=' + encodeURIComponent(roleParam), { headers: _commAuthHeaders() });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        var users = data.users || [];
+        if (users.length === 0) {
+            recipientSelect.innerHTML = '<option value="">Nessun destinatario trovato</option>';
+            return;
+        }
+        var optHtml = '<option value="">-- Seleziona destinatario --</option>';
+        for (var i = 0; i < users.length; i++) {
+            var u = users[i];
+            var uLabel = _commEscape(u.display_name || u.email || u.user_id);
+            optHtml += '<option value="' + _commEscape(u.user_id) + '">' + uLabel + '</option>';
+        }
+        recipientSelect.innerHTML = optHtml;
+        recipientSelect.disabled = false;
+    } catch (_) {
+        recipientSelect.innerHTML = '<option value="">Errore caricamento destinatari</option>';
+    }
 }
 
 async function _commCreateConversation(containerId) {
     var petId = (document.getElementById('comm-new-pet') || {}).value || '';
+    var recipientType = (document.getElementById('comm-new-recipient-type') || {}).value || '';
+    var recipientId = (document.getElementById('comm-new-recipient') || {}).value || '';
     var subject = (document.getElementById('comm-new-subject') || {}).value || '';
-    petId = petId.trim(); subject = subject.trim();
-    if (!petId) { if (typeof showToast === 'function') showToast('Inserisci l\'ID del paziente', 'warning'); return; }
+    petId = petId.trim(); subject = subject.trim(); recipientId = recipientId.trim();
+
+    if (!petId) { if (typeof showToast === 'function') showToast('Seleziona un animale', 'warning'); return; }
+    if (!recipientId) { if (typeof showToast === 'function') showToast('Seleziona un destinatario', 'warning'); return; }
 
     try {
         var body = { pet_id: petId };
         if (subject) body.subject = subject;
+
+        if (recipientType === 'vet') {
+            body.vet_user_id = recipientId;
+        } else if (recipientType === 'owner') {
+            body.owner_override_id = recipientId;
+        }
+
         var resp = await fetch(_commApiBase() + '/api/communication/conversations', {
             method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify(body)
         });
