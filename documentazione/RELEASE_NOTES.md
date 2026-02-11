@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.1.0 (2026-02-11)
+- Feat: Schema database comunicazione — `sql/013_communication.sql` con 7 tabelle
+- DB: `communication_settings` — toggle AI per utente (chatbot, trascrizione)
+- DB: `conversations` — chat, voice_call, video_call tra owner e vet, legata a pet
+- DB: `comm_messages` — messaggi con supporto testo, media, system, transcription
+- DB: `call_recordings` — registrazioni chiamate con stato trascrizione
+- DB: `comm_attachments` — allegati ai messaggi con metadata file
+- DB: `chat_sessions` — sessioni chatbot AI con triage e timeout 30min
+- DB: `chat_messages` — messaggi chatbot con livello triage e azioni suggerite
+
 ## v8.0.0 (2026-02-10)
 - Feat: Architettura multi-servizio completa — ADA supporta ora 3 tipi di servizio: promo, nutrizione e assicurazione
 - Test: `smoke.multi-service.spec.ts` — 7 test E2E per globals nutrizione/assicurazione, consent center, container DOM, demo mode UI
