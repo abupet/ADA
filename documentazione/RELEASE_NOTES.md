@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v8.12.1 (2026-02-11)
+- Fix: Foto pet da Seed Engine non visibili su GitHub Pages — `_photoSrc()` ora prepone `API_BASE_URL` agli URL relativi `/api/...` che il backend Seed Engine salva nelle foto; su GitHub Pages il browser risolveva questi path contro il dominio frontend invece che contro il backend Render
+
 ## v8.12.0 (2026-02-11)
 - Feat: Placeholder immagini animali — Seed Engine ora assegna foto PNG cartoon variegate (15 varianti per specie: Cane, Gatto, Coniglio) invece del singolo SVG deterministico; ogni pet riceve foto diverse senza duplicati
 - Feat: Placeholder immagini prodotti — promo senza `image_url` mostrano ora un placeholder cartoon sacchetto pet food casuale (45 varianti); fallback a triplo livello: backend eligibility, backend mock, frontend `onerror`
