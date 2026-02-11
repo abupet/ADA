@@ -31,15 +31,19 @@ test.describe("Role-based access control", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Super admin: TEST & DEMO visible, debug shows dropdown", async ({ page }) => {
+  test("@smoke Super admin: TEST & DEMO visible, debug shows checkboxes", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
 
     await expect(page.locator("#appContainer")).toBeVisible({ timeout: 10_000 });
 
-    // super_admin defaults to veterinario; switch to super_admin role
+    // super_admin defaults to veterinario+super_admin; ensure super_admin role is active
     await page.evaluate(() => {
-      (window as any).setActiveRole('super_admin');
+      if (typeof (window as any).setActiveRoles === 'function') {
+        (window as any).setActiveRoles(['veterinario', 'super_admin']);
+      } else {
+        (window as any).setActiveRole('super_admin');
+      }
       (window as any).applyRoleUI('super_admin');
     });
 
@@ -50,7 +54,7 @@ test.describe("Role-based access control", () => {
     await page.locator('.nav-item[data-page="debug"]').click();
     await expect(page.locator("#page-debug")).toBeVisible();
 
-    // super_admin: dropdown visible, toggle hidden
+    // super_admin: checkboxes visible, toggle hidden
     await expect(page.locator("#superAdminRoleSelector")).toBeVisible();
     await expect(page.locator("#roleToggleLabelBlock")).not.toBeVisible();
     await expect(page.locator("#roleToggleContainer")).not.toBeVisible();

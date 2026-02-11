@@ -176,38 +176,37 @@ function setActiveRoles(rolesArray) {
 }
 
 function isPageAllowedForRole(pageId, role) {
-    const r = role || getActiveRole();
+    var r = role || getActiveRole();
     // super_admin JWT users: check ALL active roles
     if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
         var roles = getActiveRoles();
         for (var i = 0; i < roles.length; i++) {
-            var perms = ROLE_PERMISSIONS[roles[i]];
-            if (perms && perms.pages.indexOf(pageId) !== -1) return true;
+            var rp = ROLE_PERMISSIONS[roles[i]];
+            if (rp && rp.pages.indexOf(pageId) !== -1) return true;
         }
-        // Always check super_admin permissions as fallback
         var saPerms = ROLE_PERMISSIONS['super_admin'];
         if (saPerms && saPerms.pages.indexOf(pageId) !== -1) return true;
         return false;
     }
-    const perms = ROLE_PERMISSIONS[r];
+    var perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.pages.indexOf(pageId) !== -1;
 }
 
 function isActionAllowedForRole(action, role) {
-    const r = role || getActiveRole();
+    var r = role || getActiveRole();
     // super_admin JWT users: check ALL active roles
     if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
         var roles = getActiveRoles();
         for (var i = 0; i < roles.length; i++) {
-            var perms = ROLE_PERMISSIONS[roles[i]];
-            if (perms && perms.actions.indexOf(action) !== -1) return true;
+            var rp = ROLE_PERMISSIONS[roles[i]];
+            if (rp && rp.actions.indexOf(action) !== -1) return true;
         }
         var saPerms = ROLE_PERMISSIONS['super_admin'];
         if (saPerms && saPerms.actions.indexOf(action) !== -1) return true;
         return false;
     }
-    const perms = ROLE_PERMISSIONS[r];
+    var perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.actions.indexOf(action) !== -1;
 }
