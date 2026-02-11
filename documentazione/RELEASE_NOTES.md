@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.9.0 (2026-02-11)
+- Fix (grave): Seed Engine — pet ora appaiono dopo completamento: delay 1.5s + await pull + retry dopo 3s + refresh esplicito UI (rebuildPetSelector, updateSelectedPetHeaders)
+- Fix: "Draft Tutti" nel Report Validazione URL — parsing robusto via row ID (`tr[id^="url-row-"]`) invece di regex su onclick; toast di errore se tenantId e' null
+- Fix: Upload audio lungo — timeout backpressure aumentato da 90s a 300s (5 min) per file 40+ minuti
+- Feat: Tips auto-refresh — `scheduleTipsRefresh()` controlla ogni 6h fonti con last_crawled > 7 giorni e le ri-crawla automaticamente; `_crawlSource` refactored fuori dalla closure del router
+- Feat: Tips prompt usa riassunti pre-elaborati — `_buildTipsPrompt()` include `summary_it` sotto ogni URL nelle fonti autorizzate; nuovo vincolo prompt "Basa i consigli sui contenuti pre-elaborati"
+- Feat: Multi-ruolo super admin — checkboxes (vet/owner/admin/SA) al posto del dropdown nel Debug; `getActiveRoles()` e `setActiveRoles()` in config.js; `applyRoleUI()` mostra sidebar sections per TUTTI i ruoli attivi; `isPageAllowedForRole`/`isActionAllowedForRole` controllano tutti i ruoli; backward-compat completa per utenti non-super_admin
+
 ## v8.8.0 (2026-02-11)
 - Fix: Filtro Priorita nel Catalogo Prodotti ora mostra tutti i valori 0-9 (prima solo 0-5)
 - Fix: Filtro Specie nel Catalogo ora mostra tutte le specie (Cane, Gatto, Coniglio, Furetto, Uccello, Rettile, Tutte) — prima mostrava solo "Tutte" a causa di `_translateSpecies` chiamata con stringa invece di array

@@ -1,4 +1,4 @@
-// ADA v8.8.0 - Configuration
+// ADA v8.9.0 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 
@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.8.0';
+const ADA_VERSION = '8.9.0';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -143,32 +143,70 @@ function setActiveRole(role) {
     return validRole;
 }
 
+const ADA_ACTIVE_ROLES_KEY = 'ada_active_roles';
+
+function getActiveRoles() {
+    try {
+        if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+            var stored = localStorage.getItem(ADA_ACTIVE_ROLES_KEY);
+            if (stored) {
+                var roles = stored.split(',').filter(Boolean);
+                if (roles.length > 0) return roles;
+            }
+            // Fallback: read single role from legacy key
+            var single = getActiveRole();
+            return [single];
+        }
+        return [getActiveRole()];
+    } catch (e) {
+        return [getActiveRole()];
+    }
+}
+
+function setActiveRoles(rolesArray) {
+    var validRoles = ['veterinario', 'proprietario', 'admin_brand', 'super_admin'];
+    var filtered = (rolesArray || []).filter(function(r) { return validRoles.indexOf(r) !== -1; });
+    if (filtered.length === 0) filtered = ['veterinario'];
+    try {
+        localStorage.setItem(ADA_ACTIVE_ROLES_KEY, filtered.join(','));
+        // Keep legacy single-role key in sync (first role)
+        localStorage.setItem(ADA_ACTIVE_ROLE_KEY, filtered[0]);
+    } catch (e) {}
+    return filtered;
+}
+
 function isPageAllowedForRole(pageId, role) {
-    const r = role || getActiveRole();
-    // super_admin JWT users always have access to all pages (regardless of active role)
+    var r = role || getActiveRole();
+    // super_admin JWT users: check ALL active roles
     if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
-        var activePerms = ROLE_PERMISSIONS[r];
-        if (activePerms && activePerms.pages.indexOf(pageId) !== -1) return true;
+        var roles = getActiveRoles();
+        for (var i = 0; i < roles.length; i++) {
+            var rp = ROLE_PERMISSIONS[roles[i]];
+            if (rp && rp.pages.indexOf(pageId) !== -1) return true;
+        }
         var saPerms = ROLE_PERMISSIONS['super_admin'];
         if (saPerms && saPerms.pages.indexOf(pageId) !== -1) return true;
         return false;
     }
-    const perms = ROLE_PERMISSIONS[r];
+    var perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.pages.indexOf(pageId) !== -1;
 }
 
 function isActionAllowedForRole(action, role) {
-    const r = role || getActiveRole();
-    // super_admin JWT users always have access to all actions
+    var r = role || getActiveRole();
+    // super_admin JWT users: check ALL active roles
     if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
-        var activePerms = ROLE_PERMISSIONS[r];
-        if (activePerms && activePerms.actions.indexOf(action) !== -1) return true;
+        var roles = getActiveRoles();
+        for (var i = 0; i < roles.length; i++) {
+            var rp = ROLE_PERMISSIONS[roles[i]];
+            if (rp && rp.actions.indexOf(action) !== -1) return true;
+        }
         var saPerms = ROLE_PERMISSIONS['super_admin'];
         if (saPerms && saPerms.actions.indexOf(action) !== -1) return true;
         return false;
     }
-    const perms = ROLE_PERMISSIONS[r];
+    var perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.actions.indexOf(action) !== -1;
 }

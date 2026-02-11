@@ -2634,15 +2634,18 @@
         var modal = document.querySelector('.modal-overlay');
         if (!modal) return;
         var tenantId = _getAdminTenantId();
-        if (!tenantId) return;
+        if (!tenantId) {
+            showToast('Errore: nessun tenant selezionato. Seleziona un tenant dalla Dashboard.', 'error');
+            return;
+        }
 
-        // Collect item IDs from the draft buttons' onclick attributes
+        // Collect item IDs from table row IDs (format: url-row-{itemId}) — more robust than parsing onclick
         var itemIds = [];
-        modal.querySelectorAll('button').forEach(function(b) {
-            if (b.textContent.trim() === '\u2192 Draft' && !b.disabled) {
-                var onclick = b.getAttribute('onclick') || '';
-                var match = onclick.match(/setItemStatusFromReport\('([^']+)'/);
-                if (match) itemIds.push({ id: match[1], btn: b });
+        modal.querySelectorAll('tr[id^="url-row-"]').forEach(function(row) {
+            var itemId = row.id.replace('url-row-', '');
+            var btn = row.querySelector('button');
+            if (btn && !btn.disabled && btn.textContent.trim() === '\u2192 Draft') {
+                itemIds.push({ id: itemId, btn: btn });
             }
         });
         if (itemIds.length === 0) {

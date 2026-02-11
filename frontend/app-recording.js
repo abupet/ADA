@@ -941,11 +941,11 @@ async function enqueueChunkForTranscription(blob, chunkIndex) {
     if (isUpload && chunkQueue.length >= maxPending) {
         logDebug?.('CHUNK', `Queue full (${chunkQueue.length}/${maxPending}), waiting for space...`);
         const t0 = Date.now();
-        while (chunkQueue.length >= maxPending && (Date.now() - t0) < 90000) {
+        while (chunkQueue.length >= maxPending && (Date.now() - t0) < 300000) {
             await new Promise(r => setTimeout(r, 500));
         }
         if (chunkQueue.length >= maxPending) {
-            showToast('Timeout: il file è troppo grande o la connessione è lenta', 'error');
+            showToast('Timeout: il file è troppo grande o la connessione è lenta (limite 5 min)', 'error');
             return;
         }
     }

@@ -429,26 +429,33 @@ function applyRoleUI(role) {
     const r = role || getActiveRole();
     var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
 
-    // Update sidebar sections
+    // For super_admin, use multi-role array; for others, single role
+    var activeRoles = _isSA && typeof getActiveRoles === 'function' ? getActiveRoles() : [r];
+
+    // Update sidebar sections based on ALL active roles
     const vetSection = document.getElementById('sidebar-vet');
     const ownerSection = document.getElementById('sidebar-owner');
     const adminSection = document.getElementById('sidebar-admin');
     const testDemoSection = document.getElementById('sidebar-test-demo');
-    const isAdmin = (r === 'admin_brand' || r === 'super_admin');
-    if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
-    if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
-    if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
 
-    // TEST & DEMO section: visible only when super_admin user has super_admin as active role
-    if (testDemoSection) testDemoSection.style.display = (_isSA && r === 'super_admin') ? '' : 'none';
+    var showVet = activeRoles.indexOf(ROLE_VETERINARIO) !== -1;
+    var showOwner = activeRoles.indexOf(ROLE_PROPRIETARIO) !== -1;
+    var showAdmin = activeRoles.indexOf('admin_brand') !== -1 || activeRoles.indexOf('super_admin') !== -1;
+    var showTestDemo = _isSA && activeRoles.indexOf('super_admin') !== -1;
+
+    if (vetSection) vetSection.style.display = showVet ? '' : 'none';
+    if (ownerSection) ownerSection.style.display = showOwner ? '' : 'none';
+    if (adminSection) adminSection.style.display = showAdmin ? '' : 'none';
+    if (testDemoSection) testDemoSection.style.display = showTestDemo ? '' : 'none';
 
     // Show super_admin-only nav items
+    var hasSARole = activeRoles.indexOf('super_admin') !== -1;
     ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit', 'nav-superadmin-sources'].forEach(function (id) {
         var el = document.getElementById(id);
-        if (el) el.style.display = (r === 'super_admin') ? '' : 'none';
+        if (el) el.style.display = hasSARole ? '' : 'none';
     });
 
-    // Update toggle button
+    // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');
     const labelEl = document.getElementById('roleToggleLabel');
     var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡' };
@@ -456,26 +463,24 @@ function applyRoleUI(role) {
     if (icon) icon.textContent = roleIcons[r] || '🩺';
     if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
 
-    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label,
-    // show only the dropdown with smaller title
+    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label
     var roleToggleContainer = document.getElementById('roleToggleContainer');
     var roleToggleLabelBlock = document.getElementById('roleToggleLabelBlock');
     if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? 'none' : '';
     if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? 'none' : '';
 
-    // Show super_admin role selector if user is super_admin
+    // Show super_admin role selector (checkboxes) if user is super_admin
     var saSelector = document.getElementById('superAdminRoleSelector');
-    var saSelect = document.getElementById('superAdminRoleSelect');
     if (saSelector) {
         saSelector.style.display = _isSA ? '' : 'none';
-        if (_isSA && saSelect) saSelect.value = r;
-    }
-
-    // For super_admin, show the appropriate sidebar sections based on active role
-    if (_isSA) {
-        if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
-        if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
-        if (adminSection) adminSection.style.display = (r === 'admin_brand' || r === 'super_admin') ? '' : 'none';
+        // Sync checkbox states
+        if (_isSA) {
+            var cbMap = { 'saRoleVet': 'veterinario', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+            Object.keys(cbMap).forEach(function(cbId) {
+                var cb = document.getElementById(cbId);
+                if (cb) cb.checked = activeRoles.indexOf(cbMap[cbId]) !== -1;
+            });
+        }
     }
 
     // Settings: Sistema section visibility and debug checkbox access control
@@ -534,8 +539,12 @@ function initRoleSystem() {
         } else if (jwtRole === 'admin_brand') {
             setActiveRole('admin_brand');
         } else if (jwtRole === 'super_admin') {
-            // super_admin: default to veterinario on first login
-            setActiveRole(ROLE_VETERINARIO);
+            // super_admin: default to veterinario + super_admin on first login
+            if (typeof setActiveRoles === 'function') {
+                setActiveRoles(['veterinario', 'super_admin']);
+            } else {
+                setActiveRole(ROLE_VETERINARIO);
+            }
         }
     }
 
@@ -1048,7 +1057,12 @@ async function submitChangePassword() {
 // ============================================
 
 function onSuperAdminRoleChange(role) {
-    setActiveRole(role);
+    // Backward compat wrapper — sets a single role
+    if (typeof setActiveRoles === 'function') {
+        setActiveRoles([role]);
+    } else {
+        setActiveRole(role);
+    }
     applyRoleUI(role);
     var defaultPage = getDefaultPageForRole(role);
     navigateToPage(defaultPage);
@@ -1059,6 +1073,33 @@ function onSuperAdminRoleChange(role) {
         'super_admin': 'Super Admin'
     };
     showToast('Ruolo: ' + (labels[role] || role), 'success');
+}
+
+function onSuperAdminRoleToggle() {
+    var cbMap = { 'saRoleVet': 'veterinario', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+    var selected = [];
+    Object.keys(cbMap).forEach(function(cbId) {
+        var cb = document.getElementById(cbId);
+        if (cb && cb.checked) selected.push(cbMap[cbId]);
+    });
+    // Ensure at least one role is selected
+    if (selected.length === 0) {
+        selected = ['veterinario'];
+        var vetCb = document.getElementById('saRoleVet');
+        if (vetCb) vetCb.checked = true;
+    }
+    if (typeof setActiveRoles === 'function') {
+        setActiveRoles(selected);
+    }
+    applyRoleUI(selected[0]);
+    var labels = {
+        'veterinario': 'Veterinario',
+        'proprietario': 'Proprietario',
+        'admin_brand': 'Admin Brand',
+        'super_admin': 'Super Admin'
+    };
+    var names = selected.map(function(r) { return labels[r] || r; });
+    showToast('Ruoli attivi: ' + names.join(', '), 'success');
 }
 
 // ============================================

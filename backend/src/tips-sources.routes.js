@@ -26,6 +26,135 @@ function extractTextFromHtml(html) {
         .trim();
 }
 
+// _crawlSource — extracted from router closure so it can be reused by scheduleTipsRefresh
+async function _crawlSource(pool, source, getOpenAiKey, triggeredBy) {
+    const t0 = Date.now();
+    let http_status = null;
+    let content_hash = null;
+    let content_changed = false;
+    let summary_regenerated = false;
+    let error = null;
+
+    try {
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 15000);
+        const resp = await fetch(source.url, { signal: ctrl.signal, headers: { "User-Agent": "ADA-Bot/1.0" } });
+        clearTimeout(timeout);
+        http_status = resp.status;
+
+        if (!resp.ok) {
+            error = `HTTP ${resp.status}`;
+            await pool.query(
+                "UPDATE tips_sources SET http_status = $1, is_available = false, crawl_error = $2, last_crawled_at = NOW(), updated_at = NOW() WHERE source_id = $3",
+                [http_status, error, source.source_id]
+            );
+        } else {
+            const htmlText = await resp.text();
+            const contentText = extractTextFromHtml(htmlText).substring(0, 10000);
+            content_hash = crypto.createHash('sha256').update(contentText).digest('hex');
+
+            if (content_hash !== source.content_hash || !source.last_crawled_at) {
+                content_changed = true;
+                let summary_it = source.summary_it;
+                let key_topics = source.key_topics || [];
+                let language = source.language || 'en';
+
+                const oaKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
+                if (oaKey && contentText.length > 100) {
+                    try {
+                        const gptResp = await fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${oaKey}` },
+                            body: JSON.stringify({
+                                model: 'gpt-4o-mini',
+                                messages: [{
+                                    role: 'user',
+                                    content: `Sei un assistente veterinario. Analizza questo testo da un sito veterinario e produci:\n1. Riassunto in italiano (max 300 parole) dei contenuti utili per veterinari e proprietari\n2. Lista di 5-10 argomenti chiave\n\nSito: ${source.url} (${source.display_name})\n\nTESTO:\n${contentText.substring(0, 6000)}\n\nRispondi SOLO con JSON:\n{"summary_it": "...", "key_topics": ["..."], "detected_language": "en|it|..."}`
+                                }],
+                                temperature: 0.3
+                            })
+                        });
+                        if (gptResp.ok) {
+                            const gptData = await gptResp.json();
+                            const gptContent = gptData.choices?.[0]?.message?.content || '';
+                            try {
+                                const parsed = JSON.parse(gptContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+                                if (parsed.summary_it) summary_it = parsed.summary_it;
+                                if (Array.isArray(parsed.key_topics)) key_topics = parsed.key_topics;
+                                if (parsed.detected_language) language = parsed.detected_language;
+                                summary_regenerated = true;
+                            } catch (_) {}
+                        }
+                    } catch (_) {}
+                }
+
+                await pool.query(
+                    `UPDATE tips_sources SET content_text = $1, content_hash = $2, summary_it = $3, key_topics = $4, language = $5,
+                     http_status = $6, is_available = true, last_crawled_at = NOW(), content_changed_at = NOW(), crawl_error = NULL, updated_at = NOW()
+                     WHERE source_id = $7`,
+                    [contentText, content_hash, summary_it, key_topics, language, http_status, source.source_id]
+                );
+            } else {
+                await pool.query(
+                    "UPDATE tips_sources SET http_status = $1, is_available = true, last_crawled_at = NOW(), crawl_error = NULL, updated_at = NOW() WHERE source_id = $2",
+                    [http_status, source.source_id]
+                );
+            }
+        }
+    } catch (e) {
+        error = e.message || String(e);
+        await pool.query(
+            "UPDATE tips_sources SET crawl_error = $1, last_crawled_at = NOW(), updated_at = NOW() WHERE source_id = $2",
+            [error, source.source_id]
+        );
+    }
+
+    const duration_ms = Date.now() - t0;
+
+    await pool.query(
+        "INSERT INTO tips_sources_crawl_log (source_id, crawl_type, http_status, content_hash, content_changed, summary_regenerated, error, duration_ms, triggered_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        [source.source_id, triggeredBy === 'auto-refresh' ? 'auto' : 'manual', http_status, content_hash, content_changed, summary_regenerated, error, duration_ms, triggeredBy]
+    );
+
+    return { source_id: source.source_id, display_name: source.display_name, http_status, content_changed, summary_regenerated, error, duration_ms };
+}
+
+// scheduleTipsRefresh — auto-refresh sources older than 7 days, every 6 hours
+function scheduleTipsRefresh(getOpenAiKey) {
+    const pool = getPool();
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+    async function refreshStale() {
+        try {
+            const { rows } = await pool.query(
+                "SELECT * FROM tips_sources WHERE is_active = true AND (last_crawled_at IS NULL OR last_crawled_at < NOW() - INTERVAL '7 days') ORDER BY last_crawled_at ASC NULLS FIRST LIMIT 20"
+            );
+            if (rows.length === 0) {
+                console.log("[tips-auto-refresh] No stale sources to refresh");
+                return;
+            }
+            console.log(`[tips-auto-refresh] Refreshing ${rows.length} stale source(s)...`);
+            for (const source of rows) {
+                try {
+                    const result = await _crawlSource(pool, source, getOpenAiKey, 'auto-refresh');
+                    console.log(`[tips-auto-refresh] ${source.display_name}: ${result.error ? 'ERROR ' + result.error : 'OK'} (${result.duration_ms}ms, changed=${result.content_changed})`);
+                } catch (e) {
+                    console.error(`[tips-auto-refresh] Error crawling ${source.display_name}:`, e.message);
+                }
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        } catch (e) {
+            console.error("[tips-auto-refresh] Scheduling error:", e.message);
+        }
+    }
+
+    // Initial check after 60s (let server start fully)
+    setTimeout(refreshStale, 60000);
+    // Then every 6 hours
+    setInterval(refreshStale, SIX_HOURS);
+    console.log("[tips-auto-refresh] Scheduled: check every 6h, initial check in 60s");
+}
+
 function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
     const router = express.Router();
     const pool = getPool();
@@ -188,7 +317,7 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
         try {
             const { rows } = await pool.query("SELECT * FROM tips_sources WHERE source_id = $1", [req.params.id]);
             if (rows.length === 0) return res.status(404).json({ error: "not_found" });
-            const result = await _crawlSource(rows[0], getOpenAiKey, req.user?.sub || 'admin');
+            const result = await _crawlSource(pool, rows[0], getOpenAiKey, req.user?.sub || 'admin');
             res.json(result);
         } catch (e) {
             console.error("POST /api/tips-sources/:id/crawl error", e);
@@ -202,7 +331,7 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
             const { rows } = await pool.query("SELECT * FROM tips_sources WHERE is_active = true ORDER BY display_name");
             const results = [];
             for (const source of rows) {
-                const r = await _crawlSource(source, getOpenAiKey, req.user?.sub || 'admin');
+                const r = await _crawlSource(pool, source, getOpenAiKey, req.user?.sub || 'admin');
                 results.push(r);
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
@@ -265,101 +394,7 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
         return { source_id: source.source_id, display_name: source.display_name, is_available, http_status };
     }
 
-    async function _crawlSource(source, getOpenAiKey, triggeredBy) {
-        const t0 = Date.now();
-        let http_status = null;
-        let content_hash = null;
-        let content_changed = false;
-        let summary_regenerated = false;
-        let error = null;
-
-        try {
-            const ctrl = new AbortController();
-            const timeout = setTimeout(() => ctrl.abort(), 15000);
-            const resp = await fetch(source.url, { signal: ctrl.signal, headers: { "User-Agent": "ADA-Bot/1.0" } });
-            clearTimeout(timeout);
-            http_status = resp.status;
-
-            if (!resp.ok) {
-                error = `HTTP ${resp.status}`;
-                await pool.query(
-                    "UPDATE tips_sources SET http_status = $1, is_available = false, crawl_error = $2, last_crawled_at = NOW(), updated_at = NOW() WHERE source_id = $3",
-                    [http_status, error, source.source_id]
-                );
-            } else {
-                const htmlText = await resp.text();
-                const contentText = extractTextFromHtml(htmlText).substring(0, 10000);
-                content_hash = crypto.createHash('sha256').update(contentText).digest('hex');
-
-                if (content_hash !== source.content_hash || !source.last_crawled_at) {
-                    content_changed = true;
-                    let summary_it = source.summary_it;
-                    let key_topics = source.key_topics || [];
-                    let language = source.language || 'en';
-
-                    // Call GPT for summary
-                    const oaKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
-                    if (oaKey && contentText.length > 100) {
-                        try {
-                            const gptResp = await fetch('https://api.openai.com/v1/chat/completions', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${oaKey}` },
-                                body: JSON.stringify({
-                                    model: 'gpt-4o-mini',
-                                    messages: [{
-                                        role: 'user',
-                                        content: `Sei un assistente veterinario. Analizza questo testo da un sito veterinario e produci:\n1. Riassunto in italiano (max 300 parole) dei contenuti utili per veterinari e proprietari\n2. Lista di 5-10 argomenti chiave\n\nSito: ${source.url} (${source.display_name})\n\nTESTO:\n${contentText.substring(0, 6000)}\n\nRispondi SOLO con JSON:\n{"summary_it": "...", "key_topics": ["..."], "detected_language": "en|it|..."}`
-                                    }],
-                                    temperature: 0.3
-                                })
-                            });
-                            if (gptResp.ok) {
-                                const gptData = await gptResp.json();
-                                const gptContent = gptData.choices?.[0]?.message?.content || '';
-                                try {
-                                    const parsed = JSON.parse(gptContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
-                                    if (parsed.summary_it) summary_it = parsed.summary_it;
-                                    if (Array.isArray(parsed.key_topics)) key_topics = parsed.key_topics;
-                                    if (parsed.detected_language) language = parsed.detected_language;
-                                    summary_regenerated = true;
-                                } catch (_) {}
-                            }
-                        } catch (_) {}
-                    }
-
-                    await pool.query(
-                        `UPDATE tips_sources SET content_text = $1, content_hash = $2, summary_it = $3, key_topics = $4, language = $5,
-                         http_status = $6, is_available = true, last_crawled_at = NOW(), content_changed_at = NOW(), crawl_error = NULL, updated_at = NOW()
-                         WHERE source_id = $7`,
-                        [contentText, content_hash, summary_it, key_topics, language, http_status, source.source_id]
-                    );
-                } else {
-                    await pool.query(
-                        "UPDATE tips_sources SET http_status = $1, is_available = true, last_crawled_at = NOW(), crawl_error = NULL, updated_at = NOW() WHERE source_id = $2",
-                        [http_status, source.source_id]
-                    );
-                }
-            }
-        } catch (e) {
-            error = e.message || String(e);
-            await pool.query(
-                "UPDATE tips_sources SET crawl_error = $1, last_crawled_at = NOW(), updated_at = NOW() WHERE source_id = $2",
-                [error, source.source_id]
-            );
-        }
-
-        const duration_ms = Date.now() - t0;
-
-        // Log
-        await pool.query(
-            "INSERT INTO tips_sources_crawl_log (source_id, crawl_type, http_status, content_hash, content_changed, summary_regenerated, error, duration_ms, triggered_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            [source.source_id, 'manual', http_status, content_hash, content_changed, summary_regenerated, error, duration_ms, triggeredBy]
-        );
-
-        return { source_id: source.source_id, display_name: source.display_name, http_status, content_changed, summary_regenerated, error, duration_ms };
-    }
-
     return router;
 }
 
-module.exports = { tipsSourcesRouter, extractTextFromHtml };
+module.exports = { tipsSourcesRouter, extractTextFromHtml, scheduleTipsRefresh };
