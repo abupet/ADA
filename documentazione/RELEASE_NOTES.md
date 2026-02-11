@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.10.0 (2026-02-11)
+- Fix (grave): Seed Engine — doppia serializzazione JSONB in `pet_changes.record`: rimosso `JSON.stringify()` su `ins.rows[0]` (Phase 3, riga 394), `upd.rows[0]` (Phase 9, riga 785) e Demo Mode (riga 1001). Il driver `pg` serializza automaticamente oggetti JS come JSONB; il `JSON.stringify` manuale causava una stringa dentro JSONB, che il frontend (`app-pets.js:35` `typeof ch.record === 'object'`) scartava silenziosamente con `continue`, risultando in `changesCount:0, upserts:0` dopo pull sync
+- Feat: Seed Engine — contatori errori `petChangeErrors` (Phase 3) e `phase9ChangeErrors` (Phase 9) per tracciare insert falliti in `pet_changes`
+- Feat: Seed Engine — query di verifica post-completamento: `COUNT pet_changes` per `seed-engine/ownerUserId` con log risultato
+- Feat: Seed Engine — `job.stats` con `petsInserted`, `petChangeErrors`, `petChangesVerified` esposto in `getJobStatus()`
+- Feat: Frontend Seed Engine — messaggio completamento mostra statistiche: "Completato! X pet creati, Y record sync verificati"
+
 ## v8.9.0 (2026-02-11)
 - Fix (grave): Seed Engine — pet ora appaiono dopo completamento: delay 1.5s + await pull + retry dopo 3s + refresh esplicito UI (rebuildPetSelector, updateSelectedPetHeaders)
 - Fix: "Draft Tutti" nel Report Validazione URL — parsing robusto via row ID (`tr[id^="url-row-"]`) invece di regex su onclick; toast di errore se tenantId e' null

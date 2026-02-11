@@ -237,6 +237,7 @@ function startSeedJob(pool, config, openAiKey) {
     startedAt: new Date().toISOString(),
     completedAt: null,
     error: null,
+    stats: {},
   };
 
   // Run async in background
@@ -368,6 +369,7 @@ async function _runSeedJob(pool, config, openAiKey) {
     _updateProgress(3, 8, 'Inserting pets');
     _log('Phase 3: Inserting pets into database...');
 
+    let petChangeErrors = 0;
     const petIds = [];
     for (let i = 0; i < pets.length; i++) {
       if (_isCancelled()) return _finishCancelled();
@@ -391,13 +393,14 @@ async function _runSeedJob(pool, config, openAiKey) {
           await pool.query(
             `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
              VALUES ($1, $2, 'pet.upsert', $3, 1, 'seed-engine', $4)`,
-            [ownerUserId, petId, JSON.stringify(ins.rows[0]), randomUUID()]
+            [ownerUserId, petId, ins.rows[0], randomUUID()]
           );
         } catch (_e) {
           _log(`pet_changes insert error for ${pet.name}: ${_e.message}`);
           throw _e;
         }
       } catch (e) {
+        petChangeErrors++;
         _log(`Insert pet ${pet.name} error: ${e.message}`);
       }
 
@@ -738,6 +741,7 @@ async function _runSeedJob(pool, config, openAiKey) {
     _updateProgress(9, 95, 'Updating extra_data');
     _log('Phase 9: Updating extra_data JSONB...');
 
+    let phase9ChangeErrors = 0;
     for (let i = 0; i < pets.length; i++) {
       if (_isCancelled()) return _finishCancelled();
       const pet = pets[i];
@@ -782,9 +786,10 @@ async function _runSeedJob(pool, config, openAiKey) {
             await pool.query(
               `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
                VALUES ($1, $2, 'pet.upsert', $3, $4, 'seed-engine', $5)`,
-              [ownerUserId, pet._petId, JSON.stringify(upd.rows[0]), upd.rows[0].version, randomUUID()]
+              [ownerUserId, pet._petId, upd.rows[0], upd.rows[0].version, randomUUID()]
             );
           } catch (_e) {
+            phase9ChangeErrors++;
             _log(`pet_changes update error for ${pet.name}: ${_e.message}`);
           }
         }
@@ -796,6 +801,26 @@ async function _runSeedJob(pool, config, openAiKey) {
       _updateProgress(9, pct, `Extra data ${i + 1}/${pets.length}: ${pet.name}`);
     }
     _log('Phase 9 complete: extra_data updated');
+
+    // Verification: count pet_changes for this seed run
+    let petChangesVerified = 0;
+    try {
+      const vcRes = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM pet_changes WHERE device_id = 'seed-engine' AND owner_user_id = $1`,
+        [ownerUserId]
+      );
+      petChangesVerified = parseInt(vcRes.rows[0].cnt) || 0;
+      _log(`Verification: ${petChangesVerified} pet_changes records for owner ${ownerUserId}`);
+    } catch (_e) {
+      _log(`Verification query warning: ${_e.message}`);
+    }
+
+    // Populate job stats
+    job.stats = {
+      petsInserted: petIds.length,
+      petChangeErrors: petChangeErrors + phase9ChangeErrors,
+      petChangesVerified,
+    };
 
     // =====================================================================
     // Done
@@ -833,6 +858,7 @@ function getJobStatus() {
     startedAt: currentJob.startedAt,
     completedAt: currentJob.completedAt,
     error: currentJob.error,
+    stats: currentJob.stats || {},
   };
 }
 
@@ -998,7 +1024,7 @@ async function _runDemoJob(pool, config, openAiKey) {
           await pool.query(
             `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
              VALUES ($1, $2, 'pet.upsert', $3, 1, 'seed-engine', $4)`,
-            [ownerUserId, petId, JSON.stringify(ins.rows[0]), randomUUID()]
+            [ownerUserId, petId, ins.rows[0], randomUUID()]
           );
         } catch (_e) {
           _log(`Demo pet_changes warning for ${pet.name}: ${_e.message}`);
