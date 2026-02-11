@@ -67,6 +67,7 @@
                     <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
                     <div class="nav-item" data-page="photos">📷 Foto</div>
                     <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
+                    <div class="nav-item" data-page="chatbot">🤖 Assistente AI</div>
                 </div>
 
                 <!-- Sidebar: TEST & DEMO (super_admin only) -->
@@ -1014,6 +1015,14 @@
                 </div>
             </div>
 
+            <!-- Page: Chatbot AI Assistant -->
+            <div id="page-chatbot" class="page">
+                <div class="page-header">
+                    <h2>🤖 Assistente AI</h2>
+                </div>
+                <div id="chatbot-container" data-testid="chatbot-container"></div>
+            </div>
+
             <!-- Page: Communication (Chat owner↔vet) -->
             <div id="page-communication" class="page">
                 <div class="page-header">
@@ -1641,6 +1650,7 @@
     <script src="app-nutrition.js"></script>
     <script src="app-insurance.js"></script>
     <script src="app-communication.js"></script>
+    <script src="app-chatbot.js"></script>
     <script src="app-admin.js"></script>
     <script src="sync-engine.js"></script>
     <script src="app-observability.js"></script>
