@@ -73,14 +73,51 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             socket.to(`conv:${conversationId}`).emit("messages_read", { messageIds: [messageId], readBy: userId });
         });
 
-        // Call signaling placeholders (PR-G li implementa)
-        socket.on("initiate_call", () => {});
-        socket.on("accept_call", () => {});
-        socket.on("reject_call", () => {});
-        socket.on("webrtc_offer", () => {});
-        socket.on("webrtc_answer", () => {});
-        socket.on("webrtc_ice", () => {});
-        socket.on("end_call", () => {});
+        // Call signaling (WebRTC)
+        socket.on("initiate_call", ({ conversationId, callType, callId }) => {
+            if (!conversationId || !callId) return;
+            socket.to(`conv:${conversationId}`).emit("incoming_call", {
+                conversationId, callType: callType || "voice_call", callId,
+                callerId: userId, callerName: socket.displayName || socket.userEmail || userId
+            });
+        });
+        socket.on("accept_call", ({ conversationId, callId }) => {
+            if (!conversationId || !callId) return;
+            socket.to(`conv:${conversationId}`).emit("call_accepted", { conversationId, callId, acceptedBy: userId });
+        });
+        socket.on("reject_call", ({ conversationId, callId, reason }) => {
+            if (!conversationId || !callId) return;
+            socket.to(`conv:${conversationId}`).emit("call_rejected", { conversationId, callId, reason: reason || "declined" });
+        });
+        socket.on("webrtc_offer", ({ conversationId, callId, offer }) => {
+            if (!conversationId || !callId || !offer) return;
+            socket.to(`conv:${conversationId}`).emit("webrtc_offer", { conversationId, callId, offer });
+        });
+        socket.on("webrtc_answer", ({ conversationId, callId, answer }) => {
+            if (!conversationId || !callId || !answer) return;
+            socket.to(`conv:${conversationId}`).emit("webrtc_answer", { conversationId, callId, answer });
+        });
+        socket.on("webrtc_ice", ({ conversationId, callId, candidate }) => {
+            if (!conversationId || !callId || !candidate) return;
+            socket.to(`conv:${conversationId}`).emit("webrtc_ice", { conversationId, callId, candidate });
+        });
+        socket.on("end_call", ({ conversationId, callId }) => {
+            if (!conversationId) return;
+            socket.to(`conv:${conversationId}`).emit("call_ended", { conversationId, callId, endedBy: userId });
+        });
+        socket.on("request_partner_status", ({ conversationId }) => {
+            if (!conversationId) return;
+            const room = commNs.adapter.rooms.get(`conv:${conversationId}`);
+            if (!room) return;
+            for (const sid of room) {
+                const s = commNs.sockets.get(sid);
+                if (s && s.userId !== userId) {
+                    socket.emit("partner_status", { conversation_id: conversationId, user_id: s.userId, online: true });
+                    return;
+                }
+            }
+            socket.emit("partner_status", { conversation_id: conversationId, user_id: null, online: false });
+        });
 
         // Disconnect
         socket.on("disconnect", () => {

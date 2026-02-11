@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.6.0 (2026-02-11)
+- Feat: WebRTC voice & video calls — chiamate audio/video tra proprietario e veterinario
+- Feat: Post-call transcription — trascrizione automatica chiamate con OpenAI Whisper
+- Frontend: `app-webrtc.js` — UI chiamata con overlay full-screen, timer, mute, STUN servers
+- Frontend: Signaling WebRTC via Socket.io — offer/answer/ICE candidate exchange
+- Backend: `transcription.routes.js` — 3 endpoint REST (save recording, transcribe, list recordings)
+- Backend: `websocket.js` — implementazione completa signaling WebRTC (initiate/accept/reject/offer/answer/ICE/end + partner status)
+- Test: `smoke.communication.spec.ts` — 8 test E2E smoke per pagine comunicazione/chatbot, nav items, AI settings, Socket.io CDN
+
 ## v8.5.0 (2026-02-11)
 - Feat: Upload allegati nelle conversazioni — file immagini, audio, video, PDF fino a 10MB
 - Feat: Chatbot AI assistente veterinario — triage automatico (verde/giallo/rosso) con escalation modello
