@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.5.0 (2026-02-11)
+- Feat: Upload allegati nelle conversazioni — file immagini, audio, video, PDF fino a 10MB
+- Feat: Chatbot AI assistente veterinario — triage automatico (verde/giallo/rosso) con escalation modello
+- Backend: `comm-upload.routes.js` — upload con validazione MIME, SHA-256 checksum, metadata in comm_attachments
+- Backend: `chatbot.routes.js` — sessioni chatbot con GPT-4o-mini (green) → GPT-4o (yellow/red), prompt veterinario italiano, EU AI Act disclaimer
+- Frontend: `app-chatbot.js` — UI sessioni chatbot, bolle messaggi, follow-up chips, banner triage, disclaimer AI
+- HTML: Pagina `page-chatbot` con nav item proprietario, container chatbot
+- Config: `chatbot` aggiunta a ROLE_PERMISSIONS per proprietario e super_admin
+- Wiring: `app-core.js` chiama `initChatbot()` su navigazione
+
 ## v8.4.0 (2026-02-11)
 - Feat: Frontend comunicazione owner↔vet — pagina Messaggi con chat real-time
 - Frontend: `app-communication.js` — gestione Socket.io, lista conversazioni, chat view con bolle, typing indicator, mark-as-read, paginazione cursor-based

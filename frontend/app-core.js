@@ -298,6 +298,9 @@ function navigateToPage(page) {
     if (page === 'communication') {
         try { if (typeof initCommunication === 'function') initCommunication('communication-container'); } catch(e) {}
     }
+    if (page === 'chatbot') {
+        try { if (typeof initChatbot === 'function') initChatbot('chatbot-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
+    }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
         try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
