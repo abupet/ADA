@@ -206,9 +206,48 @@
             .then(function (resp) { return resp.json(); })
             .then(function (data) {
                 if (typeof showToast === 'function') showToast('Dati seed cancellati', 'success');
+                // Trigger pull sync to refresh UI
+                setTimeout(function () {
+                    try {
+                        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                            window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                        }
+                    } catch (_e) {}
+                }, 1000);
             })
             .catch(function (e) {
                 if (typeof showToast === 'function') showToast('Errore wipe: ' + e.message, 'error');
+            });
+    }
+
+    function seedWipeAllMyPets() {
+        if (!confirm('ATTENZIONE: Questo cancellerà TUTTI i tuoi pet (non solo quelli seed).\nSei sicuro?')) return;
+        if (!confirm('Ultima conferma: tutti i pet saranno eliminati irreversibilmente. Procedere?')) return;
+
+        fetchApi('/api/seed/wipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'all' })
+        })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                var msg = 'Tutti i pet eliminati';
+                if (data.details && data.details.petsDeleted != null) {
+                    msg += ' (' + data.details.petsDeleted + ' pet rimossi)';
+                }
+                if (typeof showToast === 'function') showToast(msg, 'success');
+                // Trigger pull sync to refresh UI with delete changes
+                setTimeout(function () {
+                    try {
+                        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                            window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                        }
+                        if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                    } catch (_e) {}
+                }, 1000);
+            })
+            .catch(function (e) {
+                if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
             });
     }
 
@@ -597,6 +636,7 @@
     global.seedStart = seedStart;
     global.seedCancel = seedCancel;
     global.seedWipe = seedWipe;
+    global.seedWipeAllMyPets = seedWipeAllMyPets;
     global.seedSearchBrand = seedSearchBrand;
     global.seedAddExtraSite = seedAddExtraSite;
     global.seedScrapeSites = seedScrapeSites;

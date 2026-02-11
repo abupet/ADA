@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.10.2 (2026-02-11)
+- Fix: Pet delete ora esegue push immediato al server (`pushOutboxIfOnline`) — prima il delete restava nell'outbox e non veniva inviato fino al sync manuale, causando "pet fantasma" che riapparivano dopo re-login
+- Fix: `unwrapPetsPullResponse` — aggiunto recovery `JSON.parse` per record `pet_changes` doppio-serializzati (stringa JSON invece di oggetto JSONB); gestisce dati corrotti da seed engine pre-v8.10.0
+- Feat: Wipe totale pet utente — nuovo endpoint `POST /api/seed/wipe` con `mode: 'all'` che elimina TUTTI i pet dell'utente autenticato (non solo quelli marcati `[seed]`), con insert `pet.delete` in `pet_changes` per sync frontend
+- Feat: Pulsante "Elimina TUTTI i miei pet" nel pannello Seed Engine admin — con doppia conferma e pull sync automatico post-wipe
+- Fix: Wipe seed ora esegue pull sync dopo completamento per aggiornare la UI
+
 ## v8.10.1 (2026-02-11)
 - Fix: Foto seed `[object Object]` — `renderPhotos()` e `openPhotoFullscreen()` ora gestiscono sia stringhe URL (foto utente) che oggetti `{dataUrl, caption}` (foto seed) tramite helper `_photoSrc()`
 - Fix: Seed Engine Phase 9 — rimosso `JSON.stringify(extraData)` nell'UPDATE `pets.extra_data`: il driver `pg` serializza automaticamente oggetti JS come JSONB, coerente col pattern usato in `pets.routes.js`

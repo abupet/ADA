@@ -123,6 +123,41 @@ async function callOpenAi(openAiKey, messages, options = {}) {
 const SPECIES_IT = { dog: 'Cane', cat: 'Gatto', rabbit: 'Coniglio' };
 
 // ---------------------------------------------------------------------------
+// Wipe ALL pets for a given user (admin "nuclear" option)
+// ---------------------------------------------------------------------------
+
+async function wipeAllUserPets(pool, ownerUserId) {
+  if (!ownerUserId) throw new Error('ownerUserId required');
+  const results = { petsDeleted: 0, changesInserted: 0 };
+
+  const { rows: petRows } = await pool.query(
+    'SELECT pet_id FROM pets WHERE owner_user_id = $1',
+    [ownerUserId]
+  );
+
+  for (const pet of petRows) {
+    try {
+      // FK-safe: delete children first
+      await pool.query('DELETE FROM pet_tags WHERE pet_id = $1::text', [pet.pet_id]);
+      await pool.query('DELETE FROM documents WHERE pet_id = $1', [pet.pet_id]);
+      await pool.query('DELETE FROM pets WHERE pet_id = $1 AND owner_user_id = $2', [pet.pet_id, ownerUserId]);
+      // Insert pet.delete change for frontend sync
+      await pool.query(
+        `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
+         VALUES ($1, $2, 'pet.delete', NULL, NULL, 'admin-wipe', $3)`,
+        [ownerUserId, pet.pet_id, randomUUID()]
+      );
+      results.petsDeleted++;
+      results.changesInserted++;
+    } catch (e) {
+      console.error('wipeAllUserPets: error deleting pet', pet.pet_id, e.message);
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // Wipe seeded data (FK-safe order)
 // ---------------------------------------------------------------------------
 
@@ -1334,4 +1369,4 @@ function _defaultMedsForSpecies(species) {
 // Exports
 // ---------------------------------------------------------------------------
 
-module.exports = { startSeedJob, startDemoJob, getJobStatus, cancelJob, wipeSeededData };
+module.exports = { startSeedJob, startDemoJob, getJobStatus, cancelJob, wipeSeededData, wipeAllUserPets };

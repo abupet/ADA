@@ -32,11 +32,15 @@ function unwrapPetsPullResponse(data) {
             const tRaw = (ch.type == null ? "" : String(ch.type));
             const t = tRaw.trim();
 
-            const rec = (ch.record && typeof ch.record === 'object')
+            var rec = (ch.record && typeof ch.record === 'object')
                 ? ch.record
                 : (ch.patch && typeof ch.patch === 'object')
                     ? ch.patch
                     : null;
+            // Recovery: parse double-serialized JSONB records (string instead of object)
+            if (!rec && ch.record && typeof ch.record === 'string') {
+                try { var parsed = JSON.parse(ch.record); if (parsed && typeof parsed === 'object') rec = parsed; } catch (_e) {}
+            }
 
             const pid = ch.pet_id || (rec && rec.pet_id) || (rec && rec.id) || ch.id || null;
 
@@ -1243,12 +1247,18 @@ async function deleteCurrentPet() {
     const petVersion = pet?.version ?? null;
     await deletePetFromDB(petId);
     await enqueueOutbox('delete', { id: petId, base_version: petVersion });
+    // Push delete to server immediately (like update does at lines 1474-1475)
+    try {
+        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
+            window.ADA_PetsSync.pushOutboxIfOnline();
+        }
+    } catch (_e) {}
         currentPetId = null;
     localStorage.removeItem('ada_current_pet_id');
     clearMainPetFields();
     await rebuildPetSelector('');
-    
-    showToast('✅ Pet eliminato', 'success');
+
+    showToast('Pet eliminato', 'success');
 }
 
 // ============================================
