@@ -20,7 +20,7 @@ var _commMessagesCursor = null;
 function _commApiBase() { return window.ADA_API_BASE_URL || ''; }
 
 function _commAuthHeaders() {
-    return { 'Authorization': 'Bearer ' + localStorage.getItem('ada_jwt_token'), 'Content-Type': 'application/json' };
+    return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' };
 }
 
 function _commEscape(str) {
@@ -41,12 +41,7 @@ function _commGetRole() { return typeof getActiveRole === 'function' ? getActive
 
 function _commGetCurrentUserId() {
     try {
-        var token = localStorage.getItem('ada_jwt_token');
-        if (!token) return null;
-        var parts = token.split('.');
-        if (parts.length !== 3) return null;
-        var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        return payload.sub || payload.userId || null;
+        return typeof getJwtUserId === 'function' ? getJwtUserId() : null;
     } catch (e) { return null; }
 }
 
@@ -111,7 +106,7 @@ function _commInjectStyles() {
 function initCommSocket() {
     if (_commSocket) return;
     if (typeof window.io !== 'function') { console.warn('[Communication] Socket.io not loaded'); return; }
-    var token = localStorage.getItem('ada_jwt_token');
+    var token = getAuthToken();
     if (!token) return;
 
     try {
@@ -425,11 +420,13 @@ async function updateCommUnreadBadge() {
         if (!resp.ok) return;
         var data = await resp.json();
         var count = data.unread_count || data.count || 0;
-        var badge = document.getElementById('comm-unread-badge');
-        if (badge) {
-            badge.textContent = count > 0 ? count : '';
-            badge.style.display = count > 0 ? 'inline-block' : 'none';
-        }
+        ['comm-unread-badge-vet', 'comm-unread-badge-owner'].forEach(function(id) {
+            var badge = document.getElementById(id);
+            if (badge) {
+                badge.textContent = count > 0 ? count : '';
+                badge.style.display = count > 0 ? 'inline-block' : 'none';
+            }
+        });
     } catch (e) { /* silent */ }
 }
 

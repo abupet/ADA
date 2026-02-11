@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ADA - AI Driven AbuPet</title>
         <link rel="icon" href="logo-abupet.png" type="image/png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e3a5f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ADA">
+    <link rel="apple-touch-icon" href="logo-abupet.png">
 <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1615,6 +1621,7 @@
 
     <!-- Toast -->
     <div id="toast" class="toast" data-testid="toast"></div>
+    <div id="offlineBanner" class="offline-banner" style="display:none;">Modalita offline — alcune funzionalita non sono disponibili</div>
     
     <!-- Progress Bar -->
     <div id="progressBar" class="progress-bar" data-testid="progress-bar"><div class="progress-fill"></div></div>
@@ -1657,5 +1664,26 @@
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
     <script src="app-seed.js"></script>
+<script>
+if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./sw.js')
+            .catch(function() {});
+    });
+}
+window.addEventListener('online', function() {
+    var b = document.getElementById('offlineBanner');
+    if (b) b.style.display = 'none';
+    if (typeof showToast === 'function') showToast('Connessione ripristinata', 'success');
+});
+window.addEventListener('offline', function() {
+    var b = document.getElementById('offlineBanner');
+    if (b) b.style.display = '';
+});
+if (!navigator.onLine) {
+    var b = document.getElementById('offlineBanner');
+    if (b) b.style.display = '';
+}
+</script>
 </body>
 </html>

@@ -1,5 +1,23 @@
 # Release Notes (cumulative)
 
+## v8.7.0 (2026-02-11)
+- Fix: BUG-01 Token key mismatch — `ada_jwt_token` sostituito con `getAuthToken()` in communication, chatbot, webrtc
+- Fix: BUG-02 Badge non letti — aggiornamento corretto di entrambi i badge (vet + owner)
+- Fix: BUG-03 `setActiveLangButton()` — aggiunta classe `active` al pulsante selezionato
+- Fix: BUG-04 XSS in `renderMedications()` — sanitizzazione con `_escapeHtml()`
+- Fix: BUG-05 XSS in `renderVitalsList()` — sanitizzazione con `_escapeHtml()`
+- Fix: BUG-06 `handleAuthFailure()` — uso `getComputedStyle` per check login screen
+- Fix: BUG-07 `initRoleSystem()` — `admin_brand` mappato correttamente al proprio ruolo
+- Fix: BUG-08 Commento versione `app-core.js` aggiornato a v8.7.0
+- Fix: BUG-09 Deduplicazione JWT decode — uso di `getJwtUserId()` globale
+- Fix: BUG-10 Warning CORS se `FRONTEND_ORIGIN` non configurato
+- Feat: PWA — Progressive Web App installabile con manifest, service worker, caching offline
+- Feat: Offline indicator — banner visivo quando l'app perde connessione
+- PWA: `manifest.json` con icone 192x192 e 512x512
+- PWA: `sw.js` — Cache First per risorse statiche, Network First per API
+- PWA: Meta tags Apple per iOS home screen
+- PWA: Integrazione cache-bust con aggiornamento versione SW
+
 ## v8.6.0 (2026-02-11)
 - Feat: WebRTC voice & video calls — chiamate audio/video tra proprietario e veterinario
 - Feat: Post-call transcription — trascrizione automatica chiamate con OpenAI Whisper

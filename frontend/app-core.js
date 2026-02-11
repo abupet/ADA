@@ -1,4 +1,4 @@
-// ADA v6.17.3 - Core Application Functions
+// ADA v8.7.0 - Core Application Functions
 
 // State variables
 let currentTemplate = 'generale';
@@ -142,7 +142,7 @@ function logout() {
 function handleAuthFailure() {
     // Guard: skip if already on login screen (prevents clearing fields on repeated 401s)
     const loginScreen = document.getElementById('loginScreen');
-    if (loginScreen && loginScreen.style.display === 'flex') return;
+    if (loginScreen && getComputedStyle(loginScreen).display !== 'none') return;
 
     localStorage.removeItem('ada_session');
     clearAuthToken();
@@ -529,8 +529,10 @@ function initRoleSystem() {
         // First login: set default role based on JWT role
         if (jwtRole === 'vet') {
             setActiveRole(ROLE_VETERINARIO);
-        } else if (jwtRole === 'owner' || jwtRole === 'admin_brand') {
+        } else if (jwtRole === 'owner') {
             setActiveRole(ROLE_PROPRIETARIO);
+        } else if (jwtRole === 'admin_brand') {
+            setActiveRole('admin_brand');
         } else if (jwtRole === 'super_admin') {
             // super_admin: default to veterinario on first login
             setActiveRole(ROLE_VETERINARIO);
@@ -2005,8 +2007,8 @@ function renderVitalsList() {
 
         return `
         <div class="vital-record">
-            <span class="vital-date">${fmt(v.date)}</span>
-            <span>Peso: ${weight} kg | T: ${temp} °C | FC ${hr} bpm | FR ${rr}</span>
+            <span class="vital-date">${_escapeHtml(fmt(v.date))}</span>
+            <span>Peso: ${_escapeHtml(String(weight))} kg | T: ${_escapeHtml(String(temp))} °C | FC ${_escapeHtml(String(hr))} bpm | FR ${_escapeHtml(String(rr))}</span>
             <button class="btn-small btn-danger" onclick="deleteVital(${idx})">🗑</button>
         </div>
     `;
@@ -2258,7 +2260,7 @@ function setActiveLangButton(selectorId, lang) {
     const selector = document.getElementById(selectorId);
     if (!selector) return;
     selector.querySelectorAll('.lang-btn').forEach(btn => {
-        btn.classList.remove('active');
+        btn.classList.toggle('active', btn.dataset.lang === lang);
     });
 }
 
@@ -3027,9 +3029,9 @@ function renderMedications() {
         <div class="medication-item">
             <span class="medication-icon">💊</span>
             <div class="medication-info">
-                <h4>${med.name}</h4>
-                <p>${med.dosage} - ${med.frequency} - ${med.duration}</p>
-                ${med.instructions ? `<p><em>${med.instructions}</em></p>` : ''}
+                <h4>${_escapeHtml(med.name)}</h4>
+                <p>${_escapeHtml(med.dosage)} - ${_escapeHtml(med.frequency)} - ${_escapeHtml(med.duration)}</p>
+                ${med.instructions ? `<p><em>${_escapeHtml(med.instructions)}</em></p>` : ''}
             </div>
             <div class="medication-actions">
                 <button class="medication-edit" onclick="editMedication(${i})" title="Modifica">✏️</button>

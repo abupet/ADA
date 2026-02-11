@@ -71,3 +71,12 @@ html = html.replace(/<link\b([^>]*?)\bhref\s*=\s*["']([^"']+)["']([^>]*?)>/gi, (
 
 fs.writeFileSync(abs, html, "utf8");
 console.log(`cache-bust: updated ${file} with v=${id}`);
+
+// Update SW cache version
+const swPath = path.resolve(path.dirname(abs), "sw.js");
+if (fs.existsSync(swPath)) {
+  let swContent = fs.readFileSync(swPath, "utf8");
+  swContent = swContent.replace(/ada-cache-v\d+/, "ada-cache-v" + id);
+  fs.writeFileSync(swPath, swContent, "utf8");
+  console.log(`cache-bust: updated sw.js cache name with v=${id}`);
+}
