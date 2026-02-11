@@ -394,7 +394,8 @@ async function _runSeedJob(pool, config, openAiKey) {
             [ownerUserId, petId, JSON.stringify(ins.rows[0]), randomUUID()]
           );
         } catch (_e) {
-          _log(`pet_changes insert warning for ${pet.name}: ${_e.message}`);
+          _log(`pet_changes insert error for ${pet.name}: ${_e.message}`);
+          throw _e;
         }
       } catch (e) {
         _log(`Insert pet ${pet.name} error: ${e.message}`);
@@ -784,7 +785,7 @@ async function _runSeedJob(pool, config, openAiKey) {
               [ownerUserId, pet._petId, JSON.stringify(upd.rows[0]), upd.rows[0].version, randomUUID()]
             );
           } catch (_e) {
-            _log(`pet_changes update warning for ${pet.name}: ${_e.message}`);
+            _log(`pet_changes update error for ${pet.name}: ${_e.message}`);
           }
         }
       } catch (e) {
