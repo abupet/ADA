@@ -22,6 +22,7 @@ const { initWebSocket } = require("./websocket");
 const { communicationRouter } = require("./communication.routes");
 const { commUploadRouter } = require("./comm-upload.routes");
 const { chatbotRouter } = require("./chatbot.routes");
+const { transcriptionRouter } = require("./transcription.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -372,6 +373,8 @@ if (process.env.DATABASE_URL) {
   app.use(commUploadRouter({ requireAuth, upload }));
   // --- Chatbot AI routes ---
   app.use(chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }));
+  // --- Transcription routes (post-call) ---
+  app.use(transcriptionRouter({ requireAuth, getOpenAiKey, isMockEnv }));
 }
 
 function getOpenAiKey() {
