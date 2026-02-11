@@ -64,13 +64,13 @@ test.describe("Communication nav items", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Owner: Assistente AI nav item visible", async ({ page }) => {
+  test("@smoke Owner: La tua assistente ADA nav item visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
     const navItem = page.locator('.nav-item[data-page="chatbot"]');
     await expect(navItem).toBeVisible();
-    await expect(navItem).toContainText("Assistente AI");
+    await expect(navItem).toContainText("La tua assistente ADA");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
