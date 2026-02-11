@@ -9,10 +9,10 @@ var _webrtcCallId = null, _webrtcConvId = null, _webrtcCallType = null;
 var _webrtcTimerInterval = null, _webrtcStartTime = null, _webrtcIceQueue = [];
 
 function _webrtcApiBase() { return window.ADA_API_BASE_URL || ''; }
-function _webrtcAuth() { return { 'Authorization': 'Bearer ' + localStorage.getItem('ada_jwt_token'), 'Content-Type': 'application/json' }; }
+function _webrtcAuth() { return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }; }
 function _webrtcUserId() {
     if (typeof _commGetCurrentUserId === 'function') return _commGetCurrentUserId();
-    try { var p = JSON.parse(atob(localStorage.getItem('ada_jwt_token').split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); return p.sub || p.userId || null; } catch(e) { return null; }
+    return typeof getJwtUserId === 'function' ? getJwtUserId() : null;
 }
 function _webrtcFmtDur(s) { var m = Math.floor(s/60), ss = s%60; return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss; }
 function _webrtcEsc(s) { return typeof s !== 'string' ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }

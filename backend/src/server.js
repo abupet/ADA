@@ -63,6 +63,10 @@ const openaiKeyName = [
   .join("");
 const openaiBaseUrl = "https://api.openai.com/v1";
 
+if (!FRONTEND_ORIGIN && !isMockEnv) {
+  console.warn("[CORS] FRONTEND_ORIGIN not set — cross-origin requests will be rejected");
+}
+
 const corsOptions = {
   origin(origin, callback) {
     // Requests without Origin header (same-origin, non-browser clients, or

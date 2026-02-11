@@ -13,7 +13,7 @@ var _chatbotSending = false;
 function _chatbotApiBase() { return window.ADA_API_BASE_URL || ''; }
 
 function _chatbotAuthHeaders() {
-    return { 'Authorization': 'Bearer ' + localStorage.getItem('ada_jwt_token'), 'Content-Type': 'application/json' };
+    return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' };
 }
 
 function _chatbotEscape(str) {
