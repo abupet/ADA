@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.10.4 (2026-02-11)
+- Fix (grave): SOAP generazione referto — il backend (`server.js`) rimuoveva `response_format` dal payload OpenAI; senza direttiva `json_object`, GPT-4o restituiva JSON dentro code fences markdown (```json ... ```), causando `JSON.parse` error. Aggiunto `response_format` alla whitelist del sanitizedPayload
+- Fix: Frontend SOAP — aggiunta funzione `stripMarkdownFences()` come safety net per rimuovere code fences markdown prima del `JSON.parse` in tutti e 3 i livelli di generazione (strict, fallback, ultra-fallback)
+- Fix: Seed Engine — campo "Sesso" generato come "M"/"F" ma il frontend richiede "Maschio"/"Femmina"/"Maschio castrato"/"Femmina sterilizzata"; corretto in `seed.petgen.js` per generare valori italiani compatibili con il dropdown
+- Fix: Seed Engine — campi "Stile di vita" vuoti dopo seed: chiave `environment` rinominata in `lifestyle` per matchare `setLifestyleData()`; valori attività ("moderato"→"medio"), dieta ("commerciale secco"→"secco"), ambiente ("appartamento"→"indoor") allineati ai `<select>` del frontend; `behaviorNotes`, `knownConditions`, `currentMeds`, `dietPreferences` convertiti da array a stringhe comma-separated come atteso dai campi `<input type="text">`
+- Fix: "Segnala promo inappropriata" rinominato in "Segnala consiglio inappropriato" con stile aggiornato (sfondo giallo paglierino, font nero, spaziatura)
+
 ## v8.10.3 (2026-02-11)
 - Fix (grave): Pull sync "pet fantasma" — `unwrapPetsPullResponse` ora usa deduplicazione "last wins": per ogni `pet_id`, solo l'ultima operazione cronologica viene applicata. Prima, upserts e deletes venivano separati in array distinti perdendo l'ordine cronologico; il frontend processava deletes prima di upserts, causando la riapparizione di pet già cancellati (118 changes → 10 phantom pets invece di 1)
 

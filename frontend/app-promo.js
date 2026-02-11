@@ -165,8 +165,8 @@
             '.promo-btn--dismiss { background: transparent; color: #888; border: 1px solid #ddd; }',
             '.promo-btn--dismiss:hover { background: #f5f5f5; color: #555; }',
             '.promo-btn--dismiss:focus-visible { outline: 2px solid #888; outline-offset: 2px; }',
-            '.promo-btn--vet-flag { background: #dc2626; color: #fff; font-size: 12px; padding: 6px 14px; }',
-            '.promo-btn--vet-flag:hover { background: #b91c1c; }',
+            '.promo-btn--vet-flag { background: #fef3c7; color: #1e1e1e; font-size: 12px; padding: 8px 16px; margin: 12px 0; border: 1px solid #d4a017; }',
+            '.promo-btn--vet-flag:hover { background: #fde68a; }',
             '.promo-consent-banner { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin: 12px 0; font-size: 13px; }',
             '.promo-consent-actions { margin-top: 10px; display: flex; gap: 8px; }',
             '.promo-loader-slot { min-height: 40px; }',
@@ -743,7 +743,7 @@
         _injectPromoStyles();
 
         var html = '<button type="button" class="promo-btn promo-btn--vet-flag" data-vet-flag="true">' +
-            'Segnala promo inappropriata</button>';
+            'Segnala consiglio inappropriato</button>';
         container.innerHTML = html;
 
         var btn = container.querySelector('[data-vet-flag="true"]');
@@ -755,7 +755,7 @@
                 // Get current promo item id from container attribute or last rendered card
                 var promoItemId = container.getAttribute('data-promo-item-id') || _lastRenderedPromoItemId;
                 if (!promoItemId) {
-                    if (_fnExists('showToast')) showToast('Nessuna promo attiva da segnalare.', 'info');
+                    if (_fnExists('showToast')) showToast('Nessun consiglio attivo da segnalare.', 'info');
                     return;
                 }
 
@@ -765,7 +765,7 @@
                     body: JSON.stringify({ pet_id: String(petId), promo_item_id: promoItemId, reason: reason || null })
                 }).then(function (r) {
                     if (r.ok) {
-                        if (_fnExists('showToast')) showToast('Promo segnalata. Non verrà più mostrata per questo pet.', 'success');
+                        if (_fnExists('showToast')) showToast('Consiglio segnalato. Non verrà più mostrato per questo pet.', 'success');
                         btn.disabled = true;
                         btn.textContent = 'Segnalata';
                     } else {
