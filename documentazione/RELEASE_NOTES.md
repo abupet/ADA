@@ -1,5 +1,9 @@
 # Release Notes (cumulative)
 
+## v8.10.1 (2026-02-11)
+- Fix: Foto seed `[object Object]` — `renderPhotos()` e `openPhotoFullscreen()` ora gestiscono sia stringhe URL (foto utente) che oggetti `{dataUrl, caption}` (foto seed) tramite helper `_photoSrc()`
+- Fix: Seed Engine Phase 9 — rimosso `JSON.stringify(extraData)` nell'UPDATE `pets.extra_data`: il driver `pg` serializza automaticamente oggetti JS come JSONB, coerente col pattern usato in `pets.routes.js`
+
 ## v8.10.0 (2026-02-11)
 - Fix (grave): Seed Engine — doppia serializzazione JSONB in `pet_changes.record`: rimosso `JSON.stringify()` su `ins.rows[0]` (Phase 3, riga 394), `upd.rows[0]` (Phase 9, riga 785) e Demo Mode (riga 1001). Il driver `pg` serializza automaticamente oggetti JS come JSONB; il `JSON.stringify` manuale causava una stringa dentro JSONB, che il frontend (`app-pets.js:35` `typeof ch.record === 'object'`) scartava silenziosamente con `continue`, risultando in `changesCount:0, upserts:0` dopo pull sync
 - Feat: Seed Engine — contatori errori `petChangeErrors` (Phase 3) e `phase9ChangeErrors` (Phase 9) per tracciare insert falliti in `pet_changes`

@@ -65,18 +65,24 @@ function capturePhoto() {
     input.click();
 }
 
+function _photoSrc(photo) {
+    if (!photo) return '';
+    if (typeof photo === 'string') return photo;
+    return photo.dataUrl || photo.url || '';
+}
+
 function renderPhotos() {
     const grid = document.getElementById('photoGrid');
     if (!grid) return;
-    
+
     if (photos.length === 0) {
         grid.innerHTML = '<p style="color:#888;text-align:center;padding:20px;grid-column:1/-1;">Nessuna foto</p>';
         return;
     }
-    
+
     grid.innerHTML = photos.map((photo, i) => `
         <div class="photo-item">
-            <img src="${photo}" alt="Foto ${i + 1}" onclick="openPhotoFullscreen(${i})">
+            <img src="${_photoSrc(photo)}" alt="Foto ${i + 1}" onclick="openPhotoFullscreen(${i})">
             <button class="delete-btn" onclick="deletePhoto(${i})">×</button>
         </div>
     `).join('');
@@ -85,14 +91,14 @@ function renderPhotos() {
 function openPhotoFullscreen(index) {
     const photo = photos[index];
     if (!photo) return;
-    
+
     const overlay = document.createElement('div');
     overlay.id = 'photoOverlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:pointer;';
     overlay.onclick = () => overlay.remove();
-    
+
     const img = document.createElement('img');
-    img.src = photo;
+    img.src = _photoSrc(photo);
     img.style.cssText = 'max-width:95%;max-height:95%;object-fit:contain;';
     
     const closeBtn = document.createElement('button');
