@@ -176,11 +176,23 @@ async function initCommunication(containerId) {
     var container = document.getElementById(containerId);
     if (!container) return;
 
+    // If the "New conversation" form is already open, do not re-initialize (prevent destruction)
+    var existingForm = document.querySelector('[data-testid="comm-new-form"]');
+    if (existingForm) return;
+
     container.innerHTML = '<div class="comm-container" data-testid="comm-container">' +
         '<div class="comm-header"><h3>Messaggi</h3>' +
-        '<button class="comm-btn comm-btn-primary" data-testid="comm-new-btn" onclick="_commShowNewForm(\'' + containerId + '\')">Nuova conversazione</button></div>' +
+        '<button class="comm-btn comm-btn-primary" data-testid="comm-new-btn">Nuova conversazione</button></div>' +
         '<div id="comm-new-form-area"></div>' +
         '<div id="comm-conv-list-area"><p style="color:#94a3b8;text-align:center;">Caricamento...</p></div></div>';
+
+    // Bind click via addEventListener (more robust than inline onclick)
+    var newBtn = container.querySelector('[data-testid="comm-new-btn"]');
+    if (newBtn) {
+        newBtn.addEventListener('click', function() {
+            _commShowNewForm(containerId);
+        });
+    }
 
     try {
         var resp = await fetch(_commApiBase() + '/api/communication/conversations', { headers: _commAuthHeaders() });
@@ -225,34 +237,53 @@ function _commRenderConvList(conversations) {
 // =========================================================================
 async function _commShowNewForm(containerId) {
     var area = document.getElementById('comm-new-form-area');
-    if (!area) return;
+    if (!area) {
+        console.error('[Communication] comm-new-form-area not found in DOM — initCommunication may have failed');
+        // Recovery: reinitialize
+        if (typeof initCommunication === 'function') {
+            await initCommunication(containerId);
+            area = document.getElementById('comm-new-form-area');
+            if (!area) return;
+        } else {
+            return;
+        }
+    }
 
     // Determine recipient type options based on current role
     var role = _commGetRole();
-    var recipientTypeOptions = '';
-    if (role === 'proprietario') {
-        recipientTypeOptions = '<option value="vet">Veterinario</option>';
-    } else if (role === 'veterinario') {
-        recipientTypeOptions = '<option value="owner">Proprietario</option>';
-    } else {
-        // super_admin or other: show both
-        recipientTypeOptions = '<option value="vet">Veterinario</option><option value="owner">Proprietario</option>';
-    }
 
-    area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
-        '<label for="comm-new-pet">Animale</label>' +
-        '<select id="comm-new-pet"><option value="">Caricamento...</option></select>' +
-        '<label for="comm-new-recipient-type">Tipo destinatario</label>' +
-        '<select id="comm-new-recipient-type" onchange="_commLoadRecipients()">' +
-        '<option value="">-- Seleziona --</option>' + recipientTypeOptions + '</select>' +
-        '<label for="comm-new-recipient">Destinatario</label>' +
-        '<select id="comm-new-recipient" disabled><option value="">-- Seleziona prima il tipo --</option></select>' +
-        '<label for="comm-new-subject">Oggetto (opzionale)</label>' +
-        '<input type="text" id="comm-new-subject" placeholder="Es: Controllo post-operatorio" />' +
-        '<div style="margin-top:14px;display:flex;gap:8px;">' +
-        '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation(\'' + containerId + '\')">Crea</button>' +
-        '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
-        '</div></div>';
+    if (role === 'proprietario') {
+        // Owner: hide recipient type, auto-select 'vet'
+        area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
+            '<label for="comm-new-pet">Animale</label>' +
+            '<select id="comm-new-pet"><option value="">Caricamento...</option></select>' +
+            '<input type="hidden" id="comm-new-recipient-type" value="vet" />' +
+            '<label for="comm-new-recipient">Destinatario</label>' +
+            '<select id="comm-new-recipient" disabled><option value="">Caricamento...</option></select>' +
+            '<label for="comm-new-subject">Oggetto (opzionale)</label>' +
+            '<input type="text" id="comm-new-subject" placeholder="Es: Controllo post-operatorio" />' +
+            '<div style="margin-top:14px;display:flex;gap:8px;">' +
+            '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation(\'' + containerId + '\')">Crea</button>' +
+            '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
+            '</div></div>';
+    } else {
+        // Vet / super_admin: show recipient type with both options
+        var recipientTypeOptions = '<option value="vet">Veterinario</option><option value="owner">Proprietario</option>';
+        area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
+            '<label for="comm-new-pet">Animale</label>' +
+            '<select id="comm-new-pet"><option value="">Caricamento...</option></select>' +
+            '<label for="comm-new-recipient-type">Tipo destinatario</label>' +
+            '<select id="comm-new-recipient-type" onchange="_commLoadRecipients()">' +
+            '<option value="">-- Seleziona --</option>' + recipientTypeOptions + '</select>' +
+            '<label for="comm-new-recipient">Destinatario</label>' +
+            '<select id="comm-new-recipient" disabled><option value="">-- Seleziona prima il tipo --</option></select>' +
+            '<label for="comm-new-subject">Oggetto (opzionale)</label>' +
+            '<input type="text" id="comm-new-subject" placeholder="Es: Controllo post-operatorio" />' +
+            '<div style="margin-top:14px;display:flex;gap:8px;">' +
+            '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation(\'' + containerId + '\')">Crea</button>' +
+            '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
+            '</div></div>';
+    }
 
     // Populate pet dropdown from IndexedDB
     var petSelect = document.getElementById('comm-new-pet');
@@ -273,6 +304,11 @@ async function _commShowNewForm(containerId) {
         } catch (_) {
             petSelect.innerHTML = '<option value="">Errore caricamento animali</option>';
         }
+    }
+
+    // If owner, auto-load vet recipients
+    if (role === 'proprietario') {
+        _commLoadRecipients();
     }
 }
 

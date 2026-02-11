@@ -2596,7 +2596,6 @@
             });
             html.push('</table>');
             html.push('<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">');
-            html.push('<button class="btn btn-danger" style="font-size:12px;" onclick="draftAllFromReport(this)">Draft Tutti</button>');
             html.push('<span style="flex:1;"></span>');
             html.push('<button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button>');
             html.push('</div>');
@@ -2630,75 +2629,6 @@
         });
     }
 
-    function draftAllFromReport(btnEl) {
-        var modal = document.querySelector('.modal-overlay');
-        if (!modal) return;
-        var tenantId = _getAdminTenantId();
-        if (!tenantId) {
-            showToast('Errore: nessun tenant selezionato. Seleziona un tenant dalla Dashboard.', 'error');
-            return;
-        }
-
-        // Collect item IDs from table row IDs (format: url-row-{itemId}) — more robust than parsing onclick
-        var itemIds = [];
-        modal.querySelectorAll('tr[id^="url-row-"]').forEach(function(row) {
-            var itemId = row.id.replace('url-row-', '');
-            var btn = row.querySelector('button');
-            if (btn && !btn.disabled && btn.textContent.trim() === '\u2192 Draft') {
-                itemIds.push({ id: itemId, btn: btn });
-            }
-        });
-        if (itemIds.length === 0) {
-            showToast('Nessun prodotto da spostare a draft', 'info');
-            return;
-        }
-        if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'In corso... 0/' + itemIds.length; }
-
-        // Sequential API calls (one at a time to avoid rate-limit)
-        var done = 0;
-        var errors = 0;
-        function processNext(idx) {
-            if (idx >= itemIds.length) {
-                // All done — reload catalog once and show result
-                loadAdminCatalog();
-                if (btnEl) {
-                    btnEl.textContent = '\u2713 Completato (' + done + '/' + itemIds.length + ')';
-                    btnEl.style.background = '#16a34a';
-                    btnEl.style.color = '#fff';
-                    btnEl.style.borderColor = '#16a34a';
-                }
-                var msg = 'Draft completato: ' + done + ' prodotti spostati';
-                if (errors > 0) msg += ', ' + errors + ' errori';
-                showToast(msg, errors > 0 ? 'error' : 'success');
-                return;
-            }
-            var entry = itemIds[idx];
-            if (entry.btn) { entry.btn.disabled = true; entry.btn.textContent = '...'; }
-            fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(entry.id) + '/transition', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'draft' })
-            }).then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            }).then(function() {
-                done++;
-                if (entry.btn) {
-                    entry.btn.textContent = '\u2713 Draft';
-                    entry.btn.style.background = '#16a34a';
-                    entry.btn.style.color = '#fff';
-                    entry.btn.style.borderColor = '#16a34a';
-                }
-            }).catch(function() {
-                errors++;
-                if (entry.btn) { entry.btn.disabled = false; entry.btn.textContent = '\u2192 Draft'; }
-            }).then(function() {
-                if (btnEl) btnEl.textContent = 'In corso... ' + (done + errors) + '/' + itemIds.length;
-                processNext(idx + 1);
-            });
-        }
-        processNext(0);
-    }
 
     // =========================================================================
     // Preview Card Prodotto
@@ -2737,7 +2667,7 @@
             html.push('<span class="promo-badge">Consigliato per il tuo pet</span>');
 
             if (item.image_url) {
-                html.push('<img src="' + _escapeHtml(item.image_url) + '" alt="' + _escapeHtml(item.name) + '" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin:8px 0;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">');
+                html.push('<img src="' + _escapeHtml(item.image_url) + '" alt="' + _escapeHtml(item.name) + '" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">');
                 html.push('<div style="display:none;padding:20px;background:#fee2e2;border-radius:8px;margin:8px 0;text-align:center;color:#dc2626;font-size:12px;">Immagine non caricabile</div>');
             } else {
                 html.push('<div style="padding:20px;background:#f1f5f9;border-radius:8px;margin:8px 0;text-align:center;color:#888;font-size:12px;">Nessuna immagine configurata</div>');
@@ -2749,7 +2679,7 @@
 
             html.push('<div class="promo-actions" style="display:flex;justify-content:space-between;gap:12px;margin-top:12px;">');
             if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" style="flex:1;text-align:center;padding:10px 16px;" onclick="showPurchasePlaceholder(\'' + _escapeHtml(item.promo_item_id) + '\')">Acquista</button>');
-            html.push('<button type="button" class="promo-btn promo-btn--info" style="flex:1;text-align:center;padding:10px 16px;" onclick="showWhyYouSeeThis(\'' + _escapeHtml(item.promo_item_id) + '\')">Perch\u00e9 vedi questo?</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--info" style="flex:1;text-align:center;padding:10px 16px;" onclick="_closeModal()">Chiudi il suggerimento</button>');
             html.push('<button type="button" class="promo-btn promo-btn--dismiss" style="flex:1;text-align:center;padding:10px 16px;" onclick="showDismissPlaceholder()">Non mi interessa</button>');
             html.push('</div>');
 
@@ -3286,6 +3216,7 @@
     // Promo edit modal
     global._savePromoItemEdit     = _savePromoItemEdit;
     // Modal helpers
+    global._showModal             = _showModal;
     global._closeModal            = _closeModal;
     // Tenants
     global.loadSuperadminTenants  = loadSuperadminTenants;
@@ -3348,7 +3279,6 @@
     global.filterCatalogCategory   = filterCatalogCategory;
     global.filterCatalogSpecies    = filterCatalogSpecies;
     global.setItemStatusFromReport = setItemStatusFromReport;
-    global.draftAllFromReport      = draftAllFromReport;
     global.showPurchasePlaceholder = showPurchasePlaceholder;
     global.showWhyYouSeeThis       = showWhyYouSeeThis;
     global.showDismissPlaceholder  = showDismissPlaceholder;

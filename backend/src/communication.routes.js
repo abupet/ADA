@@ -131,10 +131,10 @@ function communicationRouter({ requireAuth }) {
       if (!roleParam || !["vet", "owner"].includes(roleParam)) {
         return res.status(400).json({ error: "invalid_role", message: "role must be vet or owner" });
       }
-      const dbRole = roleParam === "vet" ? "veterinario" : "proprietario";
+      const dbRole = roleParam; // 'vet' or 'owner' — matches base_role in DB directly
       const { rows } = await pool.query(
-        "SELECT user_id, email, display_name FROM users WHERE base_role = $1 AND status = 'active' ORDER BY display_name, email",
-        [dbRole]
+        "SELECT user_id, email, display_name FROM users WHERE base_role = $1 AND status = 'active' AND user_id != $2 ORDER BY display_name, email",
+        [dbRole, req.user.sub]
       );
       res.json({ users: rows });
     } catch (e) {

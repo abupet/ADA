@@ -253,7 +253,7 @@ function initNavigation() {
     });
 }
 
-function navigateToPage(page) {
+async function navigateToPage(page) {
     // Debug logging (PR 13)
     if (typeof ADALog !== 'undefined') {
         var fromPage = localStorage.getItem('ada_current_page') || 'unknown';
@@ -296,7 +296,7 @@ function navigateToPage(page) {
         try { if (typeof loadAiSettingsUI === 'function') loadAiSettingsUI('ai-settings-container'); } catch(e) {}
     }
     if (page === 'communication') {
-        try { if (typeof initCommunication === 'function') initCommunication('communication-container'); } catch(e) {}
+        try { if (typeof initCommunication === 'function') await initCommunication('communication-container'); } catch(e) { console.error('[CORE] initCommunication failed:', e); }
     }
     if (page === 'chatbot') {
         try { if (typeof initChatbot === 'function') initChatbot('chatbot-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}

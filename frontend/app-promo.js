@@ -449,8 +449,7 @@
             whyText = rec.explanation;
         }
 
-        // Truncate why text
-        if (whyText.length > 200) whyText = whyText.substring(0, 197) + '...';
+        // Show full text (no truncation)
 
         // CTA logic
         var ctaEnabled = rec.ctaEnabled !== undefined ? rec.ctaEnabled : false;
@@ -469,8 +468,7 @@
             '<span class="promo-badge">Consigliato per il tuo pet</span>'
         ];
 
-        html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin:8px 0;" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;var i=String(Math.floor(Math.random()*45)+1).padStart(2,\'0\');this.src=(typeof API_BASE_URL!==\'undefined\'?API_BASE_URL:\'\')+\'/api/seed-assets/placeholder-prodotti/Prodotto_\'+i+\'.png\';}">');
-
+        html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;var i=String(Math.floor(Math.random()*45)+1).padStart(2,\'0\');this.src=(typeof API_BASE_URL!==\'undefined\'?API_BASE_URL:\'\')+\'/api/seed-assets/placeholder-prodotti/Prodotto_\'+i+\'.png\';}">');
 
         html.push('<div class="promo-name">' + _escapeHtml(rec.name) + '</div>');
 
@@ -482,6 +480,24 @@
             html.push('<div class="promo-explanation">' + _escapeHtml(whyText) + '</div>');
         }
 
+        // Benefit for pet
+        var benefit = (typeof expl === 'object' && expl.benefit_for_pet) ? expl.benefit_for_pet : null;
+        if (benefit) {
+            html.push('<div class="promo-detail-section" style="margin:6px 0;font-size:13px;">');
+            html.push('<span class="promo-detail-label" style="font-weight:600;">Beneficio: </span>');
+            html.push(_escapeHtml(benefit));
+            html.push('</div>');
+        }
+
+        // Clinical fit
+        var clinicalFit = (typeof expl === 'object' && expl.clinical_fit) ? expl.clinical_fit : null;
+        if (clinicalFit) {
+            html.push('<div class="promo-detail-section" style="margin:6px 0;font-size:13px;">');
+            html.push('<span class="promo-detail-label" style="font-weight:600;">Correlazione clinica: </span>');
+            html.push(_escapeHtml(clinicalFit));
+            html.push('</div>');
+        }
+
         // Disclaimer
         var disclaimer = (typeof expl === 'object' && expl.disclaimer) ? expl.disclaimer : null;
         if (disclaimer) {
@@ -490,9 +506,9 @@
 
         html.push('<div class="promo-actions">');
         if (ctaUrl) {
-            html.push('  <button type="button" class="promo-btn promo-btn--cta" data-promo-action="cta">' + _escapeHtml(ctaLabel) + '</button>');
+            html.push('  <button type="button" class="promo-btn promo-btn--cta" data-promo-action="cta">Acquista</button>');
         }
-        html.push('  <button type="button" class="promo-btn promo-btn--info" data-promo-action="info">Perché vedi questo?</button>');
+        html.push('  <button type="button" class="promo-btn promo-btn--info" data-promo-action="close">Chiudi il suggerimento</button>');
         html.push('  <button type="button" class="promo-btn promo-btn--dismiss" data-promo-action="dismiss">Non mi interessa</button>');
         html.push('</div>');
 
@@ -517,7 +533,7 @@
 
         // Bind events
         var ctaBtn = cardEl.querySelector('[data-promo-action="cta"]');
-        var infoBtn = cardEl.querySelector('[data-promo-action="info"]');
+        var closeBtn = cardEl.querySelector('[data-promo-action="close"]');
         var dismissBtn = cardEl.querySelector('[data-promo-action="dismiss"]');
 
         if (ctaBtn && ctaUrl) {
@@ -528,30 +544,20 @@
                 trackPromoEvent('cta_click', productId, petId, {
                     name: rec.name, role: role, context: context, ctaLabel: ctaLabel
                 });
-                try {
-                    window.open(ctaUrl, '_blank', 'noopener,noreferrer');
-                } catch (_) {
-                    window.location.href = ctaUrl;
-                }
+                // Show simulated purchase page
+                _showPromoPurchasePage(rec, productId);
             });
         }
 
-        if (infoBtn) {
-            infoBtn.addEventListener('click', function () {
-                trackPromoEvent('info_click', productId, petId, {
-                    name: rec.name, role: role, context: context
-                });
-                // Toggle detail view
-                var detailId = cardEl.id + '-detail';
-                var existing = document.getElementById(detailId);
-                if (existing) {
-                    existing.parentNode.removeChild(existing);
-                    return;
-                }
-                var detailEl = document.createElement('div');
-                detailEl.id = detailId;
-                renderPromoDetail(detailEl, rec);
-                cardEl.appendChild(detailEl);
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                // Simply close/hide the promo without tracking dismiss
+                cardEl.style.opacity = '0';
+                setTimeout(function () {
+                    cardEl.classList.add('promo-card--hidden');
+                    cardEl.removeAttribute('style');
+                    cardEl.innerHTML = '';
+                }, 300);
             });
         }
 
@@ -565,23 +571,76 @@
                 });
                 if (productId) _addDismissedId(productId);
 
-                // Smooth hide
-                cardEl.style.opacity = '0';
-                cardEl.style.maxHeight = cardEl.scrollHeight + 'px';
-                cardEl.style.overflow = 'hidden';
-                setTimeout(function () {
-                    cardEl.style.maxHeight = '0';
-                    cardEl.style.padding = '0';
-                    cardEl.style.margin = '0';
-                    cardEl.style.border = 'none';
-                }, 50);
-                setTimeout(function () {
-                    cardEl.classList.add('promo-card--hidden');
-                    cardEl.removeAttribute('style');
-                    cardEl.innerHTML = '';
-                }, 400);
+                // Show feedback popup, then close promo card
+                if (typeof _showModal === 'function') {
+                    _showModal('Feedback ricevuto', function(container) {
+                        container.innerHTML = '<div style="text-align:center;padding:30px;">' +
+                            '<h3>Grazie per il tuo feedback!</h3>' +
+                            '<p style="font-size:16px;color:#555;margin:16px 0;">' +
+                            'Abbiamo preso nota della tua preferenza.<br>Non ti mostreremo più questo prodotto.</p>' +
+                            '<p style="font-size:13px;color:#888;">Continuiamo a migliorare i suggerimenti per te e il tuo pet.</p>' +
+                            '<button class="btn btn-primary" style="margin-top:20px;" id="dismiss-close-btn">Chiudi</button></div>';
+                        var closeEl = document.getElementById('dismiss-close-btn');
+                        if (closeEl) {
+                            closeEl.addEventListener('click', function() {
+                                if (typeof _closeModal === 'function') _closeModal();
+                                cardEl.style.opacity = '0';
+                                setTimeout(function () {
+                                    cardEl.classList.add('promo-card--hidden');
+                                    cardEl.removeAttribute('style');
+                                    cardEl.innerHTML = '';
+                                }, 300);
+                            });
+                        }
+                    });
+                } else {
+                    // Fallback: just hide the card
+                    cardEl.style.opacity = '0';
+                    setTimeout(function () {
+                        cardEl.classList.add('promo-card--hidden');
+                        cardEl.removeAttribute('style');
+                        cardEl.innerHTML = '';
+                    }, 300);
+                }
             });
         }
+    }
+
+    /**
+     * Show simulated purchase page for a promo product.
+     */
+    function _showPromoPurchasePage(rec, productId) {
+        if (typeof _showModal !== 'function') {
+            // Fallback: open URL directly
+            var url = rec.ctaUrl || rec.infoUrl;
+            if (url) { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) { window.location.href = url; } }
+            return;
+        }
+        var imgUrl = rec.imageUrl || rec.image_url || '';
+        _showModal('Pagina di Acquisto (Simulata)', function(container) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                '<div style="color:#dc2626;font-weight:600;border:2px dashed #dc2626;padding:10px;border-radius:8px;margin-bottom:20px;">' +
+                'Questa è una pagina simulata per test. Nessun acquisto reale verrà effettuato.</div>' +
+                '<div style="max-width:400px;margin:0 auto;text-align:left;">' +
+                (imgUrl ? '<img src="' + _escapeHtml(imgUrl) + '" style="width:100%;border-radius:8px;margin-bottom:12px;" onerror="this.style.display=\'none\'">' : '') +
+                '<h4 style="margin:0 0 8px;">' + _escapeHtml(rec.name || '') + '</h4>' +
+                '<p style="color:#555;font-size:13px;">' + _escapeHtml(rec.description || '') + '</p><hr>' +
+                '<p><strong>Prezzo:</strong> €XX,XX (placeholder)</p>' +
+                '<label>Quantità: <input type="number" value="1" min="1" max="10" style="width:60px;padding:4px;"></label><hr>' +
+                '<h4>Dati di spedizione</h4>' +
+                '<input placeholder="Nome e Cognome" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Indirizzo" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Città" style="flex:2;padding:8px;border:1px solid #ddd;border-radius:6px;"></div><hr>' +
+                '<h4>Metodo di pagamento</h4>' +
+                '<input placeholder="Numero carta" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;">' +
+                '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
+                '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
+                '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="_closeModal()">Chiudi</button>' +
+                '</div></div>';
+        });
     }
 
     /**
