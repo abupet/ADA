@@ -1,5 +1,5 @@
 const express = require('express');
-const { startSeedJob, startDemoJob, getJobStatus, cancelJob, wipeSeededData } = require('./seed.service');
+const { startSeedJob, startDemoJob, getJobStatus, cancelJob, wipeSeededData, wipeAllUserPets } = require('./seed.service');
 const { requireRole } = require('./rbac.middleware');
 
 function seedRouter({ requireAuth, getOpenAiKey }) {
@@ -43,12 +43,17 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
         return res.json({ status: 'cancel_requested' });
     });
 
-    // POST /api/seed/wipe — Delete all seeded data
+    // POST /api/seed/wipe — Delete all seeded data (or all user pets with mode=all)
     router.post('/api/seed/wipe', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {
             const { getPool } = require('./db');
             const pool = getPool();
             const ownerUserId = req.user && req.user.sub ? req.user.sub : null;
+            const mode = (req.body || {}).mode;
+            if (mode === 'all' && ownerUserId) {
+                const result = await wipeAllUserPets(pool, ownerUserId);
+                return res.json({ status: 'wiped_all', details: result });
+            }
             const result = await wipeSeededData(pool, ownerUserId);
             return res.json({ status: 'wiped', details: result });
         } catch (e) {
