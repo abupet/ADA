@@ -1864,25 +1864,54 @@ function getDocTypesForPet(pet) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// 6b. PHOTO PLACEHOLDERS (deterministic SVG per species)
+// 6b. PHOTO PLACEHOLDERS (random PNG per species, no duplicates)
 // ---------------------------------------------------------------------------
 
+const SPECIES_TO_PHOTO_PREFIX = {
+    dog: 'Cane',
+    cat: 'Gatto',
+    rabbit: 'Coniglio',
+};
+const PHOTOS_PER_SPECIES = 15;
+
 function getPhotoPlaceholder(species) {
-    const file = {
-        dog: 'placeholder-dog.svg',
-        cat: 'placeholder-cat.svg',
-        rabbit: 'placeholder-rabbit.svg',
-    }[species] || 'placeholder-pet.svg';
-    return '/api/seed-assets/' + file;
+    const prefix = SPECIES_TO_PHOTO_PREFIX[species];
+    if (!prefix) {
+        return '/api/seed-assets/placeholder-pet.svg';
+    }
+    const index = String(Math.floor(Math.random() * PHOTOS_PER_SPECIES) + 1).padStart(2, '0');
+    return `/api/seed-assets/placeholder-animali/${prefix}_${index}.png`;
 }
 
 function generatePhotosForPet(pet, count) {
-    const base = getPhotoPlaceholder(pet.species);
+    const prefix = SPECIES_TO_PHOTO_PREFIX[pet.species];
     const photos = [];
-    for (let i = 0; i < count; i++) {
+
+    if (!prefix) {
+        for (let i = 0; i < count; i++) {
+            photos.push({
+                id: `photo-${pet._petId || pet.petId || 'x'}-${i}`,
+                dataUrl: '/api/seed-assets/placeholder-pet.svg',
+                caption: `Foto ${i + 1} di ${pet.name}`,
+                date: new Date().toISOString(),
+            });
+        }
+        return photos;
+    }
+
+    // Shuffle indices 1..15 and pick first `count` (no duplicates)
+    const indices = Array.from({ length: PHOTOS_PER_SPECIES }, (_, i) => i + 1);
+    for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    const actualCount = Math.min(count, PHOTOS_PER_SPECIES);
+
+    for (let i = 0; i < actualCount; i++) {
+        const idx = String(indices[i]).padStart(2, '0');
         photos.push({
             id: `photo-${pet._petId || pet.petId || 'x'}-${i}`,
-            dataUrl: base,
+            dataUrl: `/api/seed-assets/placeholder-animali/${prefix}_${idx}.png`,
             caption: `Foto ${i + 1} di ${pet.name}`,
             date: new Date().toISOString(),
         });

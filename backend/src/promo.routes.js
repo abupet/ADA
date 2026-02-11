@@ -10,6 +10,11 @@ function isValidUuid(value) {
   return typeof value === "string" && UUID_REGEX.test(value);
 }
 
+function _randomProductPlaceholder() {
+  const index = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+  return `/api/seed-assets/placeholder-prodotti/Prodotto_${index}.png`;
+}
+
 // Mock product catalog for deterministic recommendations (backward compat)
 const PRODUCT_CATALOG = [
   {
@@ -125,7 +130,10 @@ function selectRecommendations(petId, species, count = 3) {
     }
   }
 
-  return results;
+  return results.map((p) => ({
+    ...p,
+    image_url: p.image_url || _randomProductPlaceholder(),
+  }));
 }
 
 /**
