@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v8.10.3 (2026-02-11)
+- Fix (grave): Pull sync "pet fantasma" — `unwrapPetsPullResponse` ora usa deduplicazione "last wins": per ogni `pet_id`, solo l'ultima operazione cronologica viene applicata. Prima, upserts e deletes venivano separati in array distinti perdendo l'ordine cronologico; il frontend processava deletes prima di upserts, causando la riapparizione di pet già cancellati (118 changes → 10 phantom pets invece di 1)
+
 ## v8.10.2 (2026-02-11)
 - Fix: Pet delete ora esegue push immediato al server (`pushOutboxIfOnline`) — prima il delete restava nell'outbox e non veniva inviato fino al sync manuale, causando "pet fantasma" che riapparivano dopo re-login
 - Fix: `unwrapPetsPullResponse` — aggiunto recovery `JSON.parse` per record `pet_changes` doppio-serializzati (stringa JSON invece di oggetto JSONB); gestisce dati corrotti da seed engine pre-v8.10.0
