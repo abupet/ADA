@@ -293,6 +293,10 @@ function navigateToPage(page) {
         try { renderAccountInfo(); } catch(e) {}
         try { updateSettingsSectionsVisibility(); } catch(e) {}
         try { initOpenAiOptimizationsSettingsUI(); } catch(e) {}
+        try { if (typeof loadAiSettingsUI === 'function') loadAiSettingsUI('ai-settings-container'); } catch(e) {}
+    }
+    if (page === 'communication') {
+        try { if (typeof initCommunication === 'function') initCommunication('communication-container'); } catch(e) {}
     }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
