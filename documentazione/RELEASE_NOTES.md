@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.4.0 (2026-02-11)
+- Feat: Frontend comunicazione owner↔vet — pagina Messaggi con chat real-time
+- Frontend: `app-communication.js` — gestione Socket.io, lista conversazioni, chat view con bolle, typing indicator, mark-as-read, paginazione cursor-based
+- Frontend: Badge non letti nella sidebar per vet e proprietario
+- Frontend: AI Settings nella pagina Impostazioni — toggle chatbot e trascrizione automatica
+- HTML: Pagina `page-communication` con container, nav items sidebar per entrambi i ruoli
+- HTML: Socket.io CDN (cdnjs.cloudflare.com/socket.io/4.7.5)
+- Config: `communication` aggiunta a ROLE_PERMISSIONS per vet, proprietario, super_admin
+- Wiring: `app-core.js` chiama `initCommunication()` e `loadAiSettingsUI()` su navigazione
+
 ## v8.3.0 (2026-02-11)
 - Feat: API REST comunicazione owner↔vet — conversazioni, messaggi, conteggio non letti
 - Backend: `communication.routes.js` — 10 endpoint REST (CRUD conversazioni, messaggi con paginazione cursor-based, mark-as-read, unread count)
