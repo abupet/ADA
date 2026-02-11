@@ -497,11 +497,24 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "model_not_allowed", allowed: ALLOWED_CHAT_MODELS });
     }
 
+    // Whitelist response_format so OpenAI returns raw JSON (not markdown-wrapped)
+    const ALLOWED_RESPONSE_FORMATS = ['json_object', 'json_schema', 'text'];
+    let responseFormat = undefined;
+    if (body.response_format && typeof body.response_format === 'object') {
+      const rfType = body.response_format.type;
+      if (ALLOWED_RESPONSE_FORMATS.includes(rfType)) {
+        responseFormat = rfType === 'json_schema'
+          ? body.response_format  // pass full schema object
+          : { type: rfType };
+      }
+    }
+
     const sanitizedPayload = {
       model: ALLOWED_CHAT_MODELS.includes(body.model) ? body.model : "gpt-4o-mini",
       messages: body.messages,
       temperature: body.temperature !== undefined ? Math.min(Math.max(Number(body.temperature) || 0, 0), 2) : undefined,
       max_tokens: body.max_tokens ? Math.min(Number(body.max_tokens) || MAX_CHAT_TOKENS, MAX_CHAT_TOKENS) : MAX_CHAT_TOKENS,
+      response_format: responseFormat,
     };
     Object.keys(sanitizedPayload).forEach(k => sanitizedPayload[k] === undefined && delete sanitizedPayload[k]);
 

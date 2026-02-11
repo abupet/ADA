@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.10.3';
+const ADA_VERSION = '8.10.4';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

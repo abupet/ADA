@@ -1217,13 +1217,14 @@ const OWNER_LAST_NAMES = [
 // 3. UTILITY HELPERS
 // ---------------------------------------------------------------------------
 
-const ENVIRONMENTS = ["appartamento", "casa con giardino", "fattoria", "villetta"];
-const HOUSEHOLDS = ["famiglia con bambini", "coppia", "singolo", "anziano", "famiglia numerosa"];
-const ACTIVITY_LEVELS_DOG = ["basso", "moderato", "alto", "agonistico"];
-const ACTIVITY_LEVELS_CAT = ["basso (indoor)", "moderato (indoor/outdoor)", "alto (outdoor)"];
-const ACTIVITY_LEVELS_RABBIT = ["basso (gabbia)", "moderato (libero in casa)", "alto (giardino recintato)"];
-const DIET_TYPES = ["commerciale secco", "commerciale umido", "misto secco/umido", "casalinga", "BARF"];
-const DIET_TYPES_RABBIT = ["fieno + pellet", "fieno + verdure fresche", "misto completo"];
+// Values MUST match frontend <select> options in index.html
+const ENVIRONMENTS = ["indoor", "outdoor", "misto"];
+const HOUSEHOLDS = ["bambini", "anziani", "altri_cani", "altri_gatti", "altri_animali"];
+const ACTIVITY_LEVELS_DOG = ["basso", "medio", "alto"];
+const ACTIVITY_LEVELS_CAT = ["basso", "medio", "alto"];
+const ACTIVITY_LEVELS_RABBIT = ["basso", "medio", "alto"];
+const DIET_TYPES = ["secco", "umido", "misto", "casalingo", "barf"];
+const DIET_TYPES_RABBIT = ["secco", "misto", "casalingo"];
 const LOCATIONS = [
   "Milano", "Roma", "Napoli", "Torino", "Firenze", "Bologna",
   "Palermo", "Genova", "Verona", "Padova", "Bari", "Catania",
@@ -1415,7 +1416,12 @@ function generatePetCohort(count, opts = {}) {
 
     const nameList = species === "dog" ? DOG_NAMES : species === "cat" ? CAT_NAMES : RABBIT_NAMES;
     const name = pick(nameList, rng);
-    const sex = rng() > 0.5 ? "M" : "F";
+    // Sex must match frontend <select> options: "Maschio", "Maschio castrato", "Femmina", "Femmina sterilizzata"
+    const isMale = rng() > 0.5;
+    const isSterilized = rng() > 0.3; // ~70% sterilized
+    const sex = isMale
+      ? (isSterilized ? "Maschio castrato" : "Maschio")
+      : (isSterilized ? "Femmina sterilizzata" : "Femmina");
 
     const [wMin, wMax] = (WEIGHT_RANGES[species] && WEIGHT_RANGES[species][breed]) || [3, 10];
     let weightKg = randBetween(wMin, wMax, rng);
@@ -1501,37 +1507,33 @@ function generatePetCohort(count, opts = {}) {
     const daysAgo = Math.floor(rng() * 365);
     const lastVaccDate = new Date(); lastVaccDate.setDate(lastVaccDate.getDate() - daysAgo);
 
+    // Keys MUST match frontend setLifestyleData() mapping in app-data.js
     const lifestyle = {
-      environment: pick(ENVIRONMENTS, rng),
+      lifestyle: pick(ENVIRONMENTS, rng),
       household: pick(HOUSEHOLDS, rng),
       activityLevel: pick(activityLevels, rng),
       dietType: pick(dietTypes, rng),
-      dietPreferences: [],
-      knownConditions,
-      currentMeds: medications.map(m => m.name),
-      behaviorNotes,
+      dietPreferences: knownConditions.length > 0 ? knownConditions.join(', ') : '',
+      knownConditions: knownConditions.join(', '),
+      currentMeds: medications.map(m => m.name).join(', '),
+      behaviorNotes: behaviorNotes.join(', '),
       location: pick(LOCATIONS, rng),
-      sterilized: rng() > 0.3,
-      outdoorAccess: outdoorAccessMap[species] || 'indoor',
-      cohabitants,
-      feedingSchedule: pick(['2 pasti/giorno', '3 pasti/giorno', 'alimentazione libera', '2 pasti + snack'], rng),
-      waterSource: pick(['ciotola', 'fontanella', 'ciotola + fontanella'], rng),
-      lastVaccination: lastVaccDate.toISOString().split('T')[0],
-      insuranceActive: rng() > 0.7,
     };
 
     // Add diet preferences for pathologies
+    const dietPrefArr = [];
     for (const p of selectedPathologies) {
       if (p.name.includes("renale") || p.name.includes("CKD") || p.name.includes("PKD")) {
-        lifestyle.dietPreferences.push("dieta renale");
+        dietPrefArr.push("dieta renale");
       }
       if (p.name.includes("Obesità") || p.name.includes("sovrappeso")) {
-        lifestyle.dietPreferences.push("dieta ipocalorica");
+        dietPrefArr.push("dieta ipocalorica");
       }
       if (p.name.includes("urinari") || p.name.includes("struvite") || p.name.includes("ossalato") || p.name.includes("FLUTD") || p.name.includes("cistite")) {
-        lifestyle.dietPreferences.push("dieta urinaria");
+        dietPrefArr.push("dieta urinaria");
       }
     }
+    if (dietPrefArr.length > 0) lifestyle.dietPreferences = dietPrefArr.join(', ');
 
     const petId = "seed-" + randomUUID().slice(0, 12);
 
@@ -1652,12 +1654,12 @@ TERAPIA IN CORSO:
 ${medsContext}
 
 STILE DI VITA:
-- Ambiente: ${pet.lifestyle.environment}
+- Ambiente: ${pet.lifestyle.lifestyle}
 - Nucleo familiare: ${pet.lifestyle.household}
 - Livello di attività: ${pet.lifestyle.activityLevel}
 - Dieta: ${pet.lifestyle.dietType}
 - Località: ${pet.lifestyle.location}
-${pet.lifestyle.behaviorNotes.length > 0 ? "- Note comportamentali: " + pet.lifestyle.behaviorNotes.join(", ") : ""}
+${pet.lifestyle.behaviorNotes ? "- Note comportamentali: " + pet.lifestyle.behaviorNotes : ""}
 
 DIARIO CLINICO PRECEDENTE:
 ${pet.diary}
@@ -1899,7 +1901,7 @@ function generateDemoCohort(tenantProducts) {
       name: 'Luna',
       species: 'dog',
       breed: 'Labrador Retriever',
-      sex: 'F',
+      sex: 'Femmina sterilizzata',
       birthdate: _demoBirthdate(2),
       weightKg: 28.5,
       ownerName: 'Marco Bianchi',
@@ -1912,7 +1914,7 @@ function generateDemoCohort(tenantProducts) {
       name: 'Micio',
       species: 'cat',
       breed: 'Persiano',
-      sex: 'M',
+      sex: 'Maschio castrato',
       birthdate: _demoBirthdate(7),
       weightKg: 5.8,
       ownerName: 'Anna Rossi',
@@ -1925,7 +1927,7 @@ function generateDemoCohort(tenantProducts) {
       name: 'Rex',
       species: 'dog',
       breed: 'Golden Retriever',
-      sex: 'M',
+      sex: 'Maschio castrato',
       birthdate: _demoBirthdate(12),
       weightKg: 29.0,
       ownerName: 'Luigi Verdi',
@@ -1973,33 +1975,29 @@ function generateDemoCohort(tenantProducts) {
 
     const knownConditions = selectedPathologies.map(pa => pa.name);
 
+    // Keys/values MUST match frontend setLifestyleData() and index.html <select> options
     const lifestyle = {
-      environment: profile.label === 'healthy_young' ? 'casa con giardino' : 'appartamento',
-      household: 'famiglia',
-      activityLevel: profile.label === 'senior_complex' ? 'bassa' : profile.label === 'healthy_young' ? 'alta' : 'media',
-      dietType: knownConditions.length > 0 ? 'dieta clinica' : 'crocchette premium',
-      dietPreferences: [],
-      knownConditions,
-      currentMeds: medications.map(m => m.name),
-      behaviorNotes: [],
+      lifestyle: profile.label === 'healthy_young' ? 'outdoor' : 'indoor',
+      household: 'bambini',
+      activityLevel: profile.label === 'senior_complex' ? 'basso' : profile.label === 'healthy_young' ? 'alto' : 'medio',
+      dietType: knownConditions.length > 0 ? 'casalingo' : 'secco',
+      dietPreferences: '',
+      knownConditions: knownConditions.join(', '),
+      currentMeds: medications.map(m => m.name).join(', '),
+      behaviorNotes: '',
       location: 'Roma',
-      sterilized: true,
-      outdoorAccess: profile.species === 'dog' ? 'outdoor con passeggiate' : 'indoor only',
-      cohabitants: [],
-      feedingSchedule: '2 pasti/giorno',
-      waterSource: 'ciotola + fontanella',
-      lastVaccination: new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0],
-      insuranceActive: profile.label === 'clinical_adult',
     };
 
+    const dietPrefList = [];
     for (const pa of selectedPathologies) {
       if (pa.name.includes('renale') || pa.name.includes('CKD') || pa.name.includes('PKD')) {
-        lifestyle.dietPreferences.push('dieta renale');
+        dietPrefList.push('dieta renale');
       }
       if (pa.name.includes('Obesità') || pa.name.includes('sovrappeso')) {
-        lifestyle.dietPreferences.push('dieta ipocalorica');
+        dietPrefList.push('dieta ipocalorica');
       }
     }
+    if (dietPrefList.length > 0) lifestyle.dietPreferences = dietPrefList.join(', ');
 
     const petId = 'demo-' + profile.label;
 
