@@ -85,6 +85,12 @@
                     if (fill) fill.style.width = '100%';
                     if (phaseText) phaseText.textContent = 'Completato!';
                     if (typeof showToast === 'function') showToast('Seed completato!', 'success');
+                    // Force pull sync so newly created pets appear immediately
+                    try {
+                        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                            window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                        }
+                    } catch (_e) {}
                 } else if (data.status === 'cancelled') {
                     if (phaseText) phaseText.textContent = 'Annullato';
                     if (typeof showToast === 'function') showToast('Seed annullato', 'error');

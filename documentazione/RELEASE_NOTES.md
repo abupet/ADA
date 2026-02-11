@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.8.0 (2026-02-11)
+- Fix: Filtro Priorita nel Catalogo Prodotti ora mostra tutti i valori 0-9 (prima solo 0-5)
+- Fix: Filtro Specie nel Catalogo ora mostra tutte le specie (Cane, Gatto, Coniglio, Furetto, Uccello, Rettile, Tutte) — prima mostrava solo "Tutte" a causa di `_translateSpecies` chiamata con stringa invece di array
+- Fix: Pulsante "Draft Tutti" nel Report Validazione URL ora funziona correttamente — chiamate API sequenziali con feedback progresso reale, `loadAdminCatalog()` chiamato una sola volta alla fine
+- Fix: Navigazione diretta a Catalogo Prodotti per super_admin ora auto-seleziona il primo tenant se nessuno e stato scelto dalla Dashboard — tenant persistito in `sessionStorage`
+- Fix (grave): Seed Engine — dopo "Avvia popolamento", i nuovi pet ora appaiono immediatamente grazie a `pullPetsIfOnline({ force: true })` al completamento
+- Fix: Seed Engine — errore inserimento `pet_changes` (Phase 3) ora rilancia l'eccezione all'outer catch, evitando pet orfani non visibili al pull sync
+- Fix: Seed Engine — log `pet_changes` Phase 9 promosso da warning a error per migliore visibilita diagnostica
+
 ## v8.7.0 (2026-02-11)
 - Fix: BUG-01 Token key mismatch — `ada_jwt_token` sostituito con `getAuthToken()` in communication, chatbot, webrtc
 - Fix: BUG-02 Badge non letti — aggiornamento corretto di entrambi i badge (vet + owner)

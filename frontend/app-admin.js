@@ -179,6 +179,7 @@
 
     function selectDashboardTenant(tenantId, containerId, period) {
         _selectedDashboardTenant = tenantId;
+        try { sessionStorage.setItem('ada_selected_tenant', tenantId); } catch (e) {}
         loadAdminDashboard(containerId, period);
     }
 
@@ -212,6 +213,7 @@
 
     function switchPageTenant(tenantId) {
         _selectedDashboardTenant = tenantId;
+        try { sessionStorage.setItem('ada_selected_tenant', tenantId); } catch (e) {}
         var activePage = document.querySelector('.page[style*="display: block"], .page[style*="display:block"]');
         if (activePage) {
             var pageId = activePage.id;
@@ -1262,10 +1264,27 @@
 
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) {
+            try { var stored = sessionStorage.getItem('ada_selected_tenant'); if (stored) { _selectedDashboardTenant = stored; tenantId = stored; } } catch (e) {}
+        }
 
         var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
         if (!tenantId && jwtRole === 'super_admin') {
-            container.innerHTML = '<p style="color:#888;">Seleziona un tenant dalla Dashboard per gestire il catalogo.</p>';
+            // Auto-select first tenant instead of showing error
+            container.innerHTML = '<p style="color:#888;">Caricamento tenant...</p>';
+            fetchApi('/api/superadmin/tenants').then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    if (!data || !data.tenants || data.tenants.length === 0) {
+                        container.innerHTML = '<p style="color:#888;">Nessun tenant trovato. Creane uno dalla pagina Gestione Tenant.</p>';
+                        return;
+                    }
+                    _selectedDashboardTenant = data.tenants[0].tenant_id;
+                    try { sessionStorage.setItem('ada_selected_tenant', _selectedDashboardTenant); } catch (e) {}
+                    loadAdminCatalog(containerId);
+                })
+                .catch(function() {
+                    container.innerHTML = '<p style="color:#888;">Errore caricamento tenant.</p>';
+                });
             return;
         }
         if (!tenantId) {
@@ -1327,7 +1346,7 @@
         html.push('</select>');
         html.push('<select onchange="filterCatalogPriority(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
         html.push('<option value="">Priorità: Tutte</option>');
-        [0,1,2,3,4,5].forEach(function(p) {
+        [0,1,2,3,4,5,6,7,8,9].forEach(function(p) {
             html.push('<option value="' + p + '"' + (_catalogPriorityFilter === String(p) ? ' selected' : '') + '>' + p + '</option>');
         });
         html.push('</select>');
@@ -1349,8 +1368,9 @@
         html.push('</select>');
         html.push('<select onchange="filterCatalogSpecies(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
         html.push('<option value="">Specie: Tutte</option>');
-        ['dog','cat','rabbit','all'].forEach(function(s) {
-            html.push('<option value="' + s + '"' + (_catalogSpeciesFilter === s ? ' selected' : '') + '>' + _translateSpecies(s) + '</option>');
+        ['dog','cat','rabbit','ferret','bird','reptile','all'].forEach(function(s) {
+            var label = s === 'all' ? 'Tutte' : (SPECIES_LABELS[s] || s);
+            html.push('<option value="' + s + '"' + (_catalogSpeciesFilter === s ? ' selected' : '') + '>' + label + '</option>');
         });
         html.push('</select>');
         var _hasAdvancedFilter = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
@@ -2613,29 +2633,68 @@
     function draftAllFromReport(btnEl) {
         var modal = document.querySelector('.modal-overlay');
         if (!modal) return;
-        var draftButtons = [];
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+
+        // Collect item IDs from the draft buttons' onclick attributes
+        var itemIds = [];
         modal.querySelectorAll('button').forEach(function(b) {
-            if (b.textContent.trim() === '\u2192 Draft' && !b.disabled) draftButtons.push(b);
+            if (b.textContent.trim() === '\u2192 Draft' && !b.disabled) {
+                var onclick = b.getAttribute('onclick') || '';
+                var match = onclick.match(/setItemStatusFromReport\('([^']+)'/);
+                if (match) itemIds.push({ id: match[1], btn: b });
+            }
         });
-        if (draftButtons.length === 0) {
+        if (itemIds.length === 0) {
             showToast('Nessun prodotto da spostare a draft', 'info');
             return;
         }
-        if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'In corso... 0/' + draftButtons.length; }
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'In corso... 0/' + itemIds.length; }
+
+        // Sequential API calls (one at a time to avoid rate-limit)
         var done = 0;
-        draftButtons.forEach(function(b) {
-            b.click();
-            done++;
-            if (btnEl) btnEl.textContent = 'In corso... ' + done + '/' + draftButtons.length;
-        });
-        setTimeout(function() {
-            if (btnEl) {
-                btnEl.textContent = '\u2713 Completato';
-                btnEl.style.background = '#16a34a';
-                btnEl.style.color = '#fff';
-                btnEl.style.borderColor = '#16a34a';
+        var errors = 0;
+        function processNext(idx) {
+            if (idx >= itemIds.length) {
+                // All done — reload catalog once and show result
+                loadAdminCatalog();
+                if (btnEl) {
+                    btnEl.textContent = '\u2713 Completato (' + done + '/' + itemIds.length + ')';
+                    btnEl.style.background = '#16a34a';
+                    btnEl.style.color = '#fff';
+                    btnEl.style.borderColor = '#16a34a';
+                }
+                var msg = 'Draft completato: ' + done + ' prodotti spostati';
+                if (errors > 0) msg += ', ' + errors + ' errori';
+                showToast(msg, errors > 0 ? 'error' : 'success');
+                return;
             }
-        }, 1500);
+            var entry = itemIds[idx];
+            if (entry.btn) { entry.btn.disabled = true; entry.btn.textContent = '...'; }
+            fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(entry.id) + '/transition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'draft' })
+            }).then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function() {
+                done++;
+                if (entry.btn) {
+                    entry.btn.textContent = '\u2713 Draft';
+                    entry.btn.style.background = '#16a34a';
+                    entry.btn.style.color = '#fff';
+                    entry.btn.style.borderColor = '#16a34a';
+                }
+            }).catch(function() {
+                errors++;
+                if (entry.btn) { entry.btn.disabled = false; entry.btn.textContent = '\u2192 Draft'; }
+            }).then(function() {
+                if (btnEl) btnEl.textContent = 'In corso... ' + (done + errors) + '/' + itemIds.length;
+                processNext(idx + 1);
+            });
+        }
+        processNext(0);
     }
 
     // =========================================================================
