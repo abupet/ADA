@@ -777,7 +777,7 @@ async function _runSeedJob(pool, config, openAiKey) {
       try {
         const upd = await pool.query(
           `UPDATE pets SET extra_data = $1, version = version + 1, updated_at = NOW() WHERE pet_id = $2 RETURNING *`,
-          [JSON.stringify(extraData), pet._petId]
+          [extraData, pet._petId]
         );
 
         // Create pet_changes with full data so pull sync gets complete pet info
