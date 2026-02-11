@@ -128,7 +128,7 @@ function initCommSocket() {
         _commSocket.on('user_offline', function (d) { _commHandleUserOnline(d, false); });
         _commSocket.on('disconnect', function (r) { console.warn('[Communication] Socket disconnected:', r); });
         _commSocket.on('connect_error', function (e) { console.warn('[Communication] Socket error:', e.message); });
-    } catch (e) { console.error('[Communication] Failed to init socket:', e); }
+    } catch (_) { /* socket init failure is non-critical */ }
 }
 
 function disconnectCommSocket() {
@@ -192,11 +192,9 @@ async function initCommunication(containerId) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
         _commRenderConvList(data.conversations || data || []);
-    } catch (e) {
-        console.error('[Communication] Failed to load conversations:', e);
+    } catch (_) {
         var la = document.getElementById('comm-conv-list-area');
-        if (la) la.innerHTML = '<div class="comm-empty">Impossibile caricare le conversazioni.</div>';
-        if (typeof showToast === 'function') showToast('Errore nel caricamento delle conversazioni', 'error');
+        if (la) la.innerHTML = '<div class="comm-empty">Messaggi non disponibili.</div>';
     }
 }
 
