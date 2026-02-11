@@ -19,6 +19,7 @@ const { tipsSourcesRouter } = require("./tips-sources.routes");
 const { nutritionRouter } = require("./nutrition.routes");
 const { insuranceRouter } = require("./insurance.routes");
 const { initWebSocket } = require("./websocket");
+const { communicationRouter } = require("./communication.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -363,6 +364,8 @@ if (process.env.DATABASE_URL) {
   app.use(nutritionRouter({ requireAuth, getOpenAiKey }));
   // --- Insurance routes ---
   app.use(insuranceRouter({ requireAuth }));
+  // --- Communication routes (chat owner↔vet) ---
+  app.use(communicationRouter({ requireAuth }));
 }
 
 function getOpenAiKey() {

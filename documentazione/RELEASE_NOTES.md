@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.3.0 (2026-02-11)
+- Feat: API REST comunicazione owner↔vet — conversazioni, messaggi, conteggio non letti
+- Backend: `communication.routes.js` — 10 endpoint REST (CRUD conversazioni, messaggi con paginazione cursor-based, mark-as-read, unread count)
+- Backend: AI settings endpoint — GET/PATCH `/api/communication/settings` per toggle chatbot e trascrizione
+- Backend: Broadcast Socket.io sui nuovi messaggi via `commNs`
+- Backend: Gestione graceful `42P01` per tabelle mancanti in CI
+
 ## v8.2.0 (2026-02-11)
 - Feat: WebSocket server con Socket.io per comunicazione real-time
 - Backend: `websocket.js` — namespace `/communication` con autenticazione JWT, presence tracking, rate limiting (30 msg/60s)
