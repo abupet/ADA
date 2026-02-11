@@ -8,6 +8,11 @@ function serverLog(level, domain, message, data, req) {
     console.log(JSON.stringify({ts: new Date().toISOString(), level, domain, corrId: (req && req.correlationId) || '--------', msg: message, data: data || undefined}));
 }
 
+function _randomProductPlaceholder() {
+    const index = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+    return `/api/seed-assets/placeholder-prodotti/Prodotto_${index}.png`;
+}
+
 const { computeTags, normalizeSpecies } = require("./tag.service");
 const {
   getEffectiveConsent,
@@ -374,7 +379,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
       tenantId: selected.tenant_id,
       name: selected.name,
       category: selected.category,
-      imageUrl: selected.image_url,
+      imageUrl: selected.image_url || _randomProductPlaceholder(),
       description: selected.description,
       ctaUrl,
       context: ctx,

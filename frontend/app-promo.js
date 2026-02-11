@@ -459,15 +459,18 @@
 
         // Build card HTML
         var imageUrl = rec.imageUrl || rec.image_url || null;
+        if (!imageUrl) {
+            var _idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+            imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/seed-assets/placeholder-prodotti/Prodotto_' + _idx + '.png';
+        }
         var description = rec.description || null;
 
         var html = [
             '<span class="promo-badge">Consigliato per il tuo pet</span>'
         ];
 
-        if (imageUrl) {
-            html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin:8px 0;">');
-        }
+        html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin:8px 0;" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;var i=String(Math.floor(Math.random()*45)+1).padStart(2,\'0\');this.src=(typeof API_BASE_URL!==\'undefined\'?API_BASE_URL:\'\')+\'/api/seed-assets/placeholder-prodotti/Prodotto_\'+i+\'.png\';}">');
+
 
         html.push('<div class="promo-name">' + _escapeHtml(rec.name) + '</div>');
 

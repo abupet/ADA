@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v8.12.0 (2026-02-11)
+- Feat: Placeholder immagini animali — Seed Engine ora assegna foto PNG cartoon variegate (15 varianti per specie: Cane, Gatto, Coniglio) invece del singolo SVG deterministico; ogni pet riceve foto diverse senza duplicati
+- Feat: Placeholder immagini prodotti — promo senza `image_url` mostrano ora un placeholder cartoon sacchetto pet food casuale (45 varianti); fallback a triplo livello: backend eligibility, backend mock, frontend `onerror`
+- Feat: 90 immagini PNG placeholder aggiunte in `backend/src/seed-assets/placeholder-animali/` (45) e `placeholder-prodotti/` (45), servite via route statica `/api/seed-assets/` già esistente
+
 ## v8.11.0 (2026-02-11)
 - Feat: Messaggi — "Nuova conversazione" ora mostra dropdown animale (da IndexedDB), tipo destinatario (Veterinario/Proprietario in base al ruolo) e destinatario (caricato dinamicamente da `GET /api/communication/users?role=vet|owner`); rimosso campo testo UUID
 - Feat: Messaggi Backend — nuovo endpoint `GET /api/communication/users?role=vet|owner` per elencare utenti attivi per ruolo; `POST /api/communication/conversations` ora supporta `owner_override_id` per conversazioni avviate dal vet verso un proprietario
