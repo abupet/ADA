@@ -161,6 +161,56 @@ function tipsSourcesRouter({ requireAuth, getOpenAiKey }) {
     const saRoles = ["super_admin"];
 
     // ==============================
+    // CRON: auto-refresh (protected by x-cron-secret header)
+    // ==============================
+
+    // POST /api/tips-sources/auto-refresh — for external cron
+    router.post("/api/tips-sources/auto-refresh", async (req, res) => {
+        const cronSecret = process.env.TIPS_CRON_SECRET;
+        if (!cronSecret || req.headers["x-cron-secret"] !== cronSecret) {
+            return res.status(403).json({ error: "forbidden" });
+        }
+
+        const FREQ_DAYS = { weekly: 7, monthly: 30, quarterly: 90 };
+
+        try {
+            const { rows } = await pool.query(
+                "SELECT * FROM tips_sources WHERE is_active = true ORDER BY last_crawled_at ASC NULLS FIRST"
+            );
+
+            const now = Date.now();
+            const due = rows.filter(function (s) {
+                var freq = (s.crawl_frequency || "monthly").toLowerCase();
+                if (freq === "manual") return false;
+                if (!s.last_crawled_at) return true;
+                var days = FREQ_DAYS[freq] || 30;
+                var elapsed = (now - new Date(s.last_crawled_at).getTime()) / (1000 * 60 * 60 * 24);
+                return elapsed >= days;
+            });
+
+            if (due.length === 0) {
+                return res.json({ message: "no sources due", results: [], total: 0 });
+            }
+
+            const results = [];
+            for (const source of due) {
+                try {
+                    const r = await _crawlSource(pool, source, getOpenAiKey, "auto-refresh");
+                    results.push(r);
+                } catch (e) {
+                    results.push({ source_id: source.source_id, display_name: source.display_name, error: e.message });
+                }
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            res.json({ results, total: results.length });
+        } catch (e) {
+            console.error("POST /api/tips-sources/auto-refresh error", e);
+            res.status(500).json({ error: "server_error" });
+        }
+    });
+
+    // ==============================
     // PUBLIC (any authenticated user)
     // ==============================
 

@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.11.0 (2026-02-11)
+- Feat: Messaggi — "Nuova conversazione" ora mostra dropdown animale (da IndexedDB), tipo destinatario (Veterinario/Proprietario in base al ruolo) e destinatario (caricato dinamicamente da `GET /api/communication/users?role=vet|owner`); rimosso campo testo UUID
+- Feat: Messaggi Backend — nuovo endpoint `GET /api/communication/users?role=vet|owner` per elencare utenti attivi per ruolo; `POST /api/communication/conversations` ora supporta `owner_override_id` per conversazioni avviate dal vet verso un proprietario
+- Feat: Tips auto-refresh endpoint — `POST /api/tips-sources/auto-refresh` protetto da header `x-cron-secret`; rispetta `crawl_frequency` (weekly/monthly/quarterly/manual) per determinare le fonti scadute
+- Feat: Tips — fonti senza `summary_it` (pre-elaborato) ora vengono escluse dalla generazione tips; indicatore visivo "Fonti pre-elaborate: X/Y" nel div `#tipsMeta`
+- Feat: Tips — vincolo prompt 11 rafforzato: "Basa i consigli ESCLUSIVAMENTE sui contenuti pre-elaborati [...] NON inventare informazioni non presenti nei riassunti"
+- Feat: Admin fonti — colonna "Ultimo agg. contenuto" (`content_changed_at`) visibile nella card di ogni fonte
+
 ## v8.10.4 (2026-02-11)
 - Fix (grave): SOAP generazione referto — il backend (`server.js`) rimuoveva `response_format` dal payload OpenAI; senza direttiva `json_object`, GPT-4o restituiva JSON dentro code fences markdown (```json ... ```), causando `JSON.parse` error. Aggiunto `response_format` alla whitelist del sanitizedPayload
 - Fix: Frontend SOAP — aggiunta funzione `stripMarkdownFences()` come safety net per rimuovere code fences markdown prima del `JSON.parse` in tutti e 3 i livelli di generazione (strict, fallback, ultra-fallback)
