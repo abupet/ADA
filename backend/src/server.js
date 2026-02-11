@@ -18,6 +18,7 @@ const { seedRouter } = require("./seed.routes");
 const { tipsSourcesRouter } = require("./tips-sources.routes");
 const { nutritionRouter } = require("./nutrition.routes");
 const { insuranceRouter } = require("./insurance.routes");
+const { initWebSocket } = require("./websocket");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -638,7 +639,13 @@ app.use((err, _req, res, _next) => {
   }
 });
 
-app.listen(Number.parseInt(PORT, 10) || 3000, () => {
+const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, () => {
   // eslint-disable-next-line no-console
   console.log(`ADA backend listening on ${PORT}`);
+  // Init WebSocket only when not in mock/CI mode
+  if (!isMockEnv) {
+    const { commNs } = initWebSocket(httpServer, effectiveJwtSecret, FRONTEND_ORIGIN);
+    app.set("commNs", commNs);
+    console.log("Socket.io WebSocket server initialized on /ws");
+  }
 });

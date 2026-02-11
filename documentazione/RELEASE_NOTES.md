@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.2.0 (2026-02-11)
+- Feat: WebSocket server con Socket.io per comunicazione real-time
+- Backend: `websocket.js` — namespace `/communication` con autenticazione JWT, presence tracking, rate limiting (30 msg/60s)
+- Backend: Eventi Socket.io — join/leave conversation, typing indicators, message read receipts
+- Backend: Placeholder eventi WebRTC call signaling (per PR-G)
+- Backend: `server.js` — integrazione httpServer + Socket.io (skip in CI/mock mode)
+- Dep: socket.io aggiunto alle dipendenze backend
+
 ## v8.1.0 (2026-02-11)
 - Feat: Schema database comunicazione — `sql/013_communication.sql` con 7 tabelle
 - DB: `communication_settings` — toggle AI per utente (chatbot, trascrizione)
