@@ -83,7 +83,11 @@
 
                 if (data.status === 'completed') {
                     if (fill) fill.style.width = '100%';
-                    if (phaseText) phaseText.textContent = 'Completato!';
+                    var completionMsg = 'Completato!';
+                    if (data.stats && data.stats.petsInserted != null) {
+                        completionMsg = 'Completato! ' + data.stats.petsInserted + ' pet creati, ' + (data.stats.petChangesVerified || 0) + ' record sync verificati';
+                    }
+                    if (phaseText) phaseText.textContent = completionMsg;
                     if (typeof showToast === 'function') showToast('Seed completato!', 'success');
                     // Force pull sync so newly created pets appear immediately
                     // Delay to let DB flush commits and any in-flight pull finish
