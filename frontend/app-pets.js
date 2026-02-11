@@ -26,6 +26,13 @@ function unwrapPetsPullResponse(data) {
 
     if (Array.isArray(data.changes)) {
         const changes = data.changes;
+        // "Last wins" dedup: changes are ordered by change_id ASC (chronological).
+        // For each pet_id, only the LAST operation matters. A pet created then
+        // deleted must NOT appear in upserts — the delete takes precedence.
+        // We collect per-pet_id and overwrite as we iterate, preserving order.
+        var lastOpByPet = {};   // pid -> { type: 'upsert'|'delete', rec: ... }
+        var seenOrder = [];     // ordered unique pids
+
         for (const ch of changes) {
             if (!ch) continue;
 
@@ -43,20 +50,31 @@ function unwrapPetsPullResponse(data) {
             }
 
             const pid = ch.pet_id || (rec && rec.pet_id) || (rec && rec.id) || ch.id || null;
+            if (!pid) continue;
 
-            // DELETE: explicit type OR missing record/patch with a pet id
-            if (t === "pet.delete" || ((t === "" || t === "delete") && !rec && pid)) {
-                if (pid) res.deletes.push(pid);
-                continue;
-            }
+            var isDelete = (t === "pet.delete" || ((t === "" || t === "delete") && !rec));
+            var isUpsert = (t === "pet.upsert" || t === "pet.create" || t === "pet.update" || rec);
 
-            // UPSERT: explicit type OR presence of record/patch
-            if (t === "pet.upsert" || t === "pet.create" || t === "pet.update" || rec) {
-                if (!rec) continue;
+            if (isDelete) {
+                if (!lastOpByPet[pid]) seenOrder.push(pid);
+                lastOpByPet[pid] = { type: 'delete', rec: null };
+            } else if (isUpsert && rec) {
                 if (!rec.pet_id && pid) rec.pet_id = pid;
                 if (!rec.id) rec.id = rec.pet_id || pid;
-                res.upserts.push(rec);
-                continue;
+                if (!lastOpByPet[pid]) seenOrder.push(pid);
+                lastOpByPet[pid] = { type: 'upsert', rec: rec };
+            }
+        }
+
+        // Build final arrays from deduplicated map
+        for (var i = 0; i < seenOrder.length; i++) {
+            var pid2 = seenOrder[i];
+            var op = lastOpByPet[pid2];
+            if (!op) continue;
+            if (op.type === 'delete') {
+                res.deletes.push(pid2);
+            } else if (op.type === 'upsert' && op.rec) {
+                res.upserts.push(op.rec);
             }
         }
         return res;
