@@ -206,8 +206,14 @@ async function _callTipsLLM(prompt) {
     return Array.isArray(parsed?.tips) ? parsed.tips : [];
 }
 
-function _buildTipsPrompt({ patient, lifestyle, allowedSources, memoryThemes, memoryTitles, requestType }) {
-    const sourcesBullet = allowedSources.map(s => `- ${s}`).join('\n');
+function _buildTipsPrompt({ patient, lifestyle, allowedSources, sourceSummaries, memoryThemes, memoryTitles, requestType }) {
+    const sourcesBullet = allowedSources.map(s => {
+        const summary = sourceSummaries && sourceSummaries.find(src => src.url === s);
+        if (summary && summary.summary_it) {
+            return `- ${s}\n  Contenuti: ${summary.summary_it}`;
+        }
+        return `- ${s}`;
+    }).join('\n');
     const usedThemesLine = memoryThemes.length ? memoryThemes.join(', ') : 'Nessuno';
     const avoidTitlesLine = memoryTitles.length ? memoryTitles.slice(0, 12).join(' | ') : 'Nessuno';
 
@@ -250,6 +256,7 @@ VINCOLI IMPORTANTI:
 8. DIVERSITA FONTI: NON usare piu del 50% delle fonti dallo stesso sito web. Distribuisci le fonti equamente.
 9. FONTI: sourceUrl deve essere UNA delle fonti autorizzate qui sotto (esattamente).
 10. RAZZA: Usa SOLO la razza indicata nel profilo pet. Se la razza e "N/D" o vuota, NON inventarne una: parla in termini generici della specie. NON aggiungere dettagli sulla razza che non siano nel profilo.
+11. CONTENUTI PRE-ELABORATI: Basa i consigli sui contenuti pre-elaborati forniti sotto ogni URL. Usa quei riassunti come fonte primaria di informazioni.
 
 CATEGORIE DA COPRIRE (almeno 5 categorie diverse):
 - Curiosita sulla razza/specie
@@ -362,6 +369,7 @@ async function generateTipsTricks() {
         const prompt1 = _buildTipsPrompt({
             patient, lifestyle,
             allowedSources,
+            sourceSummaries: _cachedActiveSources,
             memoryThemes,
             memoryTitles,
             requestType: 'first'
@@ -378,6 +386,7 @@ async function generateTipsTricks() {
             const prompt2 = _buildTipsPrompt({
                 patient, lifestyle,
                 allowedSources,
+                sourceSummaries: _cachedActiveSources,
                 memoryThemes: [...new Set([...memoryThemes, ...accepted.map(_themeFromTip)])],
                 memoryTitles: [...new Set([...memoryTitles, ...avoidTitles])],
                 requestType: 'add_more'

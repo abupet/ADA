@@ -15,7 +15,7 @@ const { requireRole } = require("./rbac.middleware");
 const { adminRouter } = require("./admin.routes");
 const { dashboardRouter } = require("./dashboard.routes");
 const { seedRouter } = require("./seed.routes");
-const { tipsSourcesRouter } = require("./tips-sources.routes");
+const { tipsSourcesRouter, scheduleTipsRefresh } = require("./tips-sources.routes");
 const { nutritionRouter } = require("./nutrition.routes");
 const { insuranceRouter } = require("./insurance.routes");
 const { initWebSocket } = require("./websocket");
@@ -663,5 +663,9 @@ const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, () => {
     const { commNs } = initWebSocket(httpServer, effectiveJwtSecret, FRONTEND_ORIGIN);
     app.set("commNs", commNs);
     console.log("Socket.io WebSocket server initialized on /ws");
+  }
+  // Auto-refresh tips sources (every 6h, stale > 7 days)
+  if (process.env.DATABASE_URL && !isMockEnv) {
+    scheduleTipsRefresh(getOpenAiKey);
   }
 });

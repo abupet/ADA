@@ -86,11 +86,28 @@
                     if (phaseText) phaseText.textContent = 'Completato!';
                     if (typeof showToast === 'function') showToast('Seed completato!', 'success');
                     // Force pull sync so newly created pets appear immediately
-                    try {
-                        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
-                            window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                    // Delay to let DB flush commits and any in-flight pull finish
+                    setTimeout(async function () {
+                        try {
+                            if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                                await window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                            }
+                            // Refresh UI explicitly
+                            if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                            if (typeof updateSelectedPetHeaders === 'function') updateSelectedPetHeaders();
+                        } catch (_e) {
+                            // Retry once after 3s if the first pull was skipped/failed
+                            setTimeout(async function () {
+                                try {
+                                    if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                                        await window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                                    }
+                                    if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                                    if (typeof updateSelectedPetHeaders === 'function') updateSelectedPetHeaders();
+                                } catch (_e2) {}
+                            }, 3000);
                         }
-                    } catch (_e) {}
+                    }, 1500);
                 } else if (data.status === 'cancelled') {
                     if (phaseText) phaseText.textContent = 'Annullato';
                     if (typeof showToast === 'function') showToast('Seed annullato', 'error');

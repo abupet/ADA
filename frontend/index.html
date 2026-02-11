@@ -1158,13 +1158,21 @@
                         </button>
                     </div>
                     <div id="superAdminRoleSelector" style="display:none; margin-top:10px;">
-                        <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruolo attivo (super admin)</label>
-                        <select id="superAdminRoleSelect" onchange="onSuperAdminRoleChange(this.value)" style="width:auto;min-width:220px;max-width:350px;padding:8px 12px;font-size:14px;">
-                            <option value="veterinario">🩺 Veterinario</option>
-                            <option value="proprietario">🐾 Proprietario</option>
-                            <option value="admin_brand">📊 Admin Brand</option>
-                            <option value="super_admin">⚡ Super Admin</option>
-                        </select>
+                        <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruoli attivi (super admin)</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleVet" value="veterinario" onchange="onSuperAdminRoleToggle()"> 🩺 Veterinario
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleOwner" value="proprietario" onchange="onSuperAdminRoleToggle()"> 🐾 Proprietario
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleAdmin" value="admin_brand" onchange="onSuperAdminRoleToggle()"> 📊 Admin Brand
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleSA" value="super_admin" onchange="onSuperAdminRoleToggle()"> ⚡ Super Admin
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="card">
