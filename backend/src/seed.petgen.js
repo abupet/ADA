@@ -1513,7 +1513,7 @@ function generatePetCohort(count, opts = {}) {
       household: pick(HOUSEHOLDS, rng),
       activityLevel: pick(activityLevels, rng),
       dietType: pick(dietTypes, rng),
-      dietPreferences: knownConditions.length > 0 ? knownConditions.join(', ') : '',
+      dietPreferences: '',
       knownConditions: knownConditions.join(', '),
       currentMeds: medications.map(m => m.name).join(', '),
       behaviorNotes: behaviorNotes.join(', '),
@@ -1531,6 +1531,27 @@ function generatePetCohort(count, opts = {}) {
       }
       if (p.name.includes("urinari") || p.name.includes("struvite") || p.name.includes("ossalato") || p.name.includes("FLUTD") || p.name.includes("cistite")) {
         dietPrefArr.push("dieta urinaria");
+      }
+      if (p.name.includes("Enteropatia") || p.name.includes("glutine") || p.name.includes("IBD") || p.name.includes("enterite")) {
+        dietPrefArr.push("dieta gastrointestinale / ipoallergenica");
+      }
+      if (p.name.includes("pancreatica") || p.name.includes("EPI")) {
+        dietPrefArr.push("dieta altamente digeribile a basso contenuto di grassi");
+      }
+      if (p.name.includes("epatica") || p.name.includes("fegato") || p.name.includes("epatite")) {
+        dietPrefArr.push("dieta epatica");
+      }
+      if (p.name.includes("diabete") || p.name.includes("Diabete")) {
+        dietPrefArr.push("dieta per diabetici (alto contenuto proteico, basso indice glicemico)");
+      }
+      if (p.name.includes("allergia alimentare") || p.name.includes("intolleranza")) {
+        dietPrefArr.push("dieta a proteine idrolizzate / novel protein");
+      }
+      if (p.name.includes("cardiaca") || p.name.includes("cardiopatia") || p.name.includes("cuore")) {
+        dietPrefArr.push("dieta cardiaca (basso sodio)");
+      }
+      if (p.name.includes("dermatite") || p.name.includes("atopia") || p.name.includes("atopica")) {
+        dietPrefArr.push("dieta dermatologica (omega-3, ipoallergenica)");
       }
     }
     if (dietPrefArr.length > 0) lifestyle.dietPreferences = dietPrefArr.join(', ');
@@ -2024,6 +2045,30 @@ function generateDemoCohort(tenantProducts) {
       }
       if (pa.name.includes('Obesità') || pa.name.includes('sovrappeso')) {
         dietPrefList.push('dieta ipocalorica');
+      }
+      if (pa.name.includes('urinari') || pa.name.includes('struvite') || pa.name.includes('ossalato') || pa.name.includes('FLUTD') || pa.name.includes('cistite')) {
+        dietPrefList.push('dieta urinaria');
+      }
+      if (pa.name.includes('Enteropatia') || pa.name.includes('glutine') || pa.name.includes('IBD') || pa.name.includes('enterite')) {
+        dietPrefList.push('dieta gastrointestinale / ipoallergenica');
+      }
+      if (pa.name.includes('pancreatica') || pa.name.includes('EPI')) {
+        dietPrefList.push('dieta altamente digeribile a basso contenuto di grassi');
+      }
+      if (pa.name.includes('epatica') || pa.name.includes('fegato') || pa.name.includes('epatite')) {
+        dietPrefList.push('dieta epatica');
+      }
+      if (pa.name.includes('diabete') || pa.name.includes('Diabete')) {
+        dietPrefList.push('dieta per diabetici (alto contenuto proteico, basso indice glicemico)');
+      }
+      if (pa.name.includes('allergia alimentare') || pa.name.includes('intolleranza')) {
+        dietPrefList.push('dieta a proteine idrolizzate / novel protein');
+      }
+      if (pa.name.includes('cardiaca') || pa.name.includes('cardiopatia') || pa.name.includes('cuore')) {
+        dietPrefList.push('dieta cardiaca (basso sodio)');
+      }
+      if (pa.name.includes('dermatite') || pa.name.includes('atopia') || pa.name.includes('atopica')) {
+        dietPrefList.push('dieta dermatologica (omega-3, ipoallergenica)');
       }
     }
     if (dietPrefList.length > 0) lifestyle.dietPreferences = dietPrefList.join(', ');

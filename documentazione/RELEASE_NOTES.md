@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.13.0 (2026-02-11)
+- Fix: Rimosso pulsante "Draft Tutti" dal Report Validazione URL in admin (non funzionante); i singoli pulsanti "Draft" per prodotto restano attivi
+- Fix: Seed Engine — "Preferenze alimentari" non copia più le patologie da "Condizioni note"; inizializzazione a stringa vuota, estesa la mappatura patologia→dieta con enteropatie, EPI, epatopatie, diabete, allergie alimentari, cardiopatie, dermatiti
+- Fix: Promo card — immagine prodotto ora `object-fit:contain` (non tagliata), testo esplicativo completo (rimosso troncamento 200 char), beneficio e correlazione clinica visibili direttamente nella card, pulsante "Perché vedi questo?" sostituito con "Chiudi il suggerimento", pulsante "Acquista" mostra pagina simulata d'acquisto, pulsante "Non mi interessa" mostra popup feedback prima di chiudere
+- Fix (critico): Messaggi — endpoint `GET /api/communication/users` usava `base_role='veterinario'/'proprietario'` ma il DB contiene `'vet'/'owner'`, causando "Nessun destinatario trovato" sempre; corretto mapping diretto, aggiunto filtro esclusione utente corrente
+- Fix: Messaggi — vet ora può selezionare sia "Veterinario" sia "Proprietario" come tipo destinatario; owner non vede più il campo tipo e carica automaticamente i veterinari
+- Fix: Rinominato "Assistente AI" → "La tua assistente ADA" in 3 punti dell'interfaccia (sidebar, impostazioni, header chatbot)
+- Fix: Pulsante "Nuova conversazione" — `navigateToPage` ora è async con `await` su `initCommunication`; aggiunto guard contro re-inizializzazione se il form è aperto; recovery automatico se `comm-new-form-area` non esiste nel DOM; binding click via `addEventListener` invece di `onclick` inline
+
 ## v8.12.1 (2026-02-11)
 - Fix: Foto pet da Seed Engine non visibili su GitHub Pages — `_photoSrc()` ora prepone `API_BASE_URL` agli URL relativi `/api/...` che il backend Seed Engine salva nelle foto; su GitHub Pages il browser risolveva questi path contro il dominio frontend invece che contro il backend Render
 
