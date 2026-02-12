@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v8.15.2 (2026-02-12)
+- Feat: `app-documents.js` riscritto in modalità online-only — rimosso completamente IndexedDB (`ADA_Documents`), offline upload queue, delete outbox, pull sync; documenti ora letti/scritti esclusivamente via API REST (`GET/POST/DELETE /api/documents`); `renderDocumentsInHistory()` e `openDocument()` ora fetch da server; `getDocumentsForPet()` e `getDocumentById()` ora fetch API; upload diretto senza cache locale; delete senza outbox; AI read/explain senza persistenza locale dei risultati
+- Riduzione codice: da 1633 a 958 righe (-41%)
+- Rimozione sync offline documenti (PR 3/6)
+
 ## v8.15.1 (2026-02-12)
 - Feat: `app-pets.js` riscritto in modalità online-only — rimosso completamente IndexedDB (`ADA_Pets`), outbox, push/pull sync; tutti i CRUD ora via API REST dirette (`GET/POST/PATCH/DELETE /api/pets`); pets mantenuti in-memory (`petsCache`) con normalizzazione `_normalizePetForUI()` da formato server (SQL + extra_data JSONB) a formato UI; `getAllPets()` e `getPetById()` mantenuti async per retrocompatibilità; `saveCurrentPet()`, `saveNewPet()`, `deleteCurrentPet()`, `saveData()`, `saveDiary()` riscritti per chiamare API REST; `initMultiPetSystem()` semplificato (fetch + rebuild UI); `refreshPetsFromServer()` sostituisce push+pull con semplice re-fetch; `ADA_PetsSync` mantenuto come shim di compatibilità per `app-seed.js`
 - Riduzione codice: da 1664 a 736 righe (-56%)
