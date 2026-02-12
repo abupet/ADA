@@ -2,7 +2,19 @@ import { expect, Page } from "@playwright/test";
 import { gotoApp } from "./nav";
 
 /**
+ * In-memory token cache: email → JWT token.
+ * Shared across tests within the same worker process.
+ * Each Playwright worker gets its own module scope, so worst case
+ * with N workers = N × (unique roles) API calls.
+ */
+const tokenCache = new Map<string, string>();
+
+/**
  * Login V2 only (email + password). Email obbligatoria.
+ *
+ * Uses an in-memory token cache: the first call per email does a full
+ * UI login and caches the JWT; subsequent calls inject the cached token
+ * into localStorage via addInitScript (zero API calls).
  *
  * Uso:
  *   await login(page);                                          // default: TEST_VET_EMAIL
@@ -29,6 +41,21 @@ export async function login(
       "Missing email for login. Set ADA_TEST_EMAIL, TEST_VET_EMAIL, or pass options.email"
     );
 
+  // --- Fast path: cached token (no API call) ---
+  const cached = tokenCache.get(email);
+  if (cached) {
+    await page.addInitScript(
+      (args: { key: string; token: string }) => {
+        localStorage.setItem(args.key, args.token);
+      },
+      { key: "ada_auth_token", token: cached }
+    );
+    await gotoApp(page);
+    await expect(page.locator("#appContainer")).toBeVisible({ timeout: 15_000 });
+    return;
+  }
+
+  // --- Slow path: full UI login (first call per email) ---
   const retries = options?.retries ?? 1;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -69,6 +96,15 @@ export async function login(
     }
 
     await expect(page.locator("#appContainer")).toBeVisible();
+
+    // Cache the token for subsequent tests
+    const token = await page.evaluate(() =>
+      localStorage.getItem("ada_auth_token")
+    );
+    if (token) {
+      tokenCache.set(email, token);
+    }
+
     return; // success
   }
 }

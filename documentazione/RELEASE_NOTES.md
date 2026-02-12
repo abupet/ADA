@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v8.15.6 (2026-02-12)
+- Fix: Test login token caching — cached JWT tokens in-memory per email so only the first login per role hits the API; subsequent logins inject the token via `addInitScript` (zero API calls), avoiding production rate limiter (60 req/min) failures when running the full 216-test suite
+
 ## v8.15.5 (2026-02-12)
 - Feat: Eliminati 8 file test sync obsoleti: `smoke.coalescing`, `smoke.data-sync`, `smoke.pets-sync`, `smoke.pull-sync`, `smoke.sync-conflict`, `stress.concurrent-sync`, `deep.pwa-offline`, `smoke.pet-crud`
 - Fix: Helpers test (`api-mocks`, `pages`, `test-data`) — sync functions convertite in no-op per compatibilità con test `@deep`/`@stress`
