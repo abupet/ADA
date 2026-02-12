@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.15.5 (2026-02-12)
+- Feat: Eliminati 8 file test sync obsoleti: `smoke.coalescing`, `smoke.data-sync`, `smoke.pets-sync`, `smoke.pull-sync`, `smoke.sync-conflict`, `stress.concurrent-sync`, `deep.pwa-offline`, `smoke.pet-crud`
+- Fix: Helpers test (`api-mocks`, `pages`, `test-data`) — sync functions convertite in no-op per compatibilità con test `@deep`/`@stress`
+- Fix: Rimosso script `test:sync` da `package.json`, rimosso policy check POL-06 (già non necessario)
+- Rimozione sync offline completata (PR 6/6)
+
 ## v8.15.4 (2026-02-12)
 - Feat: Rimossi file route sync backend: `sync.routes.js` (196 righe) e `pets.sync.routes.js` (232 righe)
 - Fix: `server.js` — rimossi import e mounting delle route sync, rimosso JSON limit 50MB per sync push

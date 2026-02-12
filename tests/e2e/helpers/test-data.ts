@@ -45,43 +45,15 @@ export async function deletePetByName(page: Page, name: string) {
 }
 
 /**
- * Wait until the IndexedDB outbox is empty (sync completed).
+ * No-op: offline sync/outbox removed in v8.15.x. Kept for API compatibility.
  */
-export async function waitForEmptyOutbox(page: Page, timeout = 10_000) {
-  await page.waitForFunction(async () => {
-    return await new Promise<boolean>((resolve) => {
-      const req = indexedDB.open("ADA_Pets");
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("outbox")) return resolve(true);
-        const tx = db.transaction("outbox", "readonly");
-        const store = tx.objectStore("outbox");
-        const countReq = store.count();
-        countReq.onsuccess = () => resolve((countReq.result || 0) === 0);
-        countReq.onerror = () => resolve(true);
-      };
-      req.onerror = () => resolve(true);
-    });
-  }, { timeout });
+export async function waitForEmptyOutbox(_page: Page, _timeout = 10_000) {
+  // no-op — outbox no longer exists
 }
 
 /**
- * Count items in the IndexedDB outbox.
+ * No-op: offline sync/outbox removed in v8.15.x. Always returns 0.
  */
-export async function countOutbox(page: Page): Promise<number> {
-  return await page.evaluate(async () => {
-    return await new Promise<number>((resolve) => {
-      const req = indexedDB.open("ADA_Pets");
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("outbox")) return resolve(0);
-        const tx = db.transaction("outbox", "readonly");
-        const store = tx.objectStore("outbox");
-        const countReq = store.count();
-        countReq.onsuccess = () => resolve(countReq.result || 0);
-        countReq.onerror = () => resolve(0);
-      };
-      req.onerror = () => resolve(0);
-    });
-  });
+export async function countOutbox(_page: Page): Promise<number> {
+  return 0;
 }
