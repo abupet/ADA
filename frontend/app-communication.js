@@ -661,9 +661,13 @@ function _commRenderBubble(msg, isOwn) {
     var isAiMsg = msg.sender_id === 'ada-assistant' || msg.ai_role === 'assistant';
     var cls = isOwn ? 'comm-msg-own' : (isAiMsg ? 'comm-msg-ai' : 'comm-msg-other');
     var sender = '';
-    if (!isOwn) {
-        var roleLabel = msg.sender_role === 'vet' ? 'Veterinario' : (msg.sender_role === 'owner' ? 'Proprietario' : '');
-        sender = isAiMsg ? '\uD83E\uDD16 ADA' : _commEscape((msg.sender_name || 'Utente') + (roleLabel ? ' (' + roleLabel + ')' : ''));
+    if (isAiMsg) {
+        sender = '\uD83E\uDD16 ADA';
+    } else {
+        var roleMap = { vet: 'Veterinario', owner: 'Proprietario', admin: 'Admin', super_admin: 'Super Admin' };
+        var roleLabel = roleMap[msg.sender_role] || '';
+        var senderName = msg.sender_name || (isOwn ? (typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : null) || 'Tu' : 'Utente');
+        sender = _commEscape(senderName + (roleLabel ? ' (' + roleLabel + ')' : ''));
     }
 
     var html = '<div class="comm-msg ' + cls + '" data-testid="comm-msg" data-msg-id="' + (msg.message_id || '') + '">';
@@ -758,7 +762,9 @@ async function _commSend(conversationId) {
     // Optimistic render for user message
     var container = document.getElementById('comm-chat-messages');
     if (container) {
-        var tempMsg = { content: text || (fileToSend ? fileToSend.name : ''), sender_id: userId, created_at: new Date().toISOString(), delivery_status: 'sent' };
+        var _ownName = typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : null;
+        var _ownRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
+        var tempMsg = { content: text || (fileToSend ? fileToSend.name : ''), sender_id: userId, sender_name: _ownName || 'Tu', sender_role: _ownRole || '', created_at: new Date().toISOString(), delivery_status: 'sent' };
         if (_commReplyTo) tempMsg.reply_to_content = _commReplyTo.content;
         container.innerHTML += _commRenderBubble(tempMsg, true);
         container.scrollTop = container.scrollHeight;
@@ -815,7 +821,7 @@ async function _commSend(conversationId) {
 
             // Render AI response
             if (container && data) {
-                var aiMsg = data.ai_message || data.assistant || data;
+                var aiMsg = data.assistant_message || data.ai_message || data.assistant || data;
                 if (aiMsg && aiMsg.content) {
                     container.innerHTML += _commRenderBubble(aiMsg, false);
                     container.scrollTop = container.scrollHeight;
