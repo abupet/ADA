@@ -147,13 +147,20 @@ function _chatbotRenderSessionList(container, containerId, sessions) {
 async function _chatbotCreateSession(containerId) {
     try {
         var body = {};
-        if (_chatbotCurrentPetId) body.pet_id = _chatbotCurrentPetId;
+        if (!_chatbotCurrentPetId && typeof getCurrentPetId === 'function') {
+            _chatbotCurrentPetId = getCurrentPetId();
+        }
+        if (!_chatbotCurrentPetId) {
+            if (typeof showToast === 'function') showToast('Seleziona un animale prima', 'warning');
+            return;
+        }
+        body.pet_id = _chatbotCurrentPetId;
         var res = await fetch(_chatbotApiBase() + '/api/chatbot/sessions', {
             method: 'POST', headers: _chatbotAuthHeaders(), body: JSON.stringify(body)
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         var data = await res.json();
-        var sessionId = data.id || (data.session && data.session.id);
+        var sessionId = data.session_id || data.id || (data.session && (data.session.session_id || data.session.id));
         if (sessionId) { openChatbotSession(sessionId); }
         else { throw new Error('No session id'); }
     } catch (e) {

@@ -385,7 +385,7 @@
         html += '<span style="font-size:12px;color:#888;">Prodotto ' + (idx + 1) + ' di ' + _discoveredProducts.length + '</span>';
         html += '<button class="btn btn-secondary" style="padding:4px 10px;" onclick="seedPreviewNav(1)">&gt;</button>';
         html += '</div>';
-        html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo pet</span>';
+        html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo amico pet</span>';
         if (p.image_url) {
             html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _seedEscapeHtml(p.image_url) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
         }

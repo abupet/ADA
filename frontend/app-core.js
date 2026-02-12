@@ -450,10 +450,10 @@ function applyRoleUI(role) {
 
     // Show super_admin-only nav items
     var hasSARole = activeRoles.indexOf('super_admin') !== -1;
-    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit', 'nav-superadmin-sources'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.style.display = hasSARole ? '' : 'none';
-    });
+    var gestEl = document.getElementById('nav-superadmin-gestione');
+    if (gestEl) gestEl.style.display = hasSARole ? '' : 'none';
+    var auditCard = document.getElementById('debug-audit-card');
+    if (auditCard) auditCard.style.display = hasSARole ? '' : 'none';
 
     // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');
