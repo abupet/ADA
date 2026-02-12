@@ -110,7 +110,8 @@ async function setupSyncMocks(page: any) {
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("Data sync: saveData enqueues and pushes pet data", () => {
+// SKIPPED: sync/IndexedDB removed in v8.15.1 (PR 2/6). Will be deleted/rewritten in PR 6.
+test.describe.skip("Data sync: saveData enqueues and pushes pet data", () => {
 
   test("@smoke @sync Saving a SOAP report enqueues outbox and syncs history_data", async ({ page, context }) => {
     const errors = captureHardErrors(page);

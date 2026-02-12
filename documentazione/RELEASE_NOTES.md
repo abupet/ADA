@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v8.15.1 (2026-02-12)
+- Feat: `app-pets.js` riscritto in modalità online-only — rimosso completamente IndexedDB (`ADA_Pets`), outbox, push/pull sync; tutti i CRUD ora via API REST dirette (`GET/POST/PATCH/DELETE /api/pets`); pets mantenuti in-memory (`petsCache`) con normalizzazione `_normalizePetForUI()` da formato server (SQL + extra_data JSONB) a formato UI; `getAllPets()` e `getPetById()` mantenuti async per retrocompatibilità; `saveCurrentPet()`, `saveNewPet()`, `deleteCurrentPet()`, `saveData()`, `saveDiary()` riscritti per chiamare API REST; `initMultiPetSystem()` semplificato (fetch + rebuild UI); `refreshPetsFromServer()` sostituisce push+pull con semplice re-fetch; `ADA_PetsSync` mantenuto come shim di compatibilità per `app-seed.js`
+- Riduzione codice: da 1664 a 736 righe (-56%)
+- Rimozione sync offline (PR 2/6)
+
 ## v8.15.0 (2026-02-12)
 - Feat: Backend `pets.routes.js` — `POST /api/pets` e `PATCH /api/pets/:pet_id` ora supportano `extra_data` JSONB per campi rich (vitals_data, medications, history_data, lifestyle, photos, photos_count, owner_name, owner_phone, microchip, visit_date, owner_diary); il PATCH esegue merge incrementale (non sovrascrittura totale) dei campi rich esistenti
 - Preparazione alla rimozione sync offline (PR 1/6)

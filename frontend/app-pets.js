@@ -1,996 +1,114 @@
-// app-pets.js v6.16.5
-
-// --- Pets Sync: pull response unwrapping (changes[] -> record[] + deletes) ---
-function unwrapPetsPullResponse(data) {
-    // returns { upserts: PetRecord[], deletes: string[], nextCursor?: string }
-    const res = { upserts: [], deletes: [], nextCursor: "" };
-
-    if (!data) return res;
-
-    res.nextCursor = (data.next_cursor || data.cursor || data.last_cursor || "") + "";
-
-    // Array direct: treat as pets
-    if (Array.isArray(data)) {
-        res.upserts = data;
-        return res;
-    }
-
-    if (Array.isArray(data.pets)) {
-        res.upserts = data.pets;
-        return res;
-    }
-    if (Array.isArray(data.items)) {
-        res.upserts = data.items;
-        return res;
-    }
-
-    if (Array.isArray(data.changes)) {
-        const changes = data.changes;
-        // "Last wins" dedup: changes are ordered by change_id ASC (chronological).
-        // For each pet_id, only the LAST operation matters. A pet created then
-        // deleted must NOT appear in upserts — the delete takes precedence.
-        // We collect per-pet_id and overwrite as we iterate, preserving order.
-        var lastOpByPet = {};   // pid -> { type: 'upsert'|'delete', rec: ... }
-        var seenOrder = [];     // ordered unique pids
-
-        for (const ch of changes) {
-            if (!ch) continue;
-
-            const tRaw = (ch.type == null ? "" : String(ch.type));
-            const t = tRaw.trim();
-
-            var rec = (ch.record && typeof ch.record === 'object')
-                ? ch.record
-                : (ch.patch && typeof ch.patch === 'object')
-                    ? ch.patch
-                    : null;
-            // Recovery: parse double-serialized JSONB records (string instead of object)
-            if (!rec && ch.record && typeof ch.record === 'string') {
-                try { var parsed = JSON.parse(ch.record); if (parsed && typeof parsed === 'object') rec = parsed; } catch (_e) {}
-            }
-
-            const pid = ch.pet_id || (rec && rec.pet_id) || (rec && rec.id) || ch.id || null;
-            if (!pid) continue;
-
-            var isDelete = (t === "pet.delete" || ((t === "" || t === "delete") && !rec));
-            var isUpsert = (t === "pet.upsert" || t === "pet.create" || t === "pet.update" || rec);
-
-            if (isDelete) {
-                if (!lastOpByPet[pid]) seenOrder.push(pid);
-                lastOpByPet[pid] = { type: 'delete', rec: null };
-            } else if (isUpsert && rec) {
-                if (!rec.pet_id && pid) rec.pet_id = pid;
-                if (!rec.id) rec.id = rec.pet_id || pid;
-                if (!lastOpByPet[pid]) seenOrder.push(pid);
-                lastOpByPet[pid] = { type: 'upsert', rec: rec };
-            }
-        }
-
-        // Build final arrays from deduplicated map
-        for (var i = 0; i < seenOrder.length; i++) {
-            var pid2 = seenOrder[i];
-            var op = lastOpByPet[pid2];
-            if (!op) continue;
-            if (op.type === 'delete') {
-                res.deletes.push(pid2);
-            } else if (op.type === 'upsert' && op.rec) {
-                res.upserts.push(op.rec);
-            }
-        }
-        return res;
-    }
-
-    return res;
-}
-// --- /Pets Sync: pull response unwrapping ---
-
-// app-pets.js v6.16.4
-// ADA v6.16.2 - Multi-Pet Management System
+// app-pets.js v7.0.0 — Online-only mode (no IndexedDB, no sync)
 
 // ============================================
-// DATABASE
+// STATE (in-memory, NO IndexedDB)
 // ============================================
 
-const PETS_DB_NAME = 'ADA_Pets';
-const PETS_STORE_NAME = 'pets';
-const OUTBOX_STORE_NAME = 'outbox';
-const META_STORE_NAME = 'meta';
-const ID_MAP_STORE_NAME = 'id_map';
+let petsCache = [];         // Array of pets loaded from server
+let currentPetId = null;    // UUID of currently selected pet
 
-// pull throttling / in-flight (used by auto triggers and forced manual sync)
-let __petsPullLastAt = 0;
-let __petsPullInFlight = false;
-let __petsPullPromise = null;
-const __PETS_PULL_THROTTLE_MS = 30_000;
+// ============================================
+// API HELPERS
+// ============================================
 
-
-function generateTmpPetId() {
-    let id = '';
+// Fetch all pets from server and populate cache
+async function fetchPetsFromServer() {
     try {
-        if (crypto && crypto.randomUUID) id = crypto.randomUUID();
-    } catch (e) {}
-    if (!id) {
-        // Fallback: generate a valid UUID v4 format for server compatibility
-        const hex = () => Math.floor(Math.random() * 16).toString(16);
-        id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = Math.floor(Math.random() * 16);
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
+        if (!navigator.onLine) {
+            if (typeof showToast === 'function') showToast('Sei offline: impossibile caricare i dati', 'error');
+            return;
+        }
+        var resp = await fetchApi('/api/pets', { method: 'GET' });
+        if (!resp || !resp.ok) {
+            if (typeof showToast === 'function') showToast('Errore caricamento pets', 'error');
+            return;
+        }
+        var data = await resp.json();
+        var serverPets = Array.isArray(data.pets) ? data.pets : Array.isArray(data) ? data : [];
+        petsCache = serverPets.map(function(p) { return _normalizePetForUI(p); });
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Errore di rete', 'error');
     }
-    return 'tmp_' + id;
 }
 
-let petsDB = null;
-let currentPetId = null;
+// ============================================
+// NORMALIZATION / CACHE HELPERS
+// ============================================
 
-function normalizePetId(raw) {
-    if (raw === null || raw === undefined) return null;
-    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
-    const value = String(raw).trim();
-    if (!value) return null;
-    if (/^\d+$/.test(value)) return Number(value);
-    return value;
+// Normalize a pet from server format (SQL columns + extra_data JSONB) to UI format
+function _normalizePetForUI(serverPet) {
+    if (!serverPet) return serverPet;
+    var p = Object.assign({}, serverPet);
+    p.id = p.pet_id || p.id;
+
+    // Parse extra_data JSONB (may be object or string)
+    var extra = {};
+    if (typeof p.extra_data === 'string') {
+        try { extra = JSON.parse(p.extra_data || '{}'); } catch (_) { extra = {}; }
+    } else {
+        extra = p.extra_data || {};
+    }
+
+    // Build patient object from SQL columns + extra_data
+    p.patient = {
+        petName: p.name || '',
+        petSpecies: p.species || '',
+        petBreed: p.breed || '',
+        petSex: p.sex || '',
+        petBirthdate: p.birthdate ? String(p.birthdate).slice(0, 10) : '',
+        petWeightKg: p.weight_kg ? String(p.weight_kg) : '',
+        petMicrochip: extra.microchip || '',
+        ownerName: extra.owner_name || '',
+        ownerPhone: extra.owner_phone || '',
+        visitDate: extra.visit_date || ''
+    };
+
+    p.lifestyle = extra.lifestyle || {};
+    p.vitalsData = extra.vitals_data || [];
+    p.medications = extra.medications || [];
+    p.historyData = extra.history_data || [];
+    p.photos = extra.photos || [];
+    p.diary = p.notes || '';
+    p.ownerDiary = extra.owner_diary || '';
+    p.updatedAt = extra.updated_at || p.updated_at;
+
+    return p;
+}
+
+// Update a pet in the in-memory cache
+function _updatePetInCache(serverPet) {
+    var normalized = _normalizePetForUI(serverPet);
+    var idx = petsCache.findIndex(function(p) { return p.id === normalized.id || p.pet_id === normalized.pet_id; });
+    if (idx >= 0) {
+        petsCache[idx] = normalized;
+    } else {
+        petsCache.push(normalized);
+    }
+    return normalized;
+}
+
+// Remove a pet from the cache
+function _removePetFromCache(petId) {
+    petsCache = petsCache.filter(function(p) { return p.id !== petId && p.pet_id !== petId; });
+}
+
+// ============================================
+// CACHE ACCESS (async for backward compat with callers that use await)
+// ============================================
+
+async function getAllPets() {
+    return petsCache;
+}
+
+async function getPetById(id) {
+    return petsCache.find(function(p) { return p.id === id || p.pet_id === id; }) || null;
 }
 
 // Return currently selected pet id (from memory or localStorage)
 function getCurrentPetId() {
     if (currentPetId !== null && currentPetId !== undefined) return currentPetId;
-    const raw = localStorage.getItem('ada_current_pet_id');
-    return normalizePetId(raw);
-}
-
-async function resolveCurrentPetId() {
-    const raw = getCurrentPetId();
-    if (typeof raw === 'string') {
-        const mapped = await getMappedServerId(raw);
-        if (mapped && mapped !== raw) {
-            currentPetId = mapped;
-            try { localStorage.setItem('ada_current_pet_id', String(mapped)); } catch (e) {}
-            return mapped;
-        }
-    }
-    return raw;
-}
-
-async function initPetsDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(PETS_DB_NAME, 3);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-            petsDB = request.result;
-            resolve(petsDB);
-        };
-        request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(PETS_STORE_NAME)) {
-                db.createObjectStore(PETS_STORE_NAME, { keyPath: 'id', autoIncrement: true });
-            }
-
-            if (!db.objectStoreNames.contains(OUTBOX_STORE_NAME)) {
-                db.createObjectStore(OUTBOX_STORE_NAME, { keyPath: 'id', autoIncrement: true });
-            }
-            if (!db.objectStoreNames.contains(META_STORE_NAME)) {
-                db.createObjectStore(META_STORE_NAME, { keyPath: 'key' });
-            }
-            if (!db.objectStoreNames.contains(ID_MAP_STORE_NAME)) {
-                db.createObjectStore(ID_MAP_STORE_NAME, { keyPath: 'tmp_id' });
-            }
-        };
-    });
-}
-
-// Helper for STEP4 script (pets-sync-step4.js)
-async function openPetsDB() {
-  if (petsDB) return petsDB;
-  return await initPetsDB();
-}
-
-function isUuidString(value) {
-    return typeof value === 'string'
-        && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value);
-}
-
-async function getMappedServerId(tmpOrId) {
-    if (!tmpOrId) return tmpOrId;
-    const id = String(tmpOrId);
-    if (!id.startsWith('tmp_')) return id;
-    if (!petsDB) await initPetsDB();
-    const mapped = await new Promise((resolve) => {
-        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readonly');
-        const store = tx.objectStore(ID_MAP_STORE_NAME);
-        const req = store.get(id);
-        req.onsuccess = () => resolve(req.result ? req.result.server_id : null);
-        req.onerror = () => resolve(null);
-    });
-    if (mapped) return mapped;
-    const candidate = id.slice(4);
-    return isUuidString(candidate) ? candidate : id;
-}
-
-async function persistIdMapping(tmp_id, server_id) {
-    if (!tmp_id || !server_id) return false;
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve) => {
-        const tx = petsDB.transaction(ID_MAP_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(ID_MAP_STORE_NAME);
-        try {
-            store.put({
-                tmp_id,
-                server_id,
-                updated_at: new Date().toISOString()
-            });
-        } catch (e) {
-            resolve(false);
-            return;
-        }
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => resolve(false);
-        tx.onabort = () => resolve(false);
-    });
-}
-
-async function migratePetId(tmp_id, server_id) {
-    if (!tmp_id || !server_id || tmp_id === server_id) return false;
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve) => {
-        const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(PETS_STORE_NAME);
-        let tmpRecord = null;
-        let serverRecord = null;
-        let pending = 2;
-
-        const finalize = () => {
-            pending -= 1;
-            if (pending > 0) return;
-            if (tmpRecord) {
-                if (!serverRecord) {
-                    try { store.put({ ...tmpRecord, id: server_id }); } catch (e) {}
-                }
-                try { store.delete(tmp_id); } catch (e) {}
-            } else {
-                try { store.delete(tmp_id); } catch (e) {}
-            }
-        };
-
-        const tmpReq = store.get(tmp_id);
-        tmpReq.onsuccess = () => {
-            tmpRecord = tmpReq.result || null;
-            finalize();
-        };
-        tmpReq.onerror = () => finalize();
-
-        const serverReq = store.get(server_id);
-        serverReq.onsuccess = () => {
-            serverRecord = serverReq.result || null;
-            finalize();
-        };
-        serverReq.onerror = () => finalize();
-
-        tx.oncomplete = () => {
-            try {
-                const current = localStorage.getItem('ada_current_pet_id');
-                if (current === String(tmp_id)) {
-                    localStorage.setItem('ada_current_pet_id', String(server_id));
-                }
-            } catch (e) {}
-            if (currentPetId === tmp_id) {
-                currentPetId = server_id;
-            }
-            resolve(true);
-        };
-        tx.onerror = () => resolve(false);
-        tx.onabort = () => resolve(false);
-    });
-}
-
-async function getAllPets() {
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(PETS_STORE_NAME, 'readonly');
-        const store = tx.objectStore(PETS_STORE_NAME);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function getPetById(id) {
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(PETS_STORE_NAME, 'readonly');
-        const store = tx.objectStore(PETS_STORE_NAME);
-        const request = store.get(id);
-        request.onsuccess = () => resolve(request.result);
-        try { tx.oncomplete = () => { backupPetsToLocalStorage(); }; } catch (e) {}
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function savePetToDB(pet) {
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(PETS_STORE_NAME);
-        let request;
-        if (pet.id === null || pet.id === undefined) {
-            const petToSave = { ...pet };
-            delete petToSave.id;
-            request = store.add(petToSave);
-        } else {
-            request = store.put(pet);
-        }
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function deletePetFromDB(id) {
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(PETS_STORE_NAME);
-        const request = store.delete(id);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function deletePetById(rawId) {
-    // Used for remote deletes (pull). Must not enqueue outbox.
-    if (rawId === null || rawId === undefined) return;
-    let id = normalizePetId(rawId);
-    if (id === null || id === undefined || id === '') return;
-
-    try {
-        if (typeof id === 'string') {
-            const mapped = await getMappedServerId(id);
-            if (mapped) id = mapped;
-        }
-    } catch (e) {}
-
-    try { await deletePetFromDB(id); } catch (e) {}
-
-    // If the deleted pet is currently selected, clear selection and fields
-    try {
-        const cur = await resolveCurrentPetId();
-        if (cur != null && String(cur) === String(id)) {
-            currentPetId = null;
-            try { localStorage.removeItem('ada_current_pet_id'); } catch (e) {}
-            try { clearMainPetFields(); } catch (e) {}
-        }
-    } catch (e) {}
-
-    // Refresh UI if selector exists
-    try {
-        const selectedId = await resolveCurrentPetId();
-        await rebuildPetSelector(selectedId ?? null);
-        const selector = document.getElementById('petSelector');
-        if (selector && selectedId) selector.value = String(selectedId);
-    } catch (e) {}
-
-    try { if (typeof updateSelectedPetHeaders === 'function') await updateSelectedPetHeaders(); } catch (e) {}
-}
-
-function hasMeaningfulValue(value) {
-    if (value === null || value === undefined) return false;
-    if (typeof value === 'string') return value.trim().length > 0;
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === 'object') return Object.keys(value).length > 0;
-    return true;
-}
-
-function filterMeaningfulFields(obj) {
-    if (!obj || typeof obj !== 'object') return {};
-    const filtered = {};
-    for (const [key, value] of Object.entries(obj)) {
-        if (hasMeaningfulValue(value)) filtered[key] = value;
-    }
-    return filtered;
-}
-
-function normalizePetFromBackend(record, existing) {
-    const safeRecord = record && typeof record === 'object' ? record : {};
-    const safeExisting = existing && typeof existing === 'object' ? existing : {};
-    const id = safeRecord.pet_id || safeRecord.id || safeExisting.id || null;
-
-    const existingPatient = safeExisting.patient && typeof safeExisting.patient === 'object' ? safeExisting.patient : {};
-    const incomingPatient = safeRecord.patient && typeof safeRecord.patient === 'object' ? safeRecord.patient : {};
-
-    const fallbackName = existingPatient.petName || '';
-    const fallbackSpecies = existingPatient.petSpecies || '';
-    const normalizedName = hasMeaningfulValue(safeRecord.name) ? safeRecord.name : fallbackName;
-    const normalizedSpecies = hasMeaningfulValue(safeRecord.species) ? safeRecord.species : fallbackSpecies;
-
-    // Map backend field names to local field names
-    const patch = safeRecord.patch || safeRecord;
-    const result = {
-        ...safeRecord,
-        id,
-        name: normalizedName,
-        species: normalizedSpecies,
-        patient: {
-            ...existingPatient,
-            ...incomingPatient,
-            petName: hasMeaningfulValue(normalizedName) ? normalizedName : '',
-            petSpecies: hasMeaningfulValue(normalizedSpecies) ? normalizedSpecies : ''
-        }
-    };
-
-    // Reverse-map backend SQL column names to local patient field names
-    // Always apply server values so that remote changes are reflected locally
-    if (patch.breed !== undefined && patch.breed !== null) result.patient.petBreed = patch.breed;
-    if (patch.sex !== undefined && patch.sex !== null) result.patient.petSex = patch.sex;
-    // Normalize birthdate: PostgreSQL DATE serialized via JSONB becomes ISO datetime
-    // (e.g. "2023-05-15T00:00:00.000Z") but <input type="date"> requires "YYYY-MM-DD"
-    if (patch.birthdate !== undefined && patch.birthdate !== null) {
-        var bd = String(patch.birthdate);
-        result.patient.petBirthdate = bd.length > 10 ? bd.slice(0, 10) : bd;
-    }
-    if (patch.owner_name !== undefined && patch.owner_name !== null) result.patient.ownerName = patch.owner_name;
-    if (patch.owner_phone !== undefined && patch.owner_phone !== null) result.patient.ownerPhone = patch.owner_phone;
-    if (patch.microchip !== undefined && patch.microchip !== null) result.patient.petMicrochip = patch.microchip;
-    if (patch.notes !== undefined) result.diary = patch.notes;
-    if (patch.lifestyle && typeof patch.lifestyle === 'object') result.lifestyle = patch.lifestyle;
-    if (Array.isArray(patch.vitals_data)) result.vitalsData = patch.vitals_data;
-    if (Array.isArray(patch.medications)) result.medications = patch.medications;
-    if (Array.isArray(patch.history_data)) result.historyData = patch.history_data;
-    if (Array.isArray(patch.photos)) result.photos = patch.photos;
-    if (patch.updated_at) result.updatedAt = patch.updated_at;
-
-    // Extract extra_data from backend record (JSONB column)
-    // Always apply server values to ensure sync updates are reflected
-    const extra = patch.extra_data || safeRecord.extra_data;
-    if (extra && typeof extra === 'object') {
-        if (Array.isArray(extra.vitals_data)) result.vitalsData = extra.vitals_data;
-        if (Array.isArray(extra.medications)) result.medications = extra.medications;
-        if (Array.isArray(extra.history_data)) result.historyData = extra.history_data;
-        if (extra.lifestyle && typeof extra.lifestyle === 'object') result.lifestyle = extra.lifestyle;
-        if (extra.updated_at) result.updatedAt = extra.updated_at;
-        // Fields stored in extra_data (no dedicated SQL column)
-        if (extra.owner_name !== undefined && extra.owner_name !== null) result.patient.ownerName = extra.owner_name;
-        if (extra.owner_phone !== undefined && extra.owner_phone !== null) result.patient.ownerPhone = extra.owner_phone;
-        if (extra.microchip !== undefined && extra.microchip !== null) result.patient.petMicrochip = extra.microchip;
-        if (extra.visit_date !== undefined && extra.visit_date !== null) result.patient.visitDate = extra.visit_date;
-        if (extra.owner_diary !== undefined) result.ownerDiary = extra.owner_diary;
-        if (Array.isArray(extra.photos)) result.photos = extra.photos;
-        if (extra.photos_count !== undefined) result.photos_count = extra.photos_count;
-    }
-
-    return result;
-}
-
-function mergePetsForPull(existing, incoming) {
-    const safeExisting = existing && typeof existing === 'object' ? existing : {};
-    const safeIncoming = incoming && typeof incoming === 'object' ? incoming : {};
-
-    // Last-write-wins: if incoming has a newer updatedAt, its rich data takes priority
-    const existingTs = safeExisting.updatedAt ? new Date(safeExisting.updatedAt).getTime() : 0;
-    const incomingTs = safeIncoming.updatedAt ? new Date(safeIncoming.updatedAt).getTime() : 0;
-    const incomingIsNewer = incomingTs > existingTs;
-
-    const merged = {
-        ...safeExisting,
-        ...filterMeaningfulFields(safeIncoming)
-    };
-
-    const existingPatient = safeExisting.patient && typeof safeExisting.patient === 'object' ? safeExisting.patient : {};
-    const incomingPatient = filterMeaningfulFields(safeIncoming.patient || {});
-    const mergedPatient = { ...existingPatient, ...incomingPatient };
-    const normalizedName = safeIncoming.patient && safeIncoming.patient.petName !== undefined
-        ? safeIncoming.patient.petName
-        : existingPatient.petName;
-    const normalizedSpecies = safeIncoming.patient && safeIncoming.patient.petSpecies !== undefined
-        ? safeIncoming.patient.petSpecies
-        : existingPatient.petSpecies;
-    mergedPatient.petName = hasMeaningfulValue(normalizedName) ? normalizedName : (existingPatient.petName || '');
-    mergedPatient.petSpecies = hasMeaningfulValue(normalizedSpecies) ? normalizedSpecies : (existingPatient.petSpecies || '');
-    if (mergedPatient.petName === undefined) mergedPatient.petName = '';
-    if (mergedPatient.petSpecies === undefined) mergedPatient.petSpecies = '';
-    merged.patient = mergedPatient;
-
-    // Rich data merge: last-write-wins for arrays
-    const richFields = ['vitalsData', 'medications', 'historyData', 'diary', 'ownerDiary', 'lifestyle', 'photos'];
-    for (const field of richFields) {
-        if (safeIncoming[field] !== undefined && incomingIsNewer) {
-            merged[field] = safeIncoming[field];
-        } else if (safeExisting[field] !== undefined) {
-            merged[field] = safeExisting[field];
-        }
-    }
-
-    // Preserve updatedAt (newest wins)
-    if (incomingIsNewer && safeIncoming.updatedAt) {
-        merged.updatedAt = safeIncoming.updatedAt;
-    }
-
-    return merged;
-}
-
-// ============================================
-// META / OUTBOX (offline-first scaffolding)
-// ============================================
-
-async function metaGet(key) {
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(META_STORE_NAME, 'readonly');
-        const store = tx.objectStore(META_STORE_NAME);
-        const req = store.get(key);
-        req.onsuccess = () => resolve(req.result ? req.result.value : null);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-async function metaSet(key, value) {
-    if (!petsDB) await initPetsDB();
-    return new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(META_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(META_STORE_NAME);
-        const req = store.put({ key, value });
-        req.onsuccess = () => resolve(true);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-async function getOrCreateDeviceId() {
-    // Stored in meta; fallback to localStorage for robustness
-    const META_KEY = 'device_id';
-    let existing = null;
-    try { existing = await metaGet(META_KEY); } catch (e) {}
-    if (existing) return existing;
-    try {
-        const ls = localStorage.getItem('ada_device_id');
-        if (ls) {
-            try { await metaSet(META_KEY, ls); } catch (e) {}
-            return ls;
-        }
-    } catch (e) {}
-
-    let id = '';
-    try {
-        if (crypto && crypto.randomUUID) id = crypto.randomUUID();
-    } catch (e) {}
-    if (!id) id = 'dev_' + Math.random().toString(16).slice(2) + '_' + Date.now();
-    try { await metaSet(META_KEY, id); } catch (e) {}
-    try { localStorage.setItem('ada_device_id', id); } catch (e) {}
-    return id;
-}
-
-async function getLastPetsCursor() {
-    try { return (await metaGet('pets_last_cursor')) || ''; } catch (e) { return ''; }
-}
-
-async function setLastPetsCursor(cursor) {
-    try { await metaSet('pets_last_cursor', cursor || ''); } catch (e) {}
-}
-
-// NOTE: Outbox is not used in Step 1–2 yet, but store exists for Step 3.
-async function enqueueOutbox(op_type, payload) {
-    // STEP 3: Outbox write with coalescing (no network). Silent failures (no console.error).
-    if (!petsDB) await initPetsDB();
-
-    const petId = payload && payload.id;
-    let opUuid = '';
-    try {
-        if (crypto && crypto.randomUUID) opUuid = crypto.randomUUID();
-    } catch (e) {}
-    if (!opUuid) opUuid = 'op_' + Math.random().toString(16).slice(2) + '_' + Date.now();
-
-    return new Promise((resolve) => {
-        const tx = petsDB.transaction(OUTBOX_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(OUTBOX_STORE_NAME);
-
-        const existing = [];
-
-        const cursorReq = store.openCursor();
-        cursorReq.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (!cursor) {
-                // Apply coalescing rules (logic lives in pets-coalesce.js)
-                try {
-                    const _coalesce = (typeof PetsCoalesce !== 'undefined' && PetsCoalesce.coalesceOutboxOp) || null;
-                    let handled = false;
-
-                    if (_coalesce) {
-                        for (const item of existing) {
-                            const result = _coalesce(item.value, op_type, payload, opUuid, petId);
-                            if (result.action === 'put') {
-                                store.put({ ...result.entry, id: item.key });
-                                handled = true;
-                                break;
-                            }
-                            if (result.action === 'delete') {
-                                store.delete(item.key);
-                                handled = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!handled) {
-                        store.add({
-                            op_type,
-                            payload,
-                            created_at: new Date().toISOString(),
-                            op_uuid: opUuid,
-                            pet_local_id: petId
-                        });
-                    }
-                } catch (e2) {
-                    // silent
-                }
-                return;
-            }
-
-            try {
-                const v = cursor.value;
-                if (v && v.payload && v.payload.id === petId) {
-                    existing.push({ key: cursor.primaryKey, value: v });
-                }
-            } catch (e3) {
-                // silent
-            }
-            cursor.continue();
-        };
-        cursorReq.onerror = () => {
-            // fallback: try to add without coalescing
-            try {
-                store.add({
-                    op_type,
-                    payload,
-                    created_at: new Date().toISOString(),
-                    op_uuid: opUuid,
-                    pet_local_id: petId
-                });
-            } catch (e) {}
-        };
-
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => resolve(false);
-        tx.onabort = () => resolve(false);
-    });
-}
-
-// ============================================
-// STEP 2 — PULL (safe, non-blocking)
-// ============================================
-
-async function applyRemotePets(items) {
-    if (!Array.isArray(items) || items.length === 0) return;
-    // Upsert into pets store; support soft-delete
-    if (!petsDB) await initPetsDB();
-    const normalizedItems = [];
-    for (const item of items) {
-        if (!item) continue;
-        let entry = item;
-        let id = item.id;
-        let isDelete = item.deleted === true || item.is_deleted === true;
-
-        if (item.type === 'pet.delete' || item.type === 'pet.upsert') {
-            id = item.pet_id;
-            if (item.type === 'pet.delete') {
-                isDelete = true;
-            } else {
-                entry = item.record && typeof item.record === 'object'
-                    ? { ...item.record, id: item.pet_id ?? item.record.id }
-                    : { id: item.pet_id };
-            }
-        } else if ((id === undefined || id === null) && item.pet_id != null) {
-            id = item.pet_id;
-            if (item.record && typeof item.record === 'object') {
-                entry = { ...item.record, id };
-            }
-        }
-
-        if (id === undefined || id === null) continue;
-        normalizedItems.push({ id, entry, isDelete });
-    }
-
-    if (normalizedItems.length === 0) return;
-
-    try {
-        const localPets = await getAllPets();
-        const tmpIds = new Set(
-            localPets
-                .map(pet => pet && pet.id)
-                .filter(id => typeof id === 'string' && id.startsWith('tmp_'))
-        );
-        for (const item of normalizedItems) {
-            const id = item.id;
-            if (typeof id === 'string' && isUuidString(id)) {
-                const tmpId = `tmp_${id}`;
-                if (tmpIds.has(tmpId)) {
-                    await persistIdMapping(tmpId, id);
-                    await migratePetId(tmpId, id);
-                }
-            }
-        }
-    } catch (e) {}
-
-    // Collect pet IDs that have pending outbox ops (unsent local changes take priority)
-    // Track op_type so we can distinguish pending deletes from creates/updates
-    const pendingOutboxIds = new Set();
-    const pendingDeleteIds = new Set();
-    try {
-        const txOutbox = petsDB.transaction(OUTBOX_STORE_NAME, 'readonly');
-        const storeOutbox = txOutbox.objectStore(OUTBOX_STORE_NAME);
-        await new Promise((resolve) => {
-            storeOutbox.openCursor().onsuccess = (e) => {
-                const c = e.target.result;
-                if (!c) return resolve();
-                const val = c.value;
-                if (val && val.payload && val.payload.id) {
-                    pendingOutboxIds.add(String(val.payload.id));
-                    if (val.op_type === 'delete') {
-                        pendingDeleteIds.add(String(val.payload.id));
-                    }
-                }
-                c.continue();
-            };
-        });
-    } catch (e) {}
-
-    const mergedItems = [];
-    for (const item of normalizedItems) {
-        if (item.isDelete) {
-            mergedItems.push(item);
-            continue;
-        }
-        const existing = await getPetById(item.id);
-        const incoming = normalizePetFromBackend(item.entry, existing);
-        if (pendingOutboxIds.has(String(item.id))) {
-            // If the pending op is a delete, never re-insert server data —
-            // that would resurrect a pet the user just deleted offline.
-            if (pendingDeleteIds.has(String(item.id))) {
-                continue;
-            }
-            // Pet has pending local create/update: accept server data as
-            // baseline only when no local record exists yet.
-            if (!existing) {
-                const merged = mergePetsForPull({}, incoming);
-                mergedItems.push({ ...item, entry: merged });
-            }
-            // If local record exists, skip — outbox push will reconcile
-            continue;
-        }
-        const merged = mergePetsForPull(existing, incoming);
-        mergedItems.push({ ...item, entry: merged });
-    }
-
-    await new Promise((resolve, reject) => {
-        const tx = petsDB.transaction(PETS_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(PETS_STORE_NAME);
-        for (const item of mergedItems) {
-            if (item.isDelete) {
-                store.delete(item.id);
-            } else {
-                store.put({ ...item.entry, id: item.id });
-            }
-        }
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error || new Error('applyRemotePets failed'));
-    });
-}
-
-async function pullPetsIfOnline(options) {
-    const force = !!(options && options.force);
-    const returnStats = !!(options && options._returnStats);
-    const stats = { upserted: 0, deleted: 0 };
-    const _log = (typeof ADALog !== 'undefined') ? ADALog : null;
-
-    // Early exit checks (before setting in-flight flag)
-    if (__petsPullInFlight) {
-        if (_log) _log.info('PETS', 'pull: skip (in-flight)', {force, returnStats});
-        // If caller needs stats, wait for the in-flight pull and return its real stats
-        if (returnStats && __petsPullPromise) {
-            try {
-                const inflightResult = await __petsPullPromise;
-                return inflightResult != null ? inflightResult : stats;
-            } catch (e) {}
-        }
-        return returnStats ? stats : undefined;
-    }
-    const now = Date.now();
-    if (!force && now - __petsPullLastAt < __PETS_PULL_THROTTLE_MS) {
-        if (_log) _log.info('PETS', 'pull: skip (throttled)', {msSinceLast: now - __petsPullLastAt});
-        return returnStats ? stats : undefined;
-    }
-
-    // Check auth before setting flag (prevents smoke-test flakiness)
-    try {
-        if (typeof getAuthToken === 'function') {
-            const t = getAuthToken();
-            if (!t) { if (_log) _log.warn('PETS', 'pull: skip (no auth token)'); return; }
-        }
-    } catch (e) { if (_log) _log.warn('PETS', 'pull: skip (auth error)'); return; }
-
-    if (!navigator.onLine) { if (_log) _log.info('PETS', 'pull: skip (offline)'); return; }
-    if (typeof fetchApi !== 'function') { if (_log) _log.warn('PETS', 'pull: skip (no fetchApi)'); return; }
-
-    // Set flag, store promise for race-condition protection, use try/finally to guarantee reset
-    __petsPullLastAt = now;
-    __petsPullInFlight = true;
-    // Store the work promise so concurrent callers (e.g. manual sync) can await it
-    const workPromise = _doPetsPull(force, returnStats, stats, _log);
-    __petsPullPromise = workPromise;
-    return workPromise;
-}
-
-async function _doPetsPull(force, returnStats, stats, _log) {
-    try {
-        const device_id = await getOrCreateDeviceId();
-        const cursor = await getLastPetsCursor();
-
-        // Be tolerant to backend response shapes
-        const qs = new URLSearchParams();
-        if (cursor) qs.set('since', cursor);
-        qs.set('device_id', device_id);
-
-        const qsString = qs.toString();
-        const primaryUrl = qsString ? `/api/sync/pets/pull?${qsString}` : '/api/sync/pets/pull';
-        const fallbackUrl = qsString ? `/api/pets?${qsString}` : '/api/pets';
-
-        if (_log) _log.info('PETS', 'pull: start', {cursor: cursor || 0, url: primaryUrl});
-
-        let resp = null;
-        try {
-            resp = await fetchApi(primaryUrl, { method: 'GET' });
-        } catch (e) {
-            if (_log) _log.warn('PETS', 'pull: primary fetch error', {error: String(e)});
-            resp = null;
-        }
-        if (!resp || !resp.ok) {
-            if (_log) _log.warn('PETS', 'pull: primary failed, trying fallback', {status: resp?.status});
-            try {
-                resp = await fetchApi(fallbackUrl, { method: 'GET' });
-            } catch (e) {
-                if (_log) _log.warn('PETS', 'pull: fallback fetch error', {error: String(e)});
-                return; // silent
-            }
-            if (!resp || !resp.ok) {
-                if (_log) _log.warn('PETS', 'pull: fallback also failed', {status: resp?.status});
-                return;
-            }
-        }
-
-        let data = null;
-        try { data = await resp.json(); } catch (e) {
-            if (_log) _log.warn('PETS', 'pull: json parse error', {error: String(e)});
-            return;
-        }
-
-        const items =
-            Array.isArray(data) ? data :
-            Array.isArray(data?.pets) ? data.pets :
-            Array.isArray(data?.items) ? data.items :
-            Array.isArray(data?.changes) ? data.changes :
-            [];
-
-        const pulled = unwrapPetsPullResponse(data);
-        if (_log) _log.info('PETS', 'pull: received', {changesCount: (data?.changes || []).length, upserts: (pulled.upserts || []).length, deletes: (pulled.deletes || []).length, nextCursor: data?.next_cursor});
-        if (pulled.deletes && pulled.deletes.length) {
-            for (const delId of pulled.deletes) { try { await deletePetById(delId); stats.deleted++; } catch(e) {} }
-        }
-
-        // Only update cursor after successful apply to avoid data loss on partial failure
-        try {
-            stats.upserted = (pulled.upserts || []).length;
-            await applyRemotePets(pulled.upserts);
-            const nextCursor = data?.next_cursor || data?.cursor || data?.last_cursor || '';
-            if (nextCursor) await setLastPetsCursor(nextCursor);
-            if (_log) _log.info('PETS', 'pull: complete', {upserted: stats.upserted, deleted: stats.deleted, cursor: nextCursor || 0});
-        } catch (applyError) {
-            if (_log) _log.warn('PETS', 'pull: applyRemotePets failed', {error: String(applyError)});
-            console.warn('pullPetsIfOnline: applyRemotePets failed, cursor not updated', applyError);
-            stats.upserted = 0;
-        }
-
-        // Pull documents for the currently selected pet (cross-device sync)
-        try {
-            const docPetId = await resolveCurrentPetId();
-            if (docPetId && typeof pullDocumentsForPet === 'function') {
-                var docPullCount = await pullDocumentsForPet(docPetId);
-                // Re-render history page if documents were pulled
-                if (docPullCount > 0) {
-                    try {
-                        if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory();
-                        if (typeof updateHistoryBadge === 'function') updateHistoryBadge();
-                    } catch (e2) {}
-                }
-            }
-        } catch (e) {}
-
-        // Keep UI selection stable after remote merge/migration (prevents "Seleziona Pet" from blanking)
-        try {
-            const selectedId = await resolveCurrentPetId();
-            const selector = document.getElementById('petSelector');
-            if (selector) {
-                await rebuildPetSelector(selectedId ?? null);
-                if (selectedId) selector.value = String(selectedId);
-            }
-            if (typeof updateSelectedPetHeaders === 'function') {
-                await updateSelectedPetHeaders();
-            }
-        } catch (e) {}
-
-        // Refresh the current pet's data in the UI after merge (skip if user is editing)
-        try {
-            var _editPaused = (typeof _editPetSyncPaused !== 'undefined' && _editPetSyncPaused);
-            if (!_editPaused) {
-                const activePetId = await resolveCurrentPetId();
-                if (activePetId) {
-                    const refreshedPet = await getPetById(activePetId);
-                    if (refreshedPet && typeof loadPetIntoMainFields === 'function') {
-                        loadPetIntoMainFields(refreshedPet);
-                    }
-                }
-            }
-        } catch (e) {}
-    } finally {
-        __petsPullInFlight = false;
-        __petsPullPromise = null;
-    }
-    return returnStats ? stats : undefined;
-}
-
-async function refreshPetsFromServer(showFeedback) {
-    const feedback = showFeedback !== false; // default true
-    let result = { pushed: 0, pulled: 0, errors: 0 };
-
-    // Step 1: Push first (send local changes)
-    try {
-        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
-            await window.ADA_PetsSync.pushOutboxIfOnline();
-        }
-    } catch (e) { result.errors++; }
-
-    // Step 2: Count outbox before pull to detect how many were pushed
-    let outboxCountBefore = 0;
-    try {
-        if (petsDB) {
-            await new Promise((resolve) => {
-                const tx = petsDB.transaction(OUTBOX_STORE_NAME, 'readonly');
-                const req = tx.objectStore(OUTBOX_STORE_NAME).count();
-                req.onsuccess = () => { outboxCountBefore = req.result || 0; resolve(); };
-                req.onerror = () => resolve();
-            });
-        }
-    } catch (e) {}
-
-    // Step 3: Pull (receive remote changes)
-    let pullResult = null;
-    try {
-        pullResult = await pullPetsIfOnline({ force: true, _returnStats: true });
-    } catch (e) { result.errors++; }
-
-    if (pullResult) {
-        result.pulled = (pullResult.upserted || 0) + (pullResult.deleted || 0);
-    }
-
-    const selectedId = await resolveCurrentPetId();
-    try { await rebuildPetSelector(selectedId); } catch (e) {}
-    try { await updateSelectedPetHeaders(); } catch (e) {}
-
-    // Step 4: Show toast feedback
-    if (feedback && typeof showToast === 'function') {
-        if (!navigator.onLine) {
-            showToast('Sync: offline, impossibile sincronizzare', 'error');
-        } else if (result.errors > 0) {
-            showToast('Sync: completato con errori', 'error');
-        } else if (result.pulled > 0) {
-            showToast('Sync: ' + result.pulled + ' pet aggiornati dal server', 'success');
-        } else {
-            showToast('Sync: tutto aggiornato', 'success');
-        }
-    }
-
-    // Also flush document upload queue and re-render history documents
-    try { if (typeof flushDocumentUploadQueue === 'function') flushDocumentUploadQueue(); } catch (e) {}
-    try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch (e) {}
-    try { if (typeof updateHistoryBadge === 'function') updateHistoryBadge(); } catch (e) {}
-
-    return result;
+    var raw = localStorage.getItem('ada_current_pet_id');
+    return raw || null;
 }
 
 // ============================================
@@ -1015,51 +133,15 @@ function createEmptyPet() {
 
 
 // ============================================
-// BACKUP / RESTORE (LocalStorage fallback)
-// ============================================
-
-const PETS_BACKUP_KEY = 'ada_pets_backup_v1';
-
-async function backupPetsToLocalStorage() {
-    try {
-        const pets = await getAllPets();
-        localStorage.setItem(PETS_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), pets }));
-    } catch (e) {
-        // non-fatal
-    }
-}
-
-async function restorePetsFromLocalStorageIfNeeded() {
-    try {
-        const existing = await getAllPets();
-        if (Array.isArray(existing) && existing.length) return false;
-
-        const raw = localStorage.getItem(PETS_BACKUP_KEY);
-        if (!raw) return false;
-
-        const parsed = JSON.parse(raw);
-        const pets = Array.isArray(parsed?.pets) ? parsed.pets : [];
-        if (!pets.length) return false;
-
-        for (const p of pets) {
-            try { await savePetToDB(p); } catch (e) {}
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-// ============================================
 // DROPDOWN MANAGEMENT
 // ============================================
 
 
 function getPetDisplayLabel(p) {
   if (!p) return "Seleziona un pet";
-  const pid = p.pet_id || p.id || "";
-  const name = (p.patient && p.patient.petName && p.patient.petName.trim()) || (p.name && p.name.trim()) || "";
-  const species = (p.patient && p.patient.petSpecies && p.patient.petSpecies.trim()) || (p.species && (""+p.species).trim()) || "";
+  var pid = p.pet_id || p.id || "";
+  var name = (p.patient && p.patient.petName && p.patient.petName.trim()) || (p.name && p.name.trim()) || "";
+  var species = (p.patient && p.patient.petSpecies && p.patient.petSpecies.trim()) || (p.species && (""+p.species).trim()) || "";
   if (name && species) return `${name} (${species})`;
   if (name) return name;
   if (species) return species;
@@ -1067,43 +149,45 @@ function getPetDisplayLabel(p) {
   return "Seleziona un pet";
 }
 
-async function rebuildPetSelector(selectId = null) {
-    const selector = document.getElementById('petSelector');
+async function rebuildPetSelector(selectId) {
+    if (selectId === undefined) selectId = null;
+    var selector = document.getElementById('petSelector');
     if (!selector) return;
-    
-    const pets = await getAllPets();
+
+    var pets = await getAllPets();
 
     // Sort alphabetically by display label (case-insensitive, Italian locale)
-    pets.sort((a, b) => getPetDisplayLabel(a).localeCompare(getPetDisplayLabel(b), 'it', { sensitivity: 'base' }));
+    pets.sort(function(a, b) { return getPetDisplayLabel(a).localeCompare(getPetDisplayLabel(b), 'it', { sensitivity: 'base' }); });
 
-    let html = '<option value="">-- Seleziona Pet --</option>';
-    pets.forEach(pet => {
-        const label = getPetDisplayLabel(pet);
-        html += `<option value="${pet.id}">${label}</option>`;
+    var html = '<option value="">-- Seleziona Pet --</option>';
+    pets.forEach(function(pet) {
+        var id = pet.id || pet.pet_id;
+        var label = getPetDisplayLabel(pet);
+        html += `<option value="${id}">${label}</option>`;
     });
     selector.innerHTML = html;
-    
+
     // Preserve current selection unless explicitly cleared
-    let desired = selectId;
+    var desired = selectId;
     if (desired === null || desired === undefined) {
-        try { desired = await resolveCurrentPetId(); } catch (e) { desired = null; }
+        desired = getCurrentPetId();
     }
     if (desired !== null && desired !== undefined) {
         selector.value = String(desired);
         // If the desired value is not present in options, keep placeholder
         if (selector.value !== String(desired)) selector.value = '';
     }
-    
+
     updateSaveButtonState();
 }
 
 function updateSaveButtonState() {
-    const editBtn = document.getElementById('btnEditPet');
-    const deleteBtn = document.getElementById('btnDeletePet');
-    const selector = document.getElementById('petSelector');
-    const fieldsCard = document.getElementById('petFieldsCard');
+    var editBtn = document.getElementById('btnEditPet');
+    var deleteBtn = document.getElementById('btnDeletePet');
+    var selector = document.getElementById('petSelector');
+    var fieldsCard = document.getElementById('petFieldsCard');
     if (!selector) return;
-    const noPet = (selector.value === '');
+    var noPet = (selector.value === '');
     if (editBtn) editBtn.disabled = noPet;
     if (deleteBtn) deleteBtn.disabled = noPet;
     if (fieldsCard) fieldsCard.style.display = noPet ? 'none' : '';
@@ -1134,25 +218,17 @@ function _setPetFieldsReadOnly(readonly) {
 // ============================================
 
 async function onPetSelectorChange(selectElement) {
-    const value = selectElement.value;
-    
-    // FIRST: Save current pet data before switching
-    if (currentPetId !== null && currentPetId !== undefined) {
-        await saveCurrentPetDataSilent();
-    }
-    
+    var value = selectElement.value;
+
     if (value === '') {
-        // Nothing selected - clear fields
         currentPetId = null;
         localStorage.removeItem('ada_current_pet_id');
         clearMainPetFields();
     } else {
-        // Pet selected - load it
-        const petId = normalizePetId(value);
-        const pet = await getPetById(petId);
+        var pet = await getPetById(value);
         if (pet) {
-            currentPetId = petId;
-            localStorage.setItem('ada_current_pet_id', String(petId));
+            currentPetId = value;
+            localStorage.setItem('ada_current_pet_id', value);
             loadPetIntoMainFields(pet);
         }
     }
@@ -1170,43 +246,21 @@ async function onPetSelectorChange(selectElement) {
     updateSaveButtonState();
 }
 
-// Save current pet data without showing toast (used when switching pets)
-async function saveCurrentPetDataSilent() {
-    if (!currentPetId) return;
-    
-    const pet = await getPetById(currentPetId);
-    if (pet) {
-        pet.updatedAt = new Date().toISOString();
-        pet.patient = getPatientData();
-        pet.lifestyle = getLifestyleData();
-        pet.photos = photos;
-        pet.vitalsData = vitalsData;
-        pet.historyData = historyData;
-        pet.medications = medications;
-        pet.appointments = appointments;
-        // v7.1.0: Save diary to the correct field based on current role
-        const diaryVal = document.getElementById('diaryText')?.value || '';
-        const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
-        if (isVet) { pet.diary = diaryVal; } else { pet.ownerDiary = diaryVal; }
-        await savePetToDB(pet);
-    }
-}
-
 // ============================================
 // PAGE: DATI PET - SAVE CURRENT PET
 // ============================================
 
 async function saveCurrentPet() {
-    const selector = document.getElementById('petSelector');
+    var selector = document.getElementById('petSelector');
     if (!selector || selector.value === '') {
         alert('⚠️ Errore: Nessun pet selezionato.\n\nSeleziona un pet dalla lista prima di salvare.');
         return;
     }
-    
+
     // Validate required fields
-    const petName = document.getElementById('petName')?.value?.trim() || '';
-    const petSpecies = document.getElementById('petSpecies')?.value || '';
-    
+    var petName = document.getElementById('petName')?.value?.trim() || '';
+    var petSpecies = document.getElementById('petSpecies')?.value || '';
+
     if (!petName) {
         alert('⚠️ Errore: Il Nome del pet è obbligatorio!');
         document.getElementById('petName')?.focus();
@@ -1217,29 +271,52 @@ async function saveCurrentPet() {
         document.getElementById('petSpecies')?.focus();
         return;
     }
-    
-    const petId = normalizePetId(selector.value);
-    const pet = await getPetById(petId);
-    
-    if (pet) {
-        pet.updatedAt = new Date().toISOString();
-        pet.patient = getPatientData();
-        pet.lifestyle = getLifestyleData();
-        pet.photos = photos;
-        pet.vitalsData = vitalsData;
-        pet.historyData = historyData;
-        pet.medications = medications;
-        pet.appointments = appointments;
-        // v7.1.0: Save diary to the correct field based on current role
-        const diaryVal2 = document.getElementById('diaryText')?.value || '';
-        const isVet2 = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
-        if (isVet2) { pet.diary = diaryVal2; } else { pet.ownerDiary = diaryVal2; }
 
-        await savePetToDB(pet);
-    await enqueueOutbox('update', { id: normalizePetId(selector.value), patch: pet, base_version: pet.version ?? null });
-    await rebuildPetSelector(petId);
-        
+    var petId = selector.value;
+    var patient = getPatientData();
+    var lifestyle = getLifestyleData();
+    var isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+    var diaryVal = document.getElementById('diaryText')?.value || '';
+
+    var patch = {
+        name: patient.petName,
+        species: patient.petSpecies,
+        breed: patient.petBreed || null,
+        sex: patient.petSex || null,
+        birthdate: patient.petBirthdate || null,
+        weight_kg: patient.petWeightKg ? parseFloat(String(patient.petWeightKg).replace(',', '.')) : null,
+        owner_name: patient.ownerName || null,
+        owner_phone: patient.ownerPhone || null,
+        microchip: patient.petMicrochip || null,
+        visit_date: patient.visitDate || null,
+        lifestyle: lifestyle,
+        vitals_data: vitalsData,
+        medications: medications,
+        history_data: historyData,
+        photos: photos,
+        photos_count: photos.length,
+        updated_at: new Date().toISOString()
+    };
+    if (isVet) { patch.notes = diaryVal; } else { patch.owner_diary = diaryVal; }
+
+    try {
+        var resp = await fetchApi('/api/pets/' + encodeURIComponent(petId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patch: patch })
+        });
+        if (!resp || !resp.ok) {
+            var err = {};
+            try { err = await resp.json(); } catch (_) {}
+            showToast('Errore salvataggio: ' + (err.error || resp?.status), 'error');
+            return;
+        }
+        var updated = await resp.json();
+        _updatePetInCache(updated);
+        await rebuildPetSelector(petId);
         showToast('✅ Dati salvati!', 'success');
+    } catch (e) {
+        showToast('Errore di rete: impossibile salvare', 'error');
     }
 }
 
@@ -1248,35 +325,35 @@ async function saveCurrentPet() {
 // ============================================
 
 async function deleteCurrentPet() {
-    const selector = document.getElementById('petSelector');
+    var selector = document.getElementById('petSelector');
     if (!selector || selector.value === '') {
         alert('⚠️ Errore: Nessun pet selezionato da eliminare.');
         return;
     }
-    
-    const petId = normalizePetId(selector.value);
-    const pet = await getPetById(petId);
-    const petName = pet?.patient?.petName || 'questo pet';
-    
+
+    var petId = selector.value;
+    var pet = await getPetById(petId);
+    var petName = (pet && pet.patient && pet.patient.petName) ? pet.patient.petName : (pet && pet.name) ? pet.name : 'questo pet';
+
     if (!confirm(`Eliminare "${petName}" e tutti i suoi dati?\n\nQuesta azione è irreversibile.`)) {
         return;
     }
-    
-    const petVersion = pet?.version ?? null;
-    await deletePetFromDB(petId);
-    await enqueueOutbox('delete', { id: petId, base_version: petVersion });
-    // Push delete to server immediately (like update does at lines 1474-1475)
-    try {
-        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
-            window.ADA_PetsSync.pushOutboxIfOnline();
-        }
-    } catch (_e) {}
-        currentPetId = null;
-    localStorage.removeItem('ada_current_pet_id');
-    clearMainPetFields();
-    await rebuildPetSelector('');
 
-    showToast('Pet eliminato', 'success');
+    try {
+        var resp = await fetchApi('/api/pets/' + encodeURIComponent(petId), { method: 'DELETE' });
+        if (!resp || (resp.status !== 204 && !resp.ok)) {
+            showToast('Errore eliminazione pet', 'error');
+            return;
+        }
+        _removePetFromCache(petId);
+        currentPetId = null;
+        localStorage.removeItem('ada_current_pet_id');
+        clearMainPetFields();
+        await rebuildPetSelector('');
+        showToast('Pet eliminato', 'success');
+    } catch (e) {
+        showToast('Errore di rete: impossibile eliminare', 'error');
+    }
 }
 
 // ============================================
@@ -1294,7 +371,7 @@ function cancelAddPet() {
 }
 
 function toggleNewPetLifestyleSection() {
-    const section = document.getElementById('newPetLifestyleSection');
+    var section = document.getElementById('newPetLifestyleSection');
     if (section) section.classList.toggle('open');
 }
 
@@ -1304,9 +381,9 @@ function toggleNewPetLifestyleSection() {
 
 async function saveNewPet() {
     // Validate required fields
-    const petName = document.getElementById('newPetName')?.value?.trim() || '';
-    const petSpecies = document.getElementById('newPetSpecies')?.value || '';
-    
+    var petName = document.getElementById('newPetName')?.value?.trim() || '';
+    var petSpecies = document.getElementById('newPetSpecies')?.value || '';
+
     if (!petName) {
         alert('⚠️ Errore: Il Nome del pet è obbligatorio!');
         document.getElementById('newPetName')?.focus();
@@ -1317,47 +394,54 @@ async function saveNewPet() {
         document.getElementById('newPetSpecies')?.focus();
         return;
     }
-    
-    // Create new pet
-    const newPet = createEmptyPet();
-    // Offline-first create: assign temporary id
-    newPet.id = generateTmpPetId();
-    newPet.updatedAt = new Date().toISOString();
-    newPet.base_version = null;
-    newPet.patient = getNewPetPatientData();
-    newPet.lifestyle = getNewPetLifestyleData();
-    
-    const newId = await savePetToDB(newPet);
-    await enqueueOutbox('create', { id: newId, record: newPet });
-    // Clear the add pet form
-    clearNewPetFields();
-    
-    // Go to Dati Pet page
-    navigateToPage('patient');
-    
-    // Rebuild selector with new pet selected
-    await rebuildPetSelector(newId);
-    
-    // Load the new pet into main fields
-    currentPetId = newId;
-    localStorage.setItem('ada_current_pet_id', String(newId));
-    const savedPet = await getPetById(newId);
-    loadPetIntoMainFields(savedPet);
 
-    // Update sidebar header immediately from known data (avoids IDB timing issues)
+    var patient = getNewPetPatientData();
+    var lifestyle = getNewPetLifestyleData();
+
+    var body = {
+        name: patient.petName,
+        species: patient.petSpecies,
+        breed: patient.petBreed || null,
+        sex: patient.petSex || null,
+        birthdate: patient.petBirthdate || null,
+        owner_name: patient.ownerName || null,
+        owner_phone: patient.ownerPhone || null,
+        microchip: patient.petMicrochip || null,
+        visit_date: patient.visitDate || null,
+        lifestyle: lifestyle,
+        updated_at: new Date().toISOString()
+    };
+
     try {
-        const headerEls = document.querySelectorAll('[data-selected-pet-header]');
-        const hName = (petName || 'Paziente').trim();
-        const hSpecies = (petSpecies || '').trim();
-        const hParts = [hName];
-        if (hSpecies) hParts.push(hSpecies);
-        headerEls.forEach(el => {
-            el.textContent = '🐾 ' + hParts.join(' • ');
-            el.classList.add('selected-pet-header--visible');
+        var resp = await fetchApi('/api/pets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
-    } catch(e) {}
+        if (!resp || !resp.ok) {
+            var err = {};
+            try { err = await resp.json(); } catch (_) {}
+            showToast('Errore creazione pet: ' + (err.error || resp?.status), 'error');
+            return;
+        }
+        var newPet = await resp.json();
+        var newId = newPet.pet_id;
 
-    showToast('✅ Nuovo pet aggiunto!', 'success');
+        // Normalize and add to cache
+        var normalized = _normalizePetForUI(newPet);
+        petsCache.push(normalized);
+
+        clearNewPetFields();
+        navigateToPage('patient');
+        await rebuildPetSelector(newId);
+        currentPetId = newId;
+        localStorage.setItem('ada_current_pet_id', newId);
+        loadPetIntoMainFields(normalized);
+        await updateSelectedPetHeaders();
+        showToast('✅ Nuovo pet aggiunto!', 'success');
+    } catch (e) {
+        showToast('Errore di rete: impossibile creare pet', 'error');
+    }
 }
 
 // ============================================
@@ -1373,7 +457,7 @@ function clearMainPetFields() {
     medications = [];
     appointments = [];
     tipsData = [];
-    const diaryEl = document.getElementById('diaryText');
+    var diaryEl = document.getElementById('diaryText');
     if (diaryEl) diaryEl.value = '';
     renderPhotos();
     renderHistory();
@@ -1383,13 +467,11 @@ function clearMainPetFields() {
     renderTips();
     updateHistoryBadge();
     // Clear vitals chart
-    const chartContainer = document.getElementById('vitalsChart');
+    var chartContainer = document.getElementById('vitalsChart');
     if (chartContainer) chartContainer.innerHTML = '<p style="color:#888;text-align:center;padding:20px;">Nessun dato disponibile</p>';
 }
 
 function loadPetIntoMainFields(pet) {
-  const _p = (pet && pet.patient) ? pet.patient : {};
-  const _pick = (a, b) => (typeof a === 'string' && a.trim()) ? a : (typeof b === 'string' && b.trim()) ? b : (b ?? '');
     setPatientData(pet.patient || {});
     setLifestyleData(pet.lifestyle || {});
     photos = pet.photos || [];
@@ -1401,13 +483,13 @@ function loadPetIntoMainFields(pet) {
     try { if (typeof migrateLegacyHistoryDataIfNeeded === 'function') migrateLegacyHistoryDataIfNeeded(); } catch (e) {}
     medications = pet.medications || [];
     appointments = pet.appointments || [];
-    // v6.16.4: Tips sono persistiti per pet (lista mostrata)
+    // v6.16.4: Tips are persisted per pet
     try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
     try { if (typeof updateTipsMeta === 'function') updateTipsMeta(); } catch(e) {}
     // v7.1.0: Load diary based on current role (vet vs owner)
-    const diaryEl = document.getElementById('diaryText');
+    var diaryEl = document.getElementById('diaryText');
     if (diaryEl) {
-        const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+        var isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
         diaryEl.value = isVet ? (pet.diary || '') : (pet.ownerDiary || '');
     }
     renderPhotos();
@@ -1426,17 +508,17 @@ function loadPetIntoMainFields(pet) {
 // ============================================
 
 function clearNewPetFields() {
-    const fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetAge', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerPhone', 'newVisitDate',
+    var fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetAge', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerPhone', 'newVisitDate',
                     'newPetLifestyle', 'newPetActivityLevel', 'newPetDietType', 'newPetDietPreferences', 'newPetKnownConditions', 'newPetCurrentMeds', 'newPetBehaviorNotes', 'newPetSeasonContext', 'newPetLocation'];
-    fields.forEach(id => {
-        const el = document.getElementById(id);
+    fields.forEach(function(id) {
+        var el = document.getElementById(id);
         if (el) el.value = '';
     });
-    const householdSelect = document.getElementById('newPetHousehold');
+    var householdSelect = document.getElementById('newPetHousehold');
     if (householdSelect) {
-        Array.from(householdSelect.options).forEach(opt => opt.selected = false);
+        Array.from(householdSelect.options).forEach(function(opt) { opt.selected = false; });
     }
-    const section = document.getElementById('newPetLifestyleSection');
+    var section = document.getElementById('newPetLifestyleSection');
     if (section) section.classList.remove('open');
 }
 
@@ -1455,9 +537,9 @@ function getNewPetPatientData() {
 }
 
 function getNewPetLifestyleData() {
-    const householdSelect = document.getElementById('newPetHousehold');
-    const selectedHousehold = householdSelect ? Array.from(householdSelect.selectedOptions).map(opt => opt.value).join(', ') : '';
-    
+    var householdSelect = document.getElementById('newPetHousehold');
+    var selectedHousehold = householdSelect ? Array.from(householdSelect.selectedOptions).map(function(opt) { return opt.value; }).join(', ') : '';
+
     return {
         lifestyle: document.getElementById('newPetLifestyle')?.value || '',
         household: selectedHousehold,
@@ -1477,69 +559,72 @@ function getNewPetLifestyleData() {
 // ============================================
 
 async function saveData() {
-    localStorage.setItem('ada_photos', JSON.stringify(photos));
-    localStorage.setItem('ada_vitals', JSON.stringify(vitalsData));
-    localStorage.setItem('ada_history', JSON.stringify(historyData));
-    localStorage.setItem('ada_medications', JSON.stringify(medications));
-    localStorage.setItem('ada_appointments', JSON.stringify(appointments));
+    if (!currentPetId) return;
 
-    if (currentPetId) {
-        const pet = await getPetById(currentPetId);
-        if (pet) {
-            pet.updatedAt = new Date().toISOString();
-            pet.photos = photos;
-            pet.vitalsData = vitalsData;
-            pet.historyData = historyData;
-            pet.medications = medications;
-            pet.appointments = appointments;
-            const diaryVal = document.getElementById('diaryText')?.value || '';
-            const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
-            if (isVet) { pet.diary = diaryVal; } else { pet.ownerDiary = diaryVal; }
-            await savePetToDB(pet);
-            // Sync to server: enqueue pet update and push immediately
-            try {
-                await enqueueOutbox('update', { id: normalizePetId(currentPetId), patch: pet, base_version: pet.version ?? null });
-                if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
-                    window.ADA_PetsSync.pushOutboxIfOnline();
-                }
-            } catch (e) { /* silent sync failure */ }
+    var isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+    var diaryVal = document.getElementById('diaryText')?.value || '';
+
+    var patch = {
+        vitals_data: vitalsData,
+        history_data: historyData,
+        medications: medications,
+        photos: photos,
+        photos_count: photos.length,
+        updated_at: new Date().toISOString()
+    };
+    if (isVet) { patch.notes = diaryVal; } else { patch.owner_diary = diaryVal; }
+
+    try {
+        var resp = await fetchApi('/api/pets/' + encodeURIComponent(currentPetId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patch: patch })
+        });
+        if (resp && resp.ok) {
+            var updated = await resp.json();
+            _updatePetInCache(updated);
         }
+    } catch (e) {
+        // silent — saveData is called frequently
     }
 }
 
 async function saveDiary() {
-    const diaryText = document.getElementById('diaryText')?.value || '';
-    const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
-    const field = isVet ? 'diary' : 'ownerDiary';
-    localStorage.setItem('ada_diary', diaryText);
-
-    if (currentPetId) {
-        const pet = await getPetById(currentPetId);
-        if (pet) {
-            pet[field] = diaryText;
-            pet.updatedAt = new Date().toISOString();
-            await savePetToDB(pet);
-            // Sync to server: enqueue pet update and push immediately
-            try {
-                await enqueueOutbox('update', { id: normalizePetId(currentPetId), patch: pet, base_version: pet.version ?? null });
-                if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pushOutboxIfOnline === 'function') {
-                    window.ADA_PetsSync.pushOutboxIfOnline();
-                }
-            } catch (e) { /* silent sync failure */ }
-            showToast('✅ Profilo sanitario salvato', 'success');
-        }
-    } else {
+    if (!currentPetId) {
         alert('⚠️ Errore: Seleziona un pet prima di salvare il profilo sanitario.');
+        return;
+    }
+    var diaryText = document.getElementById('diaryText')?.value || '';
+    var isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+
+    var patch = { updated_at: new Date().toISOString() };
+    if (isVet) { patch.notes = diaryText; } else { patch.owner_diary = diaryText; }
+
+    try {
+        var resp = await fetchApi('/api/pets/' + encodeURIComponent(currentPetId), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patch: patch })
+        });
+        if (resp && resp.ok) {
+            var updated = await resp.json();
+            _updatePetInCache(updated);
+            showToast('✅ Profilo sanitario salvato', 'success');
+        } else {
+            showToast('Errore salvataggio profilo', 'error');
+        }
+    } catch (e) {
+        showToast('Errore di rete', 'error');
     }
 }
 
 // v7.1.0: Load the correct diary text based on current role
 async function loadDiaryForCurrentRole() {
-    const diaryEl = document.getElementById('diaryText');
+    var diaryEl = document.getElementById('diaryText');
     if (!diaryEl) return;
-    const isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
+    var isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
     if (currentPetId) {
-        const pet = await getPetById(currentPetId);
+        var pet = await getPetById(currentPetId);
         if (pet) {
             diaryEl.value = isVet ? (pet.diary || '') : (pet.ownerDiary || '');
             return;
@@ -1558,74 +643,61 @@ async function savePatient() {
 // ============================================
 
 async function initMultiPetSystem() {
-    await initPetsDB();
-    // Restore from LocalStorage backup if IndexedDB is empty (robustness on some browsers)
-    try { await restorePetsFromLocalStorageIfNeeded(); } catch (e) {}
-    
-    // Migration from old system
-    const pets = await getAllPets();
-    if (pets.length === 0) {
-        const existingPatient = localStorage.getItem('ada_patient');
-        if (existingPatient) {
-            const parsed = JSON.parse(existingPatient);
-            if (parsed.petName) {
-                const migratePet = createEmptyPet();
-                migratePet.patient = parsed;
-                migratePet.lifestyle = JSON.parse(localStorage.getItem('ada_lifestyle') || '{}');
-                migratePet.photos = JSON.parse(localStorage.getItem('ada_photos') || '[]');
-                migratePet.vitalsData = JSON.parse(localStorage.getItem('ada_vitals') || '[]');
-                migratePet.historyData = JSON.parse(localStorage.getItem('ada_history') || '[]');
-                migratePet.medications = JSON.parse(localStorage.getItem('ada_medications') || '[]');
-                migratePet.appointments = JSON.parse(localStorage.getItem('ada_appointments') || '[]');
-                migratePet.diary = localStorage.getItem('ada_diary') || '';
-                const newId = await savePetToDB(migratePet);
-                currentPetId = newId;
-                localStorage.setItem('ada_current_pet_id', String(newId));
-            }
-        }
-    }
-    
+    // Load all pets from server
+    await fetchPetsFromServer();
     await rebuildPetSelector();
-    
-    // Step 2: non-blocking pull (updates local DB when online)
-    try { pullPetsIfOnline({ force: true }); } catch (e) {}
+
     // Restore last selected pet
-    const lastPetId = localStorage.getItem('ada_current_pet_id');
+    var lastPetId = localStorage.getItem('ada_current_pet_id');
     if (lastPetId) {
-        const normalizedLastPetId = normalizePetId(lastPetId);
-        let resolvedLastPetId = normalizedLastPetId;
-        if (typeof normalizedLastPetId === 'string') {
-            resolvedLastPetId = await getMappedServerId(normalizedLastPetId);
-            if (resolvedLastPetId && resolvedLastPetId !== normalizedLastPetId) {
-                try { localStorage.setItem('ada_current_pet_id', String(resolvedLastPetId)); } catch (e) {}
-            }
-        }
-        const pet = await getPetById(resolvedLastPetId);
+        var pet = await getPetById(lastPetId);
         if (pet) {
-            currentPetId = resolvedLastPetId;
+            currentPetId = lastPetId;
             loadPetIntoMainFields(pet);
-            await updateSelectedPetHeaders();
-            const selector = document.getElementById('petSelector');
-            if (selector) selector.value = String(resolvedLastPetId);
+            var selector = document.getElementById('petSelector');
+            if (selector) selector.value = lastPetId;
         }
     }
 
     await updateSelectedPetHeaders();
-
     updateSaveButtonState();
 }
 
+// ============================================
+// REFRESH FROM SERVER
+// ============================================
+
+async function refreshPetsFromServer(showFeedback) {
+    var feedback = showFeedback !== false;
+    try {
+        if (!navigator.onLine) {
+            if (feedback && typeof showToast === 'function') showToast('Sei offline: impossibile ricaricare i dati', 'error');
+            return;
+        }
+        await fetchPetsFromServer();
+        var selectedId = getCurrentPetId();
+        await rebuildPetSelector(selectedId);
+        if (selectedId) {
+            var pet = await getPetById(selectedId);
+            if (pet) loadPetIntoMainFields(pet);
+        }
+        await updateSelectedPetHeaders();
+        if (feedback && typeof showToast === 'function') showToast('✅ Dati ricaricati dal server', 'success');
+    } catch (e) {
+        if (feedback && typeof showToast === 'function') showToast('Errore ricaricamento', 'error');
+    }
+}
 
 // ============================================
 // SELECTED PET HEADER
 // ============================================
 
 async function updateSelectedPetHeaders() {
-    const els = document.querySelectorAll('[data-selected-pet-header]');
+    var els = document.querySelectorAll('[data-selected-pet-header]');
     if (!els || els.length === 0) return;
 
-    let pet = null;
-    const petId = await resolveCurrentPetId();
+    var pet = null;
+    var petId = getCurrentPetId();
     if (petId) {
         try {
             pet = await getPetById(petId);
@@ -1634,30 +706,30 @@ async function updateSelectedPetHeaders() {
         }
     }
 
-    els.forEach(el => {
+    els.forEach(function(el) {
         if (!pet || !pet.patient) {
             el.textContent = '🐾 Seleziona un pet';
             el.classList.remove('selected-pet-header--visible');
             return;
         }
 
-        const name = (pet.patient.petName || 'Paziente').toString().trim();
-        const species = (pet.patient.petSpecies || '').toString().trim();
-        const parts = [name];
+        var name = (pet.patient.petName || 'Paziente').toString().trim();
+        var species = (pet.patient.petSpecies || '').toString().trim();
+        var parts = [name];
         if (species) parts.push(species);
         el.textContent = '🐾 ' + parts.join(' • ');
         el.classList.add('selected-pet-header--visible');
     });
 }
-// Expose pets sync helpers (used by bootstrap). Keep silent.
+
+// ============================================
+// COMPATIBILITY SHIM (app-seed.js uses these; removed in PR 4)
+// ============================================
 try {
     window.ADA_PetsSync = window.ADA_PetsSync || {};
-    if (typeof window.ADA_PetsSync.pullPetsIfOnline !== 'function') {
-        window.ADA_PetsSync.pullPetsIfOnline = pullPetsIfOnline;
-    }
-    if (typeof window.ADA_PetsSync.refreshPetsFromServer !== 'function') {
-        window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
-    }
+    window.ADA_PetsSync.pullPetsIfOnline = function() { return refreshPetsFromServer(false); };
+    window.ADA_PetsSync.refreshPetsFromServer = refreshPetsFromServer;
+    window.ADA_PetsSync.pushOutboxIfOnline = function() { return Promise.resolve(); };
 } catch (e) {
     // silent
 }
