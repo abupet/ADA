@@ -169,6 +169,7 @@
         var html = '<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;">';
         html += '<label style="font-weight:600;font-size:14px;">Tenant:</label>';
         html += '<select id="dashboard-tenant-select" onchange="selectDashboardTenant(this.value, \'' + containerId + '\', \'' + (period || '30d') + '\')" style="padding:8px;border:1px solid #ddd;border-radius:6px;">';
+        tenants = tenants.filter(function(t) { return t.status === 'active'; });
         tenants.forEach(function (t) {
             var selected = t.tenant_id === _selectedDashboardTenant ? ' selected' : '';
             html += '<option value="' + _escapeHtml(t.tenant_id) + '"' + selected + '>' + _escapeHtml(t.name) + ' [' + _escapeHtml(t.slug) + ']</option>';
@@ -195,7 +196,7 @@
         fetchApi('/api/superadmin/tenants')
             .then(function(r) { return r.ok ? r.json() : { tenants: [] }; })
             .then(function(data) {
-                var tenants = data.tenants || [];
+                var tenants = (data.tenants || []).filter(function(t) { return t.status === 'active'; });
                 if (tenants.length === 0) { container.innerHTML = '<span style="font-size:12px;color:#888;">Nessun tenant configurato</span>'; return; }
                 if (!_selectedDashboardTenant) _selectedDashboardTenant = tenants[0].tenant_id;
                 var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">';
@@ -1207,22 +1208,23 @@
     }
 
     function promptAssignTenant(userId) {
-        if (_tenantsCache.length === 0) {
+        var activeTenants = _tenantsCache.filter(function(t) { return t.status === 'active'; });
+        if (activeTenants.length === 0) {
             if (typeof showToast === 'function') showToast('Nessun tenant disponibile. Creane uno prima.', 'error');
             return;
         }
 
-        var options = _tenantsCache.map(function (t, i) { return (i + 1) + ') ' + t.name + ' [' + t.slug + ']'; }).join('\n');
+        var options = activeTenants.map(function (t, i) { return (i + 1) + ') ' + t.name + ' [' + t.slug + ']'; }).join('\n');
         var choice = prompt('Scegli il tenant (numero):\n' + options);
         if (!choice) return;
 
         var idx = parseInt(choice) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= _tenantsCache.length) {
+        if (isNaN(idx) || idx < 0 || idx >= activeTenants.length) {
             if (typeof showToast === 'function') showToast('Scelta non valida.', 'error');
             return;
         }
 
-        var tenant = _tenantsCache[idx];
+        var tenant = activeTenants[idx];
         fetchApi('/api/superadmin/users/' + encodeURIComponent(userId) + '/tenants', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -1274,11 +1276,12 @@
             container.innerHTML = '<p style="color:#888;">Caricamento tenant...</p>';
             fetchApi('/api/superadmin/tenants').then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(data) {
-                    if (!data || !data.tenants || data.tenants.length === 0) {
+                    var activeTenants = (data && data.tenants || []).filter(function(t) { return t.status === 'active'; });
+                    if (activeTenants.length === 0) {
                         container.innerHTML = '<p style="color:#888;">Nessun tenant trovato. Creane uno dalla pagina Gestione Tenant.</p>';
                         return;
                     }
-                    _selectedDashboardTenant = data.tenants[0].tenant_id;
+                    _selectedDashboardTenant = activeTenants[0].tenant_id;
                     try { sessionStorage.setItem('ada_selected_tenant', _selectedDashboardTenant); } catch (e) {}
                     loadAdminCatalog(containerId);
                 })
