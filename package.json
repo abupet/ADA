@@ -17,7 +17,6 @@
     "test:ci:real": "node scripts/ci/run-tests.js --long",
     "test:ci:long": "node scripts/ci/run-tests.js --long-only",
     "test:unit": "node tests/unit/consent.service.test.js && node tests/unit/eligibility.service.test.js && node tests/unit/explanation.service.test.js && node tests/unit/rbac.middleware.test.js && node tests/unit/tag.service.test.js",
-    "test:sync": "playwright test --project=chromium --grep @sync",
     "test:deep": "playwright test --project=chromium --grep @deep",
     "test:stress": "playwright test --project=chromium --grep @stress",
     "test:nightly": "node scripts/ci/run-tests.js --long",

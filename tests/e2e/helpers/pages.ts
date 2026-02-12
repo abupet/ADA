@@ -74,14 +74,10 @@ export async function switchToSuperAdmin(page: Page) {
 }
 
 /**
- * Trigger a sync push explicitly (bypass debounce).
+ * No-op: offline sync removed in v8.15.x. Kept for API compatibility.
  */
-export async function triggerSyncPush(page: Page) {
-  await page.evaluate(() => {
-    if ((window as any).ADA_PetsSync?.pushOutboxIfOnline) {
-      (window as any).ADA_PetsSync.pushOutboxIfOnline();
-    }
-  });
+export async function triggerSyncPush(_page: Page) {
+  // no-op
 }
 
 // All navigable pages by role

@@ -5,7 +5,7 @@ import type { Page, Route } from "@playwright/test";
 // Every mock returns a "capture" object so tests can assert on calls.
 // ---------------------------------------------------------------------------
 
-/* ── Sync ─────────────────────────────────────────────────────────────────── */
+/* ── Sync (no-op: offline sync removed in v8.15.x) ───────────────────────── */
 
 export interface SyncCapture {
   pushOps: any[];
@@ -13,33 +13,8 @@ export interface SyncCapture {
   pullCalls: number;
 }
 
-export async function mockSyncEndpoints(page: Page): Promise<SyncCapture> {
-  const capture: SyncCapture = { pushOps: [], pushAccepted: [], pullCalls: 0 };
-
-  await page.route("**/api/sync/pets/push", async (route: Route) => {
-    let body: any = {};
-    try { body = JSON.parse(route.request().postData() || "{}"); } catch {}
-    const ops = Array.isArray(body.ops) ? body.ops : [];
-    capture.pushOps.push(...ops);
-    const accepted = ops.map((o: any) => o.op_id).filter(Boolean);
-    capture.pushAccepted.push(...accepted);
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ accepted, rejected: [] }),
-    });
-  });
-
-  await page.route("**/api/sync/pets/pull**", async (route: Route) => {
-    capture.pullCalls++;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ next_cursor: null, changes: [] }),
-    });
-  });
-
-  return capture;
+export async function mockSyncEndpoints(_page: Page): Promise<SyncCapture> {
+  return { pushOps: [], pushAccepted: [], pullCalls: 0 };
 }
 
 /* ── Promo ────────────────────────────────────────────────────────────────── */
@@ -321,7 +296,7 @@ export async function mockSeedEndpoints(page: Page) {
 /* ── Combo: all mocks at once ─────────────────────────────────────────────── */
 
 export async function mockAllEndpoints(page: Page) {
-  const sync = await mockSyncEndpoints(page);
+  const sync = await mockSyncEndpoints(page); // no-op
   const promo = await mockPromoEndpoints(page);
   const consent = await mockConsentEndpoints(page);
   const nutrition = await mockNutritionEndpoints(page);
