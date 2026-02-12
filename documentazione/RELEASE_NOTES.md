@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.15.9 (2026-02-12)
+- Fix: Creazione conversazione ADA falliva con 403 — `INSERT INTO communication_settings` ora imposta `chatbot_enabled = true` di default, evitando che `requireAiEnabled()` blocchi la creazione AI dopo la visita alle Impostazioni
+- Fix: Badge non letti non si azzerava — aggiunta route `POST /api/communication/conversations/:id/read` che marca tutti i messaggi della conversazione come letti e aggiorna `conversation_seen`
+- Fix: Nome mittente generico "Utente" nei messaggi — `GET /conversations/:id/messages` ora fa JOIN con tabella `users` per restituire `sender_name` e `sender_role`; frontend formatta come "Nome (Veterinario)" o "Nome (Proprietario)"
+- Fix: Conversazione owner→vet senza pet falliva con errore 400 — rimosso il check `pet_id_required_for_human` che bloccava conversazioni umane senza pet associato (il DB accetta NULL)
+- Fix: Pet non visibili a vet/owner — `GET /api/pets` e `GET /api/pets/:pet_id` ora restituiscono tutti i pet per `vet` e `super_admin`, filtrano per `owner_user_id` solo per `owner`
+
 ## v8.15.8 (2026-02-12)
 - Feat: **Messaging v2 Unified** — sistema messaggistica unificato WhatsApp-like che fonde chat umana (vet↔owner) e chatbot AI ADA in un'unica interfaccia
 - Feat: Nuova pagina conversazione unificata con lista mista (AI + umano), avatar, badge triage, stato consegna (✓/✓✓/✓✓ blu)

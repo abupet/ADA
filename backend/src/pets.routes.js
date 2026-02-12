@@ -14,9 +14,14 @@ function petsRouter({ requireAuth }) {
   const router = express.Router();
   const pool = getPool();
 
-  // List pets for current user
+  // List pets — vet/super_admin see all, owner sees own
   router.get("/api/pets", requireAuth, async (req, res) => {
     try {
+      const role = req.user?.role;
+      if (role === "vet" || role === "super_admin") {
+        const { rows } = await pool.query("SELECT * FROM pets ORDER BY updated_at DESC");
+        return res.json({ pets: rows });
+      }
       const owner_user_id = req.user?.sub;
       const { rows } = await pool.query(
         "SELECT * FROM pets WHERE owner_user_id = $1 ORDER BY updated_at DESC",
@@ -29,16 +34,19 @@ function petsRouter({ requireAuth }) {
     }
   });
 
-  // Get single pet
+  // Get single pet — vet/super_admin can access any, owner only own
   router.get("/api/pets/:pet_id", requireAuth, async (req, res) => {
     try {
-      const owner_user_id = req.user?.sub;
       const { pet_id } = req.params;
       if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
-      const { rows } = await pool.query(
-        "SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 LIMIT 1",
-        [owner_user_id, pet_id]
-      );
+      const role = req.user?.role;
+      let rows;
+      if (role === "vet" || role === "super_admin") {
+        ({ rows } = await pool.query("SELECT * FROM pets WHERE pet_id = $1 LIMIT 1", [pet_id]));
+      } else {
+        const owner_user_id = req.user?.sub;
+        ({ rows } = await pool.query("SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 LIMIT 1", [owner_user_id, pet_id]));
+      }
       if (!rows[0]) return res.status(404).json({ error: "not_found" });
       res.json(rows[0]);
     } catch (e) {
