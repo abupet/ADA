@@ -163,7 +163,7 @@ function communicationRouter({ requireAuth }) {
       // If owner_override_id is set, current user is vet, recipient is owner
       // Otherwise, current user is owner, vet_user_id is the recipient
       let ownerUserId, vetUserId;
-      if (owner_override_id && isValidUuid(owner_override_id)) {
+      if (owner_override_id && typeof owner_override_id === 'string' && owner_override_id.trim()) {
         vetUserId = userId;
         ownerUserId = owner_override_id;
       } else {
