@@ -3,7 +3,7 @@ import { login } from "./helpers/login";
 import { captureHardErrors } from "./helpers/console";
 
 // ---------------------------------------------------------------------------
-// @smoke Communication, Chatbot, and AI Settings
+// @smoke Communication (unified messaging) and AI Settings
 // ---------------------------------------------------------------------------
 
 test.describe("Communication page", () => {
@@ -24,16 +24,6 @@ test.describe("Communication page", () => {
 
     await page.locator('#sidebar-owner .nav-item[data-page="communication"]').click();
     await expect(page.locator("#page-communication")).toBeVisible({ timeout: 5_000 });
-
-    expect(errors, errors.join("\n")).toHaveLength(0);
-  });
-
-  test("@smoke Owner: chatbot page loads", async ({ page }) => {
-    const errors = captureHardErrors(page);
-    await login(page, { email: process.env.TEST_OWNER_EMAIL });
-
-    await page.locator('.nav-item[data-page="chatbot"]').click();
-    await expect(page.locator("#page-chatbot")).toBeVisible({ timeout: 5_000 });
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
@@ -64,13 +54,13 @@ test.describe("Communication nav items", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Owner: La tua assistente ADA nav item visible", async ({ page }) => {
+  test("@smoke Owner: chatbot nav item removed (unified into Messaggi)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
     const navItem = page.locator('.nav-item[data-page="chatbot"]');
-    await expect(navItem).toBeVisible();
-    await expect(navItem).toContainText("La tua assistente ADA");
+    const visible = await navItem.isVisible().catch(() => false);
+    expect(visible).toBe(false);
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });

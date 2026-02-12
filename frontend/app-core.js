@@ -298,9 +298,6 @@ async function navigateToPage(page) {
     if (page === 'communication') {
         try { if (typeof initCommunication === 'function') await initCommunication('communication-container'); } catch(e) { console.error('[CORE] initCommunication failed:', e); }
     }
-    if (page === 'chatbot') {
-        try { if (typeof initChatbot === 'function') initChatbot('chatbot-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
-    }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
         try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
@@ -309,6 +306,7 @@ async function navigateToPage(page) {
     }
     if (page === 'history') {
         try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch(e) {}
+        try { if (typeof loadPetConversations === 'function') loadPetConversations(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
     }
     syncLangSelectorsForCurrentDoc();
 

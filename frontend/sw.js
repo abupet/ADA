@@ -19,7 +19,6 @@ const STATIC_ASSETS = [
     './app-nutrition.js',
     './app-insurance.js',
     './app-communication.js',
-    './app-chatbot.js',
     './app-webrtc.js',
     './app-admin.js',
     './app-observability.js',
@@ -106,6 +105,51 @@ self.addEventListener('fetch', function(event) {
             if (event.request.mode === 'navigate') {
                 return caches.match('./index.html');
             }
+        })
+    );
+});
+
+// === Web Push notification handlers ===
+self.addEventListener('push', function(event) {
+    if (!event.data) return;
+    var payload;
+    try { payload = event.data.json(); } catch (e) { payload = { title: 'ADA', body: event.data.text() }; }
+
+    event.waitUntil(
+        self.registration.showNotification(payload.title || 'ADA', {
+            body: payload.body || '',
+            icon: payload.icon || './logo-abupet.png',
+            badge: payload.badge || './logo-abupet.png',
+            tag: payload.tag || 'ada-default',
+            renotify: true,
+            data: payload.data || {},
+            actions: [
+                { action: 'open', title: 'Apri' },
+                { action: 'dismiss', title: 'Ignora' }
+            ],
+            vibrate: [200, 100, 200]
+        })
+    );
+});
+
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+    if (event.action === 'dismiss') return;
+
+    var data = event.notification.data || {};
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
+            for (var i = 0; i < windowClients.length; i++) {
+                if ('focus' in windowClients[i]) {
+                    windowClients[i].focus();
+                    windowClients[i].postMessage({
+                        type: 'navigate_to_conversation',
+                        conversationId: data.conversationId
+                    });
+                    return;
+                }
+            }
+            return clients.openWindow('./#conversation-' + (data.conversationId || ''));
         })
     );
 });
