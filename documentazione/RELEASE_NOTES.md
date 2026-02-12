@@ -1,5 +1,21 @@
 # Release Notes (cumulative)
 
+## v8.15.8 (2026-02-12)
+- Feat: **Messaging v2 Unified** — sistema messaggistica unificato WhatsApp-like che fonde chat umana (vet↔owner) e chatbot AI ADA in un'unica interfaccia
+- Feat: Nuova pagina conversazione unificata con lista mista (AI + umano), avatar, badge triage, stato consegna (✓/✓✓/✓✓ blu)
+- Feat: ADA come utente virtuale (`ada-assistant`) — conversazioni AI con triage (green/yellow/red), follow-up chips, banner EU AI Act, spinner "ADA sta pensando..."
+- Feat: Form "Nuova conversazione" unificato con selettore destinatario (🤖 ADA, 👨‍⚕️ Veterinario, 🧑 Proprietario), pet opzionale, oggetto
+- Feat: Separatori data tra messaggi (Oggi/Ieri/data completa), ricerca conversazioni client-side
+- Feat: Reply-to per chat umane con barra preview e riferimento nel messaggio
+- Feat: Soft delete messaggi propri (human chat) con UI "Questo messaggio è stato eliminato"
+- Feat: Web Push notifications con VAPID — subscribe/unsubscribe, preferenze notifica, quiet hours, handler push/notificationclick nel service worker
+- Feat: Sezione "Conversazioni relative a questo paziente" nella pagina Archivio Sanitario
+- SQL: Migration 014_messaging_v2 — ALTER conversations (pet_id nullable, recipient_type, triage_level, message_count), ALTER comm_messages (delivery_status, reply_to, soft delete, ai_role, triage, follow_up_questions), nuove tabelle push_subscriptions/notification_preferences/conversation_seen, migrazione dati da chat_sessions/chat_messages
+- Backend: `push.routes.js` nuovo — VAPID key, subscribe, unsubscribe, preferences, sendPushToUser()
+- Backend: `communication.routes.js` riscritto v2 — integrata logica AI chatbot (OpenAI, triage parsing, model upgrade), supporto recipient_type ai/human, soft delete, delivery status, backward-compatible chatbot endpoints
+- Rimosso: pagina chatbot separata (`page-chatbot`), nav item "La tua assistente ADA", `app-chatbot.js` script tag
+- Rimosso: 'chatbot' da pagine proprietario e super_admin (ora integrato in communication)
+
 ## v8.15.7 (2026-02-12)
 - UI: Rimosso bottone "Ricarica" dalla sidebar (tutte le role)
 - Feat: Nuova pagina hub "Gestione" per super_admin — consolida 5 voci sidebar (Gestione Utenti, Gestione Tenant, Policies, Tag Dictionary, Fonti Tips) in una pagina con pulsanti

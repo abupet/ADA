@@ -73,7 +73,6 @@
                     <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
                     <div class="nav-item" data-page="photos">📷 Foto</div>
                     <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
-                    <div class="nav-item" data-page="chatbot">🤖 La tua assistente ADA</div>
                 </div>
 
                 <!-- Sidebar: TEST & DEMO (super_admin only) -->
@@ -853,7 +852,11 @@
                     </div>
                     <div id="documentUploadLoader"></div>
                     <div id="historyList" class="history-list"></div>
-                    <p class="history-note">Nota: tieni premuto un referto per mostrare la “x” e cancellarlo.</p>
+                    <p class="history-note">Nota: tieni premuto un referto per mostrare la "x" e cancellarlo.</p>
+                </div>
+                <div id="pet-conversations-section" style="margin-top: 24px;">
+                    <h3 style="font-size: 16px; color: #1e3a5f; margin-bottom: 12px;">💬 Conversazioni relative a questo paziente</h3>
+                    <div id="pet-conversations-list"></div>
                 </div>
             </div>
 
@@ -1015,15 +1018,7 @@
                 </div>
             </div>
 
-            <!-- Page: Chatbot AI Assistant -->
-            <div id="page-chatbot" class="page">
-                <div class="page-header">
-                    <h2>🤖 La tua assistente ADA</h2>
-                </div>
-                <div id="chatbot-container" data-testid="chatbot-container"></div>
-            </div>
-
-            <!-- Page: Communication (Chat owner↔vet) -->
+            <!-- Page: Communication (Unified messaging: human + AI) -->
             <div id="page-communication" class="page">
                 <div class="page-header">
                     <h2>💬 Messaggi</h2>
@@ -1674,7 +1669,6 @@
     <script src="app-nutrition.js"></script>
     <script src="app-insurance.js"></script>
     <script src="app-communication.js"></script>
-    <script src="app-chatbot.js"></script>
     <script src="app-webrtc.js"></script>
     <script src="app-admin.js"></script>
     <script src="app-observability.js"></script>

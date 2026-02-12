@@ -21,6 +21,7 @@ const { communicationRouter } = require("./communication.routes");
 const { commUploadRouter } = require("./comm-upload.routes");
 const { chatbotRouter } = require("./chatbot.routes");
 const { transcriptionRouter } = require("./transcription.routes");
+const { pushRouter } = require("./push.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -365,8 +366,10 @@ if (process.env.DATABASE_URL) {
   app.use(nutritionRouter({ requireAuth, getOpenAiKey }));
   // --- Insurance routes ---
   app.use(insuranceRouter({ requireAuth }));
-  // --- Communication routes (chat owner↔vet) ---
-  app.use(communicationRouter({ requireAuth }));
+  // --- Communication routes (unified: human + AI messaging) ---
+  app.use(communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }));
+  // --- Push notification routes ---
+  app.use(pushRouter({ requireAuth }));
   // --- Communication upload routes (attachments) ---
   app.use(commUploadRouter({ requireAuth, upload }));
   // --- Chatbot AI routes ---
