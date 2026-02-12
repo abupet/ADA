@@ -1,5 +1,9 @@
 # Release Notes (cumulative)
 
+## v8.14.1 (2026-02-12)
+- Fix: Tenant disabilitati non più visibili nei dropdown — filtro `status === 'active'` applicato in 4 punti: selettore dashboard, selettore pagina, prompt assegnazione tenant utente, auto-select catalogo
+- Fix: Conversazioni — "Impossibile caricare i messaggi" risolto; la lista conversazioni usava `c.id` invece di `c.conversation_id` (nome colonna DB), causando `onclick="openConversation('undefined')"`
+
 ## v8.14.0 (2026-02-12)
 - Feat: Test suite expansion — da ~57 a ~278 test E2E (221 nuovi), organizzati in 5 tier: smoke, regression, deep, stress, long
 - Feat: 24 nuovi file `deep.*.spec.ts` coprono navigazione, pet lifecycle, SOAP workflow, recording, documenti, owner flows, admin dashboard, settings, communication, chatbot, nutrition, insurance, consent center, super admin, seed engine, diary/Q&A, foto/vitali/farmaci, tips, security, error handling, performance, PWA/offline, responsive UI, accessibilità

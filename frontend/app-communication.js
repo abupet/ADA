@@ -220,7 +220,7 @@ function _commRenderConvList(conversations) {
         var unread = c.unread_count || 0;
         var stCls = c.status === 'closed' ? 'comm-status-closed' : 'comm-status-open';
         var stLbl = c.status === 'closed' ? 'Chiusa' : 'Aperta';
-        html += '<li class="comm-conv-card" data-testid="comm-conv-card" onclick="openConversation(\'' + c.id + '\')">' +
+        html += '<li class="comm-conv-card" data-testid="comm-conv-card" onclick="openConversation(\'' + c.conversation_id + '\')">' +
             '<div class="comm-conv-info"><div class="comm-conv-pet">' + pet +
             '<span class="comm-status-badge ' + stCls + '">' + stLbl + '</span></div>' +
             (subj ? '<div class="comm-conv-subject">' + subj + '</div>' : '') +
