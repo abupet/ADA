@@ -109,17 +109,17 @@ INSERT INTO comm_messages (
     delivery_status, created_at
 )
 SELECT
-    message_id,
-    session_id,
-    CASE WHEN role = 'user' THEN owner_user_id ELSE 'ada-assistant' END,
+    cm.message_id,
+    cm.session_id,
+    CASE WHEN cm.role = 'user' THEN cs.owner_user_id ELSE 'ada-assistant' END,
     'text',
-    content,
-    role,
-    triage_level,
-    triage_action,
-    COALESCE(follow_up_questions, '[]'),
+    cm.content,
+    cm.role,
+    cm.triage_level,
+    cm.triage_action,
+    COALESCE(cm.follow_up_questions, '[]'),
     'read',
-    created_at
+    cm.created_at
 FROM chat_messages cm
 JOIN chat_sessions cs ON cs.session_id = cm.session_id
 ON CONFLICT (message_id) DO NOTHING;
