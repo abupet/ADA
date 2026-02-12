@@ -1,5 +1,8 @@
 # Release Notes (cumulative)
 
+## v8.14.3 (2026-02-12)
+- Fix (critico): Messaggi — vet crea conversazione con owner ma l'owner non la vede; `owner_override_id` veniva ignorato perché il backend validava con `isValidUuid()` ma gli user ID sono stringhe TEXT (es. `test-owner-001`), non UUID; rimosso il check UUID e usato validazione stringa generica
+
 ## v8.14.2 (2026-02-12)
 - Fix (critico): Messaggi — invio messaggio falliva sempre con errore 400; il frontend inviava `{ body: text }` ma il backend richiede `{ content: text }`
 - Fix: Messaggi — bolle chat vuote; `_commRenderBubble` leggeva `msg.body` ma il DB restituisce `msg.content`; aggiunto fallback `msg.content || msg.body || msg.text`
