@@ -44,11 +44,14 @@ export async function login(
   // --- Fast path: cached token (no API call) ---
   const cached = tokenCache.get(email);
   if (cached) {
+    // The app's checkSession() requires both ada_auth_token AND ada_session
+    // to auto-login on page load (see app-core.js checkSession).
     await page.addInitScript(
-      (args: { key: string; token: string }) => {
-        localStorage.setItem(args.key, args.token);
+      (args: { token: string; session: string }) => {
+        localStorage.setItem("ada_auth_token", args.token);
+        localStorage.setItem("ada_session", args.session);
       },
-      { key: "ada_auth_token", token: cached }
+      { token: cached, session: btoa(email + ":" + Date.now()) }
     );
     await gotoApp(page);
     await expect(page.locator("#appContainer")).toBeVisible({ timeout: 15_000 });
