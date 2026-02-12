@@ -1607,7 +1607,7 @@ function dashboardRouter({ requireAuth }) {
         let items = req.body?.items;
         if (!items || req.body?.all) {
           const { rows } = await pool.query(
-            "SELECT promo_item_id, name, image_url, product_url FROM promo_items WHERE tenant_id = $1 AND status = 'published' ORDER BY name",
+            "SELECT promo_item_id, name, image_url, product_url, image_cached_hash FROM promo_items WHERE tenant_id = $1 AND status = 'published' ORDER BY name",
             [tenantId]
           );
           items = rows;
@@ -1638,6 +1638,36 @@ function dashboardRouter({ requireAuth }) {
               [item.promo_item_id, JSON.stringify({ image_url_status: result.image_url_status, product_url_status: result.product_url_status })]
             );
           } catch (_e) {}
+
+          // Auto-cache image if URL is valid and not yet cached
+          if (result.image_url_status === "ok" && !item.image_cached_hash && item.image_url) {
+            try {
+              const crypto = require("crypto");
+              const imgCtrl = new AbortController();
+              const imgTimeout = setTimeout(() => imgCtrl.abort(), 10000);
+              const imgResp = await fetch(item.image_url, {
+                signal: imgCtrl.signal,
+                headers: { "User-Agent": "ADA-ImageCache/1.0" },
+              });
+              clearTimeout(imgTimeout);
+              if (imgResp.ok) {
+                const ct = (imgResp.headers.get("content-type") || "").split(";")[0].trim();
+                if (ct.startsWith("image/")) {
+                  const buf = Buffer.from(await imgResp.arrayBuffer());
+                  if (buf.length <= 5 * 1024 * 1024) {
+                    const imgHash = crypto.createHash("sha256").update(buf).digest("hex");
+                    await pool.query(
+                      `UPDATE promo_items SET image_cached = $2, image_cached_mime = $3,
+                       image_cached_at = NOW(), image_cached_hash = $4 WHERE promo_item_id = $1`,
+                      [item.promo_item_id, buf, ct, imgHash]
+                    );
+                    result.image_auto_cached = true;
+                  }
+                }
+              }
+            } catch (_e) { /* non-blocking */ }
+          }
+
           results.push(result);
         }
         res.json({ results, checked_at: new Date().toISOString() });
@@ -1663,7 +1693,10 @@ function dashboardRouter({ requireAuth }) {
         const { promo_item_id, test_pet } = req.body || {};
         if (!promo_item_id) return res.status(400).json({ error: "promo_item_id_required" });
         const { rows } = await pool.query(
-          "SELECT * FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1",
+          `SELECT promo_item_id, tenant_id, name, category, species, lifecycle_target,
+             description, extended_description, image_url, product_url, tags_include, tags_exclude,
+             priority, status, service_type, nutrition_data, insurance_data, created_at, updated_at
+           FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1`,
           [promo_item_id, tenantId]
         );
         if (!rows[0]) return res.status(404).json({ error: "not_found" });

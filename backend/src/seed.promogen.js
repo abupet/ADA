@@ -2,6 +2,8 @@
 // PR 15: Brand search, web scraping, and product import for the promo seed engine.
 
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 // ---------------------------------------------------------------------------
 // 1. KNOWN_BRAND_URLS map
@@ -881,6 +883,25 @@ async function importProductsToCatalog(pool, products, options) {
         );
       } catch (_linkErr) {
         // Non-fatal: the item is still in the catalog, just not linked
+      }
+
+      // Auto-cache local placeholder images during seed
+      if (product.image_url && product.image_url.startsWith('/api/seed-assets/')) {
+        try {
+          const imgPath = path.join(__dirname, product.image_url.replace('/api/seed-assets/', 'seed-assets/'));
+          if (fs.existsSync(imgPath)) {
+            const buf = fs.readFileSync(imgPath);
+            const ext = path.extname(imgPath).toLowerCase();
+            const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+            const mime = mimeMap[ext] || 'image/png';
+            const hash = crypto.createHash("sha256").update(buf).digest("hex");
+            await pool.query(
+              `UPDATE promo_items SET image_cached = $2, image_cached_mime = $3,
+               image_cached_at = NOW(), image_cached_hash = $4 WHERE promo_item_id = $1`,
+              [promoItemId, buf, mime, hash]
+            );
+          }
+        } catch (_e) { /* non-blocking */ }
       }
 
       imported++;

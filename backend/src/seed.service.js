@@ -1023,7 +1023,10 @@ async function _runDemoJob(pool, config, openAiKey) {
     let tenantProducts = [];
     try {
       const { rows } = await pool.query(
-        "SELECT * FROM promo_items WHERE tenant_id = $1 AND status = 'published' LIMIT 50",
+        `SELECT promo_item_id, tenant_id, name, category, species, lifecycle_target,
+           description, extended_description, image_url, product_url, tags_include, tags_exclude,
+           priority, status, service_type, nutrition_data, insurance_data, created_at, updated_at
+         FROM promo_items WHERE tenant_id = $1 AND status = 'published' LIMIT 50`,
         [tenantId]
       );
       tenantProducts = rows;
@@ -1205,24 +1208,40 @@ async function _runDemoJob(pool, config, openAiKey) {
             const score = await computeRiskScore(pool, pet._petId);
             _log(`Risk score for ${pet.name}: ${score.total_score} (${score.risk_class})`);
 
-            // Create an insurance policy proposal in "quoted" status
-            const basePremium = 15.0;
+            // Load best insurance plan from catalog
+            let planItem = null;
+            try {
+              const planRes = await pool.query(
+                `SELECT promo_item_id, insurance_data FROM promo_items
+                 WHERE tenant_id = $1 AND service_type = 'insurance' AND status = 'published'
+                 ORDER BY priority DESC LIMIT 1`,
+                [tenantId]
+              );
+              planItem = planRes.rows[0] || null;
+            } catch (_e) { /* ignore */ }
+
+            const insData = planItem?.insurance_data || {};
+            const basePremium = insData.base_premium_monthly || 15.0;
             const monthlyPremium = Math.round(basePremium * (score.price_multiplier || 1) * 100) / 100;
             const policyId = 'pol_demo_' + randomUUID().slice(0, 8);
 
             await pool.query(
               `INSERT INTO insurance_policies (policy_id, pet_id, owner_user_id, tenant_id, promo_item_id, status, monthly_premium, risk_score_id, coverage_data)
-               VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8)`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
               [
                 policyId, pet._petId, ownerUserId, tenantId,
+                planItem?.promo_item_id || null,
                 pet._demoLabel === 'clinical_adult' ? 'active' : 'quoted',
                 monthlyPremium,
                 score.score_id || null,
                 JSON.stringify({
-                  type: 'base',
-                  annual_limit: 5000,
-                  deductible: 100,
-                  coverage_pct: 80,
+                  type: insData.plan_tier || 'base',
+                  provider: insData.provider || 'generic',
+                  plan_label_it: insData.plan_label_it || 'Base',
+                  annual_limit: insData.annual_limit || 5000,
+                  deductible: insData.deductible || 100,
+                  coverage_pct: insData.coverage_pct || 80,
+                  prevention_budget: insData.prevention_budget || 0,
                 }),
               ]
             );

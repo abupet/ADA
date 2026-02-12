@@ -457,7 +457,12 @@
         var ctaUrl = rec.ctaUrl || rec.infoUrl || null;
 
         // Build card HTML
-        var imageUrl = rec.imageUrl || rec.image_url || null;
+        var imageUrl = null;
+        if (rec.promo_item_id) {
+            imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/promo-items/' + rec.promo_item_id + '/image';
+        } else {
+            imageUrl = rec.imageUrl || rec.image_url || null;
+        }
         if (!imageUrl) {
             var _idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
             imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/seed-assets/placeholder-prodotti/Prodotto_' + _idx + '.png';
