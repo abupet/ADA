@@ -6,7 +6,8 @@ import { captureHardErrors } from "./helpers/console";
 // @smoke @sync Pull sync: mock server data -> verify client updates
 // ---------------------------------------------------------------------------
 
-test.describe("Pull sync: server data flows to client", () => {
+// SKIPPED: sync/IndexedDB removed in v8.15.1 (PR 2/6). Will be deleted/rewritten in PR 6.
+test.describe.skip("Pull sync: server data flows to client", () => {
 
   test("@smoke @sync Pull with pet.upsert changes updates local IndexedDB", async ({ page }) => {
     const errors = captureHardErrors(page);

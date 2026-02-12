@@ -14,7 +14,8 @@ async function navigateTo(page: any, pageName: string) {
   await page.evaluate((p: string) => (window as any).navigateToPage(p), pageName);
 }
 
-test.describe("Outbox coalescing", () => {
+// SKIPPED: sync/IndexedDB removed in v8.15.1 (PR 2/6). Will be deleted/rewritten in PR 6.
+test.describe.skip("Outbox coalescing", () => {
 
   test("@smoke @sync Create + multiple updates coalesce into single push with all data", async ({ page, context }) => {
     const errors = captureHardErrors(page);

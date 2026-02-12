@@ -24,7 +24,8 @@ async function countOutbox(page: any): Promise<number> {
   });
 }
 
-test("@smoke @sync Pets sync: offline create -> online push clears outbox + migrates tmp_id", async ({ page, context }) => {
+// SKIPPED: sync/IndexedDB removed in v8.15.1 (PR 2/6). Will be deleted/rewritten in PR 6.
+test.skip("@smoke @sync Pets sync: offline create -> online push clears outbox + migrates tmp_id", async ({ page, context }) => {
   const errors = captureHardErrors(page);
 
   // Mock backend push/pull endpoints so test is deterministic in local environment
