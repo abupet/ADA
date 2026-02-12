@@ -1152,9 +1152,7 @@
                 <div class="page-header">
                     <h2>🛠 Debug</h2>
                 </div>
-                <div id="debug-audit-card" class="card" style="margin-bottom:15px;display:none;">
-                    <button class="btn btn-secondary" style="padding:10px 16px;font-size:14px;display:flex;align-items:center;gap:8px;" onclick="navigateToPage('superadmin-audit')">📋 Audit Log</button>
-                </div>
+                <!-- Audit Log button moved to debug-system-tools card -->
                 <div class="card" style="margin-bottom:15px;">
                     <div id="roleToggleLabelBlock" style="margin-bottom:8px;">
                         <label style="font-weight:600; display:block;">Ruolo attivo</label>
@@ -1251,9 +1249,10 @@
                 <div class="card" data-testid="debug-system-tools">
                     <div style="display:flex; flex-wrap:wrap; gap:8px;">
                         <button class="btn btn-primary" onclick="openCostsPage()" data-testid="open-costs-button">💰 Consumo API</button>
+                        <button class="btn btn-secondary" onclick="showApiMetrics()">📡 Metriche API</button>
+                        <button class="btn btn-secondary" id="debug-audit-btn" style="display:none;" onclick="navigateToPage('superadmin-audit')">📋 Audit Log</button>
                         <button class="btn btn-secondary" onclick="exportLogFile()" data-testid="export-log-button">📄 Scarica ADA.log</button>
                         <button class="btn btn-secondary" onclick="clearLog(); showToast('Log cancellato', 'success');" data-testid="clear-log-button">Cancella ADA.log</button>
-                        <button class="btn btn-secondary" onclick="showApiMetrics()">📡 Metriche API</button>
                     </div>
                 </div>
                 <div id="debugTestTools" class="card" style="display:none;">

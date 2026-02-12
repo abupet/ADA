@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.15.11 (2026-02-12)
+- Fix: **Risposta ADA non visibile** — il frontend cercava `data.ai_message` ma il backend restituisce `data.assistant_message`; aggiunto al fallback chain, ora la risposta AI appare immediatamente nella chat
+- Fix: **Centro Privacy flag non persistenti** — i toggle Promozioni/Nutrizione/Assicurazione erano sempre OFF perché il frontend si aspettava un array `consents[]` ma il backend restituisce un oggetto piatto; aggiunto parsing per entrambi i formati (flat + array)
+- Fix: **Filtro catalogo con paginazione** — il server troncava a 100 item max, impedendo al filtro client-side di operare sull'intero catalogo; limite aumentato a 5000
+- Fix: **Pulsante Audit Log nella sezione Debug** — spostato dal card separato al gruppo pulsanti sistema, nell'ordine: Consumo API, Metriche API, Audit Log, Scarica/Cancella ADA.log
+- Fix: **Identificazione mittente nei messaggi** — ora tutti i messaggi (anche i propri) mostrano "Nome (Ruolo)" es. "Paolo Esposito (Veterinario)"; aggiunto sender_name e sender_role anche nel render ottimistico
+- Fix: **ADA troppo insistente nel suggerire il veterinario** — rimossa regola "Raccomanda SEMPRE la consultazione veterinaria"; ADA ora suggerisce la visita SOLO con triage giallo/rosso; per triage verde il disclaimer permanente è sufficiente
+
 ## v8.15.10 (2026-02-12)
 - Feat: **WebSocket delivery events con persistenza DB** — gli eventi `message_delivered`, `conversation_seen` e `message_read` ora aggiornano il database (`comm_messages.delivery_status`, `conversation_seen` table) invece di essere solo broadcast; lo stato di consegna (✓/✓✓/✓✓ blu) riflette lo stato reale persistito
 - Feat: **Aggiornamento `last_seen_at` su disconnect** — quando un utente si disconnette dal WebSocket, `users.last_seen_at` viene aggiornato per tracciare l'ultimo accesso
