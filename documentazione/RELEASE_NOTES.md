@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v8.15.4 (2026-02-12)
+- Feat: Rimossi file route sync backend: `sync.routes.js` (196 righe) e `pets.sync.routes.js` (232 righe)
+- Fix: `server.js` — rimossi import e mounting delle route sync, rimosso JSON limit 50MB per sync push
+- Rimozione sync offline (PR 5/6)
+
 ## v8.15.3 (2026-02-12)
 - Feat: Eliminati 5 file sync obsoleti: `sync-engine.js` (1094 righe), `pets-sync-step4.js` (266), `pets-sync-bootstrap.js` (113), `pets-sync-merge.js` (136), `pets-coalesce.js` (102) — totale ~1711 righe rimosse
 - Fix: `index.html` — rimossi 5 script tag sync, rinominato "Sincronizza" → "Ricarica" nella sidebar, rimosso bottone "Diagnostica Sync" dalle impostazioni
