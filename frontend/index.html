@@ -89,17 +89,11 @@
                     <div class="nav-item" data-page="admin-catalog">Catalogo</div>
                     <div class="nav-item" data-page="admin-campaigns">Campagne</div>
                     <div class="nav-item" data-page="admin-wizard">Importa file</div>
-                    <div class="nav-item" id="nav-superadmin-tenants" data-page="superadmin-tenants" style="display:none;">Gestione Tenant</div>
-                    <div class="nav-item" id="nav-superadmin-users" data-page="superadmin-users" style="display:none;">Gestione Utenti</div>
-                    <div class="nav-item" id="nav-superadmin-policies" data-page="superadmin-policies" style="display:none;">Policies</div>
-                    <div class="nav-item" id="nav-superadmin-tags" data-page="superadmin-tags" style="display:none;">Tag Dictionary</div>
-                    <div class="nav-item" id="nav-superadmin-audit" data-page="superadmin-audit" style="display:none;">Audit Log</div>
-                    <div class="nav-item" id="nav-superadmin-sources" data-page="superadmin-sources" style="display:none;">Fonti Tips</div>
                 </div>
 
                 <div class="nav-section">SISTEMA</div>
+                <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;">🔧 Gestione</div>
                 <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
-                <div class="nav-item" onclick="refreshPetsFromServer(true); setSidebarOpen(false);">🔄 Ricarica</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;">🛠 Debug</div>
                 <div class="nav-item" onclick="logout()">🚪 Esci</div>
             </nav>
@@ -1082,6 +1076,22 @@
                 </div>
             </div>
 
+            <!-- Page: Super Admin Gestione Hub -->
+            <div id="page-superadmin-gestione" class="page">
+                <div class="page-header">
+                    <h2>🔧 Gestione</h2>
+                </div>
+                <div class="card" style="max-width:500px;">
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-users')">👥 Gestione Utenti</button>
+                        <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-tenants')">🏢 Gestione Tenant</button>
+                        <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-policies')">📋 Policies</button>
+                        <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-tags')">🏷️ Tag Dictionary</button>
+                        <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-sources')">💡 Fonti Tips</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Page: Super Admin Tenants -->
             <div id="page-superadmin-tenants" class="page">
                 <div class="page-header">
@@ -1146,6 +1156,9 @@
             <div id="page-debug" class="page" style="display:none;">
                 <div class="page-header">
                     <h2>🛠 Debug</h2>
+                </div>
+                <div id="debug-audit-card" class="card" style="margin-bottom:15px;display:none;">
+                    <button class="btn btn-secondary" style="padding:10px 16px;font-size:14px;display:flex;align-items:center;gap:8px;" onclick="navigateToPage('superadmin-audit')">📋 Audit Log</button>
                 </div>
                 <div class="card" style="margin-bottom:15px;">
                     <div id="roleToggleLabelBlock" style="margin-bottom:8px;">

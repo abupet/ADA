@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.15.6';
+const ADA_VERSION = '8.15.7';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -98,7 +98,7 @@ const ROLE_PERMISSIONS = {
     },
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
-                'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
+                'superadmin-gestione', 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
                 'superadmin-users', 'superadmin-sources', 'settings', 'debug',
                 'patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication', 'chatbot'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',

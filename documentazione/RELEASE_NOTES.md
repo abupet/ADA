@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.15.7 (2026-02-12)
+- UI: Rimosso bottone "Ricarica" dalla sidebar (tutte le role)
+- Feat: Nuova pagina hub "Gestione" per super_admin — consolida 5 voci sidebar (Gestione Utenti, Gestione Tenant, Policies, Tag Dictionary, Fonti Tips) in una pagina con pulsanti
+- UI: Audit Log spostato nella pagina Debug (visibile solo a super_admin)
+- Fix: Filtri catalogo (priority, image, ext_desc, category, species) ora forzano reload completo da API invece di re-render parziale — risolve bug con dati incompleti quando si era su pagina 2+
+- Fix: Preview catalogo capped a 1000 prodotti con indicatore conteggio totale
+- Fix: Chatbot "Nuova conversazione" — aggiunto fallback `getCurrentPetId()` se nessun pet selezionato, e fix parsing `session_id` dalla risposta backend
+- UI: Pagina acquisto simulata ridisegnata con layout e-commerce moderno (immagine hero, card descrizione, banner disclaimer discreto)
+- Text: "Consigliato per il tuo pet" rinominato in "Consigliato per il tuo amico pet" (4 file)
+
 ## v8.15.6 (2026-02-12)
 - Fix: Test login token caching — cached JWT tokens in-memory per email so only the first login per role hits the API; subsequent logins inject the token via `addInitScript` (zero API calls), avoiding production rate limiter (60 req/min) failures when running the full 216-test suite
 

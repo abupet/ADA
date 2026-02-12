@@ -613,7 +613,7 @@
         html += '<span style="font-size:12px;color:#888;">Prodotto ' + (idx + 1) + ' di ' + _wizardParsedItems.length + '</span>';
         html += '<button class="btn btn-secondary" style="padding:4px 10px;" onclick="wizardPreviewNav(1)">&gt;</button>';
         html += '</div>';
-        html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo pet</span>';
+        html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo amico pet</span>';
         if (p.image_url) {
             html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _escapeHtml(p.image_url) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
         }
@@ -1495,11 +1495,11 @@
         if (container && tenantId) _renderCatalogPage(container, tenantId);
     }
     function filterCatalogServiceType(val) { _catalogServiceTypeFilter = val; loadAdminCatalog(); }
-    function filterCatalogPriority(val) { _catalogPriorityFilter = val; _rerenderCatalog(); }
-    function filterCatalogImage(val) { _catalogImageFilter = val; _rerenderCatalog(); }
-    function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; _rerenderCatalog(); }
-    function filterCatalogCategory(val) { _catalogCategoryFilter = val; _rerenderCatalog(); }
-    function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; _rerenderCatalog(); }
+    function filterCatalogPriority(val) { _catalogPriorityFilter = val; _catalogPage = 1; loadAdminCatalog(); }
+    function filterCatalogImage(val) { _catalogImageFilter = val; _catalogPage = 1; loadAdminCatalog(); }
+    function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; _catalogPage = 1; loadAdminCatalog(); }
+    function filterCatalogCategory(val) { _catalogCategoryFilter = val; _catalogPage = 1; loadAdminCatalog(); }
+    function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; _catalogPage = 1; loadAdminCatalog(); }
 
     function showCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = ''; }
     function hideCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = 'none'; }
@@ -2638,9 +2638,12 @@
     // =========================================================================
 
     var _previewIndex = 0;
+    var _previewTotalBeforeCap = 0;
 
     function previewPromoItem(itemId) {
         _filteredPreviewItems = _getFilteredCatalogItems();
+        _previewTotalBeforeCap = _filteredPreviewItems.length;
+        if (_filteredPreviewItems.length > 1000) _filteredPreviewItems = _filteredPreviewItems.slice(0, 1000);
         if (itemId) {
             var idx = _filteredPreviewItems.findIndex(function (i) { return i.promo_item_id === itemId; });
             if (idx >= 0) _previewIndex = idx;
@@ -2660,14 +2663,17 @@
             // Navigation
             html.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">');
             html.push('<button class="btn btn-secondary" onclick="_previewNav(-1)" style="padding:6px 14px;">Precedente</button>');
-            html.push('<span style="font-size:12px;color:#888;">Prodotto ' + (_previewIndex + 1) + ' di ' + _filteredPreviewItems.length + '</span>');
+            var _countLabel = (typeof _previewTotalBeforeCap !== 'undefined' && _previewTotalBeforeCap > _filteredPreviewItems.length)
+                ? _filteredPreviewItems.length + ' (primi 1000 di ' + _previewTotalBeforeCap + ')'
+                : '' + _filteredPreviewItems.length;
+            html.push('<span style="font-size:12px;color:#888;">Prodotto ' + (_previewIndex + 1) + ' di ' + _countLabel + '</span>');
             html.push('<button class="btn btn-secondary" onclick="_previewNav(1)" style="padding:6px 14px;">Successivo</button>');
             html.push('</div>');
 
             // CARD PREVIEW
             html.push('<div style="max-width:400px;margin:0 auto;">');
             html.push('<div class="promo-card" style="opacity:1;display:block;">');
-            html.push('<span class="promo-badge">Consigliato per il tuo pet</span>');
+            html.push('<span class="promo-badge">Consigliato per il tuo amico pet</span>');
 
             if (item.image_url) {
                 html.push('<img src="' + _escapeHtml(item.image_url) + '" alt="' + _escapeHtml(item.name) + '" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">');
@@ -2732,29 +2738,43 @@
 
     function showPurchasePlaceholder(itemId) {
         var item = _catalogItems.find(function(i) { return i.promo_item_id === itemId; }) || {};
-        _showModal('Pagina di Acquisto (Simulata)', function(container) {
-            container.innerHTML = '<div style="text-align:center;padding:20px;">' +
-                '<div style="color:#dc2626;font-weight:600;border:2px dashed #dc2626;padding:10px;border-radius:8px;margin-bottom:20px;">' +
-                'Questa è una pagina simulata per test. Nessun acquisto reale verrà effettuato.</div>' +
-                '<div style="max-width:400px;margin:0 auto;text-align:left;">' +
-                (item.image_url ? '<img src="' + _escapeHtml(item.image_url) + '" style="width:100%;border-radius:8px;margin-bottom:12px;" onerror="this.style.display=\'none\'">' : '') +
-                '<h4 style="margin:0 0 8px;">' + _escapeHtml(item.name || '') + '</h4>' +
-                '<p style="color:#555;font-size:13px;">' + _escapeHtml(item.description || '') + '</p><hr>' +
-                '<p><strong>Prezzo:</strong> €XX,XX (placeholder)</p>' +
-                '<label>Quantità: <input type="number" value="1" min="1" max="10" style="width:60px;padding:4px;"></label><hr>' +
-                '<h4>Dati di spedizione</h4>' +
-                '<input placeholder="Nome e Cognome" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
-                '<input placeholder="Indirizzo" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
-                '<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
-                '<input placeholder="Città" style="flex:2;padding:8px;border:1px solid #ddd;border-radius:6px;"></div><hr>' +
-                '<h4>Metodo di pagamento</h4>' +
-                '<input placeholder="Numero carta" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
-                '<div style="display:flex;gap:8px;">' +
-                '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
-                '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
-                '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
-                '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="previewPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')">← Torna all\'anteprima</button>' +
-                '</div></div>';
+        _showModal('Acquisto Prodotto', function(container) {
+            var h = [];
+            h.push('<div style="max-width:480px;margin:0 auto;">');
+            // Simulated banner
+            h.push('<div style="background:#fef3c7;color:#92400e;font-size:12px;text-align:center;padding:6px 12px;border-radius:6px;margin-bottom:16px;">Pagina simulata — nessun acquisto reale verrà effettuato</div>');
+            // Product image
+            if (item.image_url) {
+                h.push('<div style="text-align:center;margin-bottom:16px;"><img src="' + _escapeHtml(item.image_url) + '" style="max-width:100%;max-height:280px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.1);object-fit:contain;" onerror="this.style.display=\'none\'"></div>');
+            }
+            // Product name
+            h.push('<h3 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1e293b;text-align:center;">' + _escapeHtml(item.name || '') + '</h3>');
+            // Description card
+            if (item.description) {
+                h.push('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:16px;font-size:14px;color:#475569;line-height:1.5;">' + _escapeHtml(item.description) + '</div>');
+            }
+            // Price & quantity
+            h.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px 16px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;">');
+            h.push('<span style="font-size:18px;font-weight:700;color:#16a34a;">€XX,XX</span>');
+            h.push('<label style="font-size:13px;color:#555;">Quantità: <input type="number" value="1" min="1" max="10" style="width:54px;padding:6px;border:1px solid #d1d5db;border-radius:6px;text-align:center;"></label>');
+            h.push('</div>');
+            // Shipping
+            h.push('<div style="margin-bottom:16px;"><div style="font-weight:600;font-size:14px;color:#334155;margin-bottom:8px;">📦 Spedizione</div>');
+            h.push('<input placeholder="Nome e Cognome" style="width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<input placeholder="Indirizzo" style="width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<input placeholder="Città" style="flex:2;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;"></div></div>');
+            // Payment
+            h.push('<div style="margin-bottom:16px;"><div style="font-weight:600;font-size:14px;color:#334155;margin-bottom:8px;">💳 Pagamento</div>');
+            h.push('<input placeholder="Numero carta" style="width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<div style="display:flex;gap:8px;">');
+            h.push('<input placeholder="MM/AA" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<input placeholder="CVV" style="width:80px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;"></div></div>');
+            // Buttons
+            h.push('<button class="btn btn-success" style="width:100%;padding:14px;font-size:15px;font-weight:600;border-radius:10px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>');
+            h.push('<button class="btn btn-secondary" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;" onclick="previewPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')">← Torna all\'anteprima</button>');
+            h.push('</div>');
+            container.innerHTML = h.join('');
         });
     }
 
