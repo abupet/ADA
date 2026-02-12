@@ -138,7 +138,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   router.get("/api/communication/settings", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-      await pool.query("INSERT INTO communication_settings (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", [userId]);
+      await pool.query("INSERT INTO communication_settings (user_id, chatbot_enabled) VALUES ($1, true) ON CONFLICT (user_id) DO NOTHING", [userId]);
       const { rows } = await pool.query(
         "SELECT user_id, chatbot_enabled, auto_transcription_enabled, created_at, updated_at FROM communication_settings WHERE user_id = $1 LIMIT 1",
         [userId]
@@ -228,7 +228,6 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         vetUserId = "ada-assistant";
       } else {
         // Human conversation (existing logic)
-        if (!pet_id) return res.status(400).json({ error: "pet_id_required_for_human" });
         if (owner_override_id && typeof owner_override_id === "string" && owner_override_id.trim()) {
           vetUserId = userId;
           ownerUserId = owner_override_id;
@@ -371,10 +370,10 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
       let query, values;
       if (before && isValidUuid(before)) {
-        query = "SELECT * FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL AND created_at < (SELECT created_at FROM comm_messages WHERE message_id = $2) ORDER BY created_at DESC LIMIT $3";
+        query = "SELECT m.*, u.display_name AS sender_name, u.base_role AS sender_role FROM comm_messages m LEFT JOIN users u ON u.user_id = m.sender_id WHERE m.conversation_id = $1 AND m.deleted_at IS NULL AND m.created_at < (SELECT created_at FROM comm_messages WHERE message_id = $2) ORDER BY m.created_at DESC LIMIT $3";
         values = [id, before, limit];
       } else {
-        query = "SELECT * FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2";
+        query = "SELECT m.*, u.display_name AS sender_name, u.base_role AS sender_role FROM comm_messages m LEFT JOIN users u ON u.user_id = m.sender_id WHERE m.conversation_id = $1 AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT $2";
         values = [id, limit];
       }
       const { rows } = await pool.query(query, values);
@@ -563,6 +562,30 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
     } catch (e) {
       if (e.code === "42P01") return res.status(404).json({ error: "not_found" });
       console.error("PATCH /api/communication/messages/:id/read error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // POST /api/communication/conversations/:id/read — mark all messages in a conversation as read
+  router.post("/api/communication/conversations/:id/read", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
+      const userId = req.user.sub;
+      const conversation = await getConversationIfAllowed(id, userId);
+      if (!conversation) return res.status(404).json({ error: "not_found" });
+      await pool.query(
+        "UPDATE comm_messages SET is_read = true, read_at = NOW(), delivery_status = 'read' WHERE conversation_id = $1 AND sender_id != $2 AND is_read = false",
+        [id, userId]
+      );
+      await pool.query(
+        "INSERT INTO conversation_seen (conversation_id, user_id, last_seen_at) VALUES ($1, $2, NOW()) ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_seen_at = NOW()",
+        [id, userId]
+      );
+      res.json({ success: true });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ success: true });
+      console.error("POST /api/communication/conversations/:id/read error", e);
       res.status(500).json({ error: "server_error" });
     }
   });

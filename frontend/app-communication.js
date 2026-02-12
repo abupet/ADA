@@ -648,7 +648,8 @@ function _commRenderBubble(msg, isOwn) {
     var cls = isOwn ? 'comm-msg-own' : (isAiMsg ? 'comm-msg-ai' : 'comm-msg-other');
     var sender = '';
     if (!isOwn) {
-        sender = isAiMsg ? '\uD83E\uDD16 ADA' : _commEscape(msg.sender_name || msg.display_name || 'Utente');
+        var roleLabel = msg.sender_role === 'vet' ? 'Veterinario' : (msg.sender_role === 'owner' ? 'Proprietario' : '');
+        sender = isAiMsg ? '\uD83E\uDD16 ADA' : _commEscape((msg.sender_name || 'Utente') + (roleLabel ? ' (' + roleLabel + ')' : ''));
     }
 
     var html = '<div class="comm-msg ' + cls + '" data-testid="comm-msg" data-msg-id="' + (msg.message_id || '') + '">';
