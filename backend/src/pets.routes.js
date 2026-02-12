@@ -65,13 +65,24 @@ function petsRouter({ requireAuth }) {
       if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
       if (!name || !species) return res.status(400).json({ error: "name_and_species_required" });
 
+      // Rich data fields stored in extra_data JSONB column
+      const richFields = ["vitals_data", "medications", "history_data", "lifestyle",
+                          "photos", "photos_count", "owner_name", "owner_phone",
+                          "microchip", "visit_date", "owner_diary"];
+      const extraData = {};
+      for (const k of richFields) {
+        if (req.body[k] !== undefined) extraData[k] = req.body[k];
+      }
+      if (req.body.updated_at) extraData.updated_at = req.body.updated_at;
+      const extraDataJson = Object.keys(extraData).length > 0 ? JSON.stringify(extraData) : null;
+
       const { rows } = await pool.query(
         `INSERT INTO pets
-          (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
+          (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, extra_data, version)
          VALUES
-          ($1,$2,$3,$4,$5,$6,$7,$8,$9,1)
+          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1)
          RETURNING *`,
-        [pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes]
+        [pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, extraDataJson]
       );
 
       // change log
@@ -126,14 +137,26 @@ function petsRouter({ requireAuth }) {
         if (Object.prototype.hasOwnProperty.call(patch, k)) next[k] = patch[k];
       }
 
+      // Rich data: merge into extra_data JSONB
+      let extraData = current.extra_data || {};
+      if (typeof extraData === 'string') try { extraData = JSON.parse(extraData); } catch (_) { extraData = {}; }
+      const richFields = ["vitals_data", "medications", "history_data", "lifestyle",
+                          "photos", "photos_count", "owner_name", "owner_phone",
+                          "microchip", "visit_date", "owner_diary"];
+      for (const k of richFields) {
+        if (patch[k] !== undefined) extraData[k] = patch[k];
+      }
+      if (patch.updated_at) extraData.updated_at = patch.updated_at;
+
       const upd = await client.query(
         `UPDATE pets SET
           name=$3, species=$4, breed=$5, sex=$6, birthdate=$7, weight_kg=$8, notes=$9,
+          extra_data=$10,
           version = version + 1,
           updated_at = NOW()
          WHERE owner_user_id=$1 AND pet_id=$2
          RETURNING *`,
-        [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes]
+        [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes, JSON.stringify(extraData)]
       );
 
       await client.query(

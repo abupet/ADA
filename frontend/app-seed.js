@@ -83,8 +83,35 @@
 
                 if (data.status === 'completed') {
                     if (fill) fill.style.width = '100%';
-                    if (phaseText) phaseText.textContent = 'Completato!';
+                    var completionMsg = 'Completato!';
+                    if (data.stats && data.stats.petsInserted != null) {
+                        completionMsg = 'Completato! ' + data.stats.petsInserted + ' pet creati, ' + (data.stats.petChangesVerified || 0) + ' record sync verificati';
+                    }
+                    if (phaseText) phaseText.textContent = completionMsg;
                     if (typeof showToast === 'function') showToast('Seed completato!', 'success');
+                    // Force pull sync so newly created pets appear immediately
+                    // Delay to let DB flush commits and any in-flight pull finish
+                    setTimeout(async function () {
+                        try {
+                            if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                                await window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                            }
+                            // Refresh UI explicitly
+                            if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                            if (typeof updateSelectedPetHeaders === 'function') updateSelectedPetHeaders();
+                        } catch (_e) {
+                            // Retry once after 3s if the first pull was skipped/failed
+                            setTimeout(async function () {
+                                try {
+                                    if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                                        await window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                                    }
+                                    if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                                    if (typeof updateSelectedPetHeaders === 'function') updateSelectedPetHeaders();
+                                } catch (_e2) {}
+                            }, 3000);
+                        }
+                    }, 1500);
                 } else if (data.status === 'cancelled') {
                     if (phaseText) phaseText.textContent = 'Annullato';
                     if (typeof showToast === 'function') showToast('Seed annullato', 'error');
@@ -179,9 +206,48 @@
             .then(function (resp) { return resp.json(); })
             .then(function (data) {
                 if (typeof showToast === 'function') showToast('Dati seed cancellati', 'success');
+                // Trigger pull sync to refresh UI
+                setTimeout(function () {
+                    try {
+                        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                            window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                        }
+                    } catch (_e) {}
+                }, 1000);
             })
             .catch(function (e) {
                 if (typeof showToast === 'function') showToast('Errore wipe: ' + e.message, 'error');
+            });
+    }
+
+    function seedWipeAllMyPets() {
+        if (!confirm('ATTENZIONE: Questo cancellerà TUTTI i tuoi pet (non solo quelli seed).\nSei sicuro?')) return;
+        if (!confirm('Ultima conferma: tutti i pet saranno eliminati irreversibilmente. Procedere?')) return;
+
+        fetchApi('/api/seed/wipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'all' })
+        })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                var msg = 'Tutti i pet eliminati';
+                if (data.details && data.details.petsDeleted != null) {
+                    msg += ' (' + data.details.petsDeleted + ' pet rimossi)';
+                }
+                if (typeof showToast === 'function') showToast(msg, 'success');
+                // Trigger pull sync to refresh UI with delete changes
+                setTimeout(function () {
+                    try {
+                        if (window.ADA_PetsSync && typeof window.ADA_PetsSync.pullPetsIfOnline === 'function') {
+                            window.ADA_PetsSync.pullPetsIfOnline({ force: true });
+                        }
+                        if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                    } catch (_e) {}
+                }, 1000);
+            })
+            .catch(function (e) {
+                if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
             });
     }
 
@@ -495,6 +561,60 @@
         if (typeof showToast === 'function') showToast('Sezione promo azzerata', 'success');
     }
 
+    // --- Demo Mode ---
+    function seedStartDemo() {
+        var tenantSel = document.getElementById('seedDemoTenant');
+        var tenantId = tenantSel && tenantSel.value ? tenantSel.value : null;
+        if (!tenantId) {
+            if (typeof showToast === 'function') showToast('Seleziona un tenant per la demo', 'error');
+            return;
+        }
+
+        var services = [];
+        if (document.getElementById('seedDemoPromo') && document.getElementById('seedDemoPromo').checked) services.push('promo');
+        if (document.getElementById('seedDemoNutrition') && document.getElementById('seedDemoNutrition').checked) services.push('nutrition');
+        if (document.getElementById('seedDemoInsurance') && document.getElementById('seedDemoInsurance').checked) services.push('insurance');
+
+        if (services.length === 0) {
+            if (typeof showToast === 'function') showToast('Seleziona almeno un servizio', 'error');
+            return;
+        }
+
+        fetchApi('/api/seed/start-demo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenantId: tenantId, services: services })
+        }).then(function (resp) {
+            if (resp.status === 409) {
+                if (typeof showToast === 'function') showToast('Un job è già in esecuzione', 'error');
+                return;
+            }
+            return resp.json();
+        }).then(function (data) {
+            if (data && data.jobId) {
+                if (typeof showToast === 'function') showToast('Demo avviata: ' + data.jobId, 'success');
+                _startPolling();
+            }
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore avvio demo: ' + e.message, 'error');
+        });
+    }
+
+    function seedLoadDemoTenants() {
+        fetchApi('/api/seed/promo/tenants').then(function (r) { return r.ok ? r.json() : { tenants: [] }; })
+            .then(function (data) {
+                var sel = document.getElementById('seedDemoTenant');
+                if (!sel) return;
+                sel.innerHTML = '<option value="">— Seleziona tenant —</option>';
+                (data.tenants || []).forEach(function (t) {
+                    var opt = document.createElement('option');
+                    opt.value = t.tenant_id;
+                    opt.textContent = t.name;
+                    sel.appendChild(opt);
+                });
+            }).catch(function () {});
+    }
+
     // --- Init: attach input listeners for estimate ---
     function _initEstimateListeners() {
         var ids = ['seedPetCount', 'seedSoapPerPet', 'seedDocsPerPet'];
@@ -516,6 +636,7 @@
     global.seedStart = seedStart;
     global.seedCancel = seedCancel;
     global.seedWipe = seedWipe;
+    global.seedWipeAllMyPets = seedWipeAllMyPets;
     global.seedSearchBrand = seedSearchBrand;
     global.seedAddExtraSite = seedAddExtraSite;
     global.seedScrapeSites = seedScrapeSites;
@@ -528,5 +649,7 @@
     global._renderPromoPreview = _renderPromoPreview;
     global.seedLoadSitesFromFile = seedLoadSitesFromFile;
     global.seedResetPromoSection = seedResetPromoSection;
+    global.seedStartDemo = seedStartDemo;
+    global.seedLoadDemoTenants = seedLoadDemoTenants;
 
 })(typeof window !== 'undefined' ? window : this);

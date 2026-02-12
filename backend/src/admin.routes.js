@@ -40,6 +40,20 @@ function adminRouter({ requireAuth }) {
           paramIdx++;
         }
 
+        const search = req.query.search || null;
+        if (search) {
+          query += ` AND (LOWER(name) LIKE $${paramIdx} OR LOWER(description) LIKE $${paramIdx})`;
+          params.push('%' + search.toLowerCase() + '%');
+          paramIdx++;
+        }
+
+        const serviceType = req.query.service_type || null;
+        if (serviceType) {
+          query += ` AND service_type = $${paramIdx}`;
+          params.push(serviceType);
+          paramIdx++;
+        }
+
         query += " ORDER BY updated_at DESC LIMIT $" + paramIdx + " OFFSET $" + (paramIdx + 1);
         params.push(limit, offset);
 
@@ -48,9 +62,21 @@ function adminRouter({ requireAuth }) {
         // Count total
         let countQuery = "SELECT COUNT(*) FROM promo_items WHERE tenant_id = $1";
         const countParams = [tenantId];
+        let countIdx = 2;
         if (status) {
-          countQuery += " AND status = $2";
+          countQuery += ` AND status = $${countIdx}`;
           countParams.push(status);
+          countIdx++;
+        }
+        if (search) {
+          countQuery += ` AND (LOWER(name) LIKE $${countIdx} OR LOWER(description) LIKE $${countIdx})`;
+          countParams.push('%' + search.toLowerCase() + '%');
+          countIdx++;
+        }
+        if (serviceType) {
+          countQuery += ` AND service_type = $${countIdx}`;
+          countParams.push(serviceType);
+          countIdx++;
         }
         const countResult = await pool.query(countQuery, countParams);
         const total = parseInt(countResult.rows[0].count);
@@ -98,11 +124,15 @@ function adminRouter({ requireAuth }) {
           species = [],
           lifecycle_target = [],
           description = null,
+          extended_description = null,
           image_url = null,
           product_url = null,
           tags_include = [],
           tags_exclude = [],
           priority = 0,
+          service_type = 'promo',
+          nutrition_data = null,
+          insurance_data = null,
         } = req.body || {};
 
         if (!name || !category) {
@@ -113,12 +143,17 @@ function adminRouter({ requireAuth }) {
         const { rows } = await pool.query(
           `INSERT INTO promo_items
             (promo_item_id, tenant_id, name, category, species, lifecycle_target,
-             description, image_url, product_url, tags_include, tags_exclude, priority, status, version)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1)
+             description, image_url, product_url, tags_include, tags_exclude, priority, status, version, extended_description,
+             service_type, nutrition_data, insurance_data)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',1,$13,$14,$15,$16)
            RETURNING *`,
           [
             itemId, tenantId, name, category, species, lifecycle_target,
             description, image_url, product_url, tags_include, tags_exclude, priority,
+            extended_description,
+            service_type,
+            nutrition_data ? JSON.stringify(nutrition_data) : null,
+            insurance_data ? JSON.stringify(insurance_data) : null,
           ]
         );
 
@@ -159,6 +194,7 @@ function adminRouter({ requireAuth }) {
         const allowed = [
           "name", "category", "species", "lifecycle_target", "description",
           "image_url", "product_url", "tags_include", "tags_exclude", "priority",
+          "extended_description", "service_type", "nutrition_data", "insurance_data",
         ];
         const sets = [];
         const params = [itemId, tenantId];
@@ -218,7 +254,7 @@ function adminRouter({ requireAuth }) {
         const validTransitions = {
           draft: ["in_review"],
           in_review: ["published", "draft"],
-          published: ["retired"],
+          published: ["retired", "draft"],
           retired: ["draft"],
         };
 
@@ -263,6 +299,31 @@ function adminRouter({ requireAuth }) {
         res.json(rows[0]);
       } catch (e) {
         console.error("POST /api/admin/:tenantId/promo-items/:itemId/transition error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // Bulk publish draft items
+  router.post(
+    "/api/admin/:tenantId/promo-items/bulk-publish",
+    requireAuth, requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { target_status = "published" } = req.body || {};
+        if (!["in_review", "published"].includes(target_status))
+          return res.status(400).json({ error: "invalid_target_status" });
+        const { rows } = await pool.query(
+          `UPDATE promo_items SET status = $2, version = version + 1, updated_at = NOW()
+           WHERE tenant_id = $1 AND status = 'draft' RETURNING promo_item_id`,
+          [tenantId, target_status]
+        );
+        await _auditLog(pool, req.promoAuth, "promo_items.bulk_publish", tenantId, "promo_items",
+          { count: rows.length, target_status });
+        res.json({ success: true, updated: rows.length, target_status });
+      } catch (e) {
+        console.error("POST bulk-publish error", e);
         res.status(500).json({ error: "server_error" });
       }
     }

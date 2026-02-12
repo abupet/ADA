@@ -19,6 +19,7 @@
  * New globals:
  *   renderPromoDetail(containerId, recommendation) -> void
  *   renderConsentBanner(containerId) -> void
+ *   renderConsentCenter(containerId) -> void
  *   renderVetFlagButton(containerId, petId) -> void
  */
 
@@ -149,7 +150,7 @@
             '.promo-detail-section { margin-bottom: 8px; }',
             '.promo-detail-label { font-weight: 600; color: #444; }',
             '.promo-disclaimer { font-size: 11px; color: #999; font-style: italic; margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; }',
-            '.promo-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }',
+            '.promo-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 12px; }',
             '.promo-btn {',
             '  display: inline-block; padding: 8px 18px; font-size: 13px;',
             '  font-weight: 600; border: none; border-radius: 8px;',
@@ -164,11 +165,31 @@
             '.promo-btn--dismiss { background: transparent; color: #888; border: 1px solid #ddd; }',
             '.promo-btn--dismiss:hover { background: #f5f5f5; color: #555; }',
             '.promo-btn--dismiss:focus-visible { outline: 2px solid #888; outline-offset: 2px; }',
-            '.promo-btn--vet-flag { background: #dc2626; color: #fff; font-size: 12px; padding: 6px 14px; }',
-            '.promo-btn--vet-flag:hover { background: #b91c1c; }',
+            '.promo-btn--vet-flag { background: #fef3c7; color: #1e1e1e; font-size: 12px; padding: 8px 16px; margin: 12px 0; border: 1px solid #d4a017; }',
+            '.promo-btn--vet-flag:hover { background: #fde68a; }',
             '.promo-consent-banner { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px; margin: 12px 0; font-size: 13px; }',
             '.promo-consent-actions { margin-top: 10px; display: flex; gap: 8px; }',
-            '.promo-loader-slot { min-height: 40px; }'
+            '.promo-loader-slot { min-height: 40px; }',
+            '.consent-center-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin: 16px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }',
+            '.consent-center-title { font-size: 18px; font-weight: 700; color: #1e3a5f; margin-bottom: 4px; }',
+            '.consent-center-subtitle { font-size: 13px; color: #888; margin-bottom: 18px; }',
+            '.consent-service-block { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-bottom: 14px; }',
+            '.consent-service-header { display: flex; align-items: center; justify-content: space-between; }',
+            '.consent-service-info { display: flex; align-items: center; gap: 10px; flex: 1; }',
+            '.consent-service-icon { font-size: 22px; }',
+            '.consent-service-label { font-size: 15px; font-weight: 600; color: #1e3a5f; }',
+            '.consent-service-desc { font-size: 12px; color: #666; margin-top: 2px; }',
+            '.consent-toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }',
+            '.consent-toggle input { opacity: 0; width: 0; height: 0; }',
+            '.consent-toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 24px; transition: background 0.2s; }',
+            '.consent-toggle-slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }',
+            '.consent-toggle input:checked + .consent-toggle-slider { background: #16a34a; }',
+            '.consent-toggle input:checked + .consent-toggle-slider:before { transform: translateX(20px); }',
+            '.consent-toggle input:focus-visible + .consent-toggle-slider { outline: 2px solid #1e3a5f; outline-offset: 2px; }',
+            '.consent-tenant-list { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f0f0; }',
+            '.consent-tenant-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 6px 34px; }',
+            '.consent-tenant-name { font-size: 13px; color: #444; }',
+            '.consent-warning { font-size: 11px; color: #b45309; font-style: italic; margin-top: 6px; padding-left: 34px; display: none; }'
         ].join('\n');
 
         var style = document.createElement('style');
@@ -428,8 +449,7 @@
             whyText = rec.explanation;
         }
 
-        // Truncate why text
-        if (whyText.length > 200) whyText = whyText.substring(0, 197) + '...';
+        // Show full text (no truncation)
 
         // CTA logic
         var ctaEnabled = rec.ctaEnabled !== undefined ? rec.ctaEnabled : false;
@@ -438,15 +458,17 @@
 
         // Build card HTML
         var imageUrl = rec.imageUrl || rec.image_url || null;
+        if (!imageUrl) {
+            var _idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+            imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/seed-assets/placeholder-prodotti/Prodotto_' + _idx + '.png';
+        }
         var description = rec.description || null;
 
         var html = [
             '<span class="promo-badge">Consigliato per il tuo pet</span>'
         ];
 
-        if (imageUrl) {
-            html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;margin:8px 0;">');
-        }
+        html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;var i=String(Math.floor(Math.random()*45)+1).padStart(2,\'0\');this.src=(typeof API_BASE_URL!==\'undefined\'?API_BASE_URL:\'\')+\'/api/seed-assets/placeholder-prodotti/Prodotto_\'+i+\'.png\';}">');
 
         html.push('<div class="promo-name">' + _escapeHtml(rec.name) + '</div>');
 
@@ -458,6 +480,24 @@
             html.push('<div class="promo-explanation">' + _escapeHtml(whyText) + '</div>');
         }
 
+        // Benefit for pet
+        var benefit = (typeof expl === 'object' && expl.benefit_for_pet) ? expl.benefit_for_pet : null;
+        if (benefit) {
+            html.push('<div class="promo-detail-section" style="margin:6px 0;font-size:13px;">');
+            html.push('<span class="promo-detail-label" style="font-weight:600;">Beneficio: </span>');
+            html.push(_escapeHtml(benefit));
+            html.push('</div>');
+        }
+
+        // Clinical fit
+        var clinicalFit = (typeof expl === 'object' && expl.clinical_fit) ? expl.clinical_fit : null;
+        if (clinicalFit) {
+            html.push('<div class="promo-detail-section" style="margin:6px 0;font-size:13px;">');
+            html.push('<span class="promo-detail-label" style="font-weight:600;">Correlazione clinica: </span>');
+            html.push(_escapeHtml(clinicalFit));
+            html.push('</div>');
+        }
+
         // Disclaimer
         var disclaimer = (typeof expl === 'object' && expl.disclaimer) ? expl.disclaimer : null;
         if (disclaimer) {
@@ -466,9 +506,9 @@
 
         html.push('<div class="promo-actions">');
         if (ctaUrl) {
-            html.push('  <button type="button" class="promo-btn promo-btn--cta" data-promo-action="cta">' + _escapeHtml(ctaLabel) + '</button>');
+            html.push('  <button type="button" class="promo-btn promo-btn--cta" data-promo-action="cta">Acquista</button>');
         }
-        html.push('  <button type="button" class="promo-btn promo-btn--info" data-promo-action="info">Perché vedi questo?</button>');
+        html.push('  <button type="button" class="promo-btn promo-btn--info" data-promo-action="close">Chiudi il suggerimento</button>');
         html.push('  <button type="button" class="promo-btn promo-btn--dismiss" data-promo-action="dismiss">Non mi interessa</button>');
         html.push('</div>');
 
@@ -493,7 +533,7 @@
 
         // Bind events
         var ctaBtn = cardEl.querySelector('[data-promo-action="cta"]');
-        var infoBtn = cardEl.querySelector('[data-promo-action="info"]');
+        var closeBtn = cardEl.querySelector('[data-promo-action="close"]');
         var dismissBtn = cardEl.querySelector('[data-promo-action="dismiss"]');
 
         if (ctaBtn && ctaUrl) {
@@ -504,30 +544,20 @@
                 trackPromoEvent('cta_click', productId, petId, {
                     name: rec.name, role: role, context: context, ctaLabel: ctaLabel
                 });
-                try {
-                    window.open(ctaUrl, '_blank', 'noopener,noreferrer');
-                } catch (_) {
-                    window.location.href = ctaUrl;
-                }
+                // Show simulated purchase page
+                _showPromoPurchasePage(rec, productId);
             });
         }
 
-        if (infoBtn) {
-            infoBtn.addEventListener('click', function () {
-                trackPromoEvent('info_click', productId, petId, {
-                    name: rec.name, role: role, context: context
-                });
-                // Toggle detail view
-                var detailId = cardEl.id + '-detail';
-                var existing = document.getElementById(detailId);
-                if (existing) {
-                    existing.parentNode.removeChild(existing);
-                    return;
-                }
-                var detailEl = document.createElement('div');
-                detailEl.id = detailId;
-                renderPromoDetail(detailEl, rec);
-                cardEl.appendChild(detailEl);
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                // Simply close/hide the promo without tracking dismiss
+                cardEl.style.opacity = '0';
+                setTimeout(function () {
+                    cardEl.classList.add('promo-card--hidden');
+                    cardEl.removeAttribute('style');
+                    cardEl.innerHTML = '';
+                }, 300);
             });
         }
 
@@ -541,23 +571,76 @@
                 });
                 if (productId) _addDismissedId(productId);
 
-                // Smooth hide
-                cardEl.style.opacity = '0';
-                cardEl.style.maxHeight = cardEl.scrollHeight + 'px';
-                cardEl.style.overflow = 'hidden';
-                setTimeout(function () {
-                    cardEl.style.maxHeight = '0';
-                    cardEl.style.padding = '0';
-                    cardEl.style.margin = '0';
-                    cardEl.style.border = 'none';
-                }, 50);
-                setTimeout(function () {
-                    cardEl.classList.add('promo-card--hidden');
-                    cardEl.removeAttribute('style');
-                    cardEl.innerHTML = '';
-                }, 400);
+                // Show feedback popup, then close promo card
+                if (typeof _showModal === 'function') {
+                    _showModal('Feedback ricevuto', function(container) {
+                        container.innerHTML = '<div style="text-align:center;padding:30px;">' +
+                            '<h3>Grazie per il tuo feedback!</h3>' +
+                            '<p style="font-size:16px;color:#555;margin:16px 0;">' +
+                            'Abbiamo preso nota della tua preferenza.<br>Non ti mostreremo più questo prodotto.</p>' +
+                            '<p style="font-size:13px;color:#888;">Continuiamo a migliorare i suggerimenti per te e il tuo pet.</p>' +
+                            '<button class="btn btn-primary" style="margin-top:20px;" id="dismiss-close-btn">Chiudi</button></div>';
+                        var closeEl = document.getElementById('dismiss-close-btn');
+                        if (closeEl) {
+                            closeEl.addEventListener('click', function() {
+                                if (typeof _closeModal === 'function') _closeModal();
+                                cardEl.style.opacity = '0';
+                                setTimeout(function () {
+                                    cardEl.classList.add('promo-card--hidden');
+                                    cardEl.removeAttribute('style');
+                                    cardEl.innerHTML = '';
+                                }, 300);
+                            });
+                        }
+                    });
+                } else {
+                    // Fallback: just hide the card
+                    cardEl.style.opacity = '0';
+                    setTimeout(function () {
+                        cardEl.classList.add('promo-card--hidden');
+                        cardEl.removeAttribute('style');
+                        cardEl.innerHTML = '';
+                    }, 300);
+                }
             });
         }
+    }
+
+    /**
+     * Show simulated purchase page for a promo product.
+     */
+    function _showPromoPurchasePage(rec, productId) {
+        if (typeof _showModal !== 'function') {
+            // Fallback: open URL directly
+            var url = rec.ctaUrl || rec.infoUrl;
+            if (url) { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) { window.location.href = url; } }
+            return;
+        }
+        var imgUrl = rec.imageUrl || rec.image_url || '';
+        _showModal('Pagina di Acquisto (Simulata)', function(container) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                '<div style="color:#dc2626;font-weight:600;border:2px dashed #dc2626;padding:10px;border-radius:8px;margin-bottom:20px;">' +
+                'Questa è una pagina simulata per test. Nessun acquisto reale verrà effettuato.</div>' +
+                '<div style="max-width:400px;margin:0 auto;text-align:left;">' +
+                (imgUrl ? '<img src="' + _escapeHtml(imgUrl) + '" style="width:100%;border-radius:8px;margin-bottom:12px;" onerror="this.style.display=\'none\'">' : '') +
+                '<h4 style="margin:0 0 8px;">' + _escapeHtml(rec.name || '') + '</h4>' +
+                '<p style="color:#555;font-size:13px;">' + _escapeHtml(rec.description || '') + '</p><hr>' +
+                '<p><strong>Prezzo:</strong> €XX,XX (placeholder)</p>' +
+                '<label>Quantità: <input type="number" value="1" min="1" max="10" style="width:60px;padding:4px;"></label><hr>' +
+                '<h4>Dati di spedizione</h4>' +
+                '<input placeholder="Nome e Cognome" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Indirizzo" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Città" style="flex:2;padding:8px;border:1px solid #ddd;border-radius:6px;"></div><hr>' +
+                '<h4>Metodo di pagamento</h4>' +
+                '<input placeholder="Numero carta" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;">' +
+                '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
+                '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
+                '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="_closeModal()">Chiudi</button>' +
+                '</div></div>';
+        });
     }
 
     /**
@@ -722,7 +805,7 @@
         _injectPromoStyles();
 
         var html = '<button type="button" class="promo-btn promo-btn--vet-flag" data-vet-flag="true">' +
-            'Segnala promo inappropriata</button>';
+            'Segnala consiglio inappropriato</button>';
         container.innerHTML = html;
 
         var btn = container.querySelector('[data-vet-flag="true"]');
@@ -734,7 +817,7 @@
                 // Get current promo item id from container attribute or last rendered card
                 var promoItemId = container.getAttribute('data-promo-item-id') || _lastRenderedPromoItemId;
                 if (!promoItemId) {
-                    if (_fnExists('showToast')) showToast('Nessuna promo attiva da segnalare.', 'info');
+                    if (_fnExists('showToast')) showToast('Nessun consiglio attivo da segnalare.', 'info');
                     return;
                 }
 
@@ -744,7 +827,7 @@
                     body: JSON.stringify({ pet_id: String(petId), promo_item_id: promoItemId, reason: reason || null })
                 }).then(function (r) {
                     if (r.ok) {
-                        if (_fnExists('showToast')) showToast('Promo segnalata. Non verrà più mostrata per questo pet.', 'success');
+                        if (_fnExists('showToast')) showToast('Consiglio segnalato. Non verrà più mostrato per questo pet.', 'success');
                         btn.disabled = true;
                         btn.textContent = 'Segnalata';
                     } else {
@@ -758,6 +841,171 @@
     }
 
     // =========================================================================
+    // Consent Center
+    // =========================================================================
+
+    function renderConsentCenter(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+
+        _injectPromoStyles();
+
+        var SERVICE_TYPES = {
+            promo: { icon: '\uD83C\uDFAF', label: 'Promozioni', description: 'Suggerimenti prodotti personalizzati per il tuo pet', consent_type: 'marketing_global', warning: 'Disattivando le promozioni non riceverai pi\u00F9 suggerimenti personalizzati.' },
+            nutrition: { icon: '\uD83E\uDD57', label: 'Nutrizione', description: 'Piani nutrizionali personalizzati generati dall\'AI e validati dal veterinario', consent_type: 'nutrition_plan', warning: 'Disattivando la nutrizione non verranno generati piani nutrizionali.' },
+            insurance: { icon: '\uD83D\uDEE1\uFE0F', label: 'Assicurazione', description: 'Copertura assicurativa con valutazione del rischio basata sui dati clinici', consent_type: 'insurance_data_sharing', warning: 'Disattivando l\'assicurazione i tuoi dati non verranno condivisi con partner assicurativi.' }
+        };
+
+        container.innerHTML = '<div class="promo-loader-slot" style="text-align:center;padding:20px;color:#888;">Caricamento preferenze...</div>';
+
+        Promise.all([
+            fetchApi('/api/promo/consent', { method: 'GET' }).then(function (r) { return r.ok ? r.json() : { consents: [] }; }),
+            fetchApi('/api/promo/consent/services', { method: 'GET' }).then(function (r) { return r.ok ? r.json() : { services: [] }; })
+        ]).then(function (results) {
+            var consentData = results[0];
+            var servicesData = results[1];
+
+            var consents = consentData.consents || [];
+            var services = servicesData.services || [];
+
+            var consentMap = {};
+            consents.forEach(function (c) {
+                var key = c.consent_type + ':' + (c.scope || 'global');
+                consentMap[key] = c.status === 'opted_in';
+            });
+
+            var tenantsByType = {};
+            services.forEach(function (svc) {
+                var svcType = svc.service_type || svc.type;
+                if (!svcType) return;
+                if (!tenantsByType[svcType]) tenantsByType[svcType] = [];
+                tenantsByType[svcType].push(svc);
+            });
+
+            var html = [
+                '<div class="consent-center-card">',
+                '<div class="consent-center-title">Centro Privacy</div>',
+                '<div class="consent-center-subtitle">Gestisci i consensi per i servizi ADA</div>'
+            ];
+
+            var serviceKeys = Object.keys(SERVICE_TYPES);
+            for (var si = 0; si < serviceKeys.length; si++) {
+                var sKey = serviceKeys[si];
+                var sType = SERVICE_TYPES[sKey];
+                var globalKey = sType.consent_type + ':global';
+                var isGlobalOn = consentMap[globalKey] !== undefined ? consentMap[globalKey] : false;
+                var toggleId = 'consent-toggle-' + sKey;
+                var warningId = 'consent-warning-' + sKey;
+                var tenantBlockId = 'consent-tenants-' + sKey;
+
+                html.push('<div class="consent-service-block" data-service-key="' + _escapeHtml(sKey) + '">');
+                html.push('  <div class="consent-service-header">');
+                html.push('    <div class="consent-service-info">');
+                html.push('      <span class="consent-service-icon">' + sType.icon + '</span>');
+                html.push('      <div>');
+                html.push('        <div class="consent-service-label">' + _escapeHtml(sType.label) + '</div>');
+                html.push('        <div class="consent-service-desc">' + _escapeHtml(sType.description) + '</div>');
+                html.push('      </div>');
+                html.push('    </div>');
+                html.push('    <label class="consent-toggle">');
+                html.push('      <input type="checkbox" id="' + toggleId + '" data-consent-type="' + _escapeHtml(sType.consent_type) + '" data-scope="global"' + (isGlobalOn ? ' checked' : '') + '>');
+                html.push('      <span class="consent-toggle-slider"></span>');
+                html.push('    </label>');
+                html.push('  </div>');
+                html.push('  <div class="consent-warning" id="' + warningId + '">' + _escapeHtml(sType.warning) + '</div>');
+
+                var tenants = tenantsByType[sKey] || [];
+                if (tenants.length > 0) {
+                    html.push('  <div class="consent-tenant-list" id="' + tenantBlockId + '" style="' + (isGlobalOn ? '' : 'display:none;') + '">');
+                    for (var ti = 0; ti < tenants.length; ti++) {
+                        var tenant = tenants[ti];
+                        var tenantName = tenant.tenant_name || tenant.brand_name || tenant.name || 'Partner';
+                        var tenantScope = tenant.tenant_id || tenant.scope || tenantName;
+                        var tenantKey = sType.consent_type + ':' + tenantScope;
+                        var isTenantOn = consentMap[tenantKey] !== undefined ? consentMap[tenantKey] : isGlobalOn;
+                        var tenantToggleId = 'consent-toggle-' + sKey + '-' + ti;
+
+                        html.push('    <div class="consent-tenant-row">');
+                        html.push('      <span class="consent-tenant-name">' + _escapeHtml(tenantName) + '</span>');
+                        html.push('      <label class="consent-toggle">');
+                        html.push('        <input type="checkbox" id="' + tenantToggleId + '" data-consent-type="' + _escapeHtml(sType.consent_type) + '" data-scope="' + _escapeHtml(tenantScope) + '"' + (isTenantOn ? ' checked' : '') + '>');
+                        html.push('        <span class="consent-toggle-slider"></span>');
+                        html.push('      </label>');
+                        html.push('    </div>');
+                    }
+                    html.push('  </div>');
+                }
+
+                html.push('</div>');
+            }
+
+            html.push('</div>');
+            container.innerHTML = html.join('\n');
+
+            var allToggles = container.querySelectorAll('input[data-consent-type]');
+            for (var idx = 0; idx < allToggles.length; idx++) {
+                (function (toggle) {
+                    toggle.addEventListener('change', function () {
+                        var consentType = toggle.getAttribute('data-consent-type');
+                        var scope = toggle.getAttribute('data-scope');
+                        var newStatus = toggle.checked ? 'opted_in' : 'opted_out';
+
+                        fetchApi('/api/promo/consent', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ consent_type: consentType, scope: scope, status: newStatus })
+                        }).then(function (r) {
+                            if (r.ok) {
+                                if (_fnExists('showToast')) showToast('Preferenza aggiornata.', 'success');
+                            } else {
+                                toggle.checked = !toggle.checked;
+                                if (_fnExists('showToast')) showToast('Errore nell\'aggiornamento.', 'error');
+                            }
+                        }).catch(function () {
+                            toggle.checked = !toggle.checked;
+                            if (_fnExists('showToast')) showToast('Errore di rete.', 'error');
+                        });
+
+                        if (scope === 'global') {
+                            var sBlock = toggle.closest('.consent-service-block');
+                            if (sBlock) {
+                                var svcKey = sBlock.getAttribute('data-service-key');
+                                var warningEl = document.getElementById('consent-warning-' + svcKey);
+                                var tenantListEl = document.getElementById('consent-tenants-' + svcKey);
+
+                                if (warningEl) {
+                                    warningEl.style.display = toggle.checked ? 'none' : 'block';
+                                }
+                                if (tenantListEl) {
+                                    tenantListEl.style.display = toggle.checked ? '' : 'none';
+                                    if (!toggle.checked) {
+                                        var tenantToggles = tenantListEl.querySelectorAll('input[data-consent-type]');
+                                        for (var t = 0; t < tenantToggles.length; t++) {
+                                            if (tenantToggles[t].checked) {
+                                                tenantToggles[t].checked = false;
+                                                var tConsentType = tenantToggles[t].getAttribute('data-consent-type');
+                                                var tScope = tenantToggles[t].getAttribute('data-scope');
+                                                fetchApi('/api/promo/consent', {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ consent_type: tConsentType, scope: tScope, status: 'opted_out' })
+                                                }).catch(function () { /* ignore */ });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })(allToggles[idx]);
+            }
+
+        }).catch(function () {
+            container.innerHTML = '<div class="consent-center-card" style="text-align:center;color:#888;">Impossibile caricare le preferenze. Riprova pi\u00F9 tardi.</div>';
+        });
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -766,6 +1014,7 @@
     global.renderPromoSlot         = renderPromoSlot;
     global.renderPromoDetail       = renderPromoDetail;
     global.renderConsentBanner     = renderConsentBanner;
+    global.renderConsentCenter     = renderConsentCenter;
     global.renderVetFlagButton     = renderVetFlagButton;
 
 })(typeof window !== 'undefined' ? window : this);

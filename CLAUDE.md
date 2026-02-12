@@ -65,3 +65,20 @@ Before making ANY code change, read the relevant files:
 
 ### Directory excluded from autonomous work:
 - **`tmp/`** — contains future development plans. Do NOT read or act on files in this directory unless the user gives an explicit command to do so.
+
+## Test Users (ada-dev / staging)
+
+These users are available on https://abupet.github.io/ada-dev/ (backend: Render staging).
+
+| Email | Password | Role |
+|---|---|---|
+| `vet_test@adiuvet.it` | `AltriUtentiPerTest72&` | vet |
+| `owner_test@adiuvet.it` | `AltriUtentiPerTest72&` | owner |
+| `super_admin_test@adiuvet.it` | `AltriUtentiPerTest72&` | super_admin |
+| `admin_brand_test@adiuvet.it` | `AltriUtentiPerTest72&` | admin_brand |
+
+## Prompt Specifications Workflow
+
+- **Prompt specs location**: specification files (prompts) are stored in `tmp/`. The `README.md` in that directory is excluded from this workflow.
+- **When the user says "esegui il prompt"** (or similar): list the files in `tmp/` (excluding `README.md` and the `archivio/` subdirectory), show them to the user, and ask for confirmation on which file(s) to execute.
+- **After a PR is successfully merged into `dev`**: move the executed prompt spec file(s) to `tmp/archivio/` to keep `tmp/` clean.

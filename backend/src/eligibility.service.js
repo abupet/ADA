@@ -1,10 +1,16 @@
-// backend/src/eligibility.service.js v1
+// backend/src/eligibility.service.js v2
 // PR 2: Promo eligibility / selection engine
+// v2: Multi-service support (promo, nutrition, insurance)
 
 // --- Debug logging helper (PR 13) ---
 function serverLog(level, domain, message, data, req) {
     if (process.env.ADA_DEBUG_LOG !== 'true') return;
     console.log(JSON.stringify({ts: new Date().toISOString(), level, domain, corrId: (req && req.correlationId) || '--------', msg: message, data: data || undefined}));
+}
+
+function _randomProductPlaceholder() {
+    const index = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+    return `/api/seed-assets/placeholder-prodotti/Prodotto_${index}.png`;
 }
 
 const { computeTags, normalizeSpecies } = require("./tag.service");
@@ -21,26 +27,42 @@ const CONTEXT_RULES = {
   post_visit: {
     categories: ["food_clinical", "supplement"],
     freq: { per_event: 1 },
+    service_types: ["promo"],
   },
   post_vaccination: {
     categories: ["antiparasitic", "accessory"],
     freq: { per_event: 1 },
+    service_types: ["promo"],
   },
   home_feed: {
     categories: ["food_general", "accessory", "service"],
     freq: { per_session: 2, per_week: 4 },
+    service_types: ["promo"],
   },
   pet_profile: {
     categories: ["food_general", "accessory"],
     freq: { per_session: 1 },
+    service_types: ["promo"],
   },
   faq_view: {
     categories: null, // any correlated
     freq: { per_session: 1 },
+    service_types: ["promo"],
   },
   milestone: {
     categories: ["food_general", "service"],
     freq: { per_event: 1 },
+    service_types: ["promo"],
+  },
+  nutrition_review: {
+    categories: ["food_clinical", "food_general", "supplement"],
+    freq: { per_session: 1 },
+    service_types: ["nutrition"],
+  },
+  insurance_review: {
+    categories: ["service"],
+    freq: { per_session: 1 },
+    service_types: ["insurance"],
   },
 };
 
@@ -63,10 +85,11 @@ const HIGH_SENSITIVITY_CONTEXTS = ["post_visit", "post_vaccination"];
  * 6. Ranking: priority DESC -> match_score DESC -> updated_at DESC. LIMIT 1.
  * 7. Tie-break rotation: hash(petId + CURRENT_DATE) % count.
  */
-async function selectPromo(pool, { petId, ownerUserId, context }) {
+async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
   try {
     const ctx = context || "home_feed";
     const rules = CONTEXT_RULES[ctx] || CONTEXT_RULES.home_feed;
+    const effectiveServiceType = serviceType || (rules.service_types ? rules.service_types[0] : "promo");
 
     // 1. Get or compute tags
     let petTags = [];
@@ -147,10 +170,11 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
            AND (pc.start_date IS NULL OR pc.start_date <= CURRENT_DATE)
            AND (pc.end_date IS NULL OR pc.end_date >= CURRENT_DATE)
          WHERE pi.status = 'published'
+           AND ($2::text IS NULL OR pi.service_type = $2)
          ORDER BY pi.promo_item_id,
                   (pc.contexts IS NOT NULL AND $1 = ANY(pc.contexts)) DESC NULLS LAST,
                   pi.priority DESC`,
-        [ctx]
+        [ctx, effectiveServiceType]
       );
       candidates = itemsResult.rows;
     } catch (e) {
@@ -355,7 +379,7 @@ async function selectPromo(pool, { petId, ownerUserId, context }) {
       tenantId: selected.tenant_id,
       name: selected.name,
       category: selected.category,
-      imageUrl: selected.image_url,
+      imageUrl: selected.image_url || _randomProductPlaceholder(),
       description: selected.description,
       ctaUrl,
       context: ctx,

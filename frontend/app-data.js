@@ -5,6 +5,26 @@
 // HELPERS
 // ============================================
 
+function _computeAgeFromBirthdate(bd) {
+    if (!bd) return '';
+    try {
+        var d = new Date(bd);
+        if (isNaN(d.getTime())) return '';
+        var now = new Date();
+        var years = now.getFullYear() - d.getFullYear();
+        var months = now.getMonth() - d.getMonth();
+        if (months < 0 || (months === 0 && now.getDate() < d.getDate())) years--;
+        if (years < 0) years = 0;
+        if (years === 0) {
+            var m = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+            if (now.getDate() < d.getDate()) m--;
+            if (m < 0) m = 0;
+            return m + (m === 1 ? ' mese' : ' mesi');
+        }
+        return years + (years === 1 ? ' anno' : ' anni');
+    } catch (_) { return ''; }
+}
+
 function _extractJsonObject(text) {
     const t = String(text || '');
     const start = t.indexOf('{');
@@ -65,18 +85,28 @@ function capturePhoto() {
     input.click();
 }
 
+function _photoSrc(photo) {
+    if (!photo) return '';
+    var src = typeof photo === 'string' ? photo : (photo.dataUrl || photo.url || '');
+    // Relative API paths need the backend base URL (frontend may be on different host, e.g. GitHub Pages)
+    if (src.startsWith('/api/') && typeof API_BASE_URL !== 'undefined') {
+        src = API_BASE_URL + src;
+    }
+    return src;
+}
+
 function renderPhotos() {
     const grid = document.getElementById('photoGrid');
     if (!grid) return;
-    
+
     if (photos.length === 0) {
         grid.innerHTML = '<p style="color:#888;text-align:center;padding:20px;grid-column:1/-1;">Nessuna foto</p>';
         return;
     }
-    
+
     grid.innerHTML = photos.map((photo, i) => `
         <div class="photo-item">
-            <img src="${photo}" alt="Foto ${i + 1}" onclick="openPhotoFullscreen(${i})">
+            <img src="${_photoSrc(photo)}" alt="Foto ${i + 1}" onclick="openPhotoFullscreen(${i})">
             <button class="delete-btn" onclick="deletePhoto(${i})">×</button>
         </div>
     `).join('');
@@ -85,14 +115,14 @@ function renderPhotos() {
 function openPhotoFullscreen(index) {
     const photo = photos[index];
     if (!photo) return;
-    
+
     const overlay = document.createElement('div');
     overlay.id = 'photoOverlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:pointer;';
     overlay.onclick = () => overlay.remove();
-    
+
     const img = document.createElement('img');
-    img.src = photo;
+    img.src = _photoSrc(photo);
     img.style.cssText = 'max-width:95%;max-height:95%;object-fit:contain;';
     
     const closeBtn = document.createElement('button');
@@ -239,6 +269,16 @@ function loadData() {
 async function generateDiary() {
     showProgress(true);
     const patient = getPatientData();
+    // Fallback: if ownerName empty in DOM, read from pet object in memory (fix for seed pets)
+    if (!patient.ownerName) {
+        try {
+            const petId = (typeof getCurrentPetId === 'function') ? getCurrentPetId() : null;
+            if (petId && typeof getPetById === 'function') {
+                const pet = await getPetById(petId);
+                if (pet?.patient?.ownerName) patient.ownerName = pet.patient.ownerName;
+            }
+        } catch (_) {}
+    }
     const lifestyle = getLifestyleData();
     const vetName = (typeof getVetName === 'function') ? getVetName() : '';
     const generatedDate = new Date().toLocaleDateString('it-IT');
@@ -257,7 +297,7 @@ async function generateDiary() {
     const vitalsText = vitalsData.map(v => `${new Date(v.date).toLocaleDateString('it-IT')}: Peso ${v.weight}kg, T ${v.temp}°C`).join('\n') || 'Nessuno';
     const medsText = medications.map(m => `${m.name} ${m.dosage} ${m.frequency}`).join('\n') || 'Nessuno';
 
-    const patientInfo = `PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
+    const patientInfo = `PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${_computeAgeFromBirthdate(patient.petBirthdate) || 'N/D'}
 PROPRIETARIO: ${patient.ownerName || 'N/D'}
 STILE DI VITA: Ambiente ${lifestyle.lifestyle || 'N/D'}, Attività ${lifestyle.activityLevel || 'N/D'}
 CONDIZIONI NOTE: ${lifestyle.knownConditions || 'Nessuna'}
@@ -274,10 +314,12 @@ ${patientInfo}
 
 ISTRUZIONI:
 Scrivi un profilo sanitario professionale e sintetico.
-Per OGNI informazione clinica rilevante (diagnosi, trattamenti, parametri vitali anomali), indica tra parentesi quadre la FONTE e la DATA da cui è tratta, nel formato [Fonte: <tipo referto>, Data: <gg/mm/aaaa>].
-Esempio: "Il paziente presenta dermatite atopica [Fonte: Visita dermatologica, Data: 15/01/2026]."
-Se un dato proviene dai Parametri Vitali, indica [Fonte: Parametri Vitali, Data: <data>].
-Se un dato proviene dai Farmaci attivi, indica [Fonte: Farmaci in corso].
+Per OGNI informazione clinica rilevante (diagnosi, trattamenti, parametri vitali anomali), indica un riferimento numerico tra parentesi quadre (es. [1], [2]).
+Se più informazioni provengono dalla stessa fonte (stesso tipo referto e stessa data), usano lo stesso numero.
+A fine documento, dopo una riga "---", scrivi la sezione "Fonti:" con la legenda:
+[N]: <tipo referto>, Data: <gg/mm/aaaa>
+Se un dato proviene dai Parametri Vitali, indica [N]: Parametri Vitali, Data: <data>.
+Se un dato proviene dai Farmaci attivi, indica [N]: Farmaci in corso.
 Se inserisci una firma, usa il nome veterinario "${vetName || '[Nome del Veterinario]'}" e la data "${generatedDate}".`;
     } else {
         prompt = `Genera un profilo sanitario semplice e chiaro per il proprietario di un animale.
@@ -313,6 +355,8 @@ Chiudi con: "Il team AbuPet".`;
             content = content.replace(/\[Data\]/gi, generatedDate);
         }
         document.getElementById('diaryText').value = content;
+        // Auto-save: prevent loss if user navigates away before manual save
+        try { if (typeof saveDiary === 'function') saveDiary(); } catch (_e) {}
         trackChatUsage(diaryModel, data.usage);
         saveApiUsage();
         updateCostDisplay();
@@ -491,7 +535,7 @@ async function generateQnAAnswer() {
     
     const prompt = `Sei un assistente veterinario. Rispondi SOLO a domande su pet e animali in generale.
 
-PET: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, Età: ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
+PET: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, Età: ${_computeAgeFromBirthdate(patient.petBirthdate) || 'N/D'}
 AMBIENTE: ${lifestyle.lifestyle || 'N/D'}, CONDIZIONI: ${lifestyle.knownConditions || 'Nessuna'}
 FARMACI: ${medications.map(m => m.name).join(', ') || 'Nessuno'}
 ULTIMA DIAGNOSI: ${_getMostRecentDiagnosisText()}

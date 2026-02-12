@@ -71,7 +71,8 @@ async function setupSyncMocks(page: any) {
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("Role switching: vet vs owner diary fields", () => {
+// SKIPPED: sync/IndexedDB removed in v8.15.1 (PR 2/6). Will be deleted/rewritten in PR 6.
+test.describe.skip("Role switching: vet vs owner diary fields", () => {
 
   test("@smoke @sync Vet role saves diary to pet.diary (syncs as notes)", async ({ page, context }) => {
     const errors = captureHardErrors(page);

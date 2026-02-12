@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ADA - AI Driven AbuPet</title>
         <link rel="icon" href="logo-abupet.png" type="image/png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e3a5f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ADA">
+    <link rel="apple-touch-icon" href="logo-abupet.png">
 <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -53,6 +59,7 @@
                     <div class="nav-item" data-page="soap">📋 Referto</div>
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
                     <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
+                    <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
@@ -65,6 +72,8 @@
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
                     <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
                     <div class="nav-item" data-page="photos">📷 Foto</div>
+                    <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
+                    <div class="nav-item" data-page="chatbot">🤖 La tua assistente ADA</div>
                 </div>
 
                 <!-- Sidebar: TEST & DEMO (super_admin only) -->
@@ -85,11 +94,12 @@
                     <div class="nav-item" id="nav-superadmin-policies" data-page="superadmin-policies" style="display:none;">Policies</div>
                     <div class="nav-item" id="nav-superadmin-tags" data-page="superadmin-tags" style="display:none;">Tag Dictionary</div>
                     <div class="nav-item" id="nav-superadmin-audit" data-page="superadmin-audit" style="display:none;">Audit Log</div>
+                    <div class="nav-item" id="nav-superadmin-sources" data-page="superadmin-sources" style="display:none;">Fonti Tips</div>
                 </div>
 
                 <div class="nav-section">SISTEMA</div>
                 <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
-                <div class="nav-item" onclick="refreshPetsFromServer(true); setSidebarOpen(false);">🔄 Sincronizza</div>
+                <div class="nav-item" onclick="refreshPetsFromServer(true); setSidebarOpen(false);">🔄 Ricarica</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;">🛠 Debug</div>
                 <div class="nav-item" onclick="logout()">🚪 Esci</div>
             </nav>
@@ -501,6 +511,10 @@
                     </div>
                     <!-- Promo slot: pet_profile (PR 3) -->
                     <div id="patient-promo-container"></div>
+                    <!-- Nutrition slot (multi-service) -->
+                    <div id="patient-nutrition-container"></div>
+                    <!-- Insurance slot (multi-service) -->
+                    <div id="patient-insurance-container"></div>
                     <!-- Vet flag container (PR 3) -->
                     <div id="patient-vet-flag-container"></div>
                 </div>
@@ -960,6 +974,12 @@
                     </div>
                 </div>
 
+                <!-- AI Communication Settings -->
+                <div class="card" id="settingsAiCommCard">
+                    <h3>La tua assistente ADA & Comunicazione</h3>
+                    <div id="ai-settings-container" data-testid="ai-settings-container"></div>
+                </div>
+
                 <!-- OpenAI Optimizations (super_admin only) -->
                 <div id="openaiOptCard" class="card" style="display:none;">
                     <h3>OpenAI — Ottimizzazioni</h3>
@@ -1001,6 +1021,22 @@
                 </div>
             </div>
 
+            <!-- Page: Chatbot AI Assistant -->
+            <div id="page-chatbot" class="page">
+                <div class="page-header">
+                    <h2>🤖 La tua assistente ADA</h2>
+                </div>
+                <div id="chatbot-container" data-testid="chatbot-container"></div>
+            </div>
+
+            <!-- Page: Communication (Chat owner↔vet) -->
+            <div id="page-communication" class="page">
+                <div class="page-header">
+                    <h2>💬 Messaggi</h2>
+                </div>
+                <div id="communication-container" data-testid="communication-container"></div>
+            </div>
+
             <!-- Page: Admin Dashboard (PR 4) -->
             <div id="page-admin-dashboard" class="page">
                 <div class="page-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -1018,7 +1054,8 @@
                     <h2>Catalogo Prodotti</h2>
                 </div>
                 <div class="card">
-                    <p style="color:#666;">Gestisci i prodotti promozionali dal pannello admin.</p>
+                    <p style="color:#666;margin-bottom:20px;">Gestisci i prodotti promozionali dal pannello admin.</p>
+                    <div id="catalog-tenant-selector"></div>
                     <div id="admin-catalog-content"></div>
                 </div>
             </div>
@@ -1029,7 +1066,8 @@
                     <h2>Campagne</h2>
                 </div>
                 <div class="card">
-                    <p style="color:#666;">Gestisci le campagne promozionali.</p>
+                    <p style="color:#666;margin-bottom:20px;">Gestisci le campagne promozionali.</p>
+                    <div id="campaigns-tenant-selector"></div>
                     <div id="admin-campaigns-content"></div>
                 </div>
             </div>
@@ -1094,6 +1132,16 @@
                 </div>
             </div>
 
+            <!-- Page: Super Admin Tips Sources -->
+            <div id="page-superadmin-sources" class="page">
+                <div class="page-header">
+                    <h2>Gestione Fonti Tips & Tricks</h2>
+                </div>
+                <div class="card">
+                    <div id="superadmin-sources-content"></div>
+                </div>
+            </div>
+
             <!-- Page: Debug -->
             <div id="page-debug" class="page" style="display:none;">
                 <div class="page-header">
@@ -1110,13 +1158,21 @@
                         </button>
                     </div>
                     <div id="superAdminRoleSelector" style="display:none; margin-top:10px;">
-                        <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruolo attivo (super admin)</label>
-                        <select id="superAdminRoleSelect" onchange="onSuperAdminRoleChange(this.value)" style="width:100%;">
-                            <option value="veterinario">🩺 Veterinario</option>
-                            <option value="proprietario">🐾 Proprietario</option>
-                            <option value="admin_brand">📊 Admin Brand</option>
-                            <option value="super_admin">⚡ Super Admin</option>
-                        </select>
+                        <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruoli attivi (super admin)</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleVet" value="veterinario" onchange="onSuperAdminRoleToggle()"> 🩺 Veterinario
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleOwner" value="proprietario" onchange="onSuperAdminRoleToggle()"> 🐾 Proprietario
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleAdmin" value="admin_brand" onchange="onSuperAdminRoleToggle()"> 📊 Admin Brand
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleSA" value="super_admin" onchange="onSuperAdminRoleToggle()"> ⚡ Super Admin
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="card">
@@ -1189,7 +1245,6 @@
                         <button class="btn btn-primary" onclick="openCostsPage()" data-testid="open-costs-button">💰 Consumo API</button>
                         <button class="btn btn-secondary" onclick="exportLogFile()" data-testid="export-log-button">📄 Scarica ADA.log</button>
                         <button class="btn btn-secondary" onclick="clearLog(); showToast('Log cancellato', 'success');" data-testid="clear-log-button">Cancella ADA.log</button>
-                        <button class="btn btn-secondary" onclick="showSyncDiagnostics()">🔄 Diagnostica Sync</button>
                         <button class="btn btn-secondary" onclick="showApiMetrics()">📡 Metriche API</button>
                     </div>
                 </div>
@@ -1252,7 +1307,8 @@
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         <button class="btn btn-primary" id="seedStartBtn" onclick="seedStart()">🚀 Avvia popolamento</button>
                         <button class="btn btn-danger" id="seedCancelBtn" onclick="seedCancel()" style="display:none;">⏹ Annulla</button>
-                        <button class="btn btn-secondary" onclick="seedWipe()">🗑 Cancella tutto il seed</button>
+                        <button class="btn btn-secondary" onclick="seedWipe()">Cancella dati seed</button>
+                        <button class="btn btn-danger" onclick="seedWipeAllMyPets()" style="font-size:12px;">Elimina TUTTI i miei pet</button>
                     </div>
                 </div>
                 <!-- Barra progresso -->
@@ -1311,6 +1367,34 @@
                             🗑️ Azzera siti e prodotti proposti
                         </button>
                     </div>
+                </div>
+                <!-- Card Demo Mode -->
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="font-weight:600;display:block;margin-bottom:8px;">🎭 Demo Mode — Generazione rapida multi-servizio</label>
+                    <p style="font-size:12px;color:#666;margin-bottom:10px;">
+                        Genera 3 pet demo complementari con dati promo, piani nutrizionali e proposte assicurative. Ideale per dimostrazioni.
+                    </p>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>
+                            <select id="seedDemoTenant" style="padding:8px;border:1px solid #ddd;border-radius:6px;min-width:180px;" onfocus="seedLoadDemoTenants()">
+                                <option value="">— Seleziona tenant —</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Servizi da attivare</label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:16px;font-size:13px;">
+                            <input type="checkbox" id="seedDemoPromo" checked> Promo
+                        </label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:16px;font-size:13px;">
+                            <input type="checkbox" id="seedDemoNutrition" checked> Nutrizione
+                        </label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;">
+                            <input type="checkbox" id="seedDemoInsurance" checked> Assicurazione
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="seedStartDemo()">🎭 Avvia Demo</button>
                 </div>
             </div>
 
@@ -1545,6 +1629,7 @@
 
     <!-- Toast -->
     <div id="toast" class="toast" data-testid="toast"></div>
+    <div id="offlineBanner" class="offline-banner" style="display:none;">Modalita offline — alcune funzionalita non sono disponibili</div>
     
     <!-- Progress Bar -->
     <div id="progressBar" class="progress-bar" data-testid="progress-bar"><div class="progress-fill"></div></div>
@@ -1553,12 +1638,13 @@
     <script>
       if (!window.ADA_API_BASE_URL && !["localhost", "127.0.0.1"].includes(window.location.hostname)) {
         //window.ADA_API_BASE_URL = "https://ada-au40.onrender.com";
-		var isDevEnv = window.location.hostname.includes("netlify.app");
+		var isDevEnv = window.location.pathname.startsWith("/ada-dev");
         window.ADA_API_BASE_URL = isDevEnv
           ? "https://ada-backend-dev.onrender.com"
           : "https://ada-au40.onrender.com";
       }
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <script src="config.js"></script>
     <script src="app-debug-logger.js"></script>
     <script src="app-loading.js"></script>
@@ -1568,18 +1654,39 @@
     <script src="app-soap.js"></script>
     <script src="app-tts.js"></script>
     <script src="app-data.js"></script>
-    <script src="pets-sync-merge.js"></script>
-    <script src="pets-coalesce.js"></script>
     <script src="app-pets.js"></script>
-	<script src="pets-sync-step4.js"></script>
-	<script src="pets-sync-bootstrap.js"></script>
     <script src="app-tips.js"></script>
     <script src="app-documents.js"></script>
     <script src="app-promo.js"></script>
+    <script src="app-nutrition.js"></script>
+    <script src="app-insurance.js"></script>
+    <script src="app-communication.js"></script>
+    <script src="app-chatbot.js"></script>
+    <script src="app-webrtc.js"></script>
     <script src="app-admin.js"></script>
-    <script src="sync-engine.js"></script>
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
     <script src="app-seed.js"></script>
+<script>
+if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./sw.js')
+            .catch(function() {});
+    });
+}
+window.addEventListener('online', function() {
+    var b = document.getElementById('offlineBanner');
+    if (b) b.style.display = 'none';
+    if (typeof showToast === 'function') showToast('Connessione ripristinata', 'success');
+});
+window.addEventListener('offline', function() {
+    var b = document.getElementById('offlineBanner');
+    if (b) b.style.display = '';
+});
+if (!navigator.onLine) {
+    var b = document.getElementById('offlineBanner');
+    if (b) b.style.display = '';
+}
+</script>
 </body>
 </html>

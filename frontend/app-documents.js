@@ -1,11 +1,13 @@
-// app-documents.js v1.0
+// app-documents.js v2.0 — Online-only mode (no IndexedDB, no sync)
 
 /**
- * ADA Veterinary App - Document Upload, Viewer & AI Interpretation (PR 8 + PR 9)
+ * ADA Veterinary App - Document Upload, Viewer & AI Interpretation
+ *
+ * v2.0: Online-only — all data via API REST, no IndexedDB.
  *
  * Provides:
  *  - Document upload with MIME/size validation (PDF, JPG, PNG, WebP; max 10 MB)
- *  - IndexedDB persistence (store: 'documents') with offline base64 binary fallback
+ *  - Document list from server (GET /api/documents?pet_id=X)
  *  - Document viewer (image zoom, PDF iframe/object with fallback)
  *  - AI interpretation (read) and owner explanation (explain)
  *  - Role-based permissions via getActiveRole()
@@ -23,11 +25,6 @@
     // Constants
     // =========================================================================
 
-    var DB_NAME          = 'ADA_Documents';
-    var DB_VERSION       = 2;
-    var STORE_NAME       = 'documents';
-    var BLOBS_STORE_NAME = 'document_blobs'; // offline binary storage
-
     var ALLOWED_MIME_TYPES = [
         'application/pdf',
         'image/jpeg',
@@ -41,100 +38,14 @@
     var ROLE_VET   = 'veterinario';
     var ROLE_OWNER = 'proprietario';
 
-    // Offline upload queue store
-    var UPLOAD_QUEUE_STORE = 'upload_queue';
-
     // =========================================================================
     // State
     // =========================================================================
 
-    var _db                = null;
     var _currentDocumentId = null;
     var _readLoader        = null;
     var _explainLoader     = null;
     var _uploadLoader      = null;
-
-    // =========================================================================
-    // IndexedDB helpers
-    // =========================================================================
-
-    function _openDB() {
-        if (_db) return Promise.resolve(_db);
-
-        return new Promise(function (resolve, reject) {
-            var request = indexedDB.open(DB_NAME, DB_VERSION);
-
-            request.onerror = function () {
-                reject(request.error || new Error('IndexedDB open failed'));
-            };
-
-            request.onsuccess = function () {
-                _db = request.result;
-                resolve(_db);
-            };
-
-            request.onupgradeneeded = function (event) {
-                var db = event.target.result;
-
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    var store = db.createObjectStore(STORE_NAME, { keyPath: 'document_id' });
-                    store.createIndex('pet_id', 'pet_id', { unique: false });
-                    store.createIndex('created_at', 'created_at', { unique: false });
-                }
-
-                if (!db.objectStoreNames.contains(BLOBS_STORE_NAME)) {
-                    db.createObjectStore(BLOBS_STORE_NAME, { keyPath: 'document_id' });
-                }
-
-                if (!db.objectStoreNames.contains(UPLOAD_QUEUE_STORE)) {
-                    db.createObjectStore(UPLOAD_QUEUE_STORE, { keyPath: 'document_id' });
-                }
-            };
-        });
-    }
-
-    function _txStore(storeName, mode) {
-        var tx    = _db.transaction(storeName, mode);
-        var store = tx.objectStore(storeName);
-        return { tx: tx, store: store };
-    }
-
-    function _idbPut(storeName, record) {
-        return new Promise(function (resolve, reject) {
-            var ref = _txStore(storeName, 'readwrite');
-            var req = ref.store.put(record);
-            req.onsuccess = function () { resolve(req.result); };
-            req.onerror   = function () { reject(req.error); };
-        });
-    }
-
-    function _idbGet(storeName, key) {
-        return new Promise(function (resolve, reject) {
-            var ref = _txStore(storeName, 'readonly');
-            var req = ref.store.get(key);
-            req.onsuccess = function () { resolve(req.result || null); };
-            req.onerror   = function () { reject(req.error); };
-        });
-    }
-
-    function _idbDelete(storeName, key) {
-        return new Promise(function (resolve, reject) {
-            var ref = _txStore(storeName, 'readwrite');
-            var req = ref.store.delete(key);
-            req.onsuccess = function () { resolve(); };
-            req.onerror   = function () { reject(req.error); };
-        });
-    }
-
-    function _idbGetAllByIndex(storeName, indexName, keyValue) {
-        return new Promise(function (resolve, reject) {
-            var ref   = _txStore(storeName, 'readonly');
-            var index = ref.store.index(indexName);
-            var req   = index.getAll(keyValue);
-            req.onsuccess = function () { resolve(req.result || []); };
-            req.onerror   = function () { reject(req.error); };
-        });
-    }
 
     // =========================================================================
     // UUID helper
@@ -187,15 +98,6 @@
         });
     }
 
-    function _readFileAsDataURL(file) {
-        return new Promise(function (resolve, reject) {
-            var reader = new FileReader();
-            reader.onload  = function () { resolve(reader.result); };
-            reader.onerror = function () { reject(reader.error || new Error('FileReader failed')); };
-            reader.readAsDataURL(file);
-        });
-    }
-
     function _arrayBufferToBase64(buffer) {
         var bytes  = new Uint8Array(buffer);
         var binary = '';
@@ -209,132 +111,24 @@
     // PDF page count (lightweight, no external library)
     // =========================================================================
 
-    /**
-     * Estimate the number of pages in a PDF from its raw bytes.
-     * Counts occurrences of "/Type /Page" (excluding "/Type /Pages") and
-     * falls back to the /Count value in the /Pages dictionary.
-     */
     function _countPdfPages(arrayBuffer) {
         try {
             var bytes = new Uint8Array(arrayBuffer);
-            // Convert a window of bytes to string (PDF internals are ASCII)
             var text = '';
             for (var i = 0; i < bytes.length; i++) {
                 text += String.fromCharCode(bytes[i]);
             }
-            // Method 1: count "/Type /Page" but not "/Type /Pages"
             var pageMatches = text.match(/\/Type\s*\/Page(?!s)/g);
             if (pageMatches && pageMatches.length > 0) {
                 return pageMatches.length;
             }
-            // Method 2: look for /Count in /Pages dict
             var countMatch = text.match(/\/Count\s+(\d+)/);
             if (countMatch) {
                 return parseInt(countMatch[1], 10) || 0;
             }
         } catch (_) { /* ignore */ }
-        return 0; // unknown
+        return 0;
     }
-
-    // =========================================================================
-    // Offline upload queue
-    // =========================================================================
-
-    function _enqueueForUpload(metadata, base64Data, fileName) {
-        return _openDB().then(function () {
-            return _idbPut(UPLOAD_QUEUE_STORE, {
-                document_id: metadata.document_id,
-                metadata: metadata,
-                base64Data: base64Data,
-                fileName: fileName,
-                queued_at: new Date().toISOString()
-            });
-        });
-    }
-
-    function _dequeueUpload(documentId) {
-        return _openDB().then(function () {
-            return new Promise(function (resolve) {
-                try {
-                    var ref = _txStore(UPLOAD_QUEUE_STORE, 'readwrite');
-                    ref.store.delete(documentId);
-                    ref.tx.oncomplete = function () { resolve(true); };
-                    ref.tx.onerror = function () { resolve(false); };
-                } catch (_) { resolve(false); }
-            });
-        });
-    }
-
-    function _getAllPendingUploads() {
-        return _openDB().then(function () {
-            return new Promise(function (resolve) {
-                try {
-                    var ref = _txStore(UPLOAD_QUEUE_STORE, 'readonly');
-                    var req = ref.store.getAll();
-                    req.onsuccess = function () { resolve(req.result || []); };
-                    req.onerror = function () { resolve([]); };
-                } catch (_) { resolve([]); }
-            });
-        });
-    }
-
-    /**
-     * Process the offline upload queue: attempt to upload each queued document.
-     * Called on 'online' event and after successful uploads.
-     */
-    function _flushUploadQueue() {
-        if (!navigator.onLine) return;
-        if (typeof fetchApi !== 'function') return;
-
-        _getAllPendingUploads().then(function (items) {
-            if (!items || items.length === 0) return;
-
-            // Process sequentially to avoid overloading
-            var chain = Promise.resolve();
-            items.forEach(function (item) {
-                chain = chain.then(function () {
-                    // Reconstruct a File-like Blob from base64
-                    var binaryStr = atob(item.base64Data);
-                    var bytes = new Uint8Array(binaryStr.length);
-                    for (var i = 0; i < binaryStr.length; i++) {
-                        bytes[i] = binaryStr.charCodeAt(i);
-                    }
-                    var blob = new Blob([bytes], { type: item.metadata.mime_type });
-
-                    var formData = new FormData();
-                    formData.append('file', blob, item.fileName || item.metadata.original_filename);
-                    formData.append('document_id', item.metadata.document_id);
-                    formData.append('pet_id', String(item.metadata.pet_id));
-                    formData.append('original_filename', item.metadata.original_filename);
-                    formData.append('mime_type', item.metadata.mime_type);
-                    formData.append('size_bytes', String(item.metadata.size_bytes));
-                    formData.append('hash_sha256', item.metadata.hash_sha256 || '');
-
-                    return fetchApi('/api/documents/upload', {
-                        method: 'POST',
-                        body: formData
-                    }).then(function (response) {
-                        if (response && response.ok) {
-                            return _dequeueUpload(item.document_id).then(function () {
-                                if (typeof showToast === 'function') {
-                                    showToast('Documento in coda caricato: ' + _escapeHtml(item.metadata.original_filename), 'success');
-                                }
-                            });
-                        }
-                    }).catch(function () {
-                        // Still offline or error — keep in queue
-                    });
-                });
-            });
-        }).catch(function () { /* silent */ });
-    }
-
-    // Listen for online event to flush upload queue
-    try {
-        window.addEventListener('online', function () {
-            setTimeout(_flushUploadQueue, 2000);
-        });
-    } catch (_) {}
 
     // =========================================================================
     // HTML escape (matches _escapeHtml in app-core.js)
@@ -404,33 +198,6 @@
         return null;
     }
 
-    /**
-     * Resolve the local pet ID to the server UUID.
-     * Local pets use numeric IDs (IndexedDB autoIncrement), but the backend
-     * requires the UUID pet_id assigned during sync.
-     */
-    function _resolveServerPetId(localPetId) {
-        if (!localPetId) return Promise.resolve(null);
-
-        // Already a UUID string — return as-is
-        if (typeof localPetId === 'string' && /^[0-9a-fA-F]{8}-/.test(localPetId)) {
-            return Promise.resolve(localPetId);
-        }
-
-        // Try to get the pet record and extract server pet_id
-        if (typeof getPetById === 'function') {
-            return getPetById(localPetId).then(function (pet) {
-                if (pet && pet.pet_id) return pet.pet_id;
-                // Fallback: return string version of local ID
-                return String(localPetId);
-            }).catch(function () {
-                return String(localPetId);
-            });
-        }
-
-        return Promise.resolve(String(localPetId));
-    }
-
     // =========================================================================
     // Upload: trigger file input
     // =========================================================================
@@ -488,21 +255,11 @@
     }
 
     // =========================================================================
-    // Upload: process and store
+    // Upload: process and send to server
     // =========================================================================
 
     function _processUpload(file, petId) {
         if (typeof showProgress === 'function') showProgress(true);
-
-        // Resolve local numeric pet ID to server UUID before proceeding
-        _resolveServerPetId(petId).then(function (resolvedPetId) {
-            _processUploadWithResolvedId(file, resolvedPetId || petId);
-        }).catch(function () {
-            _processUploadWithResolvedId(file, petId);
-        });
-    }
-
-    function _processUploadWithResolvedId(file, petId) {
 
         if (typeof ADALog !== 'undefined') {
             ADALog.info('DOC', 'upload start', {mimeType: file.type, sizeBytes: file.size, petId: petId});
@@ -520,15 +277,10 @@
             } catch (_) { /* container may not exist yet */ }
         }
 
-        var documentId    = _generateUUID();
-        var storageKey    = 'doc_' + documentId;
-        var now           = new Date().toISOString();
-        var arrayBufferRef = null;
+        var documentId = _generateUUID();
 
-        // Read the file as ArrayBuffer for hashing, then as DataURL for storage
+        // Read file for validation (PDF page count) and hashing
         _readFileAsArrayBuffer(file).then(function (arrayBuffer) {
-            arrayBufferRef = arrayBuffer;
-
             // PDF page count validation
             if (file.type === 'application/pdf') {
                 var pageCount = _countPdfPages(arrayBuffer);
@@ -539,71 +291,34 @@
 
             return _computeSHA256(arrayBuffer);
         }).then(function (hash) {
-            // Build metadata record
-            var metadata = {
-                document_id:      documentId,
-                pet_id:           petId,
-                original_filename: file.name || 'documento',
-                mime_type:        file.type,
-                size_bytes:       file.size,
-                page_count:       null,  // set by backend for PDFs
-                storage_key:      storageKey,
-                hash_sha256:      hash,
-                read_text:        null,
-                owner_explanation: null,
-                ai_status:        'pending',
-                ai_error:         null,
-                ai_updated_at:    null,
-                version:          1,
-                created_at:       now,
-                created_by:       _getRole()
-            };
+            // Upload to backend
+            if (typeof fetchApi !== 'function') {
+                throw new Error('fetchApi non disponibile');
+            }
 
-            var base64Data = _arrayBufferToBase64(arrayBufferRef);
+            var formData = new FormData();
+            formData.append('file', file, file.name || 'documento');
+            formData.append('document_id', documentId);
+            formData.append('pet_id', String(petId));
+            formData.append('original_filename', file.name || 'documento');
+            formData.append('mime_type', file.type);
+            formData.append('size_bytes', String(file.size));
+            formData.append('hash_sha256', hash || '');
 
-            return _openDB().then(function () {
-                // Store metadata
-                return _idbPut(STORE_NAME, metadata);
-            }).then(function () {
-                // Store binary blob for offline access
-                return _idbPut(BLOBS_STORE_NAME, {
-                    document_id: documentId,
-                    mime_type:   file.type,
-                    base64:      base64Data,
-                    stored_at:   now
-                });
-            }).then(function () {
-                return { metadata: metadata, base64Data: base64Data };
+            return fetchApi('/api/documents/upload', {
+                method: 'POST',
+                body: formData
             });
-        }).then(function (result) {
-            // Attempt backend upload
-            return _uploadToBackend(result.metadata, result.base64Data, file).then(function (backendResult) {
-                // If the backend returned updated metadata (e.g. page_count), merge it
-                if (backendResult && typeof backendResult === 'object') {
-                    var updated = Object.assign({}, result.metadata);
-                    if (backendResult.page_count != null) updated.page_count = backendResult.page_count;
-                    if (backendResult.ai_status)          updated.ai_status  = backendResult.ai_status;
-                    if (backendResult.version)             updated.version    = backendResult.version;
-                    if (backendResult.document_id)         updated.document_id = backendResult.document_id;
-                    return _idbPut(STORE_NAME, updated).then(function () { return updated; });
-                }
-                return result.metadata;
-            }).catch(function () {
-                // Offline or error — enqueue for later upload
-                return _enqueueForUpload(result.metadata, result.base64Data, file.name || result.metadata.original_filename)
-                    .then(function () {
-                        if (typeof showToast === 'function') {
-                            showToast('Offline: documento salvato in coda. Verrà caricato automaticamente.', 'info');
-                        }
-                        return result.metadata;
-                    })
-                    .catch(function () { return result.metadata; });
-            });
-        }).then(function (metadata) {
+        }).then(function (response) {
+            if (!response || !response.ok) {
+                throw new Error('Upload HTTP ' + (response ? response.status : 'failed'));
+            }
+            return response.json().catch(function () { return null; });
+        }).then(function () {
             if (typeof showProgress === 'function') showProgress(false);
             if (_uploadLoader) _uploadLoader.stop();
             if (typeof showToast === 'function') {
-                showToast('Documento caricato: ' + _escapeHtml(metadata.original_filename), 'success');
+                showToast('Documento caricato: ' + _escapeHtml(file.name || 'documento'), 'success');
             }
             renderDocumentsInHistory();
         }).catch(function (err) {
@@ -615,41 +330,7 @@
     }
 
     // =========================================================================
-    // Upload: backend POST
-    // =========================================================================
-
-    function _uploadToBackend(metadata, base64Data, file) {
-        if (typeof fetchApi !== 'function') {
-            return Promise.reject(new Error('fetchApi non disponibile'));
-        }
-
-        if (!navigator.onLine) {
-            // Offline - skip backend, document is already stored locally
-            return Promise.resolve(null);
-        }
-
-        var formData = new FormData();
-        formData.append('file', file, metadata.original_filename);
-        formData.append('document_id', metadata.document_id);
-        formData.append('pet_id', String(metadata.pet_id));
-        formData.append('original_filename', metadata.original_filename);
-        formData.append('mime_type', metadata.mime_type);
-        formData.append('size_bytes', String(metadata.size_bytes));
-        formData.append('hash_sha256', metadata.hash_sha256 || '');
-
-        return fetchApi('/api/documents/upload', {
-            method: 'POST',
-            body:   formData
-        }).then(function (response) {
-            if (!response.ok) {
-                throw new Error('Upload HTTP ' + response.status);
-            }
-            return response.json().catch(function () { return null; });
-        });
-    }
-
-    // =========================================================================
-    // Render documents in History page
+    // Render documents in History page (fetched from server)
     // =========================================================================
 
     function renderDocumentsInHistory() {
@@ -659,11 +340,15 @@
         var list = document.getElementById('historyList');
         if (!list) return;
 
-        _openDB().then(function () {
-            return _idbGetAllByIndex(STORE_NAME, 'pet_id', petId);
+        if (typeof fetchApi !== 'function') return;
+
+        fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId)).then(function (response) {
+            if (!response || !response.ok) return [];
+            return response.json().then(function (data) {
+                return (data && Array.isArray(data.documents)) ? data.documents : [];
+            });
         }).then(function (documents) {
             if (!documents || documents.length === 0) {
-                // Clear the documents section when no documents remain
                 var existing = document.getElementById('documentsSection');
                 if (existing) existing.innerHTML = '';
                 _updateHistoryBadgeWithDocs(0);
@@ -684,14 +369,9 @@
                 var name  = _escapeHtml(doc.original_filename || 'Documento');
 
                 var aiIcon = '';
-                if (doc.ai_status === 'complete' || doc.ai_status === 'completed') aiIcon = '&#x2705;';       // checkmark
-                else if (doc.ai_status === 'error')  aiIcon = '&#x26A0;&#xFE0F;'; // warning
-                else                                  aiIcon = '&#x1F4C4;';    // page icon
-
-                // Debug logging for document icon state (when Debug flag is ON)
-                if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
-                    console.log('ERRORE CARICAMENTO DOCUMENTO debug:', doc.document_id, 'ai_status=' + doc.ai_status, 'ai_error=' + (doc.ai_error || 'none'));
-                }
+                if (doc.ai_status === 'complete' || doc.ai_status === 'completed') aiIcon = '&#x2705;';
+                else if (doc.ai_status === 'error')  aiIcon = '&#x26A0;&#xFE0F;';
+                else                                  aiIcon = '&#x1F4C4;';
 
                 return '<div class="history-item" onclick="openDocument(\'' + _escapeHtml(doc.document_id) + '\')">' +
                     '<div class="history-date">' +
@@ -706,7 +386,6 @@
                 '</div>';
             }).join('');
 
-            // Append documents after existing history items (do not replace)
             var separator = document.getElementById('documentsSection');
             if (!separator) {
                 separator = document.createElement('div');
@@ -717,7 +396,6 @@
                 '<h3 style="margin:20px 0 10px; font-size:15px; color:#555;">Documenti Caricati</h3>' +
                 html;
 
-            // Update sidebar badge to include document count
             _updateHistoryBadgeWithDocs(documents.length);
         }).catch(function () {
             // Silent failure - documents section simply not shown
@@ -725,157 +403,34 @@
     }
 
     // =========================================================================
-    // Delete document
+    // Delete document (server only)
     // =========================================================================
-
-    var DELETED_IDS_KEY = 'ADA_DELETED_DOCS';
-    var DELETE_OUTBOX_KEY = 'ADA_DELETE_OUTBOX';
-
-    // --- Deletion tracking (prevents sync from re-adding) ---
-
-    function _trackLocalDeletion(documentId) {
-        try {
-            var raw = localStorage.getItem(DELETED_IDS_KEY);
-            var ids = raw ? JSON.parse(raw) : [];
-            if (ids.indexOf(documentId) === -1) ids.push(documentId);
-            if (ids.length > 500) ids = ids.slice(ids.length - 500);
-            localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(ids));
-        } catch (_e) { /* localStorage full or unavailable */ }
-    }
-
-    function _isLocallyDeleted(documentId) {
-        try {
-            var raw = localStorage.getItem(DELETED_IDS_KEY);
-            if (!raw) return false;
-            var ids = JSON.parse(raw);
-            if (!Array.isArray(ids)) return false;
-            return ids.indexOf(documentId) !== -1;
-        } catch (_e) { return false; }
-    }
-
-    function _clearLocalDeletion(documentId) {
-        try {
-            var raw = localStorage.getItem(DELETED_IDS_KEY);
-            if (!raw) return;
-            var ids = JSON.parse(raw);
-            var idx = ids.indexOf(documentId);
-            if (idx !== -1) {
-                ids.splice(idx, 1);
-                localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(ids));
-            }
-        } catch (_e) { /* ignore */ }
-    }
-
-    // --- Delete outbox (retries server DELETE when back online) ---
-
-    function _enqueueDelete(documentId) {
-        try {
-            var raw = localStorage.getItem(DELETE_OUTBOX_KEY);
-            var ids = raw ? JSON.parse(raw) : [];
-            if (ids.indexOf(documentId) === -1) ids.push(documentId);
-            localStorage.setItem(DELETE_OUTBOX_KEY, JSON.stringify(ids));
-        } catch (_e) { /* ignore */ }
-    }
-
-    function _dequeueDelete(documentId) {
-        try {
-            var raw = localStorage.getItem(DELETE_OUTBOX_KEY);
-            if (!raw) return;
-            var ids = JSON.parse(raw);
-            var idx = ids.indexOf(documentId);
-            if (idx !== -1) {
-                ids.splice(idx, 1);
-                localStorage.setItem(DELETE_OUTBOX_KEY, JSON.stringify(ids));
-            }
-        } catch (_e) { /* ignore */ }
-    }
-
-    /**
-     * Flush pending delete outbox: retry server DELETE for each queued ID.
-     * Called before pulling documents during sync and on 'online' event.
-     * Always resolves (never rejects) to avoid blocking the pull chain.
-     */
-    function _flushDeleteOutbox() {
-        try {
-            if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve();
-            if (typeof fetchApi !== 'function') return Promise.resolve();
-
-            var raw = localStorage.getItem(DELETE_OUTBOX_KEY);
-            if (!raw) return Promise.resolve();
-
-            var ids = JSON.parse(raw);
-            if (!Array.isArray(ids) || ids.length === 0) return Promise.resolve();
-
-            var chain = Promise.resolve();
-            ids.forEach(function (docId) {
-                chain = chain.then(function () {
-                    return fetchApi('/api/documents/' + encodeURIComponent(docId), { method: 'DELETE' })
-                        .then(function (res) {
-                            if (res && (res.ok || res.status === 404)) {
-                                // 200 = deleted, 404 = already gone — either way, done
-                                _dequeueDelete(docId);
-                                _clearLocalDeletion(docId);
-                            }
-                        })
-                        .catch(function () { /* still offline — keep in outbox */ });
-                });
-            });
-            return chain;
-        } catch (_e) {
-            return Promise.resolve();
-        }
-    }
-
-    // Flush delete outbox when back online
-    try {
-        window.addEventListener('online', function () {
-            setTimeout(_flushDeleteOutbox, 2500);
-        });
-    } catch (_) {}
-
-    // --- Delete document (main function) ---
 
     function _deleteDocument(documentId) {
         if (!documentId) return;
         if (!confirm('Eliminare questo documento?')) return;
 
-        // 1. Delete from server
-        var serverDelete = (typeof fetchApi === 'function')
-            ? fetchApi('/api/documents/' + encodeURIComponent(documentId), { method: 'DELETE' })
-                .then(function (res) { return res && res.ok; })
-                .catch(function () { return false; })
-            : Promise.resolve(false);
-
-        serverDelete.then(function (serverOk) {
-            // 2. Track locally so sync won't re-add it
-            _trackLocalDeletion(documentId);
-
-            // 3. If server delete failed, queue for retry
-            if (!serverOk) {
-                _enqueueDelete(documentId);
-            }
-
-            // 4. Remove from IndexedDB
-            return _openDB().then(function () {
-                return Promise.all([
-                    _idbDelete(STORE_NAME, documentId),
-                    _idbDelete(BLOBS_STORE_NAME, documentId)
-                ]);
-            }).then(function () {
-                if (!serverOk) {
-                    if (typeof showToast === 'function') showToast('Documento eliminato localmente (verrà rimosso dal server alla prossima sync)', 'warning');
-                } else {
-                    if (typeof showToast === 'function') showToast('Documento eliminato', 'success');
-                }
-                renderDocumentsInHistory();
-            });
-        }).catch(function () {
+        if (typeof fetchApi !== 'function') {
             if (typeof showToast === 'function') showToast('Errore eliminazione documento', 'error');
-        });
+            return;
+        }
+
+        fetchApi('/api/documents/' + encodeURIComponent(documentId), { method: 'DELETE' })
+            .then(function (res) {
+                if (res && (res.ok || res.status === 204)) {
+                    if (typeof showToast === 'function') showToast('Documento eliminato', 'success');
+                    renderDocumentsInHistory();
+                } else {
+                    if (typeof showToast === 'function') showToast('Errore eliminazione documento', 'error');
+                }
+            })
+            .catch(function () {
+                if (typeof showToast === 'function') showToast('Errore di rete: impossibile eliminare', 'error');
+            });
     }
 
     // =========================================================================
-    // Document Viewer: open
+    // Document Viewer: open (fetch metadata from server)
     // =========================================================================
 
     function openDocument(documentId) {
@@ -903,13 +458,20 @@
         if (explBtn) explBtn.disabled = true;
         if (readRes) readRes.style.display = 'none';
 
-        _openDB().then(function () {
-            return _idbGet(STORE_NAME, documentId);
-        }).then(function (doc) {
-            if (!doc) {
+        if (typeof fetchApi !== 'function') {
+            if (viewer) viewer.innerHTML = '<p style="color:#c00;">Errore: fetchApi non disponibile.</p>';
+            return;
+        }
+
+        // Fetch document metadata from server
+        fetchApi('/api/documents/' + encodeURIComponent(documentId)).then(function (response) {
+            if (!response || !response.ok) {
                 if (viewer) viewer.innerHTML = '<p style="color:#c00;">Documento non trovato.</p>';
-                return;
+                return null;
             }
+            return response.json();
+        }).then(function (doc) {
+            if (!doc) return;
 
             // Title
             if (titleEl) titleEl.textContent = '\uD83D\uDCC4 ' + (doc.original_filename || 'Documento');
@@ -924,7 +486,6 @@
             }
 
             // AI buttons - role-based
-            if (typeof logDebug === 'function') logDebug('openDocument', 'ai_status=' + (doc.ai_status || 'none') + ', has_read_text=' + !!doc.read_text + ', has_explanation=' + !!doc.owner_explanation + ', ai_error=' + (doc.ai_error || 'none'));
             if (typeof ADALog !== 'undefined') {
                 ADALog.dbg('DOC', 'status poll', {documentId: documentId, currentStatus: doc.ai_status || 'none', pollCount: 1});
             }
@@ -933,11 +494,9 @@
             // Show existing AI results
             _showExistingAIResults(doc);
 
-            // Render the document content
-            return _idbGet(BLOBS_STORE_NAME, documentId).then(function (blob) {
-                _renderDocumentContent(doc, blob, viewer);
-            });
-        }).catch(function (err) {
+            // Fetch and render the document content from server
+            _fetchAndRenderBlob(doc, viewer);
+        }).catch(function () {
             if (viewer) {
                 viewer.innerHTML = '<p style="color:#c00;">Errore caricamento documento.</p>';
             }
@@ -945,65 +504,42 @@
     }
 
     // =========================================================================
-    // Document Viewer: fetch blob from server and cache in IndexedDB
+    // Document Viewer: fetch blob from server and render
     // =========================================================================
 
-    function _fetchAndCacheBlob(doc) {
-        if (!doc || !doc.document_id) return Promise.resolve(null);
-        return fetchApi('/api/documents/' + encodeURIComponent(doc.document_id) + '/download')
+    function _fetchAndRenderBlob(doc, container) {
+        if (!container) return;
+        if (!doc || !doc.document_id) {
+            container.innerHTML = '<p style="color:#888;">Anteprima non disponibile.</p>';
+            return;
+        }
+
+        container.innerHTML = '<p style="color:#888;"><span class="spinner-border spinner-border-sm"></span> Scaricamento documento dal server\u2026</p>';
+
+        fetchApi('/api/documents/' + encodeURIComponent(doc.document_id) + '/download')
             .then(function (resp) {
                 if (!resp || !resp.ok) return null;
                 return resp.arrayBuffer();
             })
             .then(function (ab) {
-                if (!ab) return null;
-                var base64 = _arrayBufferToBase64(ab);
-                var blobRecord = {
-                    document_id: doc.document_id,
-                    mime_type: doc.mime_type,
-                    base64: base64,
-                    stored_at: new Date().toISOString()
-                };
-                return _openDB().then(function () {
-                    return _idbPut(BLOBS_STORE_NAME, blobRecord);
-                }).then(function () {
-                    return blobRecord;
-                });
-            })
-            .catch(function () { return null; });
-    }
-
-    // =========================================================================
-    // Document Viewer: render content
-    // =========================================================================
-
-    function _renderDocumentContent(doc, blobRecord, container) {
-        if (!container) return;
-
-        if (!blobRecord || !blobRecord.base64) {
-            // Try fetching from server and caching locally
-            container.innerHTML = '<p style="color:#888;"><span class="spinner-border spinner-border-sm"></span> Scaricamento documento dal server\u2026</p>';
-            _fetchAndCacheBlob(doc).then(function (fetched) {
-                if (fetched && fetched.base64) {
-                    _renderDocumentContent(doc, fetched, container);
-                } else {
-                    container.innerHTML = '<p style="color:#888;">Anteprima non disponibile (documento non memorizzato localmente).</p>';
+                if (!ab) {
+                    container.innerHTML = '<p style="color:#888;">Anteprima non disponibile.</p>';
+                    return;
                 }
-            }).catch(function () {
-                container.innerHTML = '<p style="color:#888;">Anteprima non disponibile (documento non memorizzato localmente).</p>';
+                var base64 = _arrayBufferToBase64(ab);
+                var dataUrl = 'data:' + (doc.mime_type || 'application/octet-stream') + ';base64,' + base64;
+
+                if (doc.mime_type === 'application/pdf') {
+                    _renderPDF(dataUrl, container);
+                } else if (doc.mime_type && doc.mime_type.indexOf('image/') === 0) {
+                    _renderImage(dataUrl, doc, container);
+                } else {
+                    container.innerHTML = '<p style="color:#888;">Anteprima non disponibile per questo tipo di file.</p>';
+                }
+            })
+            .catch(function () {
+                container.innerHTML = '<p style="color:#888;">Errore scaricamento documento.</p>';
             });
-            return;
-        }
-
-        var dataUrl = 'data:' + (doc.mime_type || 'application/octet-stream') + ';base64,' + blobRecord.base64;
-
-        if (doc.mime_type === 'application/pdf') {
-            _renderPDF(dataUrl, container);
-        } else if (doc.mime_type && doc.mime_type.indexOf('image/') === 0) {
-            _renderImage(dataUrl, doc, container);
-        } else {
-            container.innerHTML = '<p style="color:#888;">Anteprima non disponibile per questo tipo di file.</p>';
-        }
     }
 
     // =========================================================================
@@ -1011,7 +547,6 @@
     // =========================================================================
 
     function _renderPDF(dataUrl, container) {
-        // Try iframe first, with object fallback
         var wrapper = document.createElement('div');
         wrapper.style.cssText = 'width:100%; min-height:500px; position:relative;';
 
@@ -1021,14 +556,12 @@
         iframe.setAttribute('title', 'Visualizzatore PDF');
         iframe.setAttribute('loading', 'lazy');
 
-        // Fallback for browsers that block data: URLs in iframes
         iframe.onerror = function () {
             _renderPDFObjectFallback(dataUrl, wrapper);
         };
 
         wrapper.appendChild(iframe);
 
-        // Also provide a download link
         var downloadLink = document.createElement('a');
         downloadLink.href            = dataUrl;
         downloadLink.download        = 'documento.pdf';
@@ -1092,7 +625,6 @@
         img.style.cssText = 'max-width:95%; max-height:95%; object-fit:contain; ' +
             'transition:transform 0.3s ease;';
 
-        // Zoom state
         var zoomed = false;
         img.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -1113,7 +645,6 @@
         overlay.addEventListener('click', closeOverlay);
         closeBtn.addEventListener('click', function (e) { e.stopPropagation(); closeOverlay(); });
 
-        // ESC key
         function onKey(e) {
             if (e.key === 'Escape') {
                 closeOverlay();
@@ -1137,18 +668,14 @@
         var role    = _getRole();
 
         if (readBtn) {
-            // v7.1.0: Only vet sees "Trascrivi"
             readBtn.disabled = false;
             readBtn.style.display = (role === ROLE_VET) ? '' : 'none';
         }
 
         if (explBtn) {
-            // v7.1.0: Only owner sees "Spiegami il documento"
             explBtn.disabled = false;
             explBtn.style.display = (role === ROLE_OWNER) ? '' : 'none';
         }
-
-        // Both roles can see existing results (handled by _showExistingAIResults)
     }
 
     // =========================================================================
@@ -1188,17 +715,12 @@
 
         if (readBtn) readBtn.disabled = true;
 
-        // Ensure loader
         if (!_readLoader) {
             try {
                 _readLoader = new InlineLoader({
                     containerId: 'documentAiContainer',
-                    onRetry: function () {
-                        readDocument();
-                    },
-                    onAbort: function () {
-                        if (readBtn) readBtn.disabled = false;
-                    }
+                    onRetry: function () { readDocument(); },
+                    onAbort: function () { if (readBtn) readBtn.disabled = false; }
                 });
             } catch (_) { /* container may not exist */ }
         }
@@ -1229,56 +751,30 @@
             }).then(function (data) {
                 var text = (data && (data.read_text || data.text || data.result)) || '';
 
-                // Persist result locally
-                return _openDB().then(function () {
-                    return _idbGet(STORE_NAME, documentId);
-                }).then(function (doc) {
-                    if (doc) {
-                        doc.read_text     = text;
-                        doc.ai_status     = 'complete';
-                        doc.ai_error      = null;
-                        doc.ai_updated_at = new Date().toISOString();
-                        return _idbPut(STORE_NAME, doc);
-                    }
-                }).then(function () {
-                    if (typeof ADALog !== 'undefined') {
-                        ADALog.perf('DOC', 'AI read done', {documentId: documentId, latencyMs: Math.round(performance.now() - _readT0), status: 'success'});
-                    }
+                if (typeof ADALog !== 'undefined') {
+                    ADALog.perf('DOC', 'AI read done', {documentId: documentId, latencyMs: Math.round(performance.now() - _readT0), status: 'success'});
+                }
 
-                    // Update UI
-                    if (readCont) readCont.textContent = text;
-                    if (readRes)  readRes.style.display = text ? 'block' : 'none';
-                    if (readBtn)  readBtn.disabled = false;
-                    if (_readLoader) _readLoader.stop();
-                    if (typeof showToast === 'function') showToast('Interpretazione completata', 'success');
-                });
+                // Update UI
+                if (readCont) readCont.textContent = text;
+                if (readRes)  readRes.style.display = text ? 'block' : 'none';
+                if (readBtn)  readBtn.disabled = false;
+                if (_readLoader) _readLoader.stop();
+                if (typeof showToast === 'function') showToast('Interpretazione completata', 'success');
             }).catch(function (err) {
                 if (err && err.name === 'AbortError') return;
-
-                // Persist error
-                _openDB().then(function () {
-                    return _idbGet(STORE_NAME, documentId);
-                }).then(function (doc) {
-                    if (doc) {
-                        doc.ai_status     = 'error';
-                        doc.ai_error      = (err && err.message) || 'Errore sconosciuto';
-                        doc.ai_updated_at = new Date().toISOString();
-                        return _idbPut(STORE_NAME, doc);
-                    }
-                }).catch(function () { /* silent */ });
 
                 if (readBtn) readBtn.disabled = false;
                 if (typeof showToast === 'function') {
                     showToast('Errore lettura: ' + ((err && err.message) || 'sconosciuto'), 'error');
                 }
-                throw err; // re-throw so InlineLoader shows error state
+                throw err;
             });
         };
 
         if (_readLoader) {
             _readLoader.start(fetchFn);
         } else {
-            // Fallback without loader
             fetchFn(undefined);
         }
     }
@@ -1302,44 +798,21 @@
             return;
         }
 
-        var documentId = _currentDocumentId;
-
-        // Check if explanation already exists — if so, show it and navigate without API call
-        _openDB().then(function () {
-            return _idbGet(STORE_NAME, documentId);
-        }).then(function (doc) {
-            if (doc && doc.owner_explanation && doc.owner_explanation.trim()) {
-                try {
-                    var oe = document.getElementById('ownerExplanation');
-                    if (oe) oe.value = doc.owner_explanation;
-                } catch (_) {}
-                if (typeof navigateToPage === 'function') navigateToPage('owner');
-                if (typeof showToast === 'function') showToast('Spiegazione documento aperta', 'success');
-                return;
-            }
-            // No existing explanation — proceed with API call
-            _explainDocumentGenerate(documentId);
-        }).catch(function () {
-            _explainDocumentGenerate(documentId);
-        });
+        // Always call API (no local cache for AI results)
+        _explainDocumentGenerate(_currentDocumentId);
     }
 
     function _explainDocumentGenerate(documentId) {
-        var explBtn    = document.getElementById('btnDocExplain');
+        var explBtn = document.getElementById('btnDocExplain');
 
         if (explBtn) explBtn.disabled = true;
 
-        // Ensure loader
         if (!_explainLoader) {
             try {
                 _explainLoader = new InlineLoader({
                     containerId: 'documentAiContainer',
-                    onRetry: function () {
-                        explainDocument();
-                    },
-                    onAbort: function () {
-                        if (explBtn) explBtn.disabled = false;
-                    }
+                    onRetry: function () { explainDocument(); },
+                    onAbort: function () { if (explBtn) explBtn.disabled = false; }
                 });
             } catch (_) { /* container may not exist */ }
         }
@@ -1365,92 +838,73 @@
                 var text = (data && (data.owner_explanation || data.explanation || data.result)) || '';
                 if (typeof logDebug === 'function') logDebug('explainDocument', 'Success, text length=' + text.length);
 
-                // Persist result locally
-                return _openDB().then(function () {
-                    return _idbGet(STORE_NAME, documentId);
-                }).then(function (doc) {
-                    if (doc) {
-                        doc.owner_explanation = text;
-                        doc.ai_status         = 'complete';
-                        doc.ai_error          = null;
-                        doc.ai_updated_at     = new Date().toISOString();
-                        return _idbPut(STORE_NAME, doc);
-                    }
-                }).then(function () {
-                    if (explBtn)  explBtn.disabled = false;
-                    if (_explainLoader) _explainLoader.stop();
-                    // Save explanation to the Spiegazione Documento page and navigate there
-                    try {
-                        var oe = document.getElementById('ownerExplanation');
-                        if (oe) oe.value = text;
-                    } catch (_) {}
-                    if (typeof navigateToPage === 'function') navigateToPage('owner');
-                    if (typeof showToast === 'function') showToast('Spiegazione generata', 'success');
-                });
+                if (explBtn) explBtn.disabled = false;
+                if (_explainLoader) _explainLoader.stop();
+                try {
+                    var oe = document.getElementById('ownerExplanation');
+                    if (oe) oe.value = text;
+                } catch (_) {}
+                if (typeof navigateToPage === 'function') navigateToPage('owner');
+                if (typeof showToast === 'function') showToast('Spiegazione generata', 'success');
             }).catch(function (err) {
                 if (err && err.name === 'AbortError') return;
                 if (typeof logError === 'function') logError('explainDocument', 'Error: ' + ((err && err.message) || 'sconosciuto'));
-
-                // Persist error
-                _openDB().then(function () {
-                    return _idbGet(STORE_NAME, documentId);
-                }).then(function (doc) {
-                    if (doc) {
-                        doc.ai_status     = 'error';
-                        doc.ai_error      = (err && err.message) || 'Errore sconosciuto';
-                        doc.ai_updated_at = new Date().toISOString();
-                        return _idbPut(STORE_NAME, doc);
-                    }
-                }).catch(function () { /* silent */ });
 
                 if (explBtn) explBtn.disabled = false;
                 if (typeof showToast === 'function') {
                     showToast('Errore spiegazione: ' + ((err && err.message) || 'sconosciuto'), 'error');
                 }
-                throw err; // re-throw so InlineLoader shows error state
+                throw err;
             });
         };
 
         if (_explainLoader) {
             _explainLoader.start(fetchFn);
         } else {
-            // Fallback without loader
             fetchFn(undefined);
         }
     }
 
     // =========================================================================
-    // Get documents for a pet (utility for other modules)
+    // Get documents for a pet (utility for other modules — fetches from server)
     // =========================================================================
 
     function getDocumentsForPet(petId) {
         if (!petId) return Promise.resolve([]);
+        if (typeof fetchApi !== 'function') return Promise.resolve([]);
 
-        return _openDB().then(function () {
-            return _idbGetAllByIndex(STORE_NAME, 'pet_id', petId);
-        }).then(function (docs) {
-            // Sort newest first
-            docs.sort(function (a, b) {
-                return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-            });
-            return docs;
-        });
+        return fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId))
+            .then(function (response) {
+                if (!response || !response.ok) return [];
+                return response.json().then(function (data) {
+                    var docs = (data && Array.isArray(data.documents)) ? data.documents : [];
+                    docs.sort(function (a, b) {
+                        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                    });
+                    return docs;
+                });
+            })
+            .catch(function () { return []; });
     }
 
     // =========================================================================
-    // Get a single document by ID (utility)
+    // Get a single document by ID (utility — fetches from server)
     // =========================================================================
 
     function getDocumentById(documentId) {
         if (!documentId) return Promise.resolve(null);
+        if (typeof fetchApi !== 'function') return Promise.resolve(null);
 
-        return _openDB().then(function () {
-            return _idbGet(STORE_NAME, documentId);
-        });
+        return fetchApi('/api/documents/' + encodeURIComponent(documentId))
+            .then(function (response) {
+                if (!response || !response.ok) return null;
+                return response.json();
+            })
+            .catch(function () { return null; });
     }
 
     // =========================================================================
-    // Cleanup loaders on navigation (integrates with InlineLoader.cleanupAll)
+    // Cleanup loaders on navigation
     // =========================================================================
 
     function _cleanupDocumentLoaders() {
@@ -1460,16 +914,12 @@
     }
 
     // =========================================================================
-    // Init: ensure DB is ready on load
+    // Init (no-op — no IndexedDB to open)
     // =========================================================================
 
     function initDocuments() {
-        return _openDB().catch(function (err) {
-            // Non-fatal: document features will be degraded
-            if (typeof console !== 'undefined' && console.warn) {
-                console.warn('app-documents: IndexedDB init failed', err);
-            }
-        });
+        // Online-only mode: nothing to initialize
+        return Promise.resolve();
     }
 
     // =========================================================================
@@ -1489,144 +939,19 @@
     }
 
     // =========================================================================
-    // Pull document metadata from server (cross-device sync)
-    // =========================================================================
-
-    /**
-     * Fetch the document list from the server for a given pet and merge into
-     * the local IndexedDB store.  This allows documents uploaded on Device A
-     * to appear on Device B.
-     *
-     * @param {string} petId - the pet UUID
-     * @returns {Promise<number>} number of new documents discovered
-     */
-    function pullDocumentsForPet(petId) {
-        if (!petId) return Promise.resolve(0);
-        if (typeof fetchApi !== 'function') return Promise.resolve(0);
-        if (typeof navigator !== 'undefined' && !navigator.onLine) return Promise.resolve(0);
-
-        // Flush pending server deletes before pulling (never blocks pull)
-        return _flushDeleteOutbox().catch(function () {}).then(function () {
-            return fetchApi('/api/documents?pet_id=' + encodeURIComponent(petId))
-            .then(function (response) {
-                if (!response || !response.ok) return 0;
-                return response.json();
-            })
-            .then(function (data) {
-                if (!data || !Array.isArray(data.documents)) return 0;
-                return _openDB().then(function () {
-                    var newCount = 0;
-                    var serverIds = {};
-                    var chain = Promise.resolve();
-
-                    // Build a set of server-side document IDs
-                    data.documents.forEach(function (doc) { serverIds[doc.document_id] = true; });
-
-                    // Add new server documents (skip locally deleted ones)
-                    data.documents.forEach(function (doc) {
-                        chain = chain.then(function () {
-                            // Skip documents the user explicitly deleted
-                            if (_isLocallyDeleted(doc.document_id)) return;
-
-                            return _idbGet(STORE_NAME, doc.document_id).then(function (existing) {
-                                if (!existing) {
-                                    // New document discovered from server
-                                    newCount++;
-                                    return _idbPut(STORE_NAME, {
-                                        document_id: doc.document_id,
-                                        pet_id: doc.pet_id,
-                                        original_filename: doc.original_filename,
-                                        mime_type: doc.mime_type,
-                                        size_bytes: doc.size_bytes,
-                                        hash_sha256: doc.hash_sha256,
-                                        ai_status: doc.ai_status || 'none',
-                                        version: doc.version,
-                                        created_at: doc.created_at,
-                                        _synced_from_server: true
-                                    });
-                                }
-                            });
-                        });
-                    });
-
-                    // Remove local documents that no longer exist on the server
-                    // (deleted by another device or via wipe)
-                    chain = chain.then(function () {
-                        return _idbGetAllByIndex(STORE_NAME, 'pet_id', petId).then(function (localDocs) {
-                            var removeChain = Promise.resolve();
-                            (localDocs || []).forEach(function (ld) {
-                                if (ld._synced_from_server && !serverIds[ld.document_id]) {
-                                    removeChain = removeChain.then(function () {
-                                        return Promise.all([
-                                            _idbDelete(STORE_NAME, ld.document_id),
-                                            _idbDelete(BLOBS_STORE_NAME, ld.document_id)
-                                        ]);
-                                    });
-                                }
-                            });
-                            return removeChain;
-                        });
-                    });
-
-                    // Clean up deletion tracking for documents the server
-                    // no longer has (the delete was confirmed server-side)
-                    chain = chain.then(function () {
-                        try {
-                            var raw = localStorage.getItem(DELETED_IDS_KEY);
-                            if (raw) {
-                                var ids = JSON.parse(raw);
-                                if (Array.isArray(ids)) {
-                                    ids.forEach(function (id) {
-                                        if (!serverIds[id]) _clearLocalDeletion(id);
-                                    });
-                                }
-                            }
-                        } catch (_e) { /* ignore */ }
-                    });
-
-                    return chain.then(function () { return newCount; });
-                });
-            })
-            .catch(function () { return 0; });
-        }); // end _flushDeleteOutbox
-    }
-
-    // =========================================================================
     // Expose public API on global scope (vanilla JS, no modules)
     // =========================================================================
 
-    global.triggerDocumentUpload   = triggerDocumentUpload;
-    global.handleDocumentUpload    = handleDocumentUpload;
-    global.renderDocumentsInHistory = renderDocumentsInHistory;
-    global.openDocument            = openDocument;
-    global.readDocument            = readDocument;
-    global.explainDocument         = explainDocument;
-    global.getDocumentsForPet      = getDocumentsForPet;
-    global.getDocumentById         = getDocumentById;
-    global.initDocuments           = initDocuments;
-
-    // Expose delete so inline onclick handlers work
-    global._deleteDocument         = _deleteDocument;
-
-    // Cleanup hook
-    global._cleanupDocumentLoaders = _cleanupDocumentLoaders;
-
-    // Offline upload queue
-    global.flushDocumentUploadQueue = _flushUploadQueue;
-
-    // Offline delete outbox
-    global.flushDocumentDeleteOutbox = _flushDeleteOutbox;
-
-    // Cross-device document sync
-    global.pullDocumentsForPet = pullDocumentsForPet;
-
-    // Auto-init when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            initDocuments();
-        });
-    } else {
-        setTimeout(initDocuments, 0);
-    }
+    global.triggerDocumentUpload    = triggerDocumentUpload;
+    global.handleDocumentUpload     = handleDocumentUpload;
+    global.renderDocumentsInHistory  = renderDocumentsInHistory;
+    global.openDocument             = openDocument;
+    global.readDocument             = readDocument;
+    global.explainDocument          = explainDocument;
+    global.getDocumentsForPet       = getDocumentsForPet;
+    global.getDocumentById          = getDocumentById;
+    global.initDocuments            = initDocuments;
+    global._deleteDocument          = _deleteDocument;
+    global._cleanupDocumentLoaders  = _cleanupDocumentLoaders;
 
 })(typeof window !== 'undefined' ? window : this);

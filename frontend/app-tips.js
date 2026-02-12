@@ -206,8 +206,14 @@ async function _callTipsLLM(prompt) {
     return Array.isArray(parsed?.tips) ? parsed.tips : [];
 }
 
-function _buildTipsPrompt({ patient, lifestyle, allowedSources, memoryThemes, memoryTitles, requestType }) {
-    const sourcesBullet = allowedSources.map(s => `- ${s}`).join('\n');
+function _buildTipsPrompt({ patient, lifestyle, allowedSources, sourceSummaries, memoryThemes, memoryTitles, requestType }) {
+    const sourcesBullet = allowedSources.map(s => {
+        const summary = sourceSummaries && sourceSummaries.find(src => src.url === s);
+        if (summary && summary.summary_it) {
+            return `- ${s}\n  Contenuti: ${summary.summary_it}`;
+        }
+        return `- ${s}`;
+    }).join('\n');
     const usedThemesLine = memoryThemes.length ? memoryThemes.join(', ') : 'Nessuno';
     const avoidTitlesLine = memoryTitles.length ? memoryTitles.slice(0, 12).join(' | ') : 'Nessuno';
 
@@ -250,6 +256,7 @@ VINCOLI IMPORTANTI:
 8. DIVERSITA FONTI: NON usare piu del 50% delle fonti dallo stesso sito web. Distribuisci le fonti equamente.
 9. FONTI: sourceUrl deve essere UNA delle fonti autorizzate qui sotto (esattamente).
 10. RAZZA: Usa SOLO la razza indicata nel profilo pet. Se la razza e "N/D" o vuota, NON inventarne una: parla in termini generici della specie. NON aggiungere dettagli sulla razza che non siano nel profilo.
+11. CONTENUTI PRE-ELABORATI: Basa i consigli ESCLUSIVAMENTE sui contenuti pre-elaborati forniti sotto ogni URL. NON inventare informazioni non presenti nei riassunti. Se un riassunto è assente per una fonte, NON usare quella fonte.
 
 CATEGORIE DA COPRIRE (almeno 5 categorie diverse):
 - Curiosita sulla razza/specie
@@ -296,24 +303,35 @@ async function generateTipsTricks() {
     tipsData = [];
     renderTips();
 
-    const allowedSources = [
-        'https://www.avma.org',
-        'https://www.aaha.org',
-        'https://www.aspca.org',
-        'https://www.rspca.org.uk',
-        'https://www.akc.org',
-        'https://icatcare.org',
-        'https://www.vet.cornell.edu',
-        'https://www.anicura.it',
-        'https://www.enpa.org',
-        'https://www.purina.it',
-        'https://www.royalcanin.com/it',
-        'https://www.bluvet.it',
-        'https://www.fecava.org',
-        'https://www.enci.it',
-        'https://www.anmvi.it',
-        'https://www.petmd.com'
-    ];
+    // Load active sources from DB with fallback to hardcoded list
+    let allowedSources;
+    let _cachedActiveSources = [];
+    try {
+        const srcResp = await fetchApi('/api/tips-sources/active-urls');
+        if (srcResp.ok) {
+            const srcData = await srcResp.json();
+            const allActive = srcData.sources || [];
+            const withSummary = allActive.filter(s => s.is_available && s.summary_it);
+            _cachedActiveSources = withSummary;
+            allowedSources = withSummary.map(s => s.url);
+
+            // Visual indicator: show how many sources have pre-elaborated content
+            const metaDiv = document.getElementById('tipsMeta');
+            if (metaDiv) {
+                metaDiv.innerHTML = 'Fonti pre-elaborate: ' + withSummary.length + '/' + allActive.filter(s => s.is_available).length + ' \u2713';
+            }
+        }
+    } catch (_) {}
+    if (!allowedSources || allowedSources.length === 0) {
+        allowedSources = [
+            'https://www.avma.org', 'https://www.aaha.org', 'https://www.aspca.org',
+            'https://www.rspca.org.uk', 'https://www.akc.org', 'https://icatcare.org',
+            'https://www.vet.cornell.edu', 'https://www.anicura.it', 'https://www.enpa.org',
+            'https://www.purina.it', 'https://www.royalcanin.com/it', 'https://www.bluvet.it',
+            'https://www.fecava.org', 'https://www.enci.it', 'https://www.anmvi.it',
+            'https://www.petmd.com'
+        ];
+    }
 
     const forbiddenTerms = ['anicura', 'bluvet', 'ani cura'];
     const allowedDomains = allowedSources.map(s => {
@@ -357,6 +375,7 @@ async function generateTipsTricks() {
         const prompt1 = _buildTipsPrompt({
             patient, lifestyle,
             allowedSources,
+            sourceSummaries: _cachedActiveSources,
             memoryThemes,
             memoryTitles,
             requestType: 'first'
@@ -373,6 +392,7 @@ async function generateTipsTricks() {
             const prompt2 = _buildTipsPrompt({
                 patient, lifestyle,
                 allowedSources,
+                sourceSummaries: _cachedActiveSources,
                 memoryThemes: [...new Set([...memoryThemes, ...accepted.map(_themeFromTip)])],
                 memoryTitles: [...new Set([...memoryTitles, ...avoidTitles])],
                 requestType: 'add_more'
@@ -438,9 +458,35 @@ function renderTips() {
             <div class="tip-card-reason">💡 <strong>Perché per il tuo pet:</strong> ${tip.reason || 'Consiglio personalizzato'}</div>
             <div class="tip-card-footer">
                 <span class="tip-card-source">${tip.sourceUrl ? 'Fonte verificata' : 'Fonte non indicata'}</span>
-                ${tip.sourceUrl ? `<a href="${tip.sourceUrl}" target="_blank" class="tip-card-link">🔗 Approfondisci</a>` : ''}
+                ${tip.sourceUrl ? `<a href="#" onclick="openTipSource('${(tip.sourceUrl || '').replace(/'/g, "\\'")}'); return false;" class="tip-card-link">🔗 Approfondisci</a>` : ''}
             </div>
         </div>
         `;
     }).join('');
+}
+
+async function openTipSource(url) {
+    try {
+        const resp = await fetchApi('/api/tips-sources/active-urls');
+        if (resp.ok) {
+            const data = await resp.json();
+            const source = (data.sources || []).find(function(s) { return url.startsWith(s.url); });
+            if (source && source.source_id) {
+                const check = await fetchApi('/api/tips-sources/' + source.source_id + '/check-live');
+                if (check.ok) {
+                    const info = await check.json();
+                    if (!info.is_available) {
+                        var lastDate = info.last_crawled_at
+                            ? new Date(info.last_crawled_at).toLocaleDateString('it-IT') : 'N/D';
+                        var msg = 'Fonte (' + (info.display_name || url) + ') non raggiungibile.\n\n' +
+                            'Ultimo accesso: ' + lastDate + '\n\n' +
+                            (info.summary_it ? 'Riassunto:\n' + info.summary_it.substring(0, 500) + '\n\n' : '') +
+                            'Aprire comunque il link?';
+                        if (!confirm(msg)) return;
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+    window.open(url, '_blank');
 }

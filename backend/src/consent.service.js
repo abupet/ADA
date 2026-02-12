@@ -1,24 +1,35 @@
-// backend/src/consent.service.js v1
+// backend/src/consent.service.js v2
 // PR 2: Consent management service
+// v2: Multi-service consent (promo, nutrition, insurance)
 
 /**
  * Consent hierarchy:
  *   marketing_global OFF -> everything disabled
  *   marketing_global ON + marketing_brand OFF for tenant X -> no promo from X
  *   clinical_tags OFF -> high-sensitivity tags excluded from matching
+ *   nutrition_plan OFF -> nutrition plans not generated
+ *   nutrition_brand OFF for tenant X -> no nutrition from X
+ *   insurance_data_sharing OFF -> no insurance data shared
+ *   insurance_brand OFF for tenant X -> no insurance from X
  *
- * Defaults for new owners: marketing_global=opted_in, clinical_tags=opted_out (prudent).
+ * Defaults for new owners: marketing_global=opted_in, clinical_tags=opted_out (prudent),
+ *   nutrition_plan=opted_out, insurance_data_sharing=opted_out.
  */
 
 /**
  * Get effective consent for an owner.
- * Returns { marketing_global, clinical_tags, brand_consents: { [tenantId]: status } }
+ * Returns { marketing_global, clinical_tags, nutrition_plan, nutrition_brand_consents,
+ *           insurance_data_sharing, insurance_brand_consents, brand_consents }
  */
 async function getEffectiveConsent(pool, ownerUserId) {
   const result = {
     marketing_global: "opted_in", // default
     clinical_tags: "opted_out", // default prudent
+    nutrition_plan: "opted_out", // default prudent
+    insurance_data_sharing: "opted_out", // default prudent
     brand_consents: {},
+    nutrition_brand_consents: {},
+    insurance_brand_consents: {},
   };
 
   try {
@@ -35,8 +46,16 @@ async function getEffectiveConsent(pool, ownerUserId) {
         row.scope === "global"
       ) {
         result.clinical_tags = row.status;
+      } else if (row.consent_type === "nutrition_plan" && row.scope === "global") {
+        result.nutrition_plan = row.status;
+      } else if (row.consent_type === "insurance_data_sharing" && row.scope === "global") {
+        result.insurance_data_sharing = row.status;
       } else if (row.consent_type === "marketing_brand") {
         result.brand_consents[row.scope] = row.status;
+      } else if (row.consent_type === "nutrition_brand") {
+        result.nutrition_brand_consents[row.scope] = row.status;
+      } else if (row.consent_type === "insurance_brand") {
+        result.insurance_brand_consents[row.scope] = row.status;
       }
     }
   } catch (e) {
@@ -133,10 +152,32 @@ async function getPendingConsents(pool, ownerUserId) {
   }
 }
 
+/**
+ * Check if nutrition service is allowed for a specific tenant.
+ */
+function isNutritionAllowed(consent, tenantId) {
+  if (consent.nutrition_plan !== "opted_in") return false;
+  if (tenantId && consent.nutrition_brand_consents[tenantId] === "opted_out") return false;
+  if (tenantId && consent.nutrition_brand_consents[tenantId] === "pending") return false;
+  return true;
+}
+
+/**
+ * Check if insurance service is allowed for a specific tenant.
+ */
+function isInsuranceAllowed(consent, tenantId) {
+  if (consent.insurance_data_sharing !== "opted_in") return false;
+  if (tenantId && consent.insurance_brand_consents[tenantId] === "opted_out") return false;
+  if (tenantId && consent.insurance_brand_consents[tenantId] === "pending") return false;
+  return true;
+}
+
 module.exports = {
   getEffectiveConsent,
   updateConsent,
   isMarketingAllowed,
   isClinicalTagsAllowed,
+  isNutritionAllowed,
+  isInsuranceAllowed,
   getPendingConsents,
 };

@@ -1,4 +1,4 @@
-// runtime-config.js v1
+// runtime-config.js v3
 // Purpose: allow configuring the backend base URL at runtime (no rebuild) for GitHub Pages deployments.
 //
 // Priority order:
@@ -23,7 +23,7 @@
   const fromWindow = window.ADA_API_BASE_URL;
 
 //  const DEFAULT_PROD_API_BASE_URL = "https://ada-au40.onrender.com";
-  const isDevEnvironment = window.location.hostname.includes("netlify.app");
+  const isDevEnvironment = window.location.pathname.startsWith("/ada-dev");
   const DEFAULT_PROD_API_BASE_URL = isDevEnvironment
     ? "https://ada-backend-dev.onrender.com"
     : "https://ada-au40.onrender.com";

@@ -1,4 +1,4 @@
-// ADA v6.17.3 - Core Application Functions
+// ADA v8.7.0 - Core Application Functions
 
 // State variables
 let currentTemplate = 'generale';
@@ -142,7 +142,7 @@ function logout() {
 function handleAuthFailure() {
     // Guard: skip if already on login screen (prevents clearing fields on repeated 401s)
     const loginScreen = document.getElementById('loginScreen');
-    if (loginScreen && loginScreen.style.display === 'flex') return;
+    if (loginScreen && getComputedStyle(loginScreen).display !== 'none') return;
 
     localStorage.removeItem('ada_session');
     clearAuthToken();
@@ -185,6 +185,9 @@ async function initApp() {
     // Render account info and settings visibility
     try { renderAccountInfo(); } catch(e) {}
     try { updateSettingsSectionsVisibility(); } catch(e) {}
+
+    // Load global debug mode from server (overrides local setting)
+    try { await loadGlobalDebugMode(); } catch(e) {}
 
     // Initialize documents module (PR 8)
     try { if (typeof initDocuments === 'function') initDocuments(); } catch(e) {}
@@ -250,7 +253,7 @@ function initNavigation() {
     });
 }
 
-function navigateToPage(page) {
+async function navigateToPage(page) {
     // Debug logging (PR 13)
     if (typeof ADALog !== 'undefined') {
         var fromPage = localStorage.getItem('ada_current_page') || 'unknown';
@@ -260,8 +263,7 @@ function navigateToPage(page) {
     // PR 3: Redirect appointment to home
     if (page === 'appointment') page = getDefaultPageForRole();
 
-    var _saDebugAccess = typeof isSuperAdmin === 'function' && isSuperAdmin();
-    if (page === 'debug' && !debugLogEnabled && !_saDebugAccess) page = getDefaultPageForRole();
+    if (page === 'debug' && !debugLogEnabled) page = getDefaultPageForRole();
 
     // PR 5: Route guard — check role permissions
     if (typeof isPageAllowedForRole === 'function' && !isPageAllowedForRole(page)) {
@@ -291,6 +293,13 @@ function navigateToPage(page) {
         try { renderAccountInfo(); } catch(e) {}
         try { updateSettingsSectionsVisibility(); } catch(e) {}
         try { initOpenAiOptimizationsSettingsUI(); } catch(e) {}
+        try { if (typeof loadAiSettingsUI === 'function') loadAiSettingsUI('ai-settings-container'); } catch(e) {}
+    }
+    if (page === 'communication') {
+        try { if (typeof initCommunication === 'function') await initCommunication('communication-container'); } catch(e) { console.error('[CORE] initCommunication failed:', e); }
+    }
+    if (page === 'chatbot') {
+        try { if (typeof initChatbot === 'function') initChatbot('chatbot-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
     }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
@@ -315,11 +324,25 @@ function navigateToPage(page) {
             if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
             if (page === 'qna') renderPromoSlot('qna-promo-container', 'faq_view');
         }
+        // Nutrition slot (multi-service)
+        if (typeof renderNutritionSlot === 'function') {
+            if (page === 'patient') renderNutritionSlot('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
+        if (typeof renderNutritionValidation === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
+            renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        }
+            // Insurance slot (multi-service)
+            if (typeof renderInsuranceSlot === 'function' && promoRole === 'proprietario') {
+                if (page === 'patient') renderInsuranceSlot('patient-insurance-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+            }
         if (typeof renderVetFlagButton === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
             renderVetFlagButton('patient-vet-flag-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
         if (typeof renderConsentBanner === 'function' && page === 'settings') {
             renderConsentBanner('settings-consent-container');
+        }
+        if (typeof renderConsentCenter === 'function' && page === 'settings') {
+            renderConsentCenter('settings-consent-container');
         }
         // Admin pages (PR 4)
         if (page === 'admin-dashboard' && typeof loadAdminDashboard === 'function') {
@@ -348,6 +371,9 @@ function navigateToPage(page) {
         }
         if (page === 'superadmin-audit' && typeof loadSuperadminAudit === 'function') {
             loadSuperadminAudit('superadmin-audit-content');
+        }
+        if (page === 'superadmin-sources' && typeof loadSuperadminSources === 'function') {
+            loadSuperadminSources('superadmin-sources-content');
         }
     } catch(e) {}
 
@@ -403,26 +429,33 @@ function applyRoleUI(role) {
     const r = role || getActiveRole();
     var _isSA = typeof isSuperAdmin === 'function' && isSuperAdmin();
 
-    // Update sidebar sections
+    // For super_admin, use multi-role array; for others, single role
+    var activeRoles = _isSA && typeof getActiveRoles === 'function' ? getActiveRoles() : [r];
+
+    // Update sidebar sections based on ALL active roles
     const vetSection = document.getElementById('sidebar-vet');
     const ownerSection = document.getElementById('sidebar-owner');
     const adminSection = document.getElementById('sidebar-admin');
     const testDemoSection = document.getElementById('sidebar-test-demo');
-    const isAdmin = (r === 'admin_brand' || r === 'super_admin');
-    if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
-    if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
-    if (adminSection) adminSection.style.display = isAdmin ? '' : 'none';
 
-    // TEST & DEMO section: visible only when super_admin user has super_admin as active role
-    if (testDemoSection) testDemoSection.style.display = (_isSA && r === 'super_admin') ? '' : 'none';
+    var showVet = activeRoles.indexOf(ROLE_VETERINARIO) !== -1;
+    var showOwner = activeRoles.indexOf(ROLE_PROPRIETARIO) !== -1;
+    var showAdmin = activeRoles.indexOf('admin_brand') !== -1 || activeRoles.indexOf('super_admin') !== -1;
+    var showTestDemo = _isSA && activeRoles.indexOf('super_admin') !== -1;
+
+    if (vetSection) vetSection.style.display = showVet ? '' : 'none';
+    if (ownerSection) ownerSection.style.display = showOwner ? '' : 'none';
+    if (adminSection) adminSection.style.display = showAdmin ? '' : 'none';
+    if (testDemoSection) testDemoSection.style.display = showTestDemo ? '' : 'none';
 
     // Show super_admin-only nav items
-    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit'].forEach(function (id) {
+    var hasSARole = activeRoles.indexOf('super_admin') !== -1;
+    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit', 'nav-superadmin-sources'].forEach(function (id) {
         var el = document.getElementById(id);
-        if (el) el.style.display = (r === 'super_admin') ? '' : 'none';
+        if (el) el.style.display = hasSARole ? '' : 'none';
     });
 
-    // Update toggle button
+    // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');
     const labelEl = document.getElementById('roleToggleLabel');
     var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡' };
@@ -430,26 +463,24 @@ function applyRoleUI(role) {
     if (icon) icon.textContent = roleIcons[r] || '🩺';
     if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
 
-    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label,
-    // show only the dropdown with smaller title
+    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label
     var roleToggleContainer = document.getElementById('roleToggleContainer');
     var roleToggleLabelBlock = document.getElementById('roleToggleLabelBlock');
     if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? 'none' : '';
     if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? 'none' : '';
 
-    // Show super_admin role selector if user is super_admin
+    // Show super_admin role selector (checkboxes) if user is super_admin
     var saSelector = document.getElementById('superAdminRoleSelector');
-    var saSelect = document.getElementById('superAdminRoleSelect');
     if (saSelector) {
         saSelector.style.display = _isSA ? '' : 'none';
-        if (_isSA && saSelect) saSelect.value = r;
-    }
-
-    // For super_admin, show the appropriate sidebar sections based on active role
-    if (_isSA) {
-        if (vetSection) vetSection.style.display = (r === ROLE_VETERINARIO) ? '' : 'none';
-        if (ownerSection) ownerSection.style.display = (r === ROLE_PROPRIETARIO) ? '' : 'none';
-        if (adminSection) adminSection.style.display = (r === 'admin_brand' || r === 'super_admin') ? '' : 'none';
+        // Sync checkbox states
+        if (_isSA) {
+            var cbMap = { 'saRoleVet': 'veterinario', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+            Object.keys(cbMap).forEach(function(cbId) {
+                var cb = document.getElementById(cbId);
+                if (cb) cb.checked = activeRoles.indexOf(cbMap[cbId]) !== -1;
+            });
+        }
     }
 
     // Settings: Sistema section visibility and debug checkbox access control
@@ -503,11 +534,17 @@ function initRoleSystem() {
         // First login: set default role based on JWT role
         if (jwtRole === 'vet') {
             setActiveRole(ROLE_VETERINARIO);
-        } else if (jwtRole === 'owner' || jwtRole === 'admin_brand') {
+        } else if (jwtRole === 'owner') {
             setActiveRole(ROLE_PROPRIETARIO);
+        } else if (jwtRole === 'admin_brand') {
+            setActiveRole('admin_brand');
         } else if (jwtRole === 'super_admin') {
-            // super_admin: default to veterinario on first login
-            setActiveRole(ROLE_VETERINARIO);
+            // super_admin: default to veterinario + super_admin on first login
+            if (typeof setActiveRoles === 'function') {
+                setActiveRoles(['veterinario', 'super_admin']);
+            } else {
+                setActiveRole(ROLE_VETERINARIO);
+            }
         }
     }
 
@@ -621,8 +658,7 @@ function restoreTextDrafts() {
 function restoreLastPage() {
     const lastPage = localStorage.getItem('ada_current_page');
     const scrollPosition = localStorage.getItem('ada_scroll_position');
-    var _saCanDebug = typeof isSuperAdmin === 'function' && isSuperAdmin();
-    const safePage = (!debugLogEnabled && !_saCanDebug && lastPage === 'debug') ? 'recording' : lastPage;
+    const safePage = (!debugLogEnabled && lastPage === 'debug') ? 'recording' : lastPage;
 
     if (safePage) {
         navigateToPage(safePage);
@@ -1021,7 +1057,12 @@ async function submitChangePassword() {
 // ============================================
 
 function onSuperAdminRoleChange(role) {
-    setActiveRole(role);
+    // Backward compat wrapper — sets a single role
+    if (typeof setActiveRoles === 'function') {
+        setActiveRoles([role]);
+    } else {
+        setActiveRole(role);
+    }
     applyRoleUI(role);
     var defaultPage = getDefaultPageForRole(role);
     navigateToPage(defaultPage);
@@ -1034,19 +1075,42 @@ function onSuperAdminRoleChange(role) {
     showToast('Ruolo: ' + (labels[role] || role), 'success');
 }
 
+function onSuperAdminRoleToggle() {
+    var cbMap = { 'saRoleVet': 'veterinario', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+    var selected = [];
+    Object.keys(cbMap).forEach(function(cbId) {
+        var cb = document.getElementById(cbId);
+        if (cb && cb.checked) selected.push(cbMap[cbId]);
+    });
+    // Ensure at least one role is selected
+    if (selected.length === 0) {
+        selected = ['veterinario'];
+        var vetCb = document.getElementById('saRoleVet');
+        if (vetCb) vetCb.checked = true;
+    }
+    if (typeof setActiveRoles === 'function') {
+        setActiveRoles(selected);
+    }
+    applyRoleUI(selected[0]);
+    var labels = {
+        'veterinario': 'Veterinario',
+        'proprietario': 'Proprietario',
+        'admin_brand': 'Admin Brand',
+        'super_admin': 'Super Admin'
+    };
+    var names = selected.map(function(r) { return labels[r] || r; });
+    showToast('Ruoli attivi: ' + names.join(', '), 'success');
+}
+
 // ============================================
 // EDIT PET MODAL
 // ============================================
-
-let _editPetSyncPaused = false;
 
 function openEditPetModal() {
     if (!currentPetId) {
         showToast('Nessun pet selezionato', 'error');
         return;
     }
-
-    _editPetSyncPaused = true;
 
     // Load current values into edit modal fields
     var fields = {
@@ -1161,8 +1225,6 @@ async function saveEditPet() {
     var modal = document.getElementById('editPetModal');
     if (modal) modal.classList.remove('active');
 
-    _editPetSyncPaused = false;
-
     // Save via the existing save flow
     await saveCurrentPet();
 }
@@ -1170,7 +1232,6 @@ async function saveEditPet() {
 function cancelEditPet() {
     var modal = document.getElementById('editPetModal');
     if (modal) modal.classList.remove('active');
-    _editPetSyncPaused = false;
 }
 
 // ============================================
@@ -1191,12 +1252,36 @@ function initDebugLogSetting() {
 function toggleDebugLog(enabled) {
     debugLogEnabled = enabled;
     localStorage.setItem('ada_debug_log', enabled ? 'true' : 'false');
+
+    // If super_admin, persist globally via policies
+    if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+        fetchApi('/api/superadmin/policies/debug_mode_enabled', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: enabled, description: 'Debug mode for all users' })
+        }).catch(function() {});
+    }
+
     showToast(enabled ? 'Log debug attivato' : 'Log debug disattivato', 'success');
 
     // Debug ON exposes test-only UI tools (long audio/text loaders) and audio cache controls
     try { updateDebugToolsVisibility(); } catch (e) {}
     try { updateSettingsSystemVisibility(); } catch (e) {}
     try { if (typeof refreshAudioCacheInfo === 'function') refreshAudioCacheInfo(); } catch (e) {}
+}
+
+async function loadGlobalDebugMode() {
+    try {
+        const resp = await fetchApi('/api/settings/debug-mode');
+        if (resp.ok) {
+            const data = await resp.json();
+            debugLogEnabled = !!data.debug_mode_enabled;
+            const cb = document.getElementById('debugLogEnabled');
+            if (cb) cb.checked = debugLogEnabled;
+            updateSettingsSystemVisibility();
+            updateDebugToolsVisibility();
+        }
+    } catch (_) {}
 }
 
 // ============================================
@@ -1443,8 +1528,6 @@ function updateSettingsSystemVisibility() {
 
 function updateDebugToolsVisibility() {
     const dbg = !!debugLogEnabled;
-    var _saAccess = typeof isSuperAdmin === 'function' && isSuperAdmin();
-    var showDebug = dbg || _saAccess;
     const el1 = document.getElementById('debugTestTools');
     const el2 = document.getElementById('audioCacheTools');
     const nav = document.getElementById('nav-debug');
@@ -1452,18 +1535,17 @@ function updateDebugToolsVisibility() {
     const runtime = document.getElementById('chunkingRuntime');
     if (el1) el1.style.display = dbg ? '' : 'none';
     if (el2) el2.style.display = dbg ? '' : 'none';
-    if (nav) nav.style.display = showDebug ? '' : 'none';
-    if (page) page.style.display = showDebug ? '' : 'none';
+    if (nav) nav.style.display = dbg ? '' : 'none';
+    if (page) page.style.display = dbg ? '' : 'none';
     if (!dbg && runtime) runtime.style.display = 'none';
 
-    if (!showDebug) {
+    if (!dbg) {
         const activePage = document.querySelector('.page.active');
         if (activePage && activePage.id === 'page-debug') {
             navigateToPage('recording');
         }
     }
 
-    // Refresh cache info when shown
     if (dbg) {
         try { if (typeof updateAudioCacheInfo === 'function') updateAudioCacheInfo(); } catch (e) {}
     }
@@ -1807,31 +1889,6 @@ function logError(context, errorMessage) {
     // Moved to app-debug-logger.js
 }
 
-// --- Sync Diagnostics (PR 13) ---
-function showSyncDiagnostics() {
-    try {
-        if (typeof syncEngine === 'undefined' || !syncEngine.getStatus) {
-            showToast('syncEngine non disponibile', 'error');
-            return;
-        }
-        var status = syncEngine.getStatus();
-        var msg = 'Sync Diagnostics:\n'
-            + '  Pending: ' + (status.pending || 0) + '\n'
-            + '  Pushing: ' + (status.pushing ? 'YES' : 'no') + '\n'
-            + '  Failed: ' + (status.errors ? status.errors.length : 0) + '\n'
-            + '  Last sync: ' + (status.lastSyncTime || 'never') + '\n';
-        if (status.errors && status.errors.length > 0) {
-            msg += '  Last errors:\n';
-            status.errors.slice(-5).forEach(function(e) {
-                msg += '    ' + e.time + ' — ' + e.error + '\n';
-            });
-        }
-        alert(msg);
-    } catch (e) {
-        showToast('Errore diagnostica sync: ' + e.message, 'error');
-    }
-}
-
 function showApiMetrics() {
     try {
         if (typeof ADAObservability === 'undefined' || !ADAObservability.getReport) {
@@ -1959,8 +2016,8 @@ function renderVitalsList() {
 
         return `
         <div class="vital-record">
-            <span class="vital-date">${fmt(v.date)}</span>
-            <span>Peso: ${weight} kg | T: ${temp} °C | FC ${hr} bpm | FR ${rr}</span>
+            <span class="vital-date">${_escapeHtml(fmt(v.date))}</span>
+            <span>Peso: ${_escapeHtml(String(weight))} kg | T: ${_escapeHtml(String(temp))} °C | FC ${_escapeHtml(String(hr))} bpm | FR ${_escapeHtml(String(rr))}</span>
             <button class="btn-small btn-danger" onclick="deleteVital(${idx})">🗑</button>
         </div>
     `;
@@ -2212,7 +2269,7 @@ function setActiveLangButton(selectorId, lang) {
     const selector = document.getElementById(selectorId);
     if (!selector) return;
     selector.querySelectorAll('.lang-btn').forEach(btn => {
-        btn.classList.remove('active');
+        btn.classList.toggle('active', btn.dataset.lang === lang);
     });
 }
 
@@ -2981,9 +3038,9 @@ function renderMedications() {
         <div class="medication-item">
             <span class="medication-icon">💊</span>
             <div class="medication-info">
-                <h4>${med.name}</h4>
-                <p>${med.dosage} - ${med.frequency} - ${med.duration}</p>
-                ${med.instructions ? `<p><em>${med.instructions}</em></p>` : ''}
+                <h4>${_escapeHtml(med.name)}</h4>
+                <p>${_escapeHtml(med.dosage)} - ${_escapeHtml(med.frequency)} - ${_escapeHtml(med.duration)}</p>
+                ${med.instructions ? `<p><em>${_escapeHtml(med.instructions)}</em></p>` : ''}
             </div>
             <div class="medication-actions">
                 <button class="medication-edit" onclick="editMedication(${i})" title="Modifica">✏️</button>

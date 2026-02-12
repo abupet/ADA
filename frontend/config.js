@@ -1,4 +1,4 @@
-// ADA v7.2.6 - Configuration
+// ADA v8.10.1 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
 
@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '7.2.20';
+const ADA_VERSION = '8.15.5';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -85,12 +85,12 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips'],
-        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
+        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication'],
+        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs'],
-        actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync']
+        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'chatbot'],
+        actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync', 'communicate', 'use_chatbot']
     },
     admin_brand: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard', 'settings'],
@@ -99,11 +99,11 @@ const ROLE_PERMISSIONS = {
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
                 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
-                'superadmin-users', 'settings', 'debug',
-                'patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed'],
+                'superadmin-users', 'superadmin-sources', 'settings', 'debug',
+                'patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication', 'chatbot'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
                   'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
-                  'manage_users', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
+                  'manage_users', 'manage_sources', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
     }
 };
 
@@ -143,32 +143,70 @@ function setActiveRole(role) {
     return validRole;
 }
 
+const ADA_ACTIVE_ROLES_KEY = 'ada_active_roles';
+
+function getActiveRoles() {
+    try {
+        if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
+            var stored = localStorage.getItem(ADA_ACTIVE_ROLES_KEY);
+            if (stored) {
+                var roles = stored.split(',').filter(Boolean);
+                if (roles.length > 0) return roles;
+            }
+            // Fallback: read single role from legacy key
+            var single = getActiveRole();
+            return [single];
+        }
+        return [getActiveRole()];
+    } catch (e) {
+        return [getActiveRole()];
+    }
+}
+
+function setActiveRoles(rolesArray) {
+    var validRoles = ['veterinario', 'proprietario', 'admin_brand', 'super_admin'];
+    var filtered = (rolesArray || []).filter(function(r) { return validRoles.indexOf(r) !== -1; });
+    if (filtered.length === 0) filtered = ['veterinario'];
+    try {
+        localStorage.setItem(ADA_ACTIVE_ROLES_KEY, filtered.join(','));
+        // Keep legacy single-role key in sync (first role)
+        localStorage.setItem(ADA_ACTIVE_ROLE_KEY, filtered[0]);
+    } catch (e) {}
+    return filtered;
+}
+
 function isPageAllowedForRole(pageId, role) {
-    const r = role || getActiveRole();
-    // super_admin JWT users always have access to all pages (regardless of active role)
+    var r = role || getActiveRole();
+    // super_admin JWT users: check ALL active roles
     if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
-        var activePerms = ROLE_PERMISSIONS[r];
-        if (activePerms && activePerms.pages.indexOf(pageId) !== -1) return true;
+        var roles = getActiveRoles();
+        for (var i = 0; i < roles.length; i++) {
+            var rp = ROLE_PERMISSIONS[roles[i]];
+            if (rp && rp.pages.indexOf(pageId) !== -1) return true;
+        }
         var saPerms = ROLE_PERMISSIONS['super_admin'];
         if (saPerms && saPerms.pages.indexOf(pageId) !== -1) return true;
         return false;
     }
-    const perms = ROLE_PERMISSIONS[r];
+    var perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.pages.indexOf(pageId) !== -1;
 }
 
 function isActionAllowedForRole(action, role) {
-    const r = role || getActiveRole();
-    // super_admin JWT users always have access to all actions
+    var r = role || getActiveRole();
+    // super_admin JWT users: check ALL active roles
     if (typeof isSuperAdmin === 'function' && isSuperAdmin()) {
-        var activePerms = ROLE_PERMISSIONS[r];
-        if (activePerms && activePerms.actions.indexOf(action) !== -1) return true;
+        var roles = getActiveRoles();
+        for (var i = 0; i < roles.length; i++) {
+            var rp = ROLE_PERMISSIONS[roles[i]];
+            if (rp && rp.actions.indexOf(action) !== -1) return true;
+        }
         var saPerms = ROLE_PERMISSIONS['super_admin'];
         if (saPerms && saPerms.actions.indexOf(action) !== -1) return true;
         return false;
     }
-    const perms = ROLE_PERMISSIONS[r];
+    var perms = ROLE_PERMISSIONS[r];
     if (!perms) return false;
     return perms.actions.indexOf(action) !== -1;
 }

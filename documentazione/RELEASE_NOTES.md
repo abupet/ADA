@@ -1,5 +1,377 @@
 # Release Notes (cumulative)
 
+## v8.15.5 (2026-02-12)
+- Feat: Eliminati 8 file test sync obsoleti: `smoke.coalescing`, `smoke.data-sync`, `smoke.pets-sync`, `smoke.pull-sync`, `smoke.sync-conflict`, `stress.concurrent-sync`, `deep.pwa-offline`, `smoke.pet-crud`
+- Fix: Helpers test (`api-mocks`, `pages`, `test-data`) — sync functions convertite in no-op per compatibilità con test `@deep`/`@stress`
+- Fix: Rimosso script `test:sync` da `package.json`, rimosso policy check POL-06 (già non necessario)
+- Rimozione sync offline completata (PR 6/6)
+
+## v8.15.4 (2026-02-12)
+- Feat: Rimossi file route sync backend: `sync.routes.js` (196 righe) e `pets.sync.routes.js` (232 righe)
+- Fix: `server.js` — rimossi import e mounting delle route sync, rimosso JSON limit 50MB per sync push
+- Rimozione sync offline (PR 5/6)
+
+## v8.15.3 (2026-02-12)
+- Feat: Eliminati 5 file sync obsoleti: `sync-engine.js` (1094 righe), `pets-sync-step4.js` (266), `pets-sync-bootstrap.js` (113), `pets-sync-merge.js` (136), `pets-coalesce.js` (102) — totale ~1711 righe rimosse
+- Fix: `index.html` — rimossi 5 script tag sync, rinominato "Sincronizza" → "Ricarica" nella sidebar, rimosso bottone "Diagnostica Sync" dalle impostazioni
+- Fix: `app-core.js` — rimossa funzione `showSyncDiagnostics()` e variabile `_editPetSyncPaused`
+- Fix: `sw.js` — rimossi 5 file sync da `STATIC_ASSETS`
+- Fix: `AGENTS.md` — aggiornata sezione architettura (rimosso sync-engine da moduli, aggiornata sezione Sync pets e Documenti)
+- Rimozione sync offline (PR 4/6)
+
+## v8.15.2 (2026-02-12)
+- Feat: `app-documents.js` riscritto in modalità online-only — rimosso completamente IndexedDB (`ADA_Documents`), offline upload queue, delete outbox, pull sync; documenti ora letti/scritti esclusivamente via API REST (`GET/POST/DELETE /api/documents`); `renderDocumentsInHistory()` e `openDocument()` ora fetch da server; `getDocumentsForPet()` e `getDocumentById()` ora fetch API; upload diretto senza cache locale; delete senza outbox; AI read/explain senza persistenza locale dei risultati
+- Riduzione codice: da 1633 a 958 righe (-41%)
+- Rimozione sync offline documenti (PR 3/6)
+
+## v8.15.1 (2026-02-12)
+- Feat: `app-pets.js` riscritto in modalità online-only — rimosso completamente IndexedDB (`ADA_Pets`), outbox, push/pull sync; tutti i CRUD ora via API REST dirette (`GET/POST/PATCH/DELETE /api/pets`); pets mantenuti in-memory (`petsCache`) con normalizzazione `_normalizePetForUI()` da formato server (SQL + extra_data JSONB) a formato UI; `getAllPets()` e `getPetById()` mantenuti async per retrocompatibilità; `saveCurrentPet()`, `saveNewPet()`, `deleteCurrentPet()`, `saveData()`, `saveDiary()` riscritti per chiamare API REST; `initMultiPetSystem()` semplificato (fetch + rebuild UI); `refreshPetsFromServer()` sostituisce push+pull con semplice re-fetch; `ADA_PetsSync` mantenuto come shim di compatibilità per `app-seed.js`
+- Riduzione codice: da 1664 a 736 righe (-56%)
+- Rimozione sync offline (PR 2/6)
+
+## v8.15.0 (2026-02-12)
+- Feat: Backend `pets.routes.js` — `POST /api/pets` e `PATCH /api/pets/:pet_id` ora supportano `extra_data` JSONB per campi rich (vitals_data, medications, history_data, lifestyle, photos, photos_count, owner_name, owner_phone, microchip, visit_date, owner_diary); il PATCH esegue merge incrementale (non sovrascrittura totale) dei campi rich esistenti
+- Preparazione alla rimozione sync offline (PR 1/6)
+
+## v8.14.3 (2026-02-12)
+- Fix (critico): Messaggi — vet crea conversazione con owner ma l'owner non la vede; `owner_override_id` veniva ignorato perché il backend validava con `isValidUuid()` ma gli user ID sono stringhe TEXT (es. `test-owner-001`), non UUID; rimosso il check UUID e usato validazione stringa generica
+
+## v8.14.2 (2026-02-12)
+- Fix (critico): Messaggi — invio messaggio falliva sempre con errore 400; il frontend inviava `{ body: text }` ma il backend richiede `{ content: text }`
+- Fix: Messaggi — bolle chat vuote; `_commRenderBubble` leggeva `msg.body` ma il DB restituisce `msg.content`; aggiunto fallback `msg.content || msg.body || msg.text`
+- Fix: Messaggi — tipo messaggio non riconosciuto; `_commRenderBubble` leggeva `msg.message_type` ma il DB restituisce `msg.type`
+- Fix: Messaggi — lista conversazioni arricchita; la query backend ora include JOIN con pets (pet_name), ultimo messaggio (last_message_text, last_message_at) e conteggio non letti (unread_count) via LATERAL subquery
+
+## v8.14.1 (2026-02-12)
+- Fix: Tenant disabilitati non più visibili nei dropdown — filtro `status === 'active'` applicato in 4 punti: selettore dashboard, selettore pagina, prompt assegnazione tenant utente, auto-select catalogo
+- Fix: Conversazioni — "Impossibile caricare i messaggi" risolto; la lista conversazioni usava `c.id` invece di `c.conversation_id` (nome colonna DB), causando `onclick="openConversation('undefined')"`
+
+## v8.14.0 (2026-02-12)
+- Feat: Test suite expansion — da ~57 a ~278 test E2E (221 nuovi), organizzati in 5 tier: smoke, regression, deep, stress, long
+- Feat: 24 nuovi file `deep.*.spec.ts` coprono navigazione, pet lifecycle, SOAP workflow, recording, documenti, owner flows, admin dashboard, settings, communication, chatbot, nutrition, insurance, consent center, super admin, seed engine, diary/Q&A, foto/vitali/farmaci, tips, security, error handling, performance, PWA/offline, responsive UI, accessibilità
+- Feat: 3 nuovi file `stress.*.spec.ts` — sync concorrente, dati grandi, navigazione rapida
+- Feat: 1 nuovo file `long.full-visit-workflow.spec.ts` — workflow visita completo E2E (24 step)
+- Feat: 4 nuovi helper centralizzati: `api-mocks.ts`, `pages.ts`, `test-data.ts`, `perf.ts`
+- Feat: Fixture test: SOAP sample JSON, trascrizione 10k parole, PDF/JPG/PNG/EXE test, CSV valido e malformato, PDF oversized 15MB
+- Feat: `run-tests.js` aggiornato — tier `@deep` e `@stress` nel nightly (con `--long`); regression grep esclude i nuovi tag
+- Feat: `playwright.config.ts` — nuovo progetto `chromium-deep` con timeout 180s per deep/stress
+- Feat: `package.json` — nuovi script `test:deep`, `test:stress`, `test:nightly`, `test:full`
+- Costo OpenAI: ZERO — tutti i nuovi test usano mock (blockOpenAI + api-mocks centralizzati)
+
+## v8.13.0 (2026-02-11)
+- Fix: Rimosso pulsante "Draft Tutti" dal Report Validazione URL in admin (non funzionante); i singoli pulsanti "Draft" per prodotto restano attivi
+- Fix: Seed Engine — "Preferenze alimentari" non copia più le patologie da "Condizioni note"; inizializzazione a stringa vuota, estesa la mappatura patologia→dieta con enteropatie, EPI, epatopatie, diabete, allergie alimentari, cardiopatie, dermatiti
+- Fix: Promo card — immagine prodotto ora `object-fit:contain` (non tagliata), testo esplicativo completo (rimosso troncamento 200 char), beneficio e correlazione clinica visibili direttamente nella card, pulsante "Perché vedi questo?" sostituito con "Chiudi il suggerimento", pulsante "Acquista" mostra pagina simulata d'acquisto, pulsante "Non mi interessa" mostra popup feedback prima di chiudere
+- Fix (critico): Messaggi — endpoint `GET /api/communication/users` usava `base_role='veterinario'/'proprietario'` ma il DB contiene `'vet'/'owner'`, causando "Nessun destinatario trovato" sempre; corretto mapping diretto, aggiunto filtro esclusione utente corrente
+- Fix: Messaggi — vet ora può selezionare sia "Veterinario" sia "Proprietario" come tipo destinatario; owner non vede più il campo tipo e carica automaticamente i veterinari
+- Fix: Rinominato "Assistente AI" → "La tua assistente ADA" in 3 punti dell'interfaccia (sidebar, impostazioni, header chatbot)
+- Fix: Pulsante "Nuova conversazione" — `navigateToPage` ora è async con `await` su `initCommunication`; aggiunto guard contro re-inizializzazione se il form è aperto; recovery automatico se `comm-new-form-area` non esiste nel DOM; binding click via `addEventListener` invece di `onclick` inline
+
+## v8.12.1 (2026-02-11)
+- Fix: Foto pet da Seed Engine non visibili su GitHub Pages — `_photoSrc()` ora prepone `API_BASE_URL` agli URL relativi `/api/...` che il backend Seed Engine salva nelle foto; su GitHub Pages il browser risolveva questi path contro il dominio frontend invece che contro il backend Render
+
+## v8.12.0 (2026-02-11)
+- Feat: Placeholder immagini animali — Seed Engine ora assegna foto PNG cartoon variegate (15 varianti per specie: Cane, Gatto, Coniglio) invece del singolo SVG deterministico; ogni pet riceve foto diverse senza duplicati
+- Feat: Placeholder immagini prodotti — promo senza `image_url` mostrano ora un placeholder cartoon sacchetto pet food casuale (45 varianti); fallback a triplo livello: backend eligibility, backend mock, frontend `onerror`
+- Feat: 90 immagini PNG placeholder aggiunte in `backend/src/seed-assets/placeholder-animali/` (45) e `placeholder-prodotti/` (45), servite via route statica `/api/seed-assets/` già esistente
+
+## v8.11.0 (2026-02-11)
+- Feat: Messaggi — "Nuova conversazione" ora mostra dropdown animale (da IndexedDB), tipo destinatario (Veterinario/Proprietario in base al ruolo) e destinatario (caricato dinamicamente da `GET /api/communication/users?role=vet|owner`); rimosso campo testo UUID
+- Feat: Messaggi Backend — nuovo endpoint `GET /api/communication/users?role=vet|owner` per elencare utenti attivi per ruolo; `POST /api/communication/conversations` ora supporta `owner_override_id` per conversazioni avviate dal vet verso un proprietario
+- Feat: Tips auto-refresh endpoint — `POST /api/tips-sources/auto-refresh` protetto da header `x-cron-secret`; rispetta `crawl_frequency` (weekly/monthly/quarterly/manual) per determinare le fonti scadute
+- Feat: Tips — fonti senza `summary_it` (pre-elaborato) ora vengono escluse dalla generazione tips; indicatore visivo "Fonti pre-elaborate: X/Y" nel div `#tipsMeta`
+- Feat: Tips — vincolo prompt 11 rafforzato: "Basa i consigli ESCLUSIVAMENTE sui contenuti pre-elaborati [...] NON inventare informazioni non presenti nei riassunti"
+- Feat: Admin fonti — colonna "Ultimo agg. contenuto" (`content_changed_at`) visibile nella card di ogni fonte
+
+## v8.10.4 (2026-02-11)
+- Fix (grave): SOAP generazione referto — il backend (`server.js`) rimuoveva `response_format` dal payload OpenAI; senza direttiva `json_object`, GPT-4o restituiva JSON dentro code fences markdown (```json ... ```), causando `JSON.parse` error. Aggiunto `response_format` alla whitelist del sanitizedPayload
+- Fix: Frontend SOAP — aggiunta funzione `stripMarkdownFences()` come safety net per rimuovere code fences markdown prima del `JSON.parse` in tutti e 3 i livelli di generazione (strict, fallback, ultra-fallback)
+- Fix: Seed Engine — campo "Sesso" generato come "M"/"F" ma il frontend richiede "Maschio"/"Femmina"/"Maschio castrato"/"Femmina sterilizzata"; corretto in `seed.petgen.js` per generare valori italiani compatibili con il dropdown
+- Fix: Seed Engine — campi "Stile di vita" vuoti dopo seed: chiave `environment` rinominata in `lifestyle` per matchare `setLifestyleData()`; valori attività ("moderato"→"medio"), dieta ("commerciale secco"→"secco"), ambiente ("appartamento"→"indoor") allineati ai `<select>` del frontend; `behaviorNotes`, `knownConditions`, `currentMeds`, `dietPreferences` convertiti da array a stringhe comma-separated come atteso dai campi `<input type="text">`
+- Fix: "Segnala promo inappropriata" rinominato in "Segnala consiglio inappropriato" con stile aggiornato (sfondo giallo paglierino, font nero, spaziatura)
+
+## v8.10.3 (2026-02-11)
+- Fix (grave): Pull sync "pet fantasma" — `unwrapPetsPullResponse` ora usa deduplicazione "last wins": per ogni `pet_id`, solo l'ultima operazione cronologica viene applicata. Prima, upserts e deletes venivano separati in array distinti perdendo l'ordine cronologico; il frontend processava deletes prima di upserts, causando la riapparizione di pet già cancellati (118 changes → 10 phantom pets invece di 1)
+
+## v8.10.2 (2026-02-11)
+- Fix: Pet delete ora esegue push immediato al server (`pushOutboxIfOnline`) — prima il delete restava nell'outbox e non veniva inviato fino al sync manuale, causando "pet fantasma" che riapparivano dopo re-login
+- Fix: `unwrapPetsPullResponse` — aggiunto recovery `JSON.parse` per record `pet_changes` doppio-serializzati (stringa JSON invece di oggetto JSONB); gestisce dati corrotti da seed engine pre-v8.10.0
+- Feat: Wipe totale pet utente — nuovo endpoint `POST /api/seed/wipe` con `mode: 'all'` che elimina TUTTI i pet dell'utente autenticato (non solo quelli marcati `[seed]`), con insert `pet.delete` in `pet_changes` per sync frontend
+- Feat: Pulsante "Elimina TUTTI i miei pet" nel pannello Seed Engine admin — con doppia conferma e pull sync automatico post-wipe
+- Fix: Wipe seed ora esegue pull sync dopo completamento per aggiornare la UI
+
+## v8.10.1 (2026-02-11)
+- Fix: Foto seed `[object Object]` — `renderPhotos()` e `openPhotoFullscreen()` ora gestiscono sia stringhe URL (foto utente) che oggetti `{dataUrl, caption}` (foto seed) tramite helper `_photoSrc()`
+- Fix: Seed Engine Phase 9 — rimosso `JSON.stringify(extraData)` nell'UPDATE `pets.extra_data`: il driver `pg` serializza automaticamente oggetti JS come JSONB, coerente col pattern usato in `pets.routes.js`
+
+## v8.10.0 (2026-02-11)
+- Fix (grave): Seed Engine — doppia serializzazione JSONB in `pet_changes.record`: rimosso `JSON.stringify()` su `ins.rows[0]` (Phase 3, riga 394), `upd.rows[0]` (Phase 9, riga 785) e Demo Mode (riga 1001). Il driver `pg` serializza automaticamente oggetti JS come JSONB; il `JSON.stringify` manuale causava una stringa dentro JSONB, che il frontend (`app-pets.js:35` `typeof ch.record === 'object'`) scartava silenziosamente con `continue`, risultando in `changesCount:0, upserts:0` dopo pull sync
+- Feat: Seed Engine — contatori errori `petChangeErrors` (Phase 3) e `phase9ChangeErrors` (Phase 9) per tracciare insert falliti in `pet_changes`
+- Feat: Seed Engine — query di verifica post-completamento: `COUNT pet_changes` per `seed-engine/ownerUserId` con log risultato
+- Feat: Seed Engine — `job.stats` con `petsInserted`, `petChangeErrors`, `petChangesVerified` esposto in `getJobStatus()`
+- Feat: Frontend Seed Engine — messaggio completamento mostra statistiche: "Completato! X pet creati, Y record sync verificati"
+
+## v8.9.0 (2026-02-11)
+- Fix (grave): Seed Engine — pet ora appaiono dopo completamento: delay 1.5s + await pull + retry dopo 3s + refresh esplicito UI (rebuildPetSelector, updateSelectedPetHeaders)
+- Fix: "Draft Tutti" nel Report Validazione URL — parsing robusto via row ID (`tr[id^="url-row-"]`) invece di regex su onclick; toast di errore se tenantId e' null
+- Fix: Upload audio lungo — timeout backpressure aumentato da 90s a 300s (5 min) per file 40+ minuti
+- Feat: Tips auto-refresh — `scheduleTipsRefresh()` controlla ogni 6h fonti con last_crawled > 7 giorni e le ri-crawla automaticamente; `_crawlSource` refactored fuori dalla closure del router
+- Feat: Tips prompt usa riassunti pre-elaborati — `_buildTipsPrompt()` include `summary_it` sotto ogni URL nelle fonti autorizzate; nuovo vincolo prompt "Basa i consigli sui contenuti pre-elaborati"
+- Feat: Multi-ruolo super admin — checkboxes (vet/owner/admin/SA) al posto del dropdown nel Debug; `getActiveRoles()` e `setActiveRoles()` in config.js; `applyRoleUI()` mostra sidebar sections per TUTTI i ruoli attivi; `isPageAllowedForRole`/`isActionAllowedForRole` controllano tutti i ruoli; backward-compat completa per utenti non-super_admin
+
+## v8.8.0 (2026-02-11)
+- Fix: Filtro Priorita nel Catalogo Prodotti ora mostra tutti i valori 0-9 (prima solo 0-5)
+- Fix: Filtro Specie nel Catalogo ora mostra tutte le specie (Cane, Gatto, Coniglio, Furetto, Uccello, Rettile, Tutte) — prima mostrava solo "Tutte" a causa di `_translateSpecies` chiamata con stringa invece di array
+- Fix: Pulsante "Draft Tutti" nel Report Validazione URL ora funziona correttamente — chiamate API sequenziali con feedback progresso reale, `loadAdminCatalog()` chiamato una sola volta alla fine
+- Fix: Navigazione diretta a Catalogo Prodotti per super_admin ora auto-seleziona il primo tenant se nessuno e stato scelto dalla Dashboard — tenant persistito in `sessionStorage`
+- Fix (grave): Seed Engine — dopo "Avvia popolamento", i nuovi pet ora appaiono immediatamente grazie a `pullPetsIfOnline({ force: true })` al completamento
+- Fix: Seed Engine — errore inserimento `pet_changes` (Phase 3) ora rilancia l'eccezione all'outer catch, evitando pet orfani non visibili al pull sync
+- Fix: Seed Engine — log `pet_changes` Phase 9 promosso da warning a error per migliore visibilita diagnostica
+
+## v8.7.0 (2026-02-11)
+- Fix: BUG-01 Token key mismatch — `ada_jwt_token` sostituito con `getAuthToken()` in communication, chatbot, webrtc
+- Fix: BUG-02 Badge non letti — aggiornamento corretto di entrambi i badge (vet + owner)
+- Fix: BUG-03 `setActiveLangButton()` — aggiunta classe `active` al pulsante selezionato
+- Fix: BUG-04 XSS in `renderMedications()` — sanitizzazione con `_escapeHtml()`
+- Fix: BUG-05 XSS in `renderVitalsList()` — sanitizzazione con `_escapeHtml()`
+- Fix: BUG-06 `handleAuthFailure()` — uso `getComputedStyle` per check login screen
+- Fix: BUG-07 `initRoleSystem()` — `admin_brand` mappato correttamente al proprio ruolo
+- Fix: BUG-08 Commento versione `app-core.js` aggiornato a v8.7.0
+- Fix: BUG-09 Deduplicazione JWT decode — uso di `getJwtUserId()` globale
+- Fix: BUG-10 Warning CORS se `FRONTEND_ORIGIN` non configurato
+- Feat: PWA — Progressive Web App installabile con manifest, service worker, caching offline
+- Feat: Offline indicator — banner visivo quando l'app perde connessione
+- PWA: `manifest.json` con icone 192x192 e 512x512
+- PWA: `sw.js` — Cache First per risorse statiche, Network First per API
+- PWA: Meta tags Apple per iOS home screen
+- PWA: Integrazione cache-bust con aggiornamento versione SW
+
+## v8.6.0 (2026-02-11)
+- Feat: WebRTC voice & video calls — chiamate audio/video tra proprietario e veterinario
+- Feat: Post-call transcription — trascrizione automatica chiamate con OpenAI Whisper
+- Frontend: `app-webrtc.js` — UI chiamata con overlay full-screen, timer, mute, STUN servers
+- Frontend: Signaling WebRTC via Socket.io — offer/answer/ICE candidate exchange
+- Backend: `transcription.routes.js` — 3 endpoint REST (save recording, transcribe, list recordings)
+- Backend: `websocket.js` — implementazione completa signaling WebRTC (initiate/accept/reject/offer/answer/ICE/end + partner status)
+- Test: `smoke.communication.spec.ts` — 8 test E2E smoke per pagine comunicazione/chatbot, nav items, AI settings, Socket.io CDN
+
+## v8.5.0 (2026-02-11)
+- Feat: Upload allegati nelle conversazioni — file immagini, audio, video, PDF fino a 10MB
+- Feat: Chatbot AI assistente veterinario — triage automatico (verde/giallo/rosso) con escalation modello
+- Backend: `comm-upload.routes.js` — upload con validazione MIME, SHA-256 checksum, metadata in comm_attachments
+- Backend: `chatbot.routes.js` — sessioni chatbot con GPT-4o-mini (green) → GPT-4o (yellow/red), prompt veterinario italiano, EU AI Act disclaimer
+- Frontend: `app-chatbot.js` — UI sessioni chatbot, bolle messaggi, follow-up chips, banner triage, disclaimer AI
+- HTML: Pagina `page-chatbot` con nav item proprietario, container chatbot
+- Config: `chatbot` aggiunta a ROLE_PERMISSIONS per proprietario e super_admin
+- Wiring: `app-core.js` chiama `initChatbot()` su navigazione
+
+## v8.4.0 (2026-02-11)
+- Feat: Frontend comunicazione owner↔vet — pagina Messaggi con chat real-time
+- Frontend: `app-communication.js` — gestione Socket.io, lista conversazioni, chat view con bolle, typing indicator, mark-as-read, paginazione cursor-based
+- Frontend: Badge non letti nella sidebar per vet e proprietario
+- Frontend: AI Settings nella pagina Impostazioni — toggle chatbot e trascrizione automatica
+- HTML: Pagina `page-communication` con container, nav items sidebar per entrambi i ruoli
+- HTML: Socket.io CDN (cdnjs.cloudflare.com/socket.io/4.7.5)
+- Config: `communication` aggiunta a ROLE_PERMISSIONS per vet, proprietario, super_admin
+- Wiring: `app-core.js` chiama `initCommunication()` e `loadAiSettingsUI()` su navigazione
+
+## v8.3.0 (2026-02-11)
+- Feat: API REST comunicazione owner↔vet — conversazioni, messaggi, conteggio non letti
+- Backend: `communication.routes.js` — 10 endpoint REST (CRUD conversazioni, messaggi con paginazione cursor-based, mark-as-read, unread count)
+- Backend: AI settings endpoint — GET/PATCH `/api/communication/settings` per toggle chatbot e trascrizione
+- Backend: Broadcast Socket.io sui nuovi messaggi via `commNs`
+- Backend: Gestione graceful `42P01` per tabelle mancanti in CI
+
+## v8.2.0 (2026-02-11)
+- Feat: WebSocket server con Socket.io per comunicazione real-time
+- Backend: `websocket.js` — namespace `/communication` con autenticazione JWT, presence tracking, rate limiting (30 msg/60s)
+- Backend: Eventi Socket.io — join/leave conversation, typing indicators, message read receipts
+- Backend: Placeholder eventi WebRTC call signaling (per PR-G)
+- Backend: `server.js` — integrazione httpServer + Socket.io (skip in CI/mock mode)
+- Dep: socket.io aggiunto alle dipendenze backend
+
+## v8.1.0 (2026-02-11)
+- Feat: Schema database comunicazione — `sql/013_communication.sql` con 7 tabelle
+- DB: `communication_settings` — toggle AI per utente (chatbot, trascrizione)
+- DB: `conversations` — chat, voice_call, video_call tra owner e vet, legata a pet
+- DB: `comm_messages` — messaggi con supporto testo, media, system, transcription
+- DB: `call_recordings` — registrazioni chiamate con stato trascrizione
+- DB: `comm_attachments` — allegati ai messaggi con metadata file
+- DB: `chat_sessions` — sessioni chatbot AI con triage e timeout 30min
+- DB: `chat_messages` — messaggi chatbot con livello triage e azioni suggerite
+
+## v8.0.0 (2026-02-10)
+- Feat: Architettura multi-servizio completa — ADA supporta ora 3 tipi di servizio: promo, nutrizione e assicurazione
+- Test: `smoke.multi-service.spec.ts` — 7 test E2E per globals nutrizione/assicurazione, consent center, container DOM, demo mode UI
+- Test: `risk-scoring.service.test.js` — 17 test unitari per tutti i sub-score del risk scoring (age, breed, history, meds, weight)
+- Test: `nutrition.consent.test.js` — 9 test unitari per `isNutritionAllowed()` e `isInsuranceAllowed()` (global/brand/pending)
+- Test: `eligibility.service-type.test.js` — 4 test unitari per verifica contesti `nutrition_review`/`insurance_review` e campo `service_types`
+- Test: Tutti i test unitari esistenti continuano a passare (consent, eligibility, rbac, tag, outbox, pets)
+- Test: Policy checks e security checks passano tutti
+- Version: Bump finale a 8.0.0 — completamento roadmap multi-servizio
+
+## v7.7.0 (2026-02-10)
+- Feat: Demo Mode nel Seed Engine — generazione rapida di 3 pet demo complementari con dati multi-servizio
+- Backend: `generateDemoCohort()` in `seed.petgen.js` — 3 profili deterministic: healthy_young (Labrador 2 anni), clinical_adult (Persiano 7 anni con patologie), senior_complex (Golden Retriever 12 anni multi-patologico)
+- Backend: `startDemoJob()` in `seed.service.js` — fasi demo 10-12: setup cohort + promo events, generazione piani nutrizionali auto-validati, proposte assicurative con risk score
+- Backend: `POST /api/seed/start-demo` in `seed.routes.js` — endpoint per avviare il job demo con selezione tenant e servizi
+- Frontend: UI Demo Mode in `app-seed.js` — pannello con selettore tenant, checkbox servizi (promo/nutrizione/assicurazione), pulsante avvio
+- HTML: Card "Demo Mode" nella pagina Seed Engine con controlli interattivi
+- Auto-consent: il demo imposta automaticamente tutti i consensi (promo, nutrition, insurance) per l'utente demo
+
+## v7.6.0 (2026-02-10)
+- Feat: Modulo Assicurazione — valutazione rischio, preventivi e gestione sinistri per pet
+- Backend: `risk-scoring.service.js` — calcolo punteggio rischio 0-100 con breakdown (età, razza, storia clinica, farmaci, peso) e classi di rischio (low/medium/high/very_high)
+- Backend: `insurance.routes.js` — API complete: GET risk-score, GET coverage, POST quote, POST claim, GET claims
+- Frontend: `app-insurance.js` — card assicurazione per proprietario con tema blu (#1e40af), visualizzazione copertura o punteggio rischio
+- Frontend: Hook SOAP — dopo il salvataggio di un referto, notifica se il pet è assicurato per generare un rimborso
+- HTML: Container `patient-insurance-container` nella pagina Dati Pet
+- Wiring: rendering automatico slot assicurazione in `app-core.js` `navigateToPage()`
+
+## v7.5.0 (2026-02-10)
+- Feat: Modulo Nutrizione — piani nutrizionali personalizzati generati dall'AI e validati dal veterinario
+- Backend: `nutrition.service.js` — generazione piani con OpenAI (GPT-4o-mini), calcolo fabbisogno calorico, suggerimento prodotti dal catalogo
+- Backend: `nutrition.routes.js` — API complete: GET piano attivo/pending, POST genera/valida/rifiuta, PATCH modifica piano
+- Frontend: `app-nutrition.js` — card piano nutrizionale per proprietario (kcal, prodotti, dosi, note cliniche) con tema verde (#16a34a)
+- Frontend: Card validazione nutrizionale per veterinario con pulsanti Valida/Modifica/Rifiuta
+- HTML: Container `patient-nutrition-container` nella pagina Dati Pet
+- Wiring: rendering automatico slot nutrizione in `app-core.js` `navigateToPage()`
+
+## v7.4.0 (2026-02-10)
+- Feat: Architettura multi-servizio — infrastruttura per tre tipi di servizio: `promo`, `nutrition`, `insurance`
+- DB: Migration `sql/012_services_nutrition_insurance.sql` — aggiunge `service_type`, `nutrition_data`, `insurance_data` a `promo_items`; aggiunge `service_type` a `promo_events`; crea tabelle `nutrition_plans`, `insurance_risk_scores`, `insurance_policies`, `insurance_claims`
+- Feat: Eligibility Engine v2 — supporto parametro `serviceType` in `selectPromo()`, nuovi contesti `nutrition_review` e `insurance_review`, campo `service_types` nelle context rules
+- Feat: Consent v2 — nuovi tipi di consenso: `nutrition_plan`, `nutrition_brand`, `insurance_data_sharing`, `insurance_brand` con helpers `isNutritionAllowed()` e `isInsuranceAllowed()`
+- Feat: Nuovo endpoint `GET /api/promo/consent/services` — restituisce i tipi di servizio con i tenant attivi (da prodotti pubblicati)
+- Feat: Centro Privacy (Consent Center) — nuova sezione in Impostazioni con toggle per servizio (Promozioni/Nutrizione/Assicurazione) e toggle per singolo brand/tenant
+- Feat: Catalogo Admin — filtro per `service_type` (dropdown Promo/Nutrizione/Assicurazione), badge colorato per tipo servizio nella tabella, supporto `service_type` in creazione/modifica prodotti
+- Feat: Import/Export — colonna `service_type` in CSV e XLSX (template e export)
+- **MIGRAZIONE PENDENTE**: prima del merge `dev -> main`, applicare `sql/012_services_nutrition_insurance.sql` sul DB prod
+
+## v7.3.5 (2026-02-10)
+- Infra: Migrazione frontend dev da Netlify a GitHub Pages (`abupet.github.io/ada-dev/`) tramite repo dedicato `abupet/ada-dev`
+- Infra: Aggiunto workflow `sync-dev-frontend.yml` per sincronizzazione automatica frontend dev → repo `ada-dev` ad ogni push su `dev`
+- Fix: Env detection in `index.html` e `runtime-config.js` — da `hostname.includes("netlify.app")` a `pathname.startsWith("/ada-dev")`
+- Fix: `ada-tests.sh` — aggiornato DEV_DEPLOY_URL a GitHub Pages
+- Docs: Aggiornato `AGENTS.md` con nuovi URL ambiente dev
+
+## v7.3.4 (2026-02-10)
+- Fix: Catalogo — paginazione corretta con filtri avanzati client-side (priorita, immagine, ext desc, categoria, specie). Quando i filtri sono attivi il server carica tutti i prodotti e la paginazione avviene localmente
+- Fix: Catalogo — il pulsante "Reset" ora resetta anche tutti i filtri avanzati (priorita, immagine, ext desc, categoria, specie), non solo la ricerca testuale
+- Fix: Report validazione URL — il pulsante "Draft" ora usa correttamente POST `/transition` invece di PUT (risolveva "Errore nel cambio stato")
+- Fix: Backend — aggiunta transizione `published -> draft` per consentire agli admin di riportare in bozza prodotti con URL rotti
+- Feat: Report validazione URL — aggiunta colonna "Stato" nella tabella per mostrare lo stato corrente di ogni prodotto
+- Feat: Feedback visivo click — animazione CSS flash (0.25s + scale 0.97) su tutti i pulsanti dell'app, con classe `.btn--loading` per operazioni asincrone
+- Feat: Pulsante "Verifica URL" mostra spinner di caricamento durante la verifica
+- Feat: Policy — descrizione contestuale: selezionando una policy key dalla dropdown appare un box con spiegazione dell'effetto e formato valore atteso
+- Feat: Anteprima prodotto — pulsanti Acquista/Perche vedi questo?/Non mi interessa ora con spaziatura uniforme (flex, gap 12px, justify space-between)
+- Feat: Tenant selector globale — dropdown selezione tenant disponibile direttamente nelle pagine Catalogo e Campagne per super_admin (non serve piu' passare dalla Dashboard)
+- Feat: Export catalogo dati reali — i pulsanti "Scarica file CSV/XLSX" ora esportano i prodotti effettivi del tenant selezionato (con colonne status e extended_description). Fallback al template vuoto se il tenant non ha prodotti
+- Feat: Seed Engine — foto placeholder ora servite come file SVG statici via `/api/seed-assets/` invece di data URI base64 inline
+- Feat: Seed Engine — dati lifestyle Pet arricchiti: sterilizzato, accesso esterno, coinquilini animali, piano alimentare, fonte acqua, ultima vaccinazione, assicurazione
+- Feat: Seed Engine — campi base (sex, birthdate, species, breed, weightKg) inclusi in extra_data per ridondanza frontend
+- UX: Spaziatura header pagine Catalogo e Campagne (margin-bottom 20px)
+- UX: Debug dropdown super_admin — dimensioni ridotte (auto width, min 220px, max 350px) invece di width 100%
+- CI: Test dual-environment — `ada-tests.sh` supporta toggle ambiente prod/dev (tasto `e`), mostra URL e ambiente nello status
+- CI: `ci-real.yml` v9 — matrix strategy per testare prod e dev in parallelo con secrets separati (`DATABASE_URL_DEV`, `DEPLOY_URL_DEV`), artifact names univoci per ambiente, titolo issue con ambiente
+
+## v7.3.3 (2026-02-10)
+- Security: RBAC su tutte le 9 route di seed.routes.js — solo `super_admin` può avviare seed job, wipe, config, promo search/scrape/import/tenants
+- Security: Rimosso leak di `e.message` verso il client in seed.routes.js (6 occorrenze) e tips-sources.routes.js (11 occorrenze) — ora restituisce `"server_error"` con log server-side
+- Security: Validazione input su `/api/chat` — whitelist modelli (`gpt-4o-mini`, `gpt-4o`), cap `max_tokens` a 4096, sanitizzazione `temperature`, validazione `messages` obbligatorie
+- Security: Validazione input su `/api/tts` — whitelist modelli e voci, limite input 4096 caratteri, sanitizzazione payload
+- Security: 3 nuovi test automatici (SEC-10 RBAC seed, SEC-11 no e.message leaks, SEC-12 AI endpoint validation)
+- Fix: Debug mode globale — il toggle OFF nasconde il menu Debug per TUTTI gli utenti incluso super_admin (prima super_admin vedeva sempre il menu)
+  - Rimosso bypass `_saAccess` da `updateDebugToolsVisibility()`, navigation guard e `restoreLastPage()`
+  - Settings > Sistema card resta visibile e modificabile per super_admin (invariato)
+- UX: Pagina Acquisto (simulata) — aggiunto pulsante "← Torna all'anteprima" per tornare alla preview del prodotto
+- UX: Preview prodotto — "Verifica URL" e "Chiudi" sulla stessa riga con flexbox
+- UX: Preview prodotto — spiegazione AI "Perché vedi questo?" ora appare tra la card prodotto e i dettagli tecnici (prima era in fondo)
+- UX: Catalogo — nuovo pulsante "👁️ Anteprima" nella toolbar per preview sequenziale di tutti i prodotti filtrati
+- UX: Report validazione URL — pulsante "→ Draft" ora mostra feedback visivo (✓ Draft verde) con gestione errori
+- UX: Report validazione URL — nuovo pulsante "Draft Tutti" per spostare tutti i prodotti problematici a draft in batch con indicatore progresso
+- UX: Fonti Tips — errore 403 mostra messaggio "Accesso negato — ruolo super_admin richiesto" anziché errore generico; errore 500 mostra hint migrazione SQL
+
+## v7.3.2 (2026-02-09)
+- Feat: Tips Sources — sistema di pre-elaborazione, caching e gestione delle fonti esterne per Tips & Tricks
+  - Nuova tabella `tips_sources` con campi URL, dominio, summary IT, key_topics, crawl status, e validazione
+  - Nuova tabella `tips_sources_crawl_log` per tracciare ogni crawl con durata, errori e cambiamenti contenuto
+  - Seed iniziale con 16 fonti veterinarie (AVMA, AAHA, ASPCA, RSPCA, AKC, iCatCare, Cornell Vet, etc.)
+  - DB: Migration `sql/011_tips_sources_cache.sql`
+- Feat: Backend routes per gestione fonti (`tips-sources.routes.js`)
+  - CRUD completo per super_admin (GET lista paginata, GET dettaglio, POST crea, PUT modifica, DELETE elimina)
+  - Crawl singolo e batch: fetch URL, estrazione testo HTML, hash SHA-256, summary GPT-4o-mini se contenuto cambiato
+  - Validazione singola e batch: HEAD check rapido con aggiornamento stato
+  - Route pubblica `GET /api/tips-sources/active-urls` per frontend tips (any auth)
+  - Route pubblica `GET /api/tips-sources/:id/check-live` per validazione on-demand click utente
+- Feat: Frontend tips dinamiche (`app-tips.js`)
+  - Fonti caricate dal DB con fallback all'array hardcoded se DB non disponibile
+  - `openTipSource()`: click su link verifica disponibilita' fonte; se offline, mostra riassunto e chiede conferma
+  - Context fonti con summary incluso nel prompt per tips piu' accurati
+- Feat: Pagina admin "Fonti Tips" per super_admin (`app-admin.js`)
+  - Lista fonti con card (stato online/offline/disattivata/mai crawlato, dominio, frequenza, topics, summary)
+  - Filtri per stato (tutte/attive/disattivate) e ricerca testuale
+  - Riepilogo contatori: totali, disponibili, non raggiungibili
+  - Modal dettaglio con tutti i campi + ultimi crawl log in tabella
+  - Modal crea/modifica fonte con form (URL, nome, frequenza, attiva, note)
+  - Azioni: Crawl singolo, Valida singolo, Crawl batch, Valida batch, Elimina
+  - Nuova voce nav "Fonti Tips" visibile solo per super_admin
+- CSS: Stili dedicati per source-card, status badge, topic tags, crawl-log-table, sources-summary
+- **MIGRAZIONI PROD PENDENTI** (da applicare sul DB prod Render/Frankfurt prima del merge `dev -> main`):
+  1. `sql/010_extended_desc_url_check.sql` (da v7.2.21 — aggiunge `extended_description`, `url_check_status`, `url_last_checked_at` a `promo_items`)
+  2. `sql/011_tips_sources_cache.sql` (da v7.3.2 — crea tabelle `tips_sources` e `tips_sources_crawl_log`, seed 16 fonti)
+
+## v7.3.1 (2026-02-09)
+- Feat: Catalogo — filtri avanzati per priorità, immagine, extended description, categoria e specie con dropdown nella barra filtri
+- Feat: Catalogo — preview navigabile ora opera sulla lista filtrata (navigazione solo tra prodotti visibili)
+- Feat: Report validazione URL — pulsante "→ Draft" per spostare rapidamente prodotti con URL rotti a stato draft
+- Feat: Preview — pulsante "Acquista" ora apre una pagina e-commerce simulata (placeholder) con form spedizione e pagamento
+- Feat: Preview — pulsante "Perché vedi questo?" ora attiva la generazione della spiegazione AI con banner di avviso test
+- Feat: Preview — pulsante "Non mi interessa" ora mostra pagina feedback placeholder con conferma
+- Rimosso pulsante "Testa spiegazione AI" dai dettagli tecnici (integrato in "Perché vedi questo?")
+
+## v7.3.0 (2026-02-09)
+- Fix: Profilo Sanitario — auto-save immediato dopo generazione per evitare perdita del testo se l'utente naviga altrove prima del salvataggio manuale
+- Fix: Profilo Sanitario — fallback ownerName dal pet object in IndexedDB per pet creati via seed engine (risolveva "Proprietario: N/D")
+- Feat: Profilo Sanitario (vet) — fonti numerate con riferimenti [1], [2] e sezione "Fonti:" a piè di pagina al posto delle citazioni inline ripetute
+- Feat: Debug flag globale — il flag "Debug attivo" viene ora salvato in `global_policies` dal super_admin e letto da tutti gli utenti al login, rendendolo globale anziché locale al browser
+  - Nuovo endpoint `GET /api/settings/debug-mode` accessibile a tutti gli utenti autenticati
+  - `toggleDebugLog()` del super_admin persiste automaticamente via `PUT /api/superadmin/policies/debug_mode_enabled`
+  - `loadGlobalDebugMode()` chiamata all'avvio dell'app dopo il login
+- Fix: Coda chunk piena con file grandi — in modalità upload file, la coda aspetta che si liberi spazio (backpressure con timeout 90s) anziché fermare la registrazione
+- Fix: Foto placeholder seed engine — SVG deterministici per specie con emoji e gradiente, identici tra backend (`seed.petgen.js`) e frontend (`app-testdata.js`), che producono `data:image/svg+xml;base64` validi
+- Feat: Policies admin — chiave policy ora selezionabile da dropdown con 6 chiavi predefinite + opzione "Altro" per chiavi personalizzate
+
+## v7.2.21 (2026-02-09)
+- Feat: Campo `extended_description` per prodotti promozionali — descrizione dettagliata usata dal motore AI per generare spiegazioni personalizzate migliori (non visibile al cliente)
+  - Nuova colonna `extended_description TEXT` in `promo_items`
+  - Supporto in tutti gli endpoint di import (CSV, XLSX, wizard, csv-confirm), create e update
+  - `explanation.service.js` ora usa `extended_description` quando disponibile per il prompt OpenAI
+  - Textarea per extended_description nei modal di creazione, modifica e wizard import
+  - Indicatore ✅/❌ nella tabella catalogo e nell'anteprima CSV
+  - Template CSV e XLSX aggiornati con colonna `extended_description`
+- Feat: Preview catalogo — anteprima card prodotto come appare al cliente
+  - Modal navigabile con card identica alla vista cliente (immagine, nome, descrizione, spiegazione AI placeholder)
+  - Dettagli tecnici collapsibili (categoria, specie, lifecycle, tags, extended description)
+  - Pulsante "Testa spiegazione AI" per generare una spiegazione con pet di test
+  - Pulsante "Verifica URL" per validare immagine e product_url
+- Feat: Validazione URL — verifica on-demand e batch di `image_url` e `product_url`
+  - Nuovo endpoint `POST /api/admin/:tenantId/validate-urls` con HEAD request e timeout 5s
+  - Nuovo endpoint `POST /api/admin/cron/validate-urls` (super_admin) per validazione settimanale
+  - Colonne `url_check_status JSONB` e `url_last_checked_at` in `promo_items`
+  - Verifica singola nel modal preview e verifica bulk nel catalogo
+  - Report URL rotti in modal dedicato
+- Feat: Catalog UX migliorata
+  - Ricerca per nome nella tabella catalogo
+  - Bulk publish: pubblica tutti i prodotti draft con un click
+  - Specie mostrata accanto al nome per distinguere prodotti con nome simile
+  - Colonne Img e Ext. con indicatori visivi
+  - Contatore "Salute Catalogo" nella dashboard (senza immagine, senza ext. desc., URL rotti)
+- Fix: Parser import — supporto separatore `|` (pipe) oltre a `,` nei campi multi-valore (species, lifecycle_target, tags_include, tags_exclude) con nuovo helper `_splitMultiValue()`
+- DB: 3 nuovi tag clinici nel Tag Dictionary: `clinical:cardiac`, `clinical:endocrine`, `clinical:hepatic`
+- DB: Migration `010_extended_desc_url_check.sql`
+- ⚠️ **MIGRAZIONE PROD PENDENTE**: prima del merge `dev → main`, applicare `sql/010_extended_desc_url_check.sql` sul DB prod (Render/Frankfurt)
+
 ## v7.2.20 (2026-02-09)
 - Refactor: rinominata directory `docs/` → `frontend/` per chiarezza (era la SPA, non documentazione)
 - Refactor: spostata documentazione utente (README, RELEASE_NOTES, TEST_PLAN, VERIFY_TOKEN) in `documentazione/`

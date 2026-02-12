@@ -935,7 +935,23 @@ async function enqueueChunkForTranscription(blob, chunkIndex) {
 
     // Guard: prevent queue explosion
     const maxPending = Number(chunkingCfg?.maxPendingChunks) || 4;
-    if (chunkQueue.length >= maxPending) {
+
+    // File upload mode: wait for queue space instead of stopping
+    const isUpload = typeof chunkingSessionId === 'string' && chunkingSessionId.startsWith('debug_file_');
+    if (isUpload && chunkQueue.length >= maxPending) {
+        logDebug?.('CHUNK', `Queue full (${chunkQueue.length}/${maxPending}), waiting for space...`);
+        const t0 = Date.now();
+        while (chunkQueue.length >= maxPending && (Date.now() - t0) < 300000) {
+            await new Promise(r => setTimeout(r, 500));
+        }
+        if (chunkQueue.length >= maxPending) {
+            showToast('Timeout: il file è troppo grande o la connessione è lenta (limite 5 min)', 'error');
+            return;
+        }
+    }
+
+    // Original guard for live recording
+    if (!isUpload && chunkQueue.length >= maxPending) {
         logError?.('CHUNK', `Coda piena (>${maxPending}). Stop registrazione.`);
         showToast('Coda chunk piena: stop per evitare perdita dati', 'error');
         await stopChunkingRecording(true);

@@ -1217,13 +1217,14 @@ const OWNER_LAST_NAMES = [
 // 3. UTILITY HELPERS
 // ---------------------------------------------------------------------------
 
-const ENVIRONMENTS = ["appartamento", "casa con giardino", "fattoria", "villetta"];
-const HOUSEHOLDS = ["famiglia con bambini", "coppia", "singolo", "anziano", "famiglia numerosa"];
-const ACTIVITY_LEVELS_DOG = ["basso", "moderato", "alto", "agonistico"];
-const ACTIVITY_LEVELS_CAT = ["basso (indoor)", "moderato (indoor/outdoor)", "alto (outdoor)"];
-const ACTIVITY_LEVELS_RABBIT = ["basso (gabbia)", "moderato (libero in casa)", "alto (giardino recintato)"];
-const DIET_TYPES = ["commerciale secco", "commerciale umido", "misto secco/umido", "casalinga", "BARF"];
-const DIET_TYPES_RABBIT = ["fieno + pellet", "fieno + verdure fresche", "misto completo"];
+// Values MUST match frontend <select> options in index.html
+const ENVIRONMENTS = ["indoor", "outdoor", "misto"];
+const HOUSEHOLDS = ["bambini", "anziani", "altri_cani", "altri_gatti", "altri_animali"];
+const ACTIVITY_LEVELS_DOG = ["basso", "medio", "alto"];
+const ACTIVITY_LEVELS_CAT = ["basso", "medio", "alto"];
+const ACTIVITY_LEVELS_RABBIT = ["basso", "medio", "alto"];
+const DIET_TYPES = ["secco", "umido", "misto", "casalingo", "barf"];
+const DIET_TYPES_RABBIT = ["secco", "misto", "casalingo"];
 const LOCATIONS = [
   "Milano", "Roma", "Napoli", "Torino", "Firenze", "Bologna",
   "Palermo", "Genova", "Verona", "Padova", "Bari", "Catania",
@@ -1415,7 +1416,12 @@ function generatePetCohort(count, opts = {}) {
 
     const nameList = species === "dog" ? DOG_NAMES : species === "cat" ? CAT_NAMES : RABBIT_NAMES;
     const name = pick(nameList, rng);
-    const sex = rng() > 0.5 ? "M" : "F";
+    // Sex must match frontend <select> options: "Maschio", "Maschio castrato", "Femmina", "Femmina sterilizzata"
+    const isMale = rng() > 0.5;
+    const isSterilized = rng() > 0.3; // ~70% sterilized
+    const sex = isMale
+      ? (isSterilized ? "Maschio castrato" : "Maschio")
+      : (isSterilized ? "Femmina sterilizzata" : "Femmina");
 
     const [wMin, wMax] = (WEIGHT_RANGES[species] && WEIGHT_RANGES[species][breed]) || [3, 10];
     let weightKg = randBetween(wMin, wMax, rng);
@@ -1482,30 +1488,73 @@ function generatePetCohort(count, opts = {}) {
     if (species === "cat" && rng() > 0.6) behaviorNotes.push(pick(["timido con gli estranei", "marca il territorio", "graffia i mobili", "molto vocale", "affettuoso e socievole"], rng));
     if (species === "rabbit" && rng() > 0.6) behaviorNotes.push(pick(["tende a rosicchiare i cavi", "fa binky quando è contento", "timido ma curioso", "scava molto", "si lascia manipolare facilmente"], rng));
 
+    const outdoorAccessMap = {
+      dog: 'outdoor con passeggiate',
+      cat: rng() > 0.4 ? 'indoor/outdoor' : 'indoor only',
+      rabbit: 'indoor con recinto',
+    };
+    const cohabitantsOptions = {
+      dog: ['altro cane', 'gatto', 'coniglio'],
+      cat: ['altro gatto', 'cane'],
+      rabbit: ['altro coniglio', 'cavia'],
+    };
+    const cohabitants = [];
+    if (rng() > 0.5) {
+      const cnt = Math.floor(rng() * 3) + 1;
+      const opts = cohabitantsOptions[species] || ['altro animale'];
+      for (let ci = 0; ci < cnt; ci++) cohabitants.push(pick(opts, rng));
+    }
+    const daysAgo = Math.floor(rng() * 365);
+    const lastVaccDate = new Date(); lastVaccDate.setDate(lastVaccDate.getDate() - daysAgo);
+
+    // Keys MUST match frontend setLifestyleData() mapping in app-data.js
     const lifestyle = {
-      environment: pick(ENVIRONMENTS, rng),
+      lifestyle: pick(ENVIRONMENTS, rng),
       household: pick(HOUSEHOLDS, rng),
       activityLevel: pick(activityLevels, rng),
       dietType: pick(dietTypes, rng),
-      dietPreferences: [],
-      knownConditions,
-      currentMeds: medications.map(m => m.name),
-      behaviorNotes,
+      dietPreferences: '',
+      knownConditions: knownConditions.join(', '),
+      currentMeds: medications.map(m => m.name).join(', '),
+      behaviorNotes: behaviorNotes.join(', '),
       location: pick(LOCATIONS, rng),
     };
 
     // Add diet preferences for pathologies
+    const dietPrefArr = [];
     for (const p of selectedPathologies) {
       if (p.name.includes("renale") || p.name.includes("CKD") || p.name.includes("PKD")) {
-        lifestyle.dietPreferences.push("dieta renale");
+        dietPrefArr.push("dieta renale");
       }
       if (p.name.includes("Obesità") || p.name.includes("sovrappeso")) {
-        lifestyle.dietPreferences.push("dieta ipocalorica");
+        dietPrefArr.push("dieta ipocalorica");
       }
       if (p.name.includes("urinari") || p.name.includes("struvite") || p.name.includes("ossalato") || p.name.includes("FLUTD") || p.name.includes("cistite")) {
-        lifestyle.dietPreferences.push("dieta urinaria");
+        dietPrefArr.push("dieta urinaria");
+      }
+      if (p.name.includes("Enteropatia") || p.name.includes("glutine") || p.name.includes("IBD") || p.name.includes("enterite")) {
+        dietPrefArr.push("dieta gastrointestinale / ipoallergenica");
+      }
+      if (p.name.includes("pancreatica") || p.name.includes("EPI")) {
+        dietPrefArr.push("dieta altamente digeribile a basso contenuto di grassi");
+      }
+      if (p.name.includes("epatica") || p.name.includes("fegato") || p.name.includes("epatite")) {
+        dietPrefArr.push("dieta epatica");
+      }
+      if (p.name.includes("diabete") || p.name.includes("Diabete")) {
+        dietPrefArr.push("dieta per diabetici (alto contenuto proteico, basso indice glicemico)");
+      }
+      if (p.name.includes("allergia alimentare") || p.name.includes("intolleranza")) {
+        dietPrefArr.push("dieta a proteine idrolizzate / novel protein");
+      }
+      if (p.name.includes("cardiaca") || p.name.includes("cardiopatia") || p.name.includes("cuore")) {
+        dietPrefArr.push("dieta cardiaca (basso sodio)");
+      }
+      if (p.name.includes("dermatite") || p.name.includes("atopia") || p.name.includes("atopica")) {
+        dietPrefArr.push("dieta dermatologica (omega-3, ipoallergenica)");
       }
     }
+    if (dietPrefArr.length > 0) lifestyle.dietPreferences = dietPrefArr.join(', ');
 
     const petId = "seed-" + randomUUID().slice(0, 12);
 
@@ -1626,12 +1675,12 @@ TERAPIA IN CORSO:
 ${medsContext}
 
 STILE DI VITA:
-- Ambiente: ${pet.lifestyle.environment}
+- Ambiente: ${pet.lifestyle.lifestyle}
 - Nucleo familiare: ${pet.lifestyle.household}
 - Livello di attività: ${pet.lifestyle.activityLevel}
 - Dieta: ${pet.lifestyle.dietType}
 - Località: ${pet.lifestyle.location}
-${pet.lifestyle.behaviorNotes.length > 0 ? "- Note comportamentali: " + pet.lifestyle.behaviorNotes.join(", ") : ""}
+${pet.lifestyle.behaviorNotes ? "- Note comportamentali: " + pet.lifestyle.behaviorNotes : ""}
 
 DIARIO CLINICO PRECEDENTE:
 ${pet.diary}
@@ -1835,11 +1884,246 @@ function getDocTypesForPet(pet) {
 // 6. EXPORTS
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 6b. PHOTO PLACEHOLDERS (random PNG per species, no duplicates)
+// ---------------------------------------------------------------------------
+
+const SPECIES_TO_PHOTO_PREFIX = {
+    dog: 'Cane',
+    cat: 'Gatto',
+    rabbit: 'Coniglio',
+};
+const PHOTOS_PER_SPECIES = 15;
+
+function getPhotoPlaceholder(species) {
+    const prefix = SPECIES_TO_PHOTO_PREFIX[species];
+    if (!prefix) {
+        return '/api/seed-assets/placeholder-pet.svg';
+    }
+    const index = String(Math.floor(Math.random() * PHOTOS_PER_SPECIES) + 1).padStart(2, '0');
+    return `/api/seed-assets/placeholder-animali/${prefix}_${index}.png`;
+}
+
+function generatePhotosForPet(pet, count) {
+    const prefix = SPECIES_TO_PHOTO_PREFIX[pet.species];
+    const photos = [];
+
+    if (!prefix) {
+        for (let i = 0; i < count; i++) {
+            photos.push({
+                id: `photo-${pet._petId || pet.petId || 'x'}-${i}`,
+                dataUrl: '/api/seed-assets/placeholder-pet.svg',
+                caption: `Foto ${i + 1} di ${pet.name}`,
+                date: new Date().toISOString(),
+            });
+        }
+        return photos;
+    }
+
+    // Shuffle indices 1..15 and pick first `count` (no duplicates)
+    const indices = Array.from({ length: PHOTOS_PER_SPECIES }, (_, i) => i + 1);
+    for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    const actualCount = Math.min(count, PHOTOS_PER_SPECIES);
+
+    for (let i = 0; i < actualCount; i++) {
+        const idx = String(indices[i]).padStart(2, '0');
+        photos.push({
+            id: `photo-${pet._petId || pet.petId || 'x'}-${i}`,
+            dataUrl: `/api/seed-assets/placeholder-animali/${prefix}_${idx}.png`,
+            caption: `Foto ${i + 1} di ${pet.name}`,
+            date: new Date().toISOString(),
+        });
+    }
+    return photos;
+}
+
+// ---------------------------------------------------------------------------
+// 5b. generateDemoCohort(tenantProducts) — 3 complementary demo profiles
+// ---------------------------------------------------------------------------
+
+function generateDemoCohort(tenantProducts) {
+  const profiles = [
+    {
+      label: 'healthy_young',
+      name: 'Luna',
+      species: 'dog',
+      breed: 'Labrador Retriever',
+      sex: 'Femmina sterilizzata',
+      birthdate: _demoBirthdate(2),
+      weightKg: 28.5,
+      ownerName: 'Marco Bianchi',
+      ownerPhone: '+39 333 1234567',
+      microchip: '380260000000001',
+      numPathologies: 0,
+    },
+    {
+      label: 'clinical_adult',
+      name: 'Micio',
+      species: 'cat',
+      breed: 'Persiano',
+      sex: 'Maschio castrato',
+      birthdate: _demoBirthdate(7),
+      weightKg: 5.8,
+      ownerName: 'Anna Rossi',
+      ownerPhone: '+39 347 9876543',
+      microchip: '380260000000002',
+      numPathologies: 2,
+    },
+    {
+      label: 'senior_complex',
+      name: 'Rex',
+      species: 'dog',
+      breed: 'Golden Retriever',
+      sex: 'Maschio castrato',
+      birthdate: _demoBirthdate(12),
+      weightKg: 29.0,
+      ownerName: 'Luigi Verdi',
+      ownerPhone: '+39 339 5551234',
+      microchip: '380260000000003',
+      numPathologies: 3,
+    },
+  ];
+
+  const pets = [];
+
+  for (const profile of profiles) {
+    const breedData = BREED_PATHOLOGIES[profile.breed];
+    const breedPathologies = breedData ? breedData.pathologies : [];
+    const selectedPathologies = breedPathologies.slice(0, profile.numPathologies);
+
+    let weightKg = profile.weightKg;
+    for (const p of selectedPathologies) {
+      if (p.vitalAnomalies && p.vitalAnomalies.weight === 'high') {
+        weightKg = +(weightKg * 1.25).toFixed(1);
+      } else if (p.vitalAnomalies && p.vitalAnomalies.weight === 'tendency_high') {
+        weightKg = +(weightKg * 1.12).toFixed(1);
+      } else if (p.vitalAnomalies && p.vitalAnomalies.weight === 'low') {
+        weightKg = +(weightKg * 0.78).toFixed(1);
+      } else if (p.vitalAnomalies && p.vitalAnomalies.weight === 'tendency_low') {
+        weightKg = +(weightKg * 0.9).toFixed(1);
+      }
+    }
+
+    const medications = [];
+    for (const pa of selectedPathologies) {
+      for (const m of pa.typicalMeds) {
+        if (m.name !== 'N/A' && !m.name.startsWith('Fisioterapia') && !m.name.startsWith('Monitoraggio')) {
+          medications.push({
+            name: m.name,
+            dosage: m.dosage,
+            frequency: m.frequency,
+            duration: m.duration,
+            instructions: m.instructions,
+            forCondition: pa.name,
+          });
+        }
+      }
+    }
+
+    const knownConditions = selectedPathologies.map(pa => pa.name);
+
+    // Keys/values MUST match frontend setLifestyleData() and index.html <select> options
+    const lifestyle = {
+      lifestyle: profile.label === 'healthy_young' ? 'outdoor' : 'indoor',
+      household: 'bambini',
+      activityLevel: profile.label === 'senior_complex' ? 'basso' : profile.label === 'healthy_young' ? 'alto' : 'medio',
+      dietType: knownConditions.length > 0 ? 'casalingo' : 'secco',
+      dietPreferences: '',
+      knownConditions: knownConditions.join(', '),
+      currentMeds: medications.map(m => m.name).join(', '),
+      behaviorNotes: '',
+      location: 'Roma',
+    };
+
+    const dietPrefList = [];
+    for (const pa of selectedPathologies) {
+      if (pa.name.includes('renale') || pa.name.includes('CKD') || pa.name.includes('PKD')) {
+        dietPrefList.push('dieta renale');
+      }
+      if (pa.name.includes('Obesità') || pa.name.includes('sovrappeso')) {
+        dietPrefList.push('dieta ipocalorica');
+      }
+      if (pa.name.includes('urinari') || pa.name.includes('struvite') || pa.name.includes('ossalato') || pa.name.includes('FLUTD') || pa.name.includes('cistite')) {
+        dietPrefList.push('dieta urinaria');
+      }
+      if (pa.name.includes('Enteropatia') || pa.name.includes('glutine') || pa.name.includes('IBD') || pa.name.includes('enterite')) {
+        dietPrefList.push('dieta gastrointestinale / ipoallergenica');
+      }
+      if (pa.name.includes('pancreatica') || pa.name.includes('EPI')) {
+        dietPrefList.push('dieta altamente digeribile a basso contenuto di grassi');
+      }
+      if (pa.name.includes('epatica') || pa.name.includes('fegato') || pa.name.includes('epatite')) {
+        dietPrefList.push('dieta epatica');
+      }
+      if (pa.name.includes('diabete') || pa.name.includes('Diabete')) {
+        dietPrefList.push('dieta per diabetici (alto contenuto proteico, basso indice glicemico)');
+      }
+      if (pa.name.includes('allergia alimentare') || pa.name.includes('intolleranza')) {
+        dietPrefList.push('dieta a proteine idrolizzate / novel protein');
+      }
+      if (pa.name.includes('cardiaca') || pa.name.includes('cardiopatia') || pa.name.includes('cuore')) {
+        dietPrefList.push('dieta cardiaca (basso sodio)');
+      }
+      if (pa.name.includes('dermatite') || pa.name.includes('atopia') || pa.name.includes('atopica')) {
+        dietPrefList.push('dieta dermatologica (omega-3, ipoallergenica)');
+      }
+    }
+    if (dietPrefList.length > 0) lifestyle.dietPreferences = dietPrefList.join(', ');
+
+    const petId = 'demo-' + profile.label;
+
+    const pet = {
+      petId,
+      name: profile.name,
+      species: profile.species,
+      breed: profile.breed,
+      sex: profile.sex,
+      birthdate: profile.birthdate,
+      weightKg,
+      ownerName: profile.ownerName,
+      ownerPhone: profile.ownerPhone,
+      microchip: profile.microchip,
+      lifestyle,
+      pathologies: selectedPathologies.map(pa => ({
+        name: pa.name,
+        clinicalKeywords: pa.clinicalKeywords,
+        vitalAnomalies: pa.vitalAnomalies,
+        promoTags: pa.promoTags,
+        soapContext: pa.soapContext,
+        docTypes: pa.docTypes,
+      })),
+      medications,
+      diary: '',
+      ownerDiary: '',
+      _demoLabel: profile.label,
+    };
+
+    pet.diary = buildVetDiary(pet, selectedPathologies);
+    pet.ownerDiary = buildOwnerDiary(pet, selectedPathologies);
+
+    pets.push(pet);
+  }
+
+  return pets;
+}
+
+function _demoBirthdate(ageYears) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - ageYears);
+  return d.toISOString().split('T')[0];
+}
+
 module.exports = {
   generatePetCohort,
+  generateDemoCohort,
   buildSoapPrompt,
   buildDocumentPrompt,
   getVisitTypesForPet,
   getDocTypesForPet,
   BREED_PATHOLOGIES,
+  generatePhotosForPet,
+  getPhotoPlaceholder,
 };

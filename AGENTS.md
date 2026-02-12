@@ -25,17 +25,17 @@ ADA è una SPA vanilla JS con backend Express.
 **Frontend** (`frontend/`):
 - No moduli/bundler; tutti i file caricati via `<script>` in `index.html`
 - Pattern IIFE: `(function(global) { ... })(window)`
-- Moduli principali: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `sync-engine.js`, `app-promo.js`, `app-observability.js`
+- Moduli principali: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `app-promo.js`, `app-observability.js`
 
 **Backend** (`backend/src/`):
 - Express 4, JWT auth, PostgreSQL via `pg`, multer per upload
 - Route: `pets.routes.js`, `pets.sync.routes.js`, `sync.routes.js`, `documents.routes.js`, `promo.routes.js`
 
-**SQL migrations** (`sql/`): 001–005
+**SQL migrations** (`sql/`): 001–013
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 7.2.20
+**Versione corrente:** 8.15.5
 
 ---
 
@@ -46,7 +46,7 @@ ADA opera con due ambienti separati:
 | | Produzione | Sviluppo |
 |---|---|---|
 | **Branch** | `main` (protetto, richiede PR) | `dev` (protetto, richiede PR) |
-| **Frontend** | GitHub Pages: https://abupet.github.io/ada/ | Netlify: https://ada-dev.netlify.app |
+| **Frontend** | GitHub Pages: https://abupet.github.io/ada/ | GitHub Pages: https://abupet.github.io/ada-dev/ |
 | **Backend** | Render: https://ada-au40.onrender.com | Render: https://ada-backend-dev.onrender.com |
 | **Database** | PostgreSQL su Render (Frankfurt) | PostgreSQL su Neon.tech (Frankfurt) |
 
@@ -55,7 +55,7 @@ ADA opera con due ambienti separati:
 1. Crea feature branch da `dev`: `git checkout -b feature/xxx`
 2. Lavora e committa
 3. Crea PR verso `dev` → CI deve passare → merge
-4. Testa su ambiente dev (Netlify)
+4. Testa su ambiente dev (GitHub Pages ada-dev)
 5. Quando stabile: crea PR `dev → main` → CI deve passare → merge → deploy produzione
 6. Dopo merge in main, riallinea dev: `git checkout dev && git merge main && git push origin dev`
 
@@ -69,8 +69,8 @@ Le migrazioni NON sono automatiche. Nuovi file SQL in `sql/`:
 ### Routing frontend dev/prod
 
 Il file `frontend/index.html` contiene un inline script che rileva automaticamente l'ambiente:
-- hostname contiene `netlify.app` → backend dev
-- hostname contiene `github.io` → backend prod
+- pathname inizia con `/ada-dev` → backend dev
+- hostname contiene `github.io` (path `/ada/`) → backend prod
 - localhost → backend locale
 
 ---
@@ -89,7 +89,7 @@ Il file `frontend/index.html` contiene un inline script che rileva automaticamen
 
 ---
 
-## 5. Sistemi chiave (v7.2.12)
+## 5. Sistemi chiave (v7.3.2)
 
 ### Sistema ruoli
 - Due ruoli: `veterinario`, `proprietario`
@@ -97,15 +97,13 @@ Il file `frontend/index.html` contiene un inline script che rileva automaticamen
 - Toggle nell'header, persistito in `localStorage` (`ada_active_role`)
 - Route guard in `navigateToPage()` applica i permessi
 
-### Sync pets
-- Due sistemi separati:
-  - **Pet sync**: outbox in IndexedDB `ADA_Pets` → `pushOutboxIfOnline()` → `/api/sync/pets/push`
-  - **Sync engine generico**: outbox in IndexedDB `ada_sync` → `pushAll()` → `/api/sync/push`
-- Auto-sync in `pets-sync-bootstrap.js`: online → push+pull, interval 60s, startup
-- Pull skips merge per pet con outbox pending (local wins)
-- ADR di riferimento: `frontend/decisions/ADR-PETS-PULL-MERGE.md`
+### Pets (online-only, v8.15.1+)
+- Nessun IndexedDB, nessun sync offline — tutti i CRUD via API REST dirette (`GET/POST/PATCH/DELETE /api/pets`)
+- In-memory `petsCache` con `_normalizePetForUI()` per mappare formato server → formato UI
+- `refreshPetsFromServer()` per ricaricare lista dal server
 
-### Documenti
+### Documenti (online-only, v8.15.2+)
+- Nessun IndexedDB — tutti i CRUD via API REST (`GET/POST/DELETE /api/documents`)
 - Upload: PDF, JPG, PNG, WebP (max 10 MB)
 - Validazione MIME magic bytes server-side
 - AI: "Leggi" (solo vet, GPT-4o vision), "Spiegami il documento" (solo proprietario)

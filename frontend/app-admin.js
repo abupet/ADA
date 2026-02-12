@@ -169,6 +169,7 @@
         var html = '<div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;">';
         html += '<label style="font-weight:600;font-size:14px;">Tenant:</label>';
         html += '<select id="dashboard-tenant-select" onchange="selectDashboardTenant(this.value, \'' + containerId + '\', \'' + (period || '30d') + '\')" style="padding:8px;border:1px solid #ddd;border-radius:6px;">';
+        tenants = tenants.filter(function(t) { return t.status === 'active'; });
         tenants.forEach(function (t) {
             var selected = t.tenant_id === _selectedDashboardTenant ? ' selected' : '';
             html += '<option value="' + _escapeHtml(t.tenant_id) + '"' + selected + '>' + _escapeHtml(t.name) + ' [' + _escapeHtml(t.slug) + ']</option>';
@@ -179,7 +180,48 @@
 
     function selectDashboardTenant(tenantId, containerId, period) {
         _selectedDashboardTenant = tenantId;
+        try { sessionStorage.setItem('ada_selected_tenant', tenantId); } catch (e) {}
         loadAdminDashboard(containerId, period);
+    }
+
+    function _renderPageTenantSelector(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
+        var jwtTenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (jwtRole !== 'super_admin') {
+            if (jwtTenantId) container.innerHTML = '<span style="font-size:12px;color:#888;">Tenant: <strong>' + _escapeHtml(jwtTenantId) + '</strong></span>';
+            return;
+        }
+        fetchApi('/api/superadmin/tenants')
+            .then(function(r) { return r.ok ? r.json() : { tenants: [] }; })
+            .then(function(data) {
+                var tenants = (data.tenants || []).filter(function(t) { return t.status === 'active'; });
+                if (tenants.length === 0) { container.innerHTML = '<span style="font-size:12px;color:#888;">Nessun tenant configurato</span>'; return; }
+                if (!_selectedDashboardTenant) _selectedDashboardTenant = tenants[0].tenant_id;
+                var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">';
+                html += '<span style="font-size:12px;font-weight:600;color:#1e3a5f;">Tenant:</span>';
+                html += '<select onchange="switchPageTenant(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">';
+                tenants.forEach(function(t) {
+                    var selected = t.tenant_id === _selectedDashboardTenant ? ' selected' : '';
+                    html += '<option value="' + _escapeHtml(t.tenant_id) + '"' + selected + '>' + _escapeHtml(t.name) + '</option>';
+                });
+                html += '</select></div>';
+                container.innerHTML = html;
+            })
+            .catch(function() {});
+    }
+
+    function switchPageTenant(tenantId) {
+        _selectedDashboardTenant = tenantId;
+        try { sessionStorage.setItem('ada_selected_tenant', tenantId); } catch (e) {}
+        var activePage = document.querySelector('.page[style*="display: block"], .page[style*="display:block"]');
+        if (activePage) {
+            var pageId = activePage.id;
+            if (pageId === 'page-admin-catalog') loadAdminCatalog();
+            else if (pageId === 'page-admin-campaigns') loadAdminCampaigns();
+            else if (pageId === 'page-admin-dashboard') loadAdminDashboard('admin-dashboard-content');
+        }
     }
 
     function _renderDashboard(container, data, period) {
@@ -208,6 +250,20 @@
             html.push(_statCard(s.budget.current_usage + '/' + s.budget.monthly_limit, 'Budget AI'));
         }
         html.push('</div>');
+
+        // Catalog health section
+        if (s.items_without_image !== undefined || s.items_without_ext_desc !== undefined || s.broken_urls !== undefined) {
+            html.push('<div class="admin-section">');
+            html.push('<div class="admin-section-title">Salute Catalogo</div>');
+            html.push('<div class="admin-grid">');
+            if (s.items_without_image !== undefined)
+                html.push(_statCard(s.items_without_image, 'Senza immagine'));
+            if (s.items_without_ext_desc !== undefined)
+                html.push(_statCard(s.items_without_ext_desc, 'Senza ext. desc.'));
+            if (s.broken_urls !== undefined)
+                html.push(_statCard(s.broken_urls, 'URL non validi'));
+            html.push('</div></div>');
+        }
 
         // Top items
         if (s.top_items && s.top_items.length > 0) {
@@ -290,7 +346,7 @@
         var html = [
             '<div class="wizard-step">',
             '<h4>Step 1: Carica file</h4>',
-            '<p>Formato accettato: CSV o XLSX. Colonne: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority</p>',
+            '<p>Formato accettato: CSV o XLSX. Colonne: name, category, species, lifecycle_target, description, image_url, product_url, tags_include, tags_exclude, priority, service_type</p>',
             '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">',
             '<div>',
             '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tenant</label>',
@@ -304,8 +360,8 @@
             '</div>',
             '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">',
             '<input type="file" id="csvFileInput" accept=".csv,.txt,.xlsx,.xls" onchange="handleCsvUpload(event)">',
-            '<button class="btn btn-secondary" onclick="downloadCsvTemplate()" style="font-size:12px;">Scarica template CSV</button>',
-            '<button class="btn btn-secondary" onclick="downloadXlsxTemplate()" style="font-size:12px;margin-left:4px;">Scarica template XLSX</button>',
+            '<button class="btn btn-secondary" onclick="downloadCatalogCsv()" style="font-size:12px;">Scarica file CSV</button>',
+            '<button class="btn btn-secondary" onclick="downloadCatalogXlsx()" style="font-size:12px;margin-left:4px;">Scarica file XLSX</button>',
             '</div>',
             '</div>',
             '<div id="wizard-step-2" class="wizard-step" style="display:none;">',
@@ -345,10 +401,10 @@
     }
 
     function downloadCsvTemplate() {
-        var csvContent = 'name,category,species,lifecycle_target,description,image_url,product_url,tags_include,tags_exclude,priority\n'
-            + '"Royal Canin Maxi Adult",food_general,"dog","adult","Cibo secco per cani adulti taglia grande (26-44 kg). Ricetta con EPA e DHA per pelle e manto sani.",https://example.com/img/rc-maxi.jpg,https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult,,0\n'
-            + '"Hill\'s Prescription Diet k/d",food_clinical,"cat","senior","Dieta clinica per gatti con insufficienza renale. Ridotto contenuto di fosforo e sodio.",https://example.com/img/hills-kd.jpg,https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry,clinical:renal,,5\n'
-            + '"Frontline Tri-Act",antiparasitic,"dog","puppy|adult|senior","Antiparassitario spot-on per cani. Protezione completa contro pulci, zecche e zanzare per 4 settimane.",https://example.com/img/frontline.jpg,https://www.frontlinecombo.it/prodotti/tri-act,,,3\n';
+        var csvContent = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority,service_type\n'
+            + '"Royal Canin Maxi Adult",food_general,"dog","adult","Cibo secco per cani adulti taglia grande","Alimento completo per cani adulti di taglia grande (26-44 kg). Formula con EPA e DHA per pelle e manto sani. Crocchette adattate alla mascella dei cani grandi.",https://example.com/img/rc-maxi.jpg,https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult,,0,promo\n'
+            + '"Hill\'s Prescription Diet k/d",food_clinical,"cat","senior","Dieta clinica per gatti con insufficienza renale","Alimento dietetico completo per gatti adulti. Formulato per il supporto della funzione renale in caso di insufficienza renale cronica. Ridotto contenuto di fosforo e sodio. Elevato contenuto di acidi grassi omega-3.",https://example.com/img/hills-kd.jpg,https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry,clinical:renal,,5,promo\n'
+            + '"Frontline Tri-Act",antiparasitic,"dog","puppy|adult|senior","Antiparassitario spot-on per cani","Soluzione spot-on per cani. Protezione completa contro pulci, zecche, zanzare, pappataci e mosche cavalline per 4 settimane. Azione repellente e insetticida.",https://example.com/img/frontline.jpg,https://www.frontlinecombo.it/prodotti/tri-act,,,3,promo\n';
         var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -356,6 +412,119 @@
         a.download = 'promo_items_template.csv';
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    function _csvEscape(str) {
+        if (!str) return '';
+        if (str.indexOf(',') !== -1 || str.indexOf('"') !== -1 || str.indexOf('\n') !== -1) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    }
+
+    function _csvArrayField(val) {
+        if (Array.isArray(val)) return '"' + val.join('|') + '"';
+        if (typeof val === 'string' && val.indexOf(',') !== -1) return '"' + val + '"';
+        return val || '';
+    }
+
+    function _getWizardTenantId() {
+        var sel = document.getElementById('wizardCsvTenant');
+        if (sel && sel.value) return sel.value;
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        return tenantId;
+    }
+
+    function downloadCatalogCsv() {
+        var tenantId = _getWizardTenantId();
+        if (!tenantId) { downloadCsvTemplate(); return; }
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=1&limit=9999')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.items || data.items.length === 0) {
+                    if (typeof showToast === 'function') showToast('Nessun prodotto da esportare. Scarico il template vuoto.', 'info');
+                    downloadCsvTemplate();
+                    return;
+                }
+                var headers = 'name,category,species,lifecycle_target,description,extended_description,image_url,product_url,tags_include,tags_exclude,priority,status,service_type';
+                var lines = [headers];
+                data.items.forEach(function(item) {
+                    var row = [
+                        _csvEscape(item.name || ''),
+                        item.category || '',
+                        _csvArrayField(item.species),
+                        _csvArrayField(item.lifecycle_target),
+                        _csvEscape(item.description || ''),
+                        _csvEscape(item.extended_description || ''),
+                        item.image_url || '',
+                        item.product_url || '',
+                        _csvArrayField(item.tags_include),
+                        _csvArrayField(item.tags_exclude),
+                        item.priority || 0,
+                        item.status || 'draft',
+                        item.service_type || 'promo',
+                    ].join(',');
+                    lines.push(row);
+                });
+                var csvContent = lines.join('\n');
+                var blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'catalogo_' + tenantId + '.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                if (typeof showToast === 'function') showToast(data.items.length + ' prodotti esportati in CSV', 'success');
+            })
+            .catch(function() {
+                if (typeof showToast === 'function') showToast('Errore nel download. Scarico il template.', 'error');
+                downloadCsvTemplate();
+            });
+    }
+
+    function downloadCatalogXlsx() {
+        var tenantId = _getWizardTenantId();
+        if (!tenantId) { downloadXlsxTemplate(); return; }
+        if (typeof XLSX === 'undefined') {
+            if (typeof showToast === 'function') showToast('Libreria SheetJS non disponibile.', 'error');
+            return;
+        }
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=1&limit=9999')
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.items || data.items.length === 0) {
+                    if (typeof showToast === 'function') showToast('Nessun prodotto. Scarico template vuoto.', 'info');
+                    downloadXlsxTemplate();
+                    return;
+                }
+                var sheetData = data.items.map(function(item) {
+                    return {
+                        name: item.name || '',
+                        category: item.category || '',
+                        species: Array.isArray(item.species) ? item.species.join('|') : (item.species || ''),
+                        lifecycle_target: Array.isArray(item.lifecycle_target) ? item.lifecycle_target.join('|') : (item.lifecycle_target || ''),
+                        description: item.description || '',
+                        extended_description: item.extended_description || '',
+                        image_url: item.image_url || '',
+                        product_url: item.product_url || '',
+                        tags_include: Array.isArray(item.tags_include) ? item.tags_include.join('|') : (item.tags_include || ''),
+                        tags_exclude: Array.isArray(item.tags_exclude) ? item.tags_exclude.join('|') : (item.tags_exclude || ''),
+                        priority: item.priority || 0,
+                        status: item.status || 'draft',
+                        service_type: item.service_type || 'promo',
+                    };
+                });
+                var ws = XLSX.utils.json_to_sheet(sheetData);
+                var wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Prodotti');
+                XLSX.writeFile(wb, 'catalogo_' + tenantId + '.xlsx');
+                if (typeof showToast === 'function') showToast(data.items.length + ' prodotti esportati in XLSX', 'success');
+            })
+            .catch(function() {
+                if (typeof showToast === 'function') showToast('Errore download XLSX.', 'error');
+                downloadXlsxTemplate();
+            });
     }
 
     function handleCsvUpload(event) {
@@ -409,7 +578,7 @@
         if (preview) {
             var html = '<p>' + _wizardParsedItems.length + ' righe trovate.</p>';
             html += '<table>';
-            html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th></th></tr>';
+            html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th>Ext.Desc.</th><th></th></tr>';
             _wizardParsedItems.forEach(function (item, idx) {
                 var speciesArr = typeof item.species === 'string' ? item.species.split('|') : (Array.isArray(item.species) ? item.species : []);
                 var lcArr = typeof item.lifecycle_target === 'string' ? item.lifecycle_target.split('|') : (Array.isArray(item.lifecycle_target) ? item.lifecycle_target : []);
@@ -418,6 +587,7 @@
                     '</td><td>' + _escapeHtml(_translateSpecies(speciesArr)) +
                     '</td><td>' + _escapeHtml(_translateLifecycle(lcArr)) +
                     '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escapeHtml((item.description || '').slice(0, 80)) +
+                    '</td><td>' + (item.extended_description ? '✅' : '<span style="color:#dc2626;">❌</span>') +
                     '</td><td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="wizardEditItem(' + idx + ')">Modifica</button></td></tr>';
             });
             html += '</table>';
@@ -485,6 +655,11 @@
             html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="wizEditImg" value="' + _escapeHtml(item.image_url || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
             html.push('<div><label style="font-size:12px;font-weight:600;">Priorità</label><input type="number" id="wizEditPriority" value="' + (parseInt(item.priority) || 0) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
             html.push('</div>');
+            html.push('<div style="grid-column:1/-1;margin-top:10px;">');
+            html.push('<label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
+            html.push('<textarea id="wizEditExtDesc" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;">' + _escapeHtml(item.extended_description || '') + '</textarea>');
+            html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching prodotto-paziente. Non visibile al cliente.</small>');
+            html.push('</div>');
 
             html.push('<div style="margin-top:12px;"><label style="font-size:12px;font-weight:600;">Specie target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
             speciesOptions.forEach(function (s) {
@@ -514,6 +689,7 @@
         item.product_url = (document.getElementById('wizEditUrl') || {}).value || '';
         item.image_url = (document.getElementById('wizEditImg') || {}).value || '';
         item.priority = (document.getElementById('wizEditPriority') || {}).value || '0';
+        item.extended_description = (document.getElementById('wizEditExtDesc') || {}).value || '';
 
         var species = [];
         var boxes = document.querySelectorAll('.wizEditSpecies:checked');
@@ -535,7 +711,7 @@
         if (preview) {
             var html = '<p>' + _wizardParsedItems.length + ' righe trovate.</p>';
             html += '<table>';
-            html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th></th></tr>';
+            html += '<tr><th>#</th><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Descrizione</th><th>Ext.Desc.</th><th></th></tr>';
             _wizardParsedItems.forEach(function (it, i) {
                 var speciesArr = typeof it.species === 'string' ? it.species.split('|') : (Array.isArray(it.species) ? it.species : []);
                 var lcArr = typeof it.lifecycle_target === 'string' ? it.lifecycle_target.split('|') : (Array.isArray(it.lifecycle_target) ? it.lifecycle_target : []);
@@ -544,6 +720,7 @@
                     '</td><td>' + _escapeHtml(_translateSpecies(speciesArr)) +
                     '</td><td>' + _escapeHtml(_translateLifecycle(lcArr)) +
                     '</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _escapeHtml((it.description || '').slice(0, 80)) +
+                    '</td><td>' + (it.extended_description ? '✅' : '<span style="color:#dc2626;">❌</span>') +
                     '</td><td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="wizardEditItem(' + i + ')">Modifica</button></td></tr>';
             });
             html += '</table>';
@@ -1031,22 +1208,23 @@
     }
 
     function promptAssignTenant(userId) {
-        if (_tenantsCache.length === 0) {
+        var activeTenants = _tenantsCache.filter(function(t) { return t.status === 'active'; });
+        if (activeTenants.length === 0) {
             if (typeof showToast === 'function') showToast('Nessun tenant disponibile. Creane uno prima.', 'error');
             return;
         }
 
-        var options = _tenantsCache.map(function (t, i) { return (i + 1) + ') ' + t.name + ' [' + t.slug + ']'; }).join('\n');
+        var options = activeTenants.map(function (t, i) { return (i + 1) + ') ' + t.name + ' [' + t.slug + ']'; }).join('\n');
         var choice = prompt('Scegli il tenant (numero):\n' + options);
         if (!choice) return;
 
         var idx = parseInt(choice) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= _tenantsCache.length) {
+        if (isNaN(idx) || idx < 0 || idx >= activeTenants.length) {
             if (typeof showToast === 'function') showToast('Scelta non valida.', 'error');
             return;
         }
 
-        var tenant = _tenantsCache[idx];
+        var tenant = activeTenants[idx];
         fetchApi('/api/superadmin/users/' + encodeURIComponent(userId) + '/tenants', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -1070,19 +1248,46 @@
     var _catalogPage = 1;
     var _catalogTotal = 0;
     var _catalogStatusFilter = '';
+    var _catalogSearchTerm = '';
+    var _catalogPriorityFilter = '';
+    var _catalogServiceTypeFilter = '';
+    var _catalogImageFilter = '';
+    var _catalogExtDescFilter = '';
+    var _catalogCategoryFilter = '';
+    var _catalogSpeciesFilter = '';
+    var _filteredPreviewItems = [];
 
     function loadAdminCatalog(containerId) {
         var container = document.getElementById(containerId || 'admin-catalog-content');
         if (!container) return;
 
         _injectAdminStyles();
+        _renderPageTenantSelector('catalog-tenant-selector');
 
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) {
+            try { var stored = sessionStorage.getItem('ada_selected_tenant'); if (stored) { _selectedDashboardTenant = stored; tenantId = stored; } } catch (e) {}
+        }
 
         var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : null;
         if (!tenantId && jwtRole === 'super_admin') {
-            container.innerHTML = '<p style="color:#888;">Seleziona un tenant dalla Dashboard per gestire il catalogo.</p>';
+            // Auto-select first tenant instead of showing error
+            container.innerHTML = '<p style="color:#888;">Caricamento tenant...</p>';
+            fetchApi('/api/superadmin/tenants').then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                    var activeTenants = (data && data.tenants || []).filter(function(t) { return t.status === 'active'; });
+                    if (activeTenants.length === 0) {
+                        container.innerHTML = '<p style="color:#888;">Nessun tenant trovato. Creane uno dalla pagina Gestione Tenant.</p>';
+                        return;
+                    }
+                    _selectedDashboardTenant = activeTenants[0].tenant_id;
+                    try { sessionStorage.setItem('ada_selected_tenant', _selectedDashboardTenant); } catch (e) {}
+                    loadAdminCatalog(containerId);
+                })
+                .catch(function() {
+                    container.innerHTML = '<p style="color:#888;">Errore caricamento tenant.</p>';
+                });
             return;
         }
         if (!tenantId) {
@@ -1092,8 +1297,13 @@
 
         container.innerHTML = '<p style="color:#888;">Caricamento catalogo...</p>';
 
+        var hasClientFilters = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var limit = hasClientFilters ? 9999 : 20;
+        var page = hasClientFilters ? 1 : _catalogPage;
         var statusParam = _catalogStatusFilter ? '&status=' + _catalogStatusFilter : '';
-        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + _catalogPage + '&limit=20' + statusParam)
+        var searchParam = _catalogSearchTerm ? '&search=' + encodeURIComponent(_catalogSearchTerm) : '';
+        var serviceTypeParam = _catalogServiceTypeFilter ? '&service_type=' + encodeURIComponent(_catalogServiceTypeFilter) : '';
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=' + page + '&limit=' + limit + statusParam + searchParam + serviceTypeParam)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) {
                 if (!data) { container.innerHTML = '<p style="color:#888;">Nessun dato.</p>'; return; }
@@ -1119,7 +1329,58 @@
             html.push('<option value="' + s + '"' + (_catalogStatusFilter === s ? ' selected' : '') + '>' + s + '</option>');
         });
         html.push('</select>');
+        html.push('<input type="text" id="catalogSearchInput" placeholder="Cerca per nome..." value="' + _escapeHtml(_catalogSearchTerm || '') + '" style="padding:6px 12px;border:1px solid #ddd;border-radius:6px;width:200px;" onkeyup="if(event.key===\'Enter\')catalogSearch()">');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="catalogSearch()">Cerca</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="catalogSearchReset()">Reset</button>');
+        html.push('<button class="btn btn-success" style="font-size:12px;" onclick="bulkPublishDraft()">Pubblica tutti i draft</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="previewPromoItem()" title="Anteprima sequenziale prodotti filtrati">👁️ Anteprima</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
+        html.push('</div>');
+
+        // Advanced filters row
+        html.push('<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">');
+        html.push('<select onchange="filterCatalogServiceType(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Servizio: Tutti</option>');
+        ['promo','nutrition','insurance'].forEach(function(st) {
+            var stLabels = {promo:'Promo',nutrition:'Nutrizione',insurance:'Assicurazione'};
+            html.push('<option value="' + st + '"' + (_catalogServiceTypeFilter === st ? ' selected' : '') + '>' + (stLabels[st]||st) + '</option>');
+        });
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogPriority(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Priorità: Tutte</option>');
+        [0,1,2,3,4,5,6,7,8,9].forEach(function(p) {
+            html.push('<option value="' + p + '"' + (_catalogPriorityFilter === String(p) ? ' selected' : '') + '>' + p + '</option>');
+        });
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogImage(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Immagine: Tutte</option>');
+        html.push('<option value="with"' + (_catalogImageFilter === 'with' ? ' selected' : '') + '>Con immagine</option>');
+        html.push('<option value="without"' + (_catalogImageFilter === 'without' ? ' selected' : '') + '>Senza immagine</option>');
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogExtDesc(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Ext. Desc: Tutte</option>');
+        html.push('<option value="with"' + (_catalogExtDescFilter === 'with' ? ' selected' : '') + '>Con Extended</option>');
+        html.push('<option value="without"' + (_catalogExtDescFilter === 'without' ? ' selected' : '') + '>Senza Extended</option>');
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogCategory(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Categoria: Tutte</option>');
+        ['food_general','food_clinical','supplement','antiparasitic','accessory','service'].forEach(function(c) {
+            html.push('<option value="' + c + '"' + (_catalogCategoryFilter === c ? ' selected' : '') + '>' + _translateCategory(c) + '</option>');
+        });
+        html.push('</select>');
+        html.push('<select onchange="filterCatalogSpecies(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value="">Specie: Tutte</option>');
+        ['dog','cat','rabbit','ferret','bird','reptile','all'].forEach(function(s) {
+            var label = s === 'all' ? 'Tutte' : (SPECIES_LABELS[s] || s);
+            html.push('<option value="' + s + '"' + (_catalogSpeciesFilter === s ? ' selected' : '') + '>' + label + '</option>');
+        });
+        html.push('</select>');
+        var _hasAdvancedFilter = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        if (_hasAdvancedFilter) {
+            var _filteredCount = _getFilteredCatalogItems().length;
+            html.push('<span style="color:#1d4ed8;font-size:12px;font-weight:600;">' + _filteredCount + '/' + _catalogItems.length + ' visibili</span>');
+        }
         html.push('</div>');
 
         // Create item form (hidden)
@@ -1146,26 +1407,45 @@
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="newItemUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="newItemImageUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Priorita</label><input type="number" id="newItemPriority" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" value="0"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><select id="newItemServiceType" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+        html.push('<option value="promo">Promo</option><option value="nutrition">Nutrizione</option><option value="insurance">Assicurazione</option>');
+        html.push('</select></div>');
         html.push('</div>');
+        html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
+        html.push('<textarea id="newItemExtDesc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;"></textarea>');
+        html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching. Non visibile al cliente.</small></div>');
         html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="createPromoItem()">Crea</button> <button class="btn btn-secondary" onclick="hideCreateItemForm()">Annulla</button></div>');
         html.push('</div>');
 
-        // Items table
-        if (_catalogItems.length === 0) {
+        // Items table (apply advanced filters)
+        var _hasClientFilters = _catalogPriorityFilter !== '' || _catalogServiceTypeFilter !== '' || _catalogImageFilter !== '' || _catalogExtDescFilter !== '' || _catalogCategoryFilter !== '' || _catalogSpeciesFilter !== '';
+        var allFilteredItems = _getFilteredCatalogItems();
+        var displayItems = _hasClientFilters ? allFilteredItems.slice((_catalogPage - 1) * 20, _catalogPage * 20) : allFilteredItems;
+        if (displayItems.length === 0) {
             html.push('<p style="color:#888;">Nessun prodotto trovato.</p>');
         } else {
             html.push('<table class="admin-table">');
-            html.push('<tr><th>Nome</th><th>Categoria</th><th>Specie</th><th>Lifecycle</th><th>Stato</th><th>Priorita</th><th>Azioni</th></tr>');
-            _catalogItems.forEach(function (item) {
+            html.push('<tr><th>Nome</th><th>Categoria</th><th>Lifecycle</th><th>Stato</th><th>Pr.</th><th>Img</th><th>Ext.</th><th>Azioni</th></tr>');
+            displayItems.forEach(function (item) {
                 var statusColor = { draft: '#888', in_review: '#eab308', published: '#16a34a', retired: '#dc2626' }[item.status] || '#888';
                 html.push('<tr>');
-                html.push('<td>' + _escapeHtml(item.name) + '</td>');
+                var _stBadge = '';
+                if (item.service_type && item.service_type !== 'promo') {
+                    var _stColors = {nutrition:'#0d9488',insurance:'#7c3aed'};
+                    var _stLabels = {nutrition:'Nutrizione',insurance:'Assicurazione'};
+                    _stBadge = ' <span style="display:inline-block;background:' + (_stColors[item.service_type]||'#888') + ';color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;vertical-align:middle;">' + (_stLabels[item.service_type]||item.service_type) + '</span>';
+                }
+                html.push('<td>' + _escapeHtml(item.name) + _stBadge + ' <small style="color:#888;">(' + _escapeHtml(_translateSpecies(item.species)) + ')</small></td>');
                 html.push('<td>' + _escapeHtml(_translateCategory(item.category)) + '</td>');
-                html.push('<td>' + _escapeHtml(_translateSpecies(item.species)) + '</td>');
                 html.push('<td>' + _escapeHtml(_translateLifecycle(item.lifecycle_target)) + '</td>');
                 html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
                 html.push('<td>' + (item.priority || 0) + '</td>');
+                html.push('<td>' + (item.image_url ? '🖼️' : '<span style="color:#ccc;">—</span>') + '</td>');
+                html.push('<td>' + (item.extended_description ? '✅' : '<span style="color:#dc2626;">❌</span>') + '</td>');
                 html.push('<td style="white-space:nowrap;">');
+
+                // Preview button
+                html.push('<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;margin-right:4px;" onclick="previewPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')" title="Anteprima">👁️</button>');
 
                 // Transition buttons based on current status
                 var transitions = { draft: ['in_review'], in_review: ['published', 'draft'], published: ['retired'], retired: ['draft'] };
@@ -1181,7 +1461,7 @@
             html.push('</table>');
 
             // Pagination
-            var totalPages = Math.ceil(_catalogTotal / 20);
+            var totalPages = _hasClientFilters ? Math.ceil(allFilteredItems.length / 20) : Math.ceil(_catalogTotal / 20);
             if (totalPages > 1) {
                 html.push('<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;">');
                 for (var p = 1; p <= totalPages; p++) {
@@ -1193,6 +1473,33 @@
 
         container.innerHTML = html.join('');
     }
+
+    function _getFilteredCatalogItems() {
+        return _catalogItems.filter(function(item) {
+            if (_catalogPriorityFilter !== '' && String(item.priority || 0) !== _catalogPriorityFilter) return false;
+            if (_catalogServiceTypeFilter !== '' && (item.service_type || 'promo') !== _catalogServiceTypeFilter) return false;
+            if (_catalogImageFilter === 'with' && !item.image_url) return false;
+            if (_catalogImageFilter === 'without' && item.image_url) return false;
+            if (_catalogExtDescFilter === 'with' && !item.extended_description) return false;
+            if (_catalogExtDescFilter === 'without' && item.extended_description) return false;
+            if (_catalogCategoryFilter && item.category !== _catalogCategoryFilter) return false;
+            if (_catalogSpeciesFilter && item.species !== _catalogSpeciesFilter) return false;
+            return true;
+        });
+    }
+
+    function _rerenderCatalog() {
+        var container = document.getElementById('admin-catalog-content');
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (container && tenantId) _renderCatalogPage(container, tenantId);
+    }
+    function filterCatalogServiceType(val) { _catalogServiceTypeFilter = val; loadAdminCatalog(); }
+    function filterCatalogPriority(val) { _catalogPriorityFilter = val; _rerenderCatalog(); }
+    function filterCatalogImage(val) { _catalogImageFilter = val; _rerenderCatalog(); }
+    function filterCatalogExtDesc(val) { _catalogExtDescFilter = val; _rerenderCatalog(); }
+    function filterCatalogCategory(val) { _catalogCategoryFilter = val; _rerenderCatalog(); }
+    function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; _rerenderCatalog(); }
 
     function showCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = ''; }
     function hideCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = 'none'; }
@@ -1233,9 +1540,11 @@
             body: JSON.stringify({
                 name: name, category: category, species: species, lifecycle_target: lifecycle,
                 description: (document.getElementById('newItemDescription') || {}).value || null,
+                extended_description: (document.getElementById('newItemExtDesc') || {}).value || null,
                 product_url: (document.getElementById('newItemUrl') || {}).value || null,
                 image_url: (document.getElementById('newItemImageUrl') || {}).value || null,
-                priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0
+                priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0,
+                service_type: (document.getElementById('newItemServiceType') || {}).value || 'promo'
             })
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1297,6 +1606,10 @@
             html.push('<div><label style="font-size:12px;font-weight:600;">Priorità</label><input type="number" id="editItemPriority" value="' + (item.priority || 0) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
             html.push('</div>');
 
+            html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
+            html.push('<textarea id="editItemExtDesc" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;">' + _escapeHtml(item.extended_description || '') + '</textarea>');
+            html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching. Non visibile al cliente.</small></div>');
+
             // Species checkboxes
             var itemSpecies = Array.isArray(item.species) ? item.species : [];
             html.push('<div style="margin-top:12px;"><label style="font-size:12px;font-weight:600;">Specie target</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
@@ -1337,6 +1650,7 @@
             name: (document.getElementById('editItemName') || {}).value || '',
             category: (document.getElementById('editItemCategory') || {}).value || '',
             description: (document.getElementById('editItemDescription') || {}).value || null,
+            extended_description: (document.getElementById('editItemExtDesc') || {}).value || null,
             product_url: (document.getElementById('editItemUrl') || {}).value || null,
             image_url: (document.getElementById('editItemImageUrl') || {}).value || null,
             priority: parseInt((document.getElementById('editItemPriority') || {}).value) || 0,
@@ -1371,6 +1685,7 @@
         if (!container) return;
 
         _injectAdminStyles();
+        _renderPageTenantSelector('campaigns-tenant-selector');
 
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
@@ -1677,6 +1992,36 @@
             });
     }
 
+    var POLICY_KEYS = [
+        { key: 'max_impressions_per_week', label: 'Max impressioni/settimana', active: true, desc: 'ATTIVA \u2014 Limita il numero massimo di impressioni promozionali mostrate a ciascun proprietario per settimana. Valore: intero (es: 10). Se superato, il sistema promo non mostra pi\u00f9 card fino alla settimana successiva.' },
+        { key: 'max_impressions_per_day', label: 'Max impressioni/giorno', active: true, desc: 'ATTIVA \u2014 Limita le impressioni promozionali giornaliere per proprietario. Valore: intero (es: 3). Funziona in combinazione con il limite settimanale.' },
+        { key: 'debug_mode_enabled', label: 'Debug mode attivo', active: true, desc: 'ATTIVA \u2014 Abilita la pagina Debug nella navigazione per tutti gli utenti del tenant. Valore: true/false. Mostra strumenti di diagnostica, log, metriche API e test audio.' },
+        { key: 'openai_optimizations', label: 'Ottimizzazioni OpenAI (JSON)', active: true, desc: 'ATTIVA \u2014 Configurazione JSON per le ottimizzazioni delle chiamate OpenAI (cache prompt, batching, modello). Valore: oggetto JSON (es: {"model":"gpt-4o-mini","cache":true}). Modifica il comportamento di trascrizione e generazione SOAP.' },
+        { key: 'promo_cooldown_hours', label: 'Cooldown promo (ore)', active: true, desc: 'ATTIVA \u2014 Ore di attesa tra una impressione e l\'altra per lo stesso prodotto allo stesso utente. Valore: intero (es: 24). Previene la ripetizione eccessiva dello stesso suggerimento.' },
+        { key: 'maintenance_mode', label: 'Modalit\u00e0 manutenzione', active: true, desc: 'ATTIVA \u2014 Quando abilitata (true), l\'app mostra un banner di manutenzione e disabilita le operazioni di scrittura. Valore: true/false.' },
+    ];
+
+    function onPolicyKeyChange() {
+        var sel = document.getElementById('newPolicyKey');
+        var custom = document.getElementById('newPolicyKeyCustom');
+        var descEl = document.getElementById('policyKeyDescription');
+        if (custom) custom.style.display = (sel && sel.value === '__custom__') ? '' : 'none';
+        if (descEl) {
+            var pk = POLICY_KEYS.find(function(p) { return p.key === (sel ? sel.value : ''); });
+            if (pk && pk.desc) {
+                descEl.textContent = pk.desc;
+                descEl.style.display = '';
+                if (!pk.active) {
+                    descEl.style.background = '#fef9c3'; descEl.style.borderColor = '#fde047'; descEl.style.color = '#854d0e';
+                } else {
+                    descEl.style.background = '#f0fdf4'; descEl.style.borderColor = '#bbf7d0'; descEl.style.color = '#166534';
+                }
+            } else {
+                descEl.style.display = 'none';
+            }
+        }
+    }
+
     function _renderPoliciesPage(container, policies) {
         var html = [];
 
@@ -1688,7 +2033,17 @@
         html.push('<div id="create-policy-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
         html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuova/Modifica Policy</h4>');
         html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label><input type="text" id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: max_impressions_per_day"></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Chiave *</label>');
+        html.push('<select id="newPolicyKey" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" onchange="onPolicyKeyChange()">');
+        html.push('<option value="">-- Seleziona --</option>');
+        POLICY_KEYS.forEach(function(pk) {
+            html.push('<option value="' + pk.key + '">' + _escapeHtml(pk.label + ' (' + pk.key + ')') + '</option>');
+        });
+        html.push('<option value="__custom__">Altro (personalizzato)...</option>');
+        html.push('</select>');
+        html.push('<input type="text" id="newPolicyKeyCustom" style="display:none;width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:6px;" placeholder="Chiave personalizzata">');
+        html.push('<div id="policyKeyDescription" style="display:none;margin-top:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;line-height:1.5;color:#166534;"></div>');
+        html.push('</div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Valore *</label><input type="text" id="newPolicyValue" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="es: 10"></div>');
         html.push('<div class="full-width"><label style="font-size:12px;font-weight:600;">Descrizione</label><input type="text" id="newPolicyDescription" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Descrizione policy"></div>');
         html.push('</div>');
@@ -1721,7 +2076,10 @@
     function hidePolicyForm() { var f = document.getElementById('create-policy-form'); if (f) f.style.display = 'none'; }
 
     function savePolicy() {
-        var key = (document.getElementById('newPolicyKey') || {}).value || '';
+        var keyEl = document.getElementById('newPolicyKey');
+        var key = (keyEl && keyEl.value === '__custom__')
+            ? (document.getElementById('newPolicyKeyCustom') || {}).value || ''
+            : (keyEl || {}).value || '';
         var valueStr = (document.getElementById('newPolicyValue') || {}).value || '';
         if (!key) { if (typeof showToast === 'function') showToast('Chiave obbligatoria.', 'error'); return; }
 
@@ -1976,9 +2334,9 @@
             return;
         }
         var data = [
-            { name: 'Royal Canin Maxi Adult', category: 'food_general', species: 'dog', lifecycle_target: 'adult', description: 'Cibo secco per cani adulti taglia grande (26-44 kg). Ricetta con EPA e DHA per pelle e manto sani.', image_url: 'https://example.com/img/rc-maxi.jpg', product_url: 'https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult', tags_include: '', tags_exclude: '', priority: 0 },
-            { name: "Hill's Prescription Diet k/d", category: 'food_clinical', species: 'cat', lifecycle_target: 'senior', description: 'Dieta clinica per gatti con insufficienza renale. Ridotto contenuto di fosforo e sodio.', image_url: 'https://example.com/img/hills-kd.jpg', product_url: 'https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry', tags_include: 'clinical:renal', tags_exclude: '', priority: 5 },
-            { name: 'Frontline Tri-Act', category: 'antiparasitic', species: 'dog', lifecycle_target: 'puppy|adult|senior', description: 'Antiparassitario spot-on per cani. Protezione completa contro pulci, zecche e zanzare per 4 settimane.', image_url: 'https://example.com/img/frontline.jpg', product_url: 'https://www.frontlinecombo.it/prodotti/tri-act', tags_include: '', tags_exclude: '', priority: 3 }
+            { name: 'Royal Canin Maxi Adult', category: 'food_general', species: 'dog', lifecycle_target: 'adult', description: 'Cibo secco per cani adulti taglia grande', extended_description: 'Alimento completo per cani adulti di taglia grande (26-44 kg). Formula con EPA e DHA per pelle e manto sani.', image_url: 'https://example.com/img/rc-maxi.jpg', product_url: 'https://www.royalcanin.com/it/dogs/products/retail-products/maxi-adult', tags_include: '', tags_exclude: '', priority: 0, service_type: 'promo' },
+            { name: "Hill's Prescription Diet k/d", category: 'food_clinical', species: 'cat', lifecycle_target: 'senior', description: 'Dieta clinica per gatti con insufficienza renale', extended_description: 'Alimento dietetico completo per gatti adulti. Supporto della funzione renale. Ridotto contenuto di fosforo e sodio.', image_url: 'https://example.com/img/hills-kd.jpg', product_url: 'https://www.hillspet.it/prodotti-gatto/pd-feline-kd-with-chicken-dry', tags_include: 'clinical:renal', tags_exclude: '', priority: 5, service_type: 'promo' },
+            { name: 'Frontline Tri-Act', category: 'antiparasitic', species: 'dog', lifecycle_target: 'puppy|adult|senior', description: 'Antiparassitario spot-on per cani', extended_description: 'Soluzione spot-on. Protezione completa contro pulci, zecche, zanzare, pappataci e mosche cavalline per 4 settimane.', image_url: 'https://example.com/img/frontline.jpg', product_url: 'https://www.frontlinecombo.it/prodotti/tri-act', tags_include: '', tags_exclude: '', priority: 3, service_type: 'promo' }
         ];
         var ws = XLSX.utils.json_to_sheet(data);
         var wb = XLSX.utils.book_new();
@@ -2113,6 +2471,713 @@
     }
 
     // =========================================================================
+    // Catalog: Search, Bulk Publish, URL Validation, Preview
+    // =========================================================================
+
+    function catalogSearch() {
+        _catalogSearchTerm = (document.getElementById('catalogSearchInput') || {}).value || '';
+        _catalogPage = 1;
+        loadAdminCatalog();
+    }
+
+    function catalogSearchReset() {
+        _catalogSearchTerm = '';
+        _catalogStatusFilter = '';
+        _catalogPriorityFilter = '';
+        _catalogServiceTypeFilter = '';
+        _catalogImageFilter = '';
+        _catalogExtDescFilter = '';
+        _catalogCategoryFilter = '';
+        _catalogSpeciesFilter = '';
+        var el = document.getElementById('catalogSearchInput');
+        if (el) el.value = '';
+        _catalogPage = 1;
+        loadAdminCatalog();
+    }
+
+    function bulkPublishDraft() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        if (!confirm('Pubblicare TUTTI i prodotti in stato "draft"? Verranno resi visibili ai clienti.')) return;
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/bulk-publish', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_status: 'published' })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function (data) {
+            if (typeof showToast === 'function') showToast('' + (data.updated || 0) + ' prodotti pubblicati!', 'success');
+            loadAdminCatalog();
+        }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        });
+    }
+
+    function validateItemUrls(itemId) {
+        var item = _catalogItems.find(function (i) { return i.promo_item_id === itemId; });
+        if (!item) return;
+        var resultEl = document.getElementById('url-validation-result');
+        if (resultEl) resultEl.innerHTML = '<span style="color:#888;">Verifica in corso...</span>';
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/validate-urls', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: [{ promo_item_id: itemId, name: item.name, image_url: item.image_url, product_url: item.product_url }] })
+        }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (!data || !data.results || !data.results[0]) {
+                if (resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">Errore verifica</span>';
+                return;
+            }
+            var r = data.results[0];
+            if (resultEl) resultEl.innerHTML = 'Immagine: ' + _urlStatusIcon(r.image_url_status) + ' &nbsp;|&nbsp; Prodotto: ' + _urlStatusIcon(r.product_url_status);
+        }).catch(function () {
+            if (resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">Errore di rete</span>';
+        });
+    }
+
+    function _urlStatusIcon(status) {
+        if (status === 'ok') return '<span style="color:#16a34a;">OK</span>';
+        if (status === 'missing') return '<span style="color:#888;">Non configurato</span>';
+        return '<span style="color:#dc2626;">' + _escapeHtml(status) + '</span>';
+    }
+
+    function validateAllCatalogUrls() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId || _catalogItems.length === 0) return;
+        var btns = document.querySelectorAll('button');
+        var verifyBtn = null;
+        btns.forEach(function(b) { if (b.textContent.includes('Verifica URL')) verifyBtn = b; });
+        if (verifyBtn) verifyBtn.classList.add('btn--loading');
+        if (typeof showToast === 'function') showToast('Verifica URL in corso per ' + _catalogItems.length + ' prodotti...', 'info');
+        var batch = _catalogItems.map(function (i) {
+            return { promo_item_id: i.promo_item_id, name: i.name, image_url: i.image_url, product_url: i.product_url };
+        });
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/validate-urls', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: batch })
+        }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (verifyBtn) verifyBtn.classList.remove('btn--loading');
+            if (!data || !data.results) {
+                if (typeof showToast === 'function') showToast('Errore nella verifica.', 'error');
+                return;
+            }
+            var broken = data.results.filter(function (r) {
+                return (r.image_url_status !== 'ok' && r.image_url_status !== 'missing') ||
+                       (r.product_url_status !== 'ok' && r.product_url_status !== 'missing');
+            });
+            if (broken.length === 0) {
+                if (typeof showToast === 'function') showToast('Tutti gli URL sono validi!', 'success');
+            } else {
+                _showUrlValidationReport(data.results);
+            }
+        }).catch(function () {
+            if (verifyBtn) verifyBtn.classList.remove('btn--loading');
+            if (typeof showToast === 'function') showToast('Errore di rete.', 'error');
+        });
+    }
+
+    function _showUrlValidationReport(results) {
+        var broken = results.filter(function (r) {
+            return (r.image_url_status !== 'ok' && r.image_url_status !== 'missing') ||
+                   (r.product_url_status !== 'ok' && r.product_url_status !== 'missing');
+        });
+        _showModal('Report Validazione URL \u2014 ' + broken.length + ' problemi su ' + results.length + ' prodotti', function (container) {
+            var html = [];
+            html.push('<table class="admin-table">');
+            html.push('<tr><th>Prodotto</th><th>Stato</th><th>Immagine</th><th>URL Prodotto</th><th>Azione</th></tr>');
+            broken.forEach(function (r) {
+                var item = _catalogItems.find(function(i) { return i.promo_item_id === r.promo_item_id; });
+                html.push('<tr id="url-row-' + _escapeHtml(r.promo_item_id) + '">');
+                html.push('<td>' + _escapeHtml(r.name || r.promo_item_id) + '</td>');
+                html.push('<td><span style="font-size:11px;padding:2px 6px;border-radius:4px;background:#f1f5f9;">' + _escapeHtml(item ? item.status : '?') + '</span></td>');
+                html.push('<td>' + _urlStatusIcon(r.image_url_status) + '</td>');
+                html.push('<td>' + _urlStatusIcon(r.product_url_status) + '</td>');
+                html.push('<td><button class="btn btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="setItemStatusFromReport(\'' + _escapeHtml(r.promo_item_id) + '\', this)">\u2192 Draft</button></td>');
+                html.push('</tr>');
+            });
+            html.push('</table>');
+            html.push('<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">');
+            html.push('<span style="flex:1;"></span>');
+            html.push('<button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button>');
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function setItemStatusFromReport(itemId, btnEl) {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = '...'; }
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId) + '/transition', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'draft' })
+        }).then(function(r) {
+            if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'HTTP ' + r.status); });
+            return r.json();
+        }).then(function() {
+            if (btnEl) {
+                btnEl.textContent = '\u2713 Draft';
+                btnEl.style.background = '#16a34a';
+                btnEl.style.color = '#fff';
+                btnEl.style.borderColor = '#16a34a';
+            }
+            showToast('Prodotto spostato a draft', 'success');
+            loadAdminCatalog();
+        }).catch(function(err) {
+            if (btnEl) { btnEl.disabled = false; btnEl.textContent = '\u2192 Draft'; }
+            showToast('Errore: ' + err.message, 'error');
+        });
+    }
+
+
+    // =========================================================================
+    // Preview Card Prodotto
+    // =========================================================================
+
+    var _previewIndex = 0;
+
+    function previewPromoItem(itemId) {
+        _filteredPreviewItems = _getFilteredCatalogItems();
+        if (itemId) {
+            var idx = _filteredPreviewItems.findIndex(function (i) { return i.promo_item_id === itemId; });
+            if (idx >= 0) _previewIndex = idx;
+        } else {
+            _previewIndex = 0;
+        }
+        _renderPreviewModal();
+    }
+
+    function _renderPreviewModal() {
+        var item = _filteredPreviewItems[_previewIndex];
+        if (!item) return;
+
+        _showModal('Anteprima Prodotto — come appare al cliente', function (container) {
+            var html = [];
+
+            // Navigation
+            html.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">');
+            html.push('<button class="btn btn-secondary" onclick="_previewNav(-1)" style="padding:6px 14px;">Precedente</button>');
+            html.push('<span style="font-size:12px;color:#888;">Prodotto ' + (_previewIndex + 1) + ' di ' + _filteredPreviewItems.length + '</span>');
+            html.push('<button class="btn btn-secondary" onclick="_previewNav(1)" style="padding:6px 14px;">Successivo</button>');
+            html.push('</div>');
+
+            // CARD PREVIEW
+            html.push('<div style="max-width:400px;margin:0 auto;">');
+            html.push('<div class="promo-card" style="opacity:1;display:block;">');
+            html.push('<span class="promo-badge">Consigliato per il tuo pet</span>');
+
+            if (item.image_url) {
+                html.push('<img src="' + _escapeHtml(item.image_url) + '" alt="' + _escapeHtml(item.name) + '" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">');
+                html.push('<div style="display:none;padding:20px;background:#fee2e2;border-radius:8px;margin:8px 0;text-align:center;color:#dc2626;font-size:12px;">Immagine non caricabile</div>');
+            } else {
+                html.push('<div style="padding:20px;background:#f1f5f9;border-radius:8px;margin:8px 0;text-align:center;color:#888;font-size:12px;">Nessuna immagine configurata</div>');
+            }
+
+            html.push('<div class="promo-name">' + _escapeHtml(item.name) + '</div>');
+            if (item.description) html.push('<div style="font-size:13px;color:#555;margin:4px 0 8px;">' + _escapeHtml(item.description) + '</div>');
+            html.push('<div class="promo-explanation" style="font-style:italic;color:#888;">[Spiegazione AI personalizzata — generata in base al profilo del paziente]</div>');
+
+            html.push('<div class="promo-actions" style="display:flex;justify-content:space-between;gap:12px;margin-top:12px;">');
+            if (item.product_url) html.push('<button type="button" class="promo-btn promo-btn--cta" style="flex:1;text-align:center;padding:10px 16px;" onclick="showPurchasePlaceholder(\'' + _escapeHtml(item.promo_item_id) + '\')">Acquista</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--info" style="flex:1;text-align:center;padding:10px 16px;" onclick="_closeModal()">Chiudi il suggerimento</button>');
+            html.push('<button type="button" class="promo-btn promo-btn--dismiss" style="flex:1;text-align:center;padding:10px 16px;" onclick="showDismissPlaceholder()">Non mi interessa</button>');
+            html.push('</div>');
+
+            // AI explanation — between card content and technical details
+            html.push('<div id="ai-explanation-preview" style="margin-top:8px;"></div>');
+
+            html.push('</div></div>');
+
+            // TECHNICAL DETAILS
+            html.push('<div style="margin-top:20px;padding:16px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">');
+            html.push('<h4 style="margin:0 0 8px;color:#1e3a5f;font-size:14px;">Dettagli tecnici</h4>');
+            html.push('<table style="width:100%;font-size:12px;">');
+            html.push('<tr><td style="font-weight:600;width:140px;padding:4px 0;">Categoria:</td><td>' + _escapeHtml(_translateCategory(item.category)) + '</td></tr>');
+            html.push('<tr><td style="font-weight:600;padding:4px 0;">Specie:</td><td>' + _escapeHtml(_translateSpecies(item.species)) + '</td></tr>');
+            html.push('<tr><td style="font-weight:600;padding:4px 0;">Lifecycle:</td><td>' + _escapeHtml(_translateLifecycle(item.lifecycle_target)) + '</td></tr>');
+            html.push('<tr><td style="font-weight:600;padding:4px 0;">Priorità:</td><td>' + (item.priority || 0) + '</td></tr>');
+            html.push('<tr><td style="font-weight:600;padding:4px 0;">Stato:</td><td>' + _escapeHtml(item.status) + '</td></tr>');
+            html.push('<tr><td style="font-weight:600;padding:4px 0;">Tags include:</td><td style="word-break:break-all;">' + _escapeHtml(Array.isArray(item.tags_include) ? item.tags_include.join(', ') : (item.tags_include || '-')) + '</td></tr>');
+            html.push('<tr><td style="font-weight:600;padding:4px 0;">Tags exclude:</td><td style="word-break:break-all;">' + _escapeHtml(Array.isArray(item.tags_exclude) ? item.tags_exclude.join(', ') : (item.tags_exclude || '-')) + '</td></tr>');
+            html.push('</table>');
+
+            if (item.extended_description) {
+                html.push('<details style="margin-top:12px;"><summary style="font-weight:600;font-size:12px;cursor:pointer;color:#1e3a5f;">Extended Description (per AI matching) — ' + item.extended_description.length + ' char</summary>');
+                html.push('<div style="margin-top:8px;font-size:12px;color:#555;line-height:1.6;white-space:pre-wrap;">' + _escapeHtml(item.extended_description) + '</div></details>');
+            } else {
+                html.push('<div style="margin-top:8px;font-size:12px;color:#dc2626;">Extended description mancante — il motore AI genererà spiegazioni meno precise</div>');
+            }
+            html.push('</div>');
+
+            // ACTIONS — Verifica URL + Chiudi on same row
+            html.push('<div style="margin-top:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">');
+            html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateItemUrls(\'' + _escapeHtml(item.promo_item_id) + '\')">Verifica URL</button>');
+            html.push('<span id="url-validation-result" style="font-size:12px;"></span>');
+            html.push('<span style="flex:1;"></span>');
+            html.push('<button class="btn btn-secondary" onclick="_closeModal()">Chiudi</button>');
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function _previewNav(delta) {
+        _previewIndex += delta;
+        if (_previewIndex < 0) _previewIndex = _filteredPreviewItems.length - 1;
+        if (_previewIndex >= _filteredPreviewItems.length) _previewIndex = 0;
+        _renderPreviewModal();
+    }
+
+    function showPurchasePlaceholder(itemId) {
+        var item = _catalogItems.find(function(i) { return i.promo_item_id === itemId; }) || {};
+        _showModal('Pagina di Acquisto (Simulata)', function(container) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;">' +
+                '<div style="color:#dc2626;font-weight:600;border:2px dashed #dc2626;padding:10px;border-radius:8px;margin-bottom:20px;">' +
+                'Questa è una pagina simulata per test. Nessun acquisto reale verrà effettuato.</div>' +
+                '<div style="max-width:400px;margin:0 auto;text-align:left;">' +
+                (item.image_url ? '<img src="' + _escapeHtml(item.image_url) + '" style="width:100%;border-radius:8px;margin-bottom:12px;" onerror="this.style.display=\'none\'">' : '') +
+                '<h4 style="margin:0 0 8px;">' + _escapeHtml(item.name || '') + '</h4>' +
+                '<p style="color:#555;font-size:13px;">' + _escapeHtml(item.description || '') + '</p><hr>' +
+                '<p><strong>Prezzo:</strong> €XX,XX (placeholder)</p>' +
+                '<label>Quantità: <input type="number" value="1" min="1" max="10" style="width:60px;padding:4px;"></label><hr>' +
+                '<h4>Dati di spedizione</h4>' +
+                '<input placeholder="Nome e Cognome" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Indirizzo" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="Città" style="flex:2;padding:8px;border:1px solid #ddd;border-radius:6px;"></div><hr>' +
+                '<h4>Metodo di pagamento</h4>' +
+                '<input placeholder="Numero carta" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
+                '<div style="display:flex;gap:8px;">' +
+                '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
+                '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
+                '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
+                '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="previewPromoItem(\'' + _escapeHtml(item.promo_item_id) + '\')">← Torna all\'anteprima</button>' +
+                '</div></div>';
+        });
+    }
+
+    function showWhyYouSeeThis(itemId) {
+        var container = document.getElementById('ai-explanation-preview');
+        if (!container) return;
+        container.innerHTML = '<div style="padding:12px;background:#fef3c7;border-radius:8px;border:1px solid #f59e0b;margin-bottom:8px;">' +
+            '<strong>Spiegazione solo per test</strong> — generata con un pet di prova, non riflette un utente reale.</div>';
+        if (typeof previewExplanation === 'function') previewExplanation(itemId);
+    }
+
+    function showDismissPlaceholder() {
+        _showModal('Feedback ricevuto', function(container) {
+            container.innerHTML = '<div style="text-align:center;padding:30px;">' +
+                '<h3>Grazie per il tuo feedback!</h3>' +
+                '<p style="font-size:16px;color:#555;margin:16px 0;">' +
+                'Abbiamo preso nota della tua preferenza.<br>Non ti mostreremo più questo prodotto.</p>' +
+                '<p style="font-size:13px;color:#888;">Continuiamo a migliorare i suggerimenti per te e il tuo pet.</p>' +
+                '<button class="btn btn-primary" style="margin-top:20px;" onclick="_closeModal()">Chiudi</button></div>';
+        });
+    }
+
+    function previewExplanation(itemId) {
+        var container = document.getElementById('ai-explanation-preview');
+        if (!container) return;
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        container.innerHTML = '<div style="padding:12px;background:#f0f9ff;border-radius:8px;border:1px solid #bae6fd;"><span style="color:#888;font-size:12px;">Generazione spiegazione in corso (pet di test: Luna, meticcio, 4 anni, 15 kg)...</span></div>';
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/preview-explanation', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ promo_item_id: itemId })
+        }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+            if (!data || !data.explanation) {
+                container.innerHTML = '<div style="padding:12px;background:#fef2f2;border-radius:8px;border:1px solid #fca5a5;font-size:12px;color:#dc2626;">Errore nella generazione. Verificare che la chiave OpenAI sia configurata.</div>';
+                return;
+            }
+            var expl = data.explanation;
+            var html = [];
+            html.push('<div style="padding:12px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;">');
+            html.push('<div style="font-size:11px;color:#888;margin-bottom:6px;">Spiegazione generata (fonte: ' + _escapeHtml(data.source || '?') + ', ' + (data.latencyMs || '?') + 'ms) — Pet: ' + _escapeHtml(data.test_pet ? data.test_pet.name : 'Luna') + '</div>');
+            if (typeof expl === 'string') {
+                html.push('<div style="font-size:13px;">' + _escapeHtml(expl) + '</div>');
+            } else {
+                if (expl.why_you_see_this) html.push('<div style="font-size:13px;margin-bottom:4px;"><b>Perché lo vedi:</b> ' + _escapeHtml(expl.why_you_see_this) + '</div>');
+                if (expl.benefit_for_pet) html.push('<div style="font-size:13px;margin-bottom:4px;"><b>Beneficio:</b> ' + _escapeHtml(expl.benefit_for_pet) + '</div>');
+                if (expl.clinical_fit) html.push('<div style="font-size:13px;margin-bottom:4px;"><b>Correlazione clinica:</b> ' + _escapeHtml(expl.clinical_fit) + '</div>');
+                if (expl.disclaimer) html.push('<div style="font-size:11px;color:#888;margin-top:4px;font-style:italic;">' + _escapeHtml(expl.disclaimer) + '</div>');
+            }
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        }).catch(function () {
+            container.innerHTML = '<div style="padding:12px;background:#fef2f2;border-radius:8px;border:1px solid #fca5a5;font-size:12px;color:#dc2626;">Errore di rete.</div>';
+        });
+    }
+
+    // =========================================================================
+    // Tips Sources Management (super_admin)
+    // =========================================================================
+
+    var _sourcesData = [];
+    var _sourcesFilter = ''; // '', 'active', 'inactive'
+    var _sourcesSearch = '';
+
+    function loadSuperadminSources(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '<p>Caricamento fonti...</p>';
+
+        fetchApi('/api/tips-sources?limit=100').then(function(resp) {
+            if (resp.status === 403) {
+                container.innerHTML = '<p style="color:#dc2626;">Accesso negato \u2014 questa sezione richiede il ruolo super_admin.</p>';
+                return null;
+            }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        }).then(function(data) {
+            if (!data) return;
+            _sourcesData = data.sources || [];
+            _renderSourcesPage(container);
+        }).catch(function(err) {
+            container.innerHTML = '<p style="color:#dc2626;">Errore caricamento fonti: ' + _escapeHtml(err.message) + '</p>' +
+                '<p style="font-size:12px;color:#888;margin-top:8px;">Possibili cause: migrazione 011_tips_sources_cache.sql non applicata, oppure database non raggiungibile.</p>';
+        });
+    }
+
+    function _renderSourcesPage(container) {
+        var html = [];
+        // Toolbar
+        html.push('<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">');
+        html.push('<button class="btn btn-success" style="font-size:13px;" onclick="showCreateSourceForm()">+ Aggiungi Fonte</button>');
+        html.push('<button class="btn btn-primary" style="font-size:13px;" onclick="crawlAllSources()">Crawl Tutte</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:13px;" onclick="validateAllSources()">Valida Tutte</button>');
+        html.push('<select onchange="_sourcesFilterChange(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
+        html.push('<option value=""' + (_sourcesFilter === '' ? ' selected' : '') + '>Tutte</option>');
+        html.push('<option value="active"' + (_sourcesFilter === 'active' ? ' selected' : '') + '>Solo attive</option>');
+        html.push('<option value="inactive"' + (_sourcesFilter === 'inactive' ? ' selected' : '') + '>Disattivate</option>');
+        html.push('</select>');
+        html.push('<input type="text" placeholder="Cerca..." value="' + _escapeHtml(_sourcesSearch) + '" oninput="_sourcesSearchChange(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;width:160px;">');
+        html.push('</div>');
+
+        // Filter sources
+        var filtered = _sourcesData.filter(function(s) {
+            if (_sourcesFilter === 'active' && !s.is_active) return false;
+            if (_sourcesFilter === 'inactive' && s.is_active) return false;
+            if (_sourcesSearch) {
+                var q = _sourcesSearch.toLowerCase();
+                return (s.display_name || '').toLowerCase().indexOf(q) >= 0 ||
+                       (s.domain || '').toLowerCase().indexOf(q) >= 0 ||
+                       (s.url || '').toLowerCase().indexOf(q) >= 0;
+            }
+            return true;
+        });
+
+        // Summary
+        var totalCount = _sourcesData.length;
+        var availCount = _sourcesData.filter(function(s) { return s.is_available && s.is_active; }).length;
+        var offlineCount = _sourcesData.filter(function(s) { return !s.is_available && s.is_active; }).length;
+        html.push('<div class="sources-summary">');
+        html.push('<span><strong>' + totalCount + '</strong> fonti totali</span>');
+        html.push('<span><strong>' + availCount + '</strong> disponibili</span>');
+        html.push('<span><strong>' + offlineCount + '</strong> non raggiungibili</span>');
+        html.push('<span><strong>' + filtered.length + '</strong> visualizzate</span>');
+        html.push('</div>');
+
+        // Cards
+        if (filtered.length === 0) {
+            html.push('<p style="color:#6b7280;text-align:center;padding:20px;">Nessuna fonte trovata.</p>');
+        }
+        filtered.forEach(function(s) {
+            var statusClass = 'unknown';
+            var statusLabel = 'Mai crawlato';
+            if (!s.is_active) { statusClass = 'disabled'; statusLabel = 'Disattivata'; }
+            else if (s.last_crawled_at && s.is_available) { statusClass = 'online'; statusLabel = 'Online'; }
+            else if (s.last_crawled_at && !s.is_available) { statusClass = 'offline'; statusLabel = 'Offline'; }
+
+            html.push('<div class="source-card">');
+            html.push('<div class="source-card-header">');
+            html.push('<div><span class="source-card-name">' + _escapeHtml(s.display_name || s.domain) + '</span> ');
+            html.push('<span class="source-card-domain">' + _escapeHtml(s.domain) + '</span></div>');
+            html.push('<span class="source-status-badge ' + statusClass + '">' + statusLabel + '</span>');
+            html.push('</div>');
+
+            // Meta
+            html.push('<div class="source-card-meta">');
+            if (s.last_crawled_at) {
+                html.push('Crawl: ' + new Date(s.last_crawled_at).toLocaleDateString('it-IT') + ' | ');
+            }
+            if (s.content_changed_at) {
+                html.push('Ultimo agg. contenuto: ' + new Date(s.content_changed_at).toLocaleDateString('it-IT') + ' | ');
+            }
+            html.push('Freq: ' + _escapeHtml(s.crawl_frequency || 'monthly'));
+            if (s.language) html.push(' | Lingua: ' + _escapeHtml(s.language));
+            if (s.http_status) html.push(' | HTTP ' + s.http_status);
+            html.push('</div>');
+
+            // Topics
+            if (s.key_topics && s.key_topics.length > 0) {
+                html.push('<div class="source-card-topics">');
+                s.key_topics.slice(0, 8).forEach(function(t) {
+                    html.push('<span class="source-topic-tag">' + _escapeHtml(t) + '</span>');
+                });
+                html.push('</div>');
+            }
+
+            // Summary snippet
+            if (s.summary_it) {
+                html.push('<div style="font-size:12px;color:#555;margin-bottom:8px;max-height:40px;overflow:hidden;text-overflow:ellipsis;">' +
+                    _escapeHtml(s.summary_it.substring(0, 150)) + (s.summary_it.length > 150 ? '...' : '') + '</div>');
+            }
+
+            // Actions
+            var sid = _escapeHtml(s.source_id);
+            html.push('<div class="source-card-actions">');
+            html.push('<button class="btn-crawl" onclick="crawlSource(\'' + sid + '\')">Crawl</button>');
+            html.push('<button onclick="validateSource(\'' + sid + '\')">Valida</button>');
+            html.push('<button onclick="showEditSourceModal(\'' + sid + '\')">Modifica</button>');
+            html.push('<button onclick="showSourceDetailModal(\'' + sid + '\')">Dettaglio</button>');
+            html.push('<button style="color:#dc2626;border-color:#fca5a5;" onclick="deleteSource(\'' + sid + '\')">Elimina</button>');
+            html.push('</div>');
+
+            html.push('</div>');
+        });
+
+        container.innerHTML = html.join('');
+    }
+
+    function _sourcesFilterChange(val) {
+        _sourcesFilter = val;
+        var c = document.getElementById('superadmin-sources-content');
+        if (c) _renderSourcesPage(c);
+    }
+
+    function _sourcesSearchChange(val) {
+        _sourcesSearch = val;
+        var c = document.getElementById('superadmin-sources-content');
+        if (c) _renderSourcesPage(c);
+    }
+
+    function showSourceDetailModal(sourceId) {
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId)).then(function(resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        }).then(function(data) {
+            var s = data.source || {};
+            var logs = data.crawl_logs || [];
+            _showModal('Dettaglio: ' + (s.display_name || s.domain), function(container) {
+                var html = [];
+                html.push('<div style="font-size:13px;">');
+                html.push('<p><strong>URL:</strong> <a href="' + _escapeHtml(s.url) + '" target="_blank">' + _escapeHtml(s.url) + '</a></p>');
+                html.push('<p><strong>Dominio:</strong> ' + _escapeHtml(s.domain) + '</p>');
+                html.push('<p><strong>Lingua:</strong> ' + _escapeHtml(s.language || 'N/D') + '</p>');
+                html.push('<p><strong>HTTP Status:</strong> ' + (s.http_status || 'N/D') + '</p>');
+                html.push('<p><strong>Disponibile:</strong> ' + (s.is_available ? 'Si' : 'No') + '</p>');
+                html.push('<p><strong>Attiva:</strong> ' + (s.is_active ? 'Si' : 'No') + '</p>');
+                html.push('<p><strong>Frequenza crawl:</strong> ' + _escapeHtml(s.crawl_frequency || 'monthly') + '</p>');
+                html.push('<p><strong>Ultimo crawl:</strong> ' + (s.last_crawled_at ? new Date(s.last_crawled_at).toLocaleString('it-IT') : 'Mai') + '</p>');
+                html.push('<p><strong>Ultima validazione:</strong> ' + (s.last_validated_at ? new Date(s.last_validated_at).toLocaleString('it-IT') : 'Mai') + '</p>');
+                html.push('<p><strong>Contenuto cambiato:</strong> ' + (s.content_changed_at ? new Date(s.content_changed_at).toLocaleString('it-IT') : 'Mai') + '</p>');
+                if (s.crawl_error) html.push('<p style="color:#dc2626;"><strong>Errore:</strong> ' + _escapeHtml(s.crawl_error) + '</p>');
+                if (s.notes) html.push('<p><strong>Note:</strong> ' + _escapeHtml(s.notes) + '</p>');
+
+                // Topics
+                if (s.key_topics && s.key_topics.length > 0) {
+                    html.push('<p><strong>Argomenti:</strong></p><div class="source-card-topics" style="margin-bottom:8px;">');
+                    s.key_topics.forEach(function(t) { html.push('<span class="source-topic-tag">' + _escapeHtml(t) + '</span>'); });
+                    html.push('</div>');
+                }
+
+                // Summary
+                if (s.summary_it) {
+                    html.push('<div style="background:#f8fafc;padding:12px;border-radius:8px;margin:8px 0;">');
+                    html.push('<strong>Riassunto IT:</strong><br>' + _escapeHtml(s.summary_it));
+                    html.push('</div>');
+                }
+
+                // Crawl Logs
+                if (logs.length > 0) {
+                    html.push('<h4 style="margin-top:16px;">Ultimi Crawl Log</h4>');
+                    html.push('<table class="crawl-log-table"><tr><th>Data</th><th>Tipo</th><th>HTTP</th><th>Durata</th><th>Cambiamento</th><th>Errore</th></tr>');
+                    logs.forEach(function(l) {
+                        html.push('<tr>');
+                        html.push('<td>' + new Date(l.created_at).toLocaleString('it-IT') + '</td>');
+                        html.push('<td>' + _escapeHtml(l.crawl_type) + '</td>');
+                        html.push('<td>' + (l.http_status || '-') + '</td>');
+                        html.push('<td>' + (l.duration_ms ? l.duration_ms + 'ms' : '-') + '</td>');
+                        html.push('<td>' + (l.content_changed ? 'Si' : 'No') + '</td>');
+                        html.push('<td style="color:#dc2626;">' + _escapeHtml(l.error || '') + '</td>');
+                        html.push('</tr>');
+                    });
+                    html.push('</table>');
+                }
+
+                html.push('</div>');
+                container.innerHTML = html.join('');
+            });
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+        });
+    }
+
+    function showEditSourceModal(sourceId) {
+        var s = _sourcesData.find(function(x) { return x.source_id === sourceId; });
+        if (!s) return;
+        _showModal('Modifica: ' + (s.display_name || s.domain), function(container) {
+            var html = [];
+            html.push('<div style="display:flex;flex-direction:column;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL *</label>');
+            html.push('<input type="text" id="editSourceUrl" value="' + _escapeHtml(s.url) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome display *</label>');
+            html.push('<input type="text" id="editSourceName" value="' + _escapeHtml(s.display_name || '') + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Frequenza crawl</label>');
+            html.push('<select id="editSourceFreq" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+            ['monthly', 'weekly', 'quarterly', 'manual'].forEach(function(f) {
+                html.push('<option value="' + f + '"' + (s.crawl_frequency === f ? ' selected' : '') + '>' + f + '</option>');
+            });
+            html.push('</select></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;"><input type="checkbox" id="editSourceActive"' + (s.is_active ? ' checked' : '') + '> Attiva</label></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Note</label>');
+            html.push('<textarea id="editSourceNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">' + _escapeHtml(s.notes || '') + '</textarea></div>');
+            html.push('<button class="btn btn-primary" onclick="saveSource(\'' + _escapeHtml(sourceId) + '\')">Salva</button>');
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function showCreateSourceForm() {
+        _showModal('Aggiungi Fonte', function(container) {
+            var html = [];
+            html.push('<div style="display:flex;flex-direction:column;gap:10px;">');
+            html.push('<div><label style="font-size:12px;font-weight:600;">URL * (https://...)</label>');
+            html.push('<input type="text" id="editSourceUrl" placeholder="https://www.example.com" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Nome display *</label>');
+            html.push('<input type="text" id="editSourceName" placeholder="Nome fonte" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Frequenza crawl</label>');
+            html.push('<select id="editSourceFreq" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
+            ['monthly', 'weekly', 'quarterly', 'manual'].forEach(function(f) {
+                html.push('<option value="' + f + '">' + f + '</option>');
+            });
+            html.push('</select></div>');
+            html.push('<div><label style="font-size:12px;font-weight:600;">Note</label>');
+            html.push('<textarea id="editSourceNotes" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea></div>');
+            html.push('<button class="btn btn-success" onclick="saveSource()">Crea Fonte</button>');
+            html.push('</div>');
+            container.innerHTML = html.join('');
+        });
+    }
+
+    function saveSource(sourceId) {
+        var url = (document.getElementById('editSourceUrl') || {}).value || '';
+        var name = (document.getElementById('editSourceName') || {}).value || '';
+        var freq = (document.getElementById('editSourceFreq') || {}).value || 'monthly';
+        var notes = (document.getElementById('editSourceNotes') || {}).value || '';
+
+        if (!url || !name) {
+            if (typeof showToast === 'function') showToast('URL e Nome sono obbligatori', 'error');
+            return;
+        }
+
+        var body = { url: url, display_name: name, crawl_frequency: freq, notes: notes };
+
+        if (sourceId) {
+            // Edit
+            var activeEl = document.getElementById('editSourceActive');
+            body.is_active = activeEl ? activeEl.checked : true;
+            fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function(r) {
+                if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Errore'); });
+                if (typeof showToast === 'function') showToast('Fonte aggiornata', 'success');
+                _closeModal();
+                loadSuperadminSources('superadmin-sources-content');
+            }).catch(function(err) {
+                if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+            });
+        } else {
+            // Create
+            fetchApi('/api/tips-sources', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function(r) {
+                if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Errore'); });
+                if (typeof showToast === 'function') showToast('Fonte creata', 'success');
+                _closeModal();
+                loadSuperadminSources('superadmin-sources-content');
+            }).catch(function(err) {
+                if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+            });
+        }
+    }
+
+    function deleteSource(sourceId) {
+        if (!confirm('Eliminare questa fonte? L\'azione non è reversibile.')) return;
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId), { method: 'DELETE' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            if (typeof showToast === 'function') showToast('Fonte eliminata', 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore: ' + err.message, 'error');
+        });
+    }
+
+    function crawlSource(sourceId) {
+        if (typeof showToast === 'function') showToast('Crawl in corso...', 'info');
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId) + '/crawl', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Crawl completato';
+            if (data.content_changed) msg += ' (contenuto aggiornato)';
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore crawl: ' + err.message, 'error');
+        });
+    }
+
+    function validateSource(sourceId) {
+        fetchApi('/api/tips-sources/' + encodeURIComponent(sourceId) + '/validate', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Validazione: ' + (data.is_available ? 'Online' : 'Offline') + ' (HTTP ' + (data.http_status || '?') + ')';
+            if (typeof showToast === 'function') showToast(msg, data.is_available ? 'success' : 'error');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore validazione: ' + err.message, 'error');
+        });
+    }
+
+    function crawlAllSources() {
+        if (!confirm('Avviare il crawl di tutte le fonti attive? Potrebbe richiedere diversi minuti.')) return;
+        if (typeof showToast === 'function') showToast('Crawl batch avviato...', 'info');
+        fetchApi('/api/tips-sources/crawl-all', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Crawl completato: ' + (data.results || []).length + ' fonti processate';
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore crawl batch: ' + err.message, 'error');
+        });
+    }
+
+    function validateAllSources() {
+        if (typeof showToast === 'function') showToast('Validazione batch avviata...', 'info');
+        fetchApi('/api/tips-sources/validate-all', { method: 'POST' }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            var msg = 'Validazione completata: ' + (data.results || []).length + ' fonti verificate';
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            loadSuperadminSources('superadmin-sources-content');
+        }).catch(function(err) {
+            if (typeof showToast === 'function') showToast('Errore validazione batch: ' + err.message, 'error');
+        });
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -2124,6 +3189,9 @@
     global.wizardDryRun           = wizardDryRun;
     global.wizardImport           = wizardImport;
     global.downloadCsvTemplate    = downloadCsvTemplate;
+    global.downloadCatalogCsv     = downloadCatalogCsv;
+    global.downloadCatalogXlsx    = downloadCatalogXlsx;
+    global.switchPageTenant       = switchPageTenant;
     global.wizardPreviewNav       = wizardPreviewNav;
     global.wizardEditItem         = wizardEditItem;
     global._saveWizardItemEdit    = _saveWizardItemEdit;
@@ -2151,6 +3219,7 @@
     // Promo edit modal
     global._savePromoItemEdit     = _savePromoItemEdit;
     // Modal helpers
+    global._showModal             = _showModal;
     global._closeModal            = _closeModal;
     // Tenants
     global.loadSuperadminTenants  = loadSuperadminTenants;
@@ -2174,6 +3243,7 @@
     global.hidePolicyForm         = hidePolicyForm;
     global.savePolicy             = savePolicy;
     global.editPolicy             = editPolicy;
+    global.onPolicyKeyChange      = onPolicyKeyChange;
     // Tags
     global.loadSuperadminTags     = loadSuperadminTags;
     global.showCreateTagForm      = showCreateTagForm;
@@ -2195,5 +3265,38 @@
     global.adminDeleteCatalogItem      = adminDeleteCatalogItem;
     global.adminDeleteAllCampaigns     = adminDeleteAllCampaigns;
     global.adminDeleteCampaign         = adminDeleteCampaign;
+    // Catalog extras: search, bulk, preview, URL validation
+    global.previewPromoItem       = previewPromoItem;
+    global._previewNav            = _previewNav;
+    global.validateItemUrls       = validateItemUrls;
+    global.validateAllCatalogUrls = validateAllCatalogUrls;
+    global.previewExplanation     = previewExplanation;
+    global.bulkPublishDraft       = bulkPublishDraft;
+    global.catalogSearch          = catalogSearch;
+    global.catalogSearchReset     = catalogSearchReset;
+    // PR 2: Advanced filters + preview actions
+    global.filterCatalogServiceType = filterCatalogServiceType;
+    global.filterCatalogPriority   = filterCatalogPriority;
+    global.filterCatalogImage      = filterCatalogImage;
+    global.filterCatalogExtDesc    = filterCatalogExtDesc;
+    global.filterCatalogCategory   = filterCatalogCategory;
+    global.filterCatalogSpecies    = filterCatalogSpecies;
+    global.setItemStatusFromReport = setItemStatusFromReport;
+    global.showPurchasePlaceholder = showPurchasePlaceholder;
+    global.showWhyYouSeeThis       = showWhyYouSeeThis;
+    global.showDismissPlaceholder  = showDismissPlaceholder;
+    // Tips Sources
+    global.loadSuperadminSources  = loadSuperadminSources;
+    global.showCreateSourceForm   = showCreateSourceForm;
+    global.showEditSourceModal    = showEditSourceModal;
+    global.showSourceDetailModal  = showSourceDetailModal;
+    global.deleteSource           = deleteSource;
+    global.crawlSource            = crawlSource;
+    global.validateSource         = validateSource;
+    global.crawlAllSources        = crawlAllSources;
+    global.validateAllSources     = validateAllSources;
+    global.saveSource             = saveSource;
+    global._sourcesFilterChange   = _sourcesFilterChange;
+    global._sourcesSearchChange   = _sourcesSearchChange;
 
 })(typeof window !== 'undefined' ? window : this);

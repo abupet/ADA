@@ -7,14 +7,20 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 
 const { petsRouter } = require("./pets.routes");
-const { petsSyncRouter } = require("./pets.sync.routes");
-const { syncRouter } = require("./sync.routes");
 const { documentsRouter } = require("./documents.routes");
 const { promoRouter } = require("./promo.routes");
 const { requireRole } = require("./rbac.middleware");
 const { adminRouter } = require("./admin.routes");
 const { dashboardRouter } = require("./dashboard.routes");
 const { seedRouter } = require("./seed.routes");
+const { tipsSourcesRouter, scheduleTipsRefresh } = require("./tips-sources.routes");
+const { nutritionRouter } = require("./nutrition.routes");
+const { insuranceRouter } = require("./insurance.routes");
+const { initWebSocket } = require("./websocket");
+const { communicationRouter } = require("./communication.routes");
+const { commUploadRouter } = require("./comm-upload.routes");
+const { chatbotRouter } = require("./chatbot.routes");
+const { transcriptionRouter } = require("./transcription.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -55,6 +61,10 @@ const openaiKeyName = [
   .join("");
 const openaiBaseUrl = "https://api.openai.com/v1";
 
+if (!FRONTEND_ORIGIN && !isMockEnv) {
+  console.warn("[CORS] FRONTEND_ORIGIN not set — cross-origin requests will be rejected");
+}
+
 const corsOptions = {
   origin(origin, callback) {
     // Requests without Origin header (same-origin, non-browser clients, or
@@ -75,8 +85,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-// Higher JSON limit for pet sync (photos are base64 in payload)
-app.use("/api/sync/pets/push", express.json({ limit: "50mb" }));
+// Static seed-assets (placeholder images for seed engine)
+app.use('/api/seed-assets', express.static(path.join(__dirname, 'seed-assets')));
 app.use(express.json({ limit: "2mb" }));
 
 // --- Correlation ID middleware (PR 13) ---
@@ -313,12 +323,30 @@ app.post("/api/telemetry/events", (_req, res) => {
   res.status(204).end();
 });
 
-// --- Pets routes (offline sync + CRUD) ---
+// --- Global debug mode setting (accessible to all authenticated users) ---
+app.get("/api/settings/debug-mode", requireAuth, async (req, res) => {
+  if (!process.env.DATABASE_URL) {
+    return res.json({ debug_mode_enabled: true });
+  }
+  try {
+    const { getPool } = require("./db");
+    const pool = getPool();
+    const result = await pool.query(
+      "SELECT policy_value FROM global_policies WHERE policy_key = 'debug_mode_enabled'"
+    );
+    const enabled = result.rows.length > 0
+      ? result.rows[0].policy_value === 'true' || result.rows[0].policy_value === true
+      : true;
+    res.json({ debug_mode_enabled: enabled });
+  } catch (e) {
+    res.json({ debug_mode_enabled: true });
+  }
+});
+
+// --- Pets & Documents routes (online-only CRUD) ---
 // CI may run without DATABASE_URL; avoid crashing the server in that case.
 if (process.env.DATABASE_URL) {
   app.use(petsRouter({ requireAuth }));
-  app.use(petsSyncRouter({ requireAuth }));
-  app.use(syncRouter({ requireAuth }));
   app.use(documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest, isMockEnv }));
 }
 
@@ -331,6 +359,20 @@ if (process.env.DATABASE_URL) {
   app.use(dashboardRouter({ requireAuth }));
   // --- Seed Engine routes (PR 14) ---
   app.use(seedRouter({ requireAuth, getOpenAiKey }));
+  // --- Tips Sources routes ---
+  app.use(tipsSourcesRouter({ requireAuth, getOpenAiKey }));
+  // --- Nutrition routes ---
+  app.use(nutritionRouter({ requireAuth, getOpenAiKey }));
+  // --- Insurance routes ---
+  app.use(insuranceRouter({ requireAuth }));
+  // --- Communication routes (chat owner↔vet) ---
+  app.use(communicationRouter({ requireAuth }));
+  // --- Communication upload routes (attachments) ---
+  app.use(commUploadRouter({ requireAuth, upload }));
+  // --- Chatbot AI routes ---
+  app.use(chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }));
+  // --- Transcription routes (post-call) ---
+  app.use(transcriptionRouter({ requireAuth, getOpenAiKey, isMockEnv }));
 }
 
 function getOpenAiKey() {
@@ -440,7 +482,41 @@ app.post("/api/chat", async (req, res) => {
         usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       });
     }
-    return await proxyOpenAiRequest(res, "chat/completions", req.body);
+    // --- Input validation (security hardening) ---
+    const body = req.body || {};
+    const ALLOWED_CHAT_MODELS = ["gpt-4o-mini", "gpt-4o"];
+    const MAX_CHAT_TOKENS = 4096;
+
+    if (body.model && !ALLOWED_CHAT_MODELS.includes(body.model)) {
+      return res.status(400).json({ error: "model_not_allowed", allowed: ALLOWED_CHAT_MODELS });
+    }
+
+    // Whitelist response_format so OpenAI returns raw JSON (not markdown-wrapped)
+    const ALLOWED_RESPONSE_FORMATS = ['json_object', 'json_schema', 'text'];
+    let responseFormat = undefined;
+    if (body.response_format && typeof body.response_format === 'object') {
+      const rfType = body.response_format.type;
+      if (ALLOWED_RESPONSE_FORMATS.includes(rfType)) {
+        responseFormat = rfType === 'json_schema'
+          ? body.response_format  // pass full schema object
+          : { type: rfType };
+      }
+    }
+
+    const sanitizedPayload = {
+      model: ALLOWED_CHAT_MODELS.includes(body.model) ? body.model : "gpt-4o-mini",
+      messages: body.messages,
+      temperature: body.temperature !== undefined ? Math.min(Math.max(Number(body.temperature) || 0, 0), 2) : undefined,
+      max_tokens: body.max_tokens ? Math.min(Number(body.max_tokens) || MAX_CHAT_TOKENS, MAX_CHAT_TOKENS) : MAX_CHAT_TOKENS,
+      response_format: responseFormat,
+    };
+    Object.keys(sanitizedPayload).forEach(k => sanitizedPayload[k] === undefined && delete sanitizedPayload[k]);
+
+    if (!sanitizedPayload.messages || !Array.isArray(sanitizedPayload.messages) || sanitizedPayload.messages.length === 0) {
+      return res.status(400).json({ error: "messages_required" });
+    }
+
+    return await proxyOpenAiRequest(res, "chat/completions", sanitizedPayload);
   } catch (error) {
     return res.status(500).json({ error: "Chat proxy failed" });
   }
@@ -533,6 +609,25 @@ app.post("/api/tts", async (req, res) => {
     return res.status(500).json({ error: "OpenAI key not configured" });
   }
 
+  const body = req.body || {};
+  const ALLOWED_TTS_MODELS = ["tts-1", "tts-1-hd"];
+  const ALLOWED_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+  const MAX_TTS_INPUT_LENGTH = 4096;
+
+  if (!body.input || typeof body.input !== "string" || body.input.trim().length === 0) {
+    return res.status(400).json({ error: "input_required" });
+  }
+  if (body.input.length > MAX_TTS_INPUT_LENGTH) {
+    return res.status(400).json({ error: "input_too_long", max_length: MAX_TTS_INPUT_LENGTH });
+  }
+
+  const sanitizedPayload = {
+    model: ALLOWED_TTS_MODELS.includes(body.model) ? body.model : "tts-1",
+    input: body.input.trim(),
+    voice: ALLOWED_VOICES.includes(body.voice) ? body.voice : "alloy",
+    response_format: body.response_format === "opus" ? "opus" : "mp3",
+  };
+
   let response;
   try {
     response = await fetch(`${openaiBaseUrl}/audio/speech`, {
@@ -541,7 +636,7 @@ app.post("/api/tts", async (req, res) => {
         Authorization: `Bearer ${oaKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(req.body ?? {}),
+      body: JSON.stringify(sanitizedPayload),
     });
   } catch (error) {
     return res.status(502).json({ error: "OpenAI request failed" });
@@ -567,7 +662,17 @@ app.use((err, _req, res, _next) => {
   }
 });
 
-app.listen(Number.parseInt(PORT, 10) || 3000, () => {
+const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, () => {
   // eslint-disable-next-line no-console
   console.log(`ADA backend listening on ${PORT}`);
+  // Init WebSocket only when not in mock/CI mode
+  if (!isMockEnv) {
+    const { commNs } = initWebSocket(httpServer, effectiveJwtSecret, FRONTEND_ORIGIN);
+    app.set("commNs", commNs);
+    console.log("Socket.io WebSocket server initialized on /ws");
+  }
+  // Auto-refresh tips sources (every 6h, stale > 7 days)
+  if (process.env.DATABASE_URL && !isMockEnv) {
+    scheduleTipsRefresh(getOpenAiKey);
+  }
 });

@@ -4,6 +4,19 @@ let lastSOAPResult = null;
 let correctionRecorder = null;
 let correctionChunks = [];
 
+// Strip markdown code fences (```json ... ```) that OpenAI may wrap around JSON responses
+function stripMarkdownFences(text) {
+    if (typeof text !== 'string') return text;
+    var s = text.trim();
+    if (s.startsWith('```')) {
+        // Remove opening fence (```json or ```)
+        s = s.replace(/^```[a-zA-Z]*\s*\n?/, '');
+        // Remove closing fence
+        s = s.replace(/\n?\s*```\s*$/, '');
+    }
+    return s.trim();
+}
+
 // Remove UI headers/noise that should not reach the model
 function sanitizeTranscriptionText(raw) {
     return (raw || '')
@@ -466,8 +479,8 @@ ISTRUZIONI IMPORTANTI:
             throw new Error('Risposta vuota dal modello');
         }
         
-        // Parse JSON
-        const soapResult = JSON.parse(content);
+        // Parse JSON (strip markdown fences if present)
+        const soapResult = JSON.parse(stripMarkdownFences(content));
 
         // If strict schema produced an empty skeleton, use a more robust fallback
         if (isSoapAllEmpty(soapResult)) {
@@ -534,8 +547,8 @@ async function generateSOAPFallback(inputContent, transcriptionText, segmentsTex
         throw new Error('Risposta vuota dal modello');
     }
     
-    // Parse JSON
-    const soapResult = JSON.parse(content);
+    // Parse JSON (strip markdown fences if present)
+    const soapResult = JSON.parse(stripMarkdownFences(content));
 
     if (isSoapAllEmpty(soapResult)) {
         console.warn('SOAP empty in fallback; using text-only fallback');
@@ -606,7 +619,7 @@ Rispondi SOLO con JSON valido con questa forma ESATTA:
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error('Risposta vuota dal modello');
 
-    const soapResult = JSON.parse(content);
+    const soapResult = JSON.parse(stripMarkdownFences(content));
     // Track usage (prefer real token counts)
     trackChatUsageOrEstimate('gpt-4o', prompt, content, data.usage);
 
@@ -945,6 +958,22 @@ function saveSOAP() {
     saveData();
     updateHistoryBadge();
     renderHistory();
+
+    // Insurance claim hook (multi-service)
+    if (typeof checkInsuranceCoverage === 'function') {
+        try {
+            var _petId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
+            if (_petId) {
+                checkInsuranceCoverage(_petId).then(function(result) {
+                    if (result && result.covered) {
+                        if (typeof showToast === 'function') {
+                            showToast('Il tuo pet è assicurato. Puoi generare un rimborso per questa visita.', 'info');
+                        }
+                    }
+                }).catch(function() {});
+            }
+        } catch(_e) {}
+    }
 }
 
 function exportTXT() {

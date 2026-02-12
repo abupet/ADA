@@ -6,10 +6,12 @@ const fs = require('fs');
 const path = require('path');
 const {
   generatePetCohort,
+  generateDemoCohort,
   buildSoapPrompt,
   buildDocumentPrompt,
   getVisitTypesForPet,
   getDocTypesForPet,
+  generatePhotosForPet,
 } = require('./seed.petgen');
 
 // ---------------------------------------------------------------------------
@@ -119,6 +121,41 @@ async function callOpenAi(openAiKey, messages, options = {}) {
 // ---------------------------------------------------------------------------
 
 const SPECIES_IT = { dog: 'Cane', cat: 'Gatto', rabbit: 'Coniglio' };
+
+// ---------------------------------------------------------------------------
+// Wipe ALL pets for a given user (admin "nuclear" option)
+// ---------------------------------------------------------------------------
+
+async function wipeAllUserPets(pool, ownerUserId) {
+  if (!ownerUserId) throw new Error('ownerUserId required');
+  const results = { petsDeleted: 0, changesInserted: 0 };
+
+  const { rows: petRows } = await pool.query(
+    'SELECT pet_id FROM pets WHERE owner_user_id = $1',
+    [ownerUserId]
+  );
+
+  for (const pet of petRows) {
+    try {
+      // FK-safe: delete children first
+      await pool.query('DELETE FROM pet_tags WHERE pet_id = $1::text', [pet.pet_id]);
+      await pool.query('DELETE FROM documents WHERE pet_id = $1', [pet.pet_id]);
+      await pool.query('DELETE FROM pets WHERE pet_id = $1 AND owner_user_id = $2', [pet.pet_id, ownerUserId]);
+      // Insert pet.delete change for frontend sync
+      await pool.query(
+        `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
+         VALUES ($1, $2, 'pet.delete', NULL, NULL, 'admin-wipe', $3)`,
+        [ownerUserId, pet.pet_id, randomUUID()]
+      );
+      results.petsDeleted++;
+      results.changesInserted++;
+    } catch (e) {
+      console.error('wipeAllUserPets: error deleting pet', pet.pet_id, e.message);
+    }
+  }
+
+  return results;
+}
 
 // ---------------------------------------------------------------------------
 // Wipe seeded data (FK-safe order)
@@ -235,6 +272,7 @@ function startSeedJob(pool, config, openAiKey) {
     startedAt: new Date().toISOString(),
     completedAt: null,
     error: null,
+    stats: {},
   };
 
   // Run async in background
@@ -366,6 +404,7 @@ async function _runSeedJob(pool, config, openAiKey) {
     _updateProgress(3, 8, 'Inserting pets');
     _log('Phase 3: Inserting pets into database...');
 
+    let petChangeErrors = 0;
     const petIds = [];
     for (let i = 0; i < pets.length; i++) {
       if (_isCancelled()) return _finishCancelled();
@@ -389,12 +428,14 @@ async function _runSeedJob(pool, config, openAiKey) {
           await pool.query(
             `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
              VALUES ($1, $2, 'pet.upsert', $3, 1, 'seed-engine', $4)`,
-            [ownerUserId, petId, JSON.stringify(ins.rows[0]), randomUUID()]
+            [ownerUserId, petId, ins.rows[0], randomUUID()]
           );
         } catch (_e) {
-          _log(`pet_changes insert warning for ${pet.name}: ${_e.message}`);
+          _log(`pet_changes insert error for ${pet.name}: ${_e.message}`);
+          throw _e;
         }
       } catch (e) {
+        petChangeErrors++;
         _log(`Insert pet ${pet.name} error: ${e.message}`);
       }
 
@@ -617,24 +658,8 @@ async function _runSeedJob(pool, config, openAiKey) {
       }
       medsMap[pet._petId] = meds;
 
-      // --- Photos (placeholder SVGs) ---
-      const photos = [];
-      const colors = ['#4A90D9', '#E74C3C', '#27AE60', '#F39C12', '#8E44AD', '#1ABC9C'];
-      for (let p = 0; p < config.photosPerPet; p++) {
-        const color = colors[(i + p) % colors.length];
-        const initial = (pet.name || 'P')[0].toUpperCase();
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <circle cx="100" cy="100" r="90" fill="${color}" />
-  <text x="100" y="115" text-anchor="middle" font-size="72" font-family="Arial" fill="white">${initial}</text>
-</svg>`;
-        photos.push({
-          type: 'placeholder_svg',
-          label: `${pet.name} photo ${p + 1}`,
-          svg,
-          created_at: _randomPastDate(60).toISOString(),
-        });
-      }
-      photosMap[pet._petId] = photos;
+      // --- Photos (deterministic placeholder SVGs per species) ---
+      photosMap[pet._petId] = generatePhotosForPet(pet, config.photosPerPet);
 
       // --- Diary (combine anamnesis, pathologies, meds) ---
       const diaryParts = [];
@@ -751,6 +776,7 @@ async function _runSeedJob(pool, config, openAiKey) {
     _updateProgress(9, 95, 'Updating extra_data');
     _log('Phase 9: Updating extra_data JSONB...');
 
+    let phase9ChangeErrors = 0;
     for (let i = 0; i < pets.length; i++) {
       if (_isCancelled()) return _finishCancelled();
       const pet = pets[i];
@@ -776,12 +802,17 @@ async function _runSeedJob(pool, config, openAiKey) {
         owner_phone: pet.ownerPhone,
         microchip: pet.microchip,
         visit_date: lastVisitDate,
+        sex: pet.sex,
+        birthdate: pet.birthdate,
+        species: pet.species,
+        breed: pet.breed,
+        weightKg: pet.weightKg,
       };
 
       try {
         const upd = await pool.query(
           `UPDATE pets SET extra_data = $1, version = version + 1, updated_at = NOW() WHERE pet_id = $2 RETURNING *`,
-          [JSON.stringify(extraData), pet._petId]
+          [extraData, pet._petId]
         );
 
         // Create pet_changes with full data so pull sync gets complete pet info
@@ -790,10 +821,11 @@ async function _runSeedJob(pool, config, openAiKey) {
             await pool.query(
               `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
                VALUES ($1, $2, 'pet.upsert', $3, $4, 'seed-engine', $5)`,
-              [ownerUserId, pet._petId, JSON.stringify(upd.rows[0]), upd.rows[0].version, randomUUID()]
+              [ownerUserId, pet._petId, upd.rows[0], upd.rows[0].version, randomUUID()]
             );
           } catch (_e) {
-            _log(`pet_changes update warning for ${pet.name}: ${_e.message}`);
+            phase9ChangeErrors++;
+            _log(`pet_changes update error for ${pet.name}: ${_e.message}`);
           }
         }
       } catch (e) {
@@ -804,6 +836,26 @@ async function _runSeedJob(pool, config, openAiKey) {
       _updateProgress(9, pct, `Extra data ${i + 1}/${pets.length}: ${pet.name}`);
     }
     _log('Phase 9 complete: extra_data updated');
+
+    // Verification: count pet_changes for this seed run
+    let petChangesVerified = 0;
+    try {
+      const vcRes = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM pet_changes WHERE device_id = 'seed-engine' AND owner_user_id = $1`,
+        [ownerUserId]
+      );
+      petChangesVerified = parseInt(vcRes.rows[0].cnt) || 0;
+      _log(`Verification: ${petChangesVerified} pet_changes records for owner ${ownerUserId}`);
+    } catch (_e) {
+      _log(`Verification query warning: ${_e.message}`);
+    }
+
+    // Populate job stats
+    job.stats = {
+      petsInserted: petIds.length,
+      petChangeErrors: petChangeErrors + phase9ChangeErrors,
+      petChangesVerified,
+    };
 
     // =====================================================================
     // Done
@@ -841,6 +893,7 @@ function getJobStatus() {
     startedAt: currentJob.startedAt,
     completedAt: currentJob.completedAt,
     error: currentJob.error,
+    stats: currentJob.stats || {},
   };
 }
 
@@ -856,6 +909,350 @@ function _finishCancelled() {
     currentJob.status = 'cancelled';
     currentJob.completedAt = new Date().toISOString();
     _log('Seed job cancelled');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Demo Mode — startDemoJob + phases 10-12
+// ---------------------------------------------------------------------------
+
+function startDemoJob(pool, config, openAiKey) {
+  if (currentJob && currentJob.status === 'running') {
+    return { error: 'already_running' };
+  }
+
+  const jobId = 'demo_' + randomUUID();
+
+  const jobConfig = {
+    mode: 'demo',
+    tenantId: config.tenantId || 'seed-tenant',
+    ownerUserId: config.ownerUserId || 'ada-user',
+    services: config.services || ['promo', 'nutrition', 'insurance'],
+  };
+
+  currentJob = {
+    jobId,
+    status: 'running',
+    config: jobConfig,
+    phase: 10,
+    phaseName: 'demo_initializing',
+    progressPct: 0,
+    currentItem: null,
+    log: [],
+    cancelled: false,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    error: null,
+  };
+
+  _runDemoJob(pool, jobConfig, openAiKey).catch((err) => {
+    if (currentJob && currentJob.jobId === jobId) {
+      currentJob.status = 'error';
+      currentJob.error = err.message || String(err);
+      currentJob.completedAt = new Date().toISOString();
+      _log(`Fatal demo error: ${err.message}`);
+    }
+  });
+
+  return { jobId };
+}
+
+async function _runDemoJob(pool, config, openAiKey) {
+  const job = currentJob;
+  const ownerUserId = config.ownerUserId;
+  const tenantId = config.tenantId;
+  const services = config.services || ['promo', 'nutrition', 'insurance'];
+
+  try {
+    // =====================================================================
+    // Phase 10 (0-40%): Generate demo cohort + insert pets + promo impressions
+    // =====================================================================
+    job.phaseName = 'demo_setup';
+    _updateProgress(10, 0, 'Setting up demo cohort');
+    _log('Demo Phase 10: Generating demo cohort and promo impressions...');
+
+    // Ensure tenant exists
+    try {
+      await pool.query(
+        `INSERT INTO tenants (tenant_id, name, slug)
+         VALUES ($1, 'Demo Tenant', 'demo-tenant')
+         ON CONFLICT (tenant_id) DO NOTHING`,
+        [tenantId]
+      );
+    } catch (e) {
+      _log(`Demo tenant warning: ${e.message}`);
+    }
+
+    // Ensure budget
+    try {
+      await pool.query(
+        `INSERT INTO tenant_budgets (tenant_id, monthly_limit)
+         VALUES ($1, 10000)
+         ON CONFLICT (tenant_id) DO NOTHING`,
+        [tenantId]
+      );
+    } catch (e) {
+      _log(`Demo budget warning: ${e.message}`);
+    }
+
+    // Auto-set consents for demo owner (all service types)
+    const demoConsents = [
+      { type: 'marketing_global', scope: 'global' },
+      { type: 'clinical_tags', scope: 'global' },
+      { type: 'marketing_brand', scope: tenantId },
+      { type: 'nutrition_plan', scope: 'global' },
+      { type: 'nutrition_brand', scope: tenantId },
+      { type: 'insurance_data_sharing', scope: 'global' },
+      { type: 'insurance_brand', scope: tenantId },
+    ];
+    for (const ct of demoConsents) {
+      try {
+        await pool.query(
+          `INSERT INTO consents (owner_user_id, consent_type, scope, status)
+           VALUES ($1, $2, $3, 'opted_in')
+           ON CONFLICT (owner_user_id, consent_type, scope) DO UPDATE SET status = 'opted_in'`,
+          [ownerUserId, ct.type, ct.scope]
+        );
+      } catch (e) {
+        _log(`Demo consent ${ct.type} warning: ${e.message}`);
+      }
+    }
+    _log('Demo consents set for all service types');
+
+    // Fetch tenant products for context
+    let tenantProducts = [];
+    try {
+      const { rows } = await pool.query(
+        "SELECT * FROM promo_items WHERE tenant_id = $1 AND status = 'published' LIMIT 50",
+        [tenantId]
+      );
+      tenantProducts = rows;
+    } catch (e) {
+      _log(`Demo products fetch warning: ${e.message}`);
+    }
+
+    // Generate demo cohort (3 pets)
+    const pets = generateDemoCohort(tenantProducts);
+    _log(`Generated ${pets.length} demo pet profiles`);
+    _updateProgress(10, 10, `${pets.length} demo profiles ready`);
+
+    // Insert pets into DB
+    const petIds = [];
+    for (let i = 0; i < pets.length; i++) {
+      if (_isCancelled()) return _finishCancelled();
+      const pet = pets[i];
+      const petId = randomUUID();
+      pet._petId = petId;
+
+      const notes = `Demo: ${pet._demoLabel || pet.name} [seed]`;
+
+      try {
+        const ins = await pool.query(
+          `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+           RETURNING *`,
+          [petId, ownerUserId, pet.name, SPECIES_IT[pet.species] || pet.species, pet.breed, pet.sex, pet.birthdate, pet.weightKg, notes]
+        );
+        petIds.push(petId);
+
+        try {
+          await pool.query(
+            `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
+             VALUES ($1, $2, 'pet.upsert', $3, 1, 'seed-engine', $4)`,
+            [ownerUserId, petId, ins.rows[0], randomUUID()]
+          );
+        } catch (_e) {
+          _log(`Demo pet_changes warning for ${pet.name}: ${_e.message}`);
+        }
+      } catch (e) {
+        _log(`Demo pet insert error for ${pet.name}: ${e.message}`);
+      }
+
+      _updateProgress(10, 10 + ((i + 1) / pets.length) * 10, `Inserted ${pet.name}`);
+    }
+    _log(`Inserted ${petIds.length} demo pets`);
+
+    // Generate targeted promo impressions (if promo in services)
+    if (services.includes('promo')) {
+      const eventTypes = ['impression', 'info_click', 'cta_click'];
+      const contexts = ['home_feed', 'pet_profile', 'post_visit'];
+      let eventsDone = 0;
+
+      for (const pet of pets) {
+        if (_isCancelled()) return _finishCancelled();
+        if (!pet._petId) continue;
+
+        for (let e = 0; e < 5; e++) {
+          const eventType = eventTypes[e % eventTypes.length];
+          const context = contexts[e % contexts.length];
+          const eventDate = new Date(Date.now() - Math.random() * 14 * 86400000);
+
+          try {
+            await pool.query(
+              `INSERT INTO promo_events (owner_user_id, pet_id, promo_item_id, event_type, context, tenant_id, metadata, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [ownerUserId, pet._petId, null, eventType, context, tenantId,
+               JSON.stringify({ seeded: 'true', demo: true }), eventDate.toISOString()]
+            );
+            eventsDone++;
+          } catch (e2) {
+            _log(`Demo promo event warning: ${e2.message}`);
+          }
+        }
+      }
+      _log(`Demo Phase 10: ${eventsDone} promo events generated`);
+    }
+
+    // Compute tags for demo pets
+    let computeTags = null;
+    try {
+      computeTags = require('./tag.service').computeTags;
+    } catch (_e) {
+      _log('Warning: tag.service not available, skipping demo tags');
+    }
+    if (computeTags) {
+      for (const pet of pets) {
+        if (!pet._petId) continue;
+        try {
+          await computeTags(pool, pet._petId, ownerUserId);
+        } catch (e) {
+          _log(`Demo tag compute warning for ${pet.name}: ${e.message}`);
+        }
+      }
+      _log('Demo tags computed');
+    }
+
+    _updateProgress(10, 40, 'Demo setup complete');
+
+    // =====================================================================
+    // Phase 11 (40-70%): Generate + auto-validate nutrition plans
+    // =====================================================================
+    if (_isCancelled()) return _finishCancelled();
+
+    if (services.includes('nutrition')) {
+      job.phaseName = 'demo_nutrition';
+      _updateProgress(11, 40, 'Generating nutrition plans');
+      _log('Demo Phase 11: Generating nutrition plans...');
+
+      let generateNutritionPlan = null;
+      try {
+        generateNutritionPlan = require('./nutrition.service').generateNutritionPlan;
+      } catch (_e) {
+        _log('Warning: nutrition.service not available, skipping nutrition plans');
+      }
+
+      if (generateNutritionPlan) {
+        for (let i = 0; i < pets.length; i++) {
+          if (_isCancelled()) return _finishCancelled();
+          const pet = pets[i];
+          if (!pet._petId) continue;
+
+          try {
+            const plan = await generateNutritionPlan(
+              pool, pet._petId, ownerUserId, tenantId,
+              () => openAiKey
+            );
+
+            // Auto-validate the plan (simulate vet approval)
+            if (plan && plan.plan_id) {
+              try {
+                await pool.query(
+                  `UPDATE nutrition_plans SET status = 'validated' WHERE plan_id = $1`,
+                  [plan.plan_id]
+                );
+                _log(`Nutrition plan auto-validated for ${pet.name}`);
+              } catch (ve) {
+                _log(`Nutrition validation warning for ${pet.name}: ${ve.message}`);
+              }
+            }
+          } catch (e) {
+            _log(`Nutrition plan error for ${pet.name}: ${e.message}`);
+          }
+
+          const pct = 40 + ((i + 1) / pets.length) * 30;
+          _updateProgress(11, pct, `Nutrition ${i + 1}/${pets.length}: ${pet.name}`);
+        }
+      }
+      _log('Demo Phase 11 complete: nutrition plans generated');
+    }
+    _updateProgress(11, 70, 'Nutrition plans done');
+
+    // =====================================================================
+    // Phase 12 (70-100%): Generate insurance proposals with risk scores
+    // =====================================================================
+    if (_isCancelled()) return _finishCancelled();
+
+    if (services.includes('insurance')) {
+      job.phaseName = 'demo_insurance';
+      _updateProgress(12, 70, 'Generating insurance proposals');
+      _log('Demo Phase 12: Generating insurance risk scores and proposals...');
+
+      let computeRiskScore = null;
+      try {
+        computeRiskScore = require('./risk-scoring.service').computeRiskScore;
+      } catch (_e) {
+        _log('Warning: risk-scoring.service not available, skipping insurance');
+      }
+
+      if (computeRiskScore) {
+        for (let i = 0; i < pets.length; i++) {
+          if (_isCancelled()) return _finishCancelled();
+          const pet = pets[i];
+          if (!pet._petId) continue;
+
+          try {
+            // Compute risk score
+            const score = await computeRiskScore(pool, pet._petId);
+            _log(`Risk score for ${pet.name}: ${score.total_score} (${score.risk_class})`);
+
+            // Create an insurance policy proposal in "quoted" status
+            const basePremium = 15.0;
+            const monthlyPremium = Math.round(basePremium * (score.price_multiplier || 1) * 100) / 100;
+            const policyId = 'pol_demo_' + randomUUID().slice(0, 8);
+
+            await pool.query(
+              `INSERT INTO insurance_policies (policy_id, pet_id, owner_user_id, tenant_id, promo_item_id, status, monthly_premium, risk_score_id, coverage_data)
+               VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8)`,
+              [
+                policyId, pet._petId, ownerUserId, tenantId,
+                pet._demoLabel === 'clinical_adult' ? 'active' : 'quoted',
+                monthlyPremium,
+                score.score_id || null,
+                JSON.stringify({
+                  type: 'base',
+                  annual_limit: 5000,
+                  deductible: 100,
+                  coverage_pct: 80,
+                }),
+              ]
+            );
+            _log(`Insurance policy ${policyId} created for ${pet.name} (${pet._demoLabel === 'clinical_adult' ? 'active' : 'quoted'})`);
+          } catch (e) {
+            _log(`Insurance error for ${pet.name}: ${e.message}`);
+          }
+
+          const pct = 70 + ((i + 1) / pets.length) * 30;
+          _updateProgress(12, pct, `Insurance ${i + 1}/${pets.length}: ${pet.name}`);
+        }
+      }
+      _log('Demo Phase 12 complete: insurance proposals generated');
+    }
+
+    // =====================================================================
+    // Done
+    // =====================================================================
+    job.status = 'completed';
+    job.progressPct = 100;
+    job.phaseName = 'done';
+    job.currentItem = null;
+    job.completedAt = new Date().toISOString();
+    _log(`Demo job completed successfully. ${petIds.length} pets with services: ${services.join(', ')}.`);
+  } catch (err) {
+    job.status = 'error';
+    job.error = err.message || String(err);
+    job.completedAt = new Date().toISOString();
+    _log(`Demo job failed: ${err.message}`);
+    throw err;
   }
 }
 
@@ -972,4 +1369,4 @@ function _defaultMedsForSpecies(species) {
 // Exports
 // ---------------------------------------------------------------------------
 
-module.exports = { startSeedJob, getJobStatus, cancelJob, wipeSeededData };
+module.exports = { startSeedJob, startDemoJob, getJobStatus, cancelJob, wipeSeededData, wipeAllUserPets };
