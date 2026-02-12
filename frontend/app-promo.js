@@ -879,14 +879,39 @@
             var consentData = results[0];
             var servicesData = results[1];
 
-            var consents = consentData.consents || [];
             var services = servicesData.services || [];
 
+            // Build consentMap from backend response (flat object or array)
             var consentMap = {};
-            consents.forEach(function (c) {
-                var key = c.consent_type + ':' + (c.scope || 'global');
-                consentMap[key] = c.status === 'opted_in';
-            });
+            if (consentData.consents && Array.isArray(consentData.consents)) {
+                consentData.consents.forEach(function (c) {
+                    var key = c.consent_type + ':' + (c.scope || 'global');
+                    consentMap[key] = c.status === 'opted_in';
+                });
+            } else {
+                if (consentData.marketing_global !== undefined) {
+                    consentMap['marketing_global:global'] = consentData.marketing_global === 'opted_in';
+                }
+                if (consentData.nutrition_plan !== undefined) {
+                    consentMap['nutrition_plan:global'] = consentData.nutrition_plan === 'opted_in';
+                }
+                if (consentData.insurance_data_sharing !== undefined) {
+                    consentMap['insurance_data_sharing:global'] = consentData.insurance_data_sharing === 'opted_in';
+                }
+                if (consentData.clinical_tags !== undefined) {
+                    consentMap['clinical_tags:global'] = consentData.clinical_tags === 'opted_in';
+                }
+                var brandMaps = {
+                    marketing_brand: consentData.brand_consents || {},
+                    nutrition_brand: consentData.nutrition_brand_consents || {},
+                    insurance_brand: consentData.insurance_brand_consents || {}
+                };
+                Object.keys(brandMaps).forEach(function (type) {
+                    Object.keys(brandMaps[type]).forEach(function (scope) {
+                        consentMap[type + ':' + scope] = brandMaps[type][scope] === 'opted_in';
+                    });
+                });
+            }
 
             var tenantsByType = {};
             services.forEach(function (svc) {

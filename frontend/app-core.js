@@ -450,8 +450,8 @@ function applyRoleUI(role) {
     var hasSARole = activeRoles.indexOf('super_admin') !== -1;
     var gestEl = document.getElementById('nav-superadmin-gestione');
     if (gestEl) gestEl.style.display = hasSARole ? '' : 'none';
-    var auditCard = document.getElementById('debug-audit-card');
-    if (auditCard) auditCard.style.display = hasSARole ? '' : 'none';
+    var auditBtn = document.getElementById('debug-audit-btn');
+    if (auditBtn) auditBtn.style.display = hasSARole ? '' : 'none';
 
     // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');

@@ -26,7 +26,7 @@ function adminRouter({ requireAuth }) {
         const { tenantId } = req.params;
         const status = req.query.status || null;
         const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+        const limit = Math.min(5000, Math.max(1, parseInt(req.query.limit) || 20));
         const offset = (page - 1) * limit;
 
         let query =
