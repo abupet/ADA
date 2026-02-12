@@ -195,8 +195,24 @@ function communicationRouter({ requireAuth }) {
       const userId = req.user.sub;
       const { pet_id, status } = req.query;
 
-      let query = "SELECT * FROM conversations " +
-                  "WHERE (owner_user_id = $1 OR vet_user_id = $1)";
+      let query = "SELECT c.*, " +
+                  "p.name AS pet_name, " +
+                  "lm.content AS last_message_text, " +
+                  "lm.created_at AS last_message_at, " +
+                  "COALESCE(ur.cnt, 0)::int AS unread_count " +
+                  "FROM conversations c " +
+                  "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+                  "LEFT JOIN LATERAL (" +
+                  "  SELECT content, created_at FROM comm_messages " +
+                  "  WHERE conversation_id = c.conversation_id " +
+                  "  ORDER BY created_at DESC LIMIT 1" +
+                  ") lm ON true " +
+                  "LEFT JOIN LATERAL (" +
+                  "  SELECT COUNT(*) AS cnt FROM comm_messages " +
+                  "  WHERE conversation_id = c.conversation_id " +
+                  "  AND sender_id <> $1 AND is_read = false" +
+                  ") ur ON true " +
+                  "WHERE (c.owner_user_id = $1 OR c.vet_user_id = $1)";
       const values = [userId];
       let paramIndex = 2;
 
@@ -204,7 +220,7 @@ function communicationRouter({ requireAuth }) {
         if (!isValidUuid(pet_id)) {
           return res.status(400).json({ error: "invalid_pet_id" });
         }
-        query += " AND pet_id = $" + paramIndex++;
+        query += " AND c.pet_id = $" + paramIndex++;
         values.push(pet_id);
       }
 
@@ -213,11 +229,11 @@ function communicationRouter({ requireAuth }) {
         if (!allowedStatuses.includes(status)) {
           return res.status(400).json({ error: "invalid_status" });
         }
-        query += " AND status = $" + paramIndex++;
+        query += " AND c.status = $" + paramIndex++;
         values.push(status);
       }
 
-      query += " ORDER BY updated_at DESC";
+      query += " ORDER BY c.updated_at DESC";
 
       const { rows } = await pool.query(query, values);
       res.json({ conversations: rows });

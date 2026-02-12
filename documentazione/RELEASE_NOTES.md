@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.14.2 (2026-02-12)
+- Fix (critico): Messaggi — invio messaggio falliva sempre con errore 400; il frontend inviava `{ body: text }` ma il backend richiede `{ content: text }`
+- Fix: Messaggi — bolle chat vuote; `_commRenderBubble` leggeva `msg.body` ma il DB restituisce `msg.content`; aggiunto fallback `msg.content || msg.body || msg.text`
+- Fix: Messaggi — tipo messaggio non riconosciuto; `_commRenderBubble` leggeva `msg.message_type` ma il DB restituisce `msg.type`
+- Fix: Messaggi — lista conversazioni arricchita; la query backend ora include JOIN con pets (pet_name), ultimo messaggio (last_message_text, last_message_at) e conteggio non letti (unread_count) via LATERAL subquery
+
 ## v8.14.1 (2026-02-12)
 - Fix: Tenant disabilitati non più visibili nei dropdown — filtro `status === 'active'` applicato in 4 punti: selettore dashboard, selettore pagina, prompt assegnazione tenant utente, auto-select catalogo
 - Fix: Conversazioni — "Impossibile caricare i messaggi" risolto; la lista conversazioni usava `c.id` invece di `c.conversation_id` (nome colonna DB), causando `onclick="openConversation('undefined')"`

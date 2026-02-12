@@ -444,15 +444,15 @@ function _commRenderChat(container, convId, messages) {
 }
 
 function _commRenderBubble(msg, isOwn) {
-    var type = msg.message_type || 'text';
+    var type = msg.type || msg.message_type || 'text';
     if (type === 'system') {
-        return '<div class="comm-msg comm-msg-system" data-testid="comm-msg-system">' + _commEscape(msg.body || msg.text || '') + '</div>';
+        return '<div class="comm-msg comm-msg-system" data-testid="comm-msg-system">' + _commEscape(msg.content || msg.body || msg.text || '') + '</div>';
     }
     var cls = isOwn ? 'comm-msg-own' : 'comm-msg-other';
     var sender = isOwn ? '' : _commEscape(msg.sender_name || msg.display_name || 'Utente');
     return '<div class="comm-msg ' + cls + '" data-testid="comm-msg">' +
         (sender ? '<div class="comm-msg-sender">' + sender + '</div>' : '') +
-        '<div>' + _commEscape(msg.body || msg.text || '') + '</div>' +
+        '<div>' + _commEscape(msg.content || msg.body || msg.text || '') + '</div>' +
         '<div class="comm-msg-time">' + _commFormatTime(msg.created_at) + '</div></div>';
 }
 
@@ -468,7 +468,7 @@ async function _commSend(conversationId) {
 
     try {
         var resp = await fetch(_commApiBase() + '/api/communication/conversations/' + conversationId + '/messages', {
-            method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify({ body: text })
+            method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify({ content: text })
         });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
