@@ -5,6 +5,26 @@
 // HELPERS
 // ============================================
 
+function _computeAgeFromBirthdate(bd) {
+    if (!bd) return '';
+    try {
+        var d = new Date(bd);
+        if (isNaN(d.getTime())) return '';
+        var now = new Date();
+        var years = now.getFullYear() - d.getFullYear();
+        var months = now.getMonth() - d.getMonth();
+        if (months < 0 || (months === 0 && now.getDate() < d.getDate())) years--;
+        if (years < 0) years = 0;
+        if (years === 0) {
+            var m = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+            if (now.getDate() < d.getDate()) m--;
+            if (m < 0) m = 0;
+            return m + (m === 1 ? ' mese' : ' mesi');
+        }
+        return years + (years === 1 ? ' anno' : ' anni');
+    } catch (_) { return ''; }
+}
+
 function _extractJsonObject(text) {
     const t = String(text || '');
     const start = t.indexOf('{');
@@ -277,7 +297,7 @@ async function generateDiary() {
     const vitalsText = vitalsData.map(v => `${new Date(v.date).toLocaleDateString('it-IT')}: Peso ${v.weight}kg, T ${v.temp}°C`).join('\n') || 'Nessuno';
     const medsText = medications.map(m => `${m.name} ${m.dosage} ${m.frequency}`).join('\n') || 'Nessuno';
 
-    const patientInfo = `PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
+    const patientInfo = `PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${_computeAgeFromBirthdate(patient.petBirthdate) || 'N/D'}
 PROPRIETARIO: ${patient.ownerName || 'N/D'}
 STILE DI VITA: Ambiente ${lifestyle.lifestyle || 'N/D'}, Attività ${lifestyle.activityLevel || 'N/D'}
 CONDIZIONI NOTE: ${lifestyle.knownConditions || 'Nessuna'}
@@ -515,7 +535,7 @@ async function generateQnAAnswer() {
     
     const prompt = `Sei un assistente veterinario. Rispondi SOLO a domande su pet e animali in generale.
 
-PET: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, Età: ${(window.PetsSyncMerge?.computeAgeFromBirthdate ? window.PetsSyncMerge.computeAgeFromBirthdate(patient.petBirthdate) : '') || 'N/D'}
+PET: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, Età: ${_computeAgeFromBirthdate(patient.petBirthdate) || 'N/D'}
 AMBIENTE: ${lifestyle.lifestyle || 'N/D'}, CONDIZIONI: ${lifestyle.knownConditions || 'Nessuna'}
 FARMACI: ${medications.map(m => m.name).join(', ') || 'Nessuno'}
 ULTIMA DIAGNOSI: ${_getMostRecentDiagnosisText()}

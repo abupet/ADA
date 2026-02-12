@@ -1106,15 +1106,11 @@ function onSuperAdminRoleToggle() {
 // EDIT PET MODAL
 // ============================================
 
-let _editPetSyncPaused = false;
-
 function openEditPetModal() {
     if (!currentPetId) {
         showToast('Nessun pet selezionato', 'error');
         return;
     }
-
-    _editPetSyncPaused = true;
 
     // Load current values into edit modal fields
     var fields = {
@@ -1229,8 +1225,6 @@ async function saveEditPet() {
     var modal = document.getElementById('editPetModal');
     if (modal) modal.classList.remove('active');
 
-    _editPetSyncPaused = false;
-
     // Save via the existing save flow
     await saveCurrentPet();
 }
@@ -1238,7 +1232,6 @@ async function saveEditPet() {
 function cancelEditPet() {
     var modal = document.getElementById('editPetModal');
     if (modal) modal.classList.remove('active');
-    _editPetSyncPaused = false;
 }
 
 // ============================================
@@ -1894,31 +1887,6 @@ function downloadFile(content, filename, type) {
 // Global error logging function
 function logError(context, errorMessage) {
     // Moved to app-debug-logger.js
-}
-
-// --- Sync Diagnostics (PR 13) ---
-function showSyncDiagnostics() {
-    try {
-        if (typeof syncEngine === 'undefined' || !syncEngine.getStatus) {
-            showToast('syncEngine non disponibile', 'error');
-            return;
-        }
-        var status = syncEngine.getStatus();
-        var msg = 'Sync Diagnostics:\n'
-            + '  Pending: ' + (status.pending || 0) + '\n'
-            + '  Pushing: ' + (status.pushing ? 'YES' : 'no') + '\n'
-            + '  Failed: ' + (status.errors ? status.errors.length : 0) + '\n'
-            + '  Last sync: ' + (status.lastSyncTime || 'never') + '\n';
-        if (status.errors && status.errors.length > 0) {
-            msg += '  Last errors:\n';
-            status.errors.slice(-5).forEach(function(e) {
-                msg += '    ' + e.time + ' — ' + e.error + '\n';
-            });
-        }
-        alert(msg);
-    } catch (e) {
-        showToast('Errore diagnostica sync: ' + e.message, 'error');
-    }
 }
 
 function showApiMetrics() {

@@ -25,7 +25,7 @@ ADA è una SPA vanilla JS con backend Express.
 **Frontend** (`frontend/`):
 - No moduli/bundler; tutti i file caricati via `<script>` in `index.html`
 - Pattern IIFE: `(function(global) { ... })(window)`
-- Moduli principali: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `sync-engine.js`, `app-promo.js`, `app-observability.js`
+- Moduli principali: `config.js`, `app-core.js`, `app-data.js`, `app-recording.js`, `app-soap.js`, `app-pets.js`, `app-loading.js`, `app-documents.js`, `app-promo.js`, `app-observability.js`
 
 **Backend** (`backend/src/`):
 - Express 4, JWT auth, PostgreSQL via `pg`, multer per upload
@@ -35,7 +35,7 @@ ADA è una SPA vanilla JS con backend Express.
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 8.15.2
+**Versione corrente:** 8.15.3
 
 ---
 
@@ -97,15 +97,13 @@ Il file `frontend/index.html` contiene un inline script che rileva automaticamen
 - Toggle nell'header, persistito in `localStorage` (`ada_active_role`)
 - Route guard in `navigateToPage()` applica i permessi
 
-### Sync pets
-- Due sistemi separati:
-  - **Pet sync**: outbox in IndexedDB `ADA_Pets` → `pushOutboxIfOnline()` → `/api/sync/pets/push`
-  - **Sync engine generico**: outbox in IndexedDB `ada_sync` → `pushAll()` → `/api/sync/push`
-- Auto-sync in `pets-sync-bootstrap.js`: online → push+pull, interval 60s, startup
-- Pull skips merge per pet con outbox pending (local wins)
-- ADR di riferimento: `frontend/decisions/ADR-PETS-PULL-MERGE.md`
+### Pets (online-only, v8.15.1+)
+- Nessun IndexedDB, nessun sync offline — tutti i CRUD via API REST dirette (`GET/POST/PATCH/DELETE /api/pets`)
+- In-memory `petsCache` con `_normalizePetForUI()` per mappare formato server → formato UI
+- `refreshPetsFromServer()` per ricaricare lista dal server
 
-### Documenti
+### Documenti (online-only, v8.15.2+)
+- Nessun IndexedDB — tutti i CRUD via API REST (`GET/POST/DELETE /api/documents`)
 - Upload: PDF, JPG, PNG, WebP (max 10 MB)
 - Validazione MIME magic bytes server-side
 - AI: "Leggi" (solo vet, GPT-4o vision), "Spiegami il documento" (solo proprietario)

@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.15.3 (2026-02-12)
+- Feat: Eliminati 5 file sync obsoleti: `sync-engine.js` (1094 righe), `pets-sync-step4.js` (266), `pets-sync-bootstrap.js` (113), `pets-sync-merge.js` (136), `pets-coalesce.js` (102) — totale ~1711 righe rimosse
+- Fix: `index.html` — rimossi 5 script tag sync, rinominato "Sincronizza" → "Ricarica" nella sidebar, rimosso bottone "Diagnostica Sync" dalle impostazioni
+- Fix: `app-core.js` — rimossa funzione `showSyncDiagnostics()` e variabile `_editPetSyncPaused`
+- Fix: `sw.js` — rimossi 5 file sync da `STATIC_ASSETS`
+- Fix: `AGENTS.md` — aggiornata sezione architettura (rimosso sync-engine da moduli, aggiornata sezione Sync pets e Documenti)
+- Rimozione sync offline (PR 4/6)
+
 ## v8.15.2 (2026-02-12)
 - Feat: `app-documents.js` riscritto in modalità online-only — rimosso completamente IndexedDB (`ADA_Documents`), offline upload queue, delete outbox, pull sync; documenti ora letti/scritti esclusivamente via API REST (`GET/POST/DELETE /api/documents`); `renderDocumentsInHistory()` e `openDocument()` ora fetch da server; `getDocumentsForPet()` e `getDocumentById()` ora fetch API; upload diretto senza cache locale; delete senza outbox; AI read/explain senza persistenza locale dei risultati
 - Riduzione codice: da 1633 a 958 righe (-41%)

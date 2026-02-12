@@ -99,7 +99,7 @@
 
                 <div class="nav-section">SISTEMA</div>
                 <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
-                <div class="nav-item" onclick="refreshPetsFromServer(true); setSidebarOpen(false);">🔄 Sincronizza</div>
+                <div class="nav-item" onclick="refreshPetsFromServer(true); setSidebarOpen(false);">🔄 Ricarica</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;">🛠 Debug</div>
                 <div class="nav-item" onclick="logout()">🚪 Esci</div>
             </nav>
@@ -1245,7 +1245,6 @@
                         <button class="btn btn-primary" onclick="openCostsPage()" data-testid="open-costs-button">💰 Consumo API</button>
                         <button class="btn btn-secondary" onclick="exportLogFile()" data-testid="export-log-button">📄 Scarica ADA.log</button>
                         <button class="btn btn-secondary" onclick="clearLog(); showToast('Log cancellato', 'success');" data-testid="clear-log-button">Cancella ADA.log</button>
-                        <button class="btn btn-secondary" onclick="showSyncDiagnostics()">🔄 Diagnostica Sync</button>
                         <button class="btn btn-secondary" onclick="showApiMetrics()">📡 Metriche API</button>
                     </div>
                 </div>
@@ -1655,11 +1654,7 @@
     <script src="app-soap.js"></script>
     <script src="app-tts.js"></script>
     <script src="app-data.js"></script>
-    <script src="pets-sync-merge.js"></script>
-    <script src="pets-coalesce.js"></script>
     <script src="app-pets.js"></script>
-	<script src="pets-sync-step4.js"></script>
-	<script src="pets-sync-bootstrap.js"></script>
     <script src="app-tips.js"></script>
     <script src="app-documents.js"></script>
     <script src="app-promo.js"></script>
@@ -1669,7 +1664,6 @@
     <script src="app-chatbot.js"></script>
     <script src="app-webrtc.js"></script>
     <script src="app-admin.js"></script>
-    <script src="sync-engine.js"></script>
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
     <script src="app-seed.js"></script>
