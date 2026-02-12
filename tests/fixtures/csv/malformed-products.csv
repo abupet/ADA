@@ -1,0 +1,6 @@
+name,category,species
+"Good Product","food","dog"
+"Missing columns"
+"Bad Price","food","dog","description",-5.00
+,,,"empty row"
+"Unclosed quote,food,dog

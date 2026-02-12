@@ -31,11 +31,25 @@ if (!onlyLong) {
   steps.push({
     name: "Regression tests",
     command: "npx",
-    args: ["playwright", "test", "--grep-invert", "@smoke|@long|@deployed"],
+    args: ["playwright", "test", "--grep-invert", "@smoke|@long|@deep|@stress|@deployed"],
   });
 }
 
 if (onlyLong || includeLong) {
+  steps.push({
+    name: "Deep tests",
+    command: "npx",
+    args: ["playwright", "test", "--grep", "@deep"],
+  });
+}
+
+if (onlyLong || includeLong) {
+  steps.push({
+    name: "Stress tests",
+    command: "npx",
+    args: ["playwright", "test", "--grep", "@stress"],
+  });
+
   steps.push({
     name: "Long tests",
     command: "npx",

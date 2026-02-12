@@ -1,5 +1,17 @@
 # Release Notes (cumulative)
 
+## v8.14.0 (2026-02-12)
+- Feat: Test suite expansion — da ~57 a ~278 test E2E (221 nuovi), organizzati in 5 tier: smoke, regression, deep, stress, long
+- Feat: 24 nuovi file `deep.*.spec.ts` coprono navigazione, pet lifecycle, SOAP workflow, recording, documenti, owner flows, admin dashboard, settings, communication, chatbot, nutrition, insurance, consent center, super admin, seed engine, diary/Q&A, foto/vitali/farmaci, tips, security, error handling, performance, PWA/offline, responsive UI, accessibilità
+- Feat: 3 nuovi file `stress.*.spec.ts` — sync concorrente, dati grandi, navigazione rapida
+- Feat: 1 nuovo file `long.full-visit-workflow.spec.ts` — workflow visita completo E2E (24 step)
+- Feat: 4 nuovi helper centralizzati: `api-mocks.ts`, `pages.ts`, `test-data.ts`, `perf.ts`
+- Feat: Fixture test: SOAP sample JSON, trascrizione 10k parole, PDF/JPG/PNG/EXE test, CSV valido e malformato, PDF oversized 15MB
+- Feat: `run-tests.js` aggiornato — tier `@deep` e `@stress` nel nightly (con `--long`); regression grep esclude i nuovi tag
+- Feat: `playwright.config.ts` — nuovo progetto `chromium-deep` con timeout 180s per deep/stress
+- Feat: `package.json` — nuovi script `test:deep`, `test:stress`, `test:nightly`, `test:full`
+- Costo OpenAI: ZERO — tutti i nuovi test usano mock (blockOpenAI + api-mocks centralizzati)
+
 ## v8.13.0 (2026-02-11)
 - Fix: Rimosso pulsante "Draft Tutti" dal Report Validazione URL in admin (non funzionante); i singoli pulsanti "Draft" per prodotto restano attivi
 - Fix: Seed Engine — "Preferenze alimentari" non copia più le patologie da "Condizioni note"; inizializzazione a stringa vuota, estesa la mappatura patologia→dieta con enteropatie, EPI, epatopatie, diabete, allergie alimentari, cardiopatie, dermatiti
