@@ -34,5 +34,13 @@ export default defineConfig({
 
   reporter: [["html", { open: "never" }], ["list"]],
 
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }]
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    {
+      name: "chromium-deep",
+      use: { browserName: "chromium" },
+      grep: /@deep|@stress/,
+      timeout: 180_000,
+    },
+  ]
 });
