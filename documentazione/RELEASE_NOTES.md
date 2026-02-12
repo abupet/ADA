@@ -1,5 +1,9 @@
 # Release Notes (cumulative)
 
+## v8.15.0 (2026-02-12)
+- Feat: Backend `pets.routes.js` — `POST /api/pets` e `PATCH /api/pets/:pet_id` ora supportano `extra_data` JSONB per campi rich (vitals_data, medications, history_data, lifestyle, photos, photos_count, owner_name, owner_phone, microchip, visit_date, owner_diary); il PATCH esegue merge incrementale (non sovrascrittura totale) dei campi rich esistenti
+- Preparazione alla rimozione sync offline (PR 1/6)
+
 ## v8.14.3 (2026-02-12)
 - Fix (critico): Messaggi — vet crea conversazione con owner ma l'owner non la vede; `owner_override_id` veniva ignorato perché il backend validava con `isValidUuid()` ma gli user ID sono stringhe TEXT (es. `test-owner-001`), non UUID; rimosso il check UUID e usato validazione stringa generica
 
