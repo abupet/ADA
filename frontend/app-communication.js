@@ -19,6 +19,12 @@ var _commMessagesCursor = null;
 var _commAiSending = false;
 var _commReplyTo = null; // { message_id, content, sender_name }
 var _commContainerId = null;
+var _commSelectedFile = null; // File object for attachment upload
+
+// Offline queue state
+var _commOfflineDb = null;
+var _commOfflineDbName = 'ADA_COMM_QUEUE';
+var _commFlushingQueue = false;
 
 // =========================================================================
 // Helpers
@@ -82,6 +88,7 @@ function _commTriageBannerHtml(level) {
 }
 
 function _commDeliveryIcon(status) {
+    if (status === 'pending') return '<span style="color:#f59e0b;font-size:11px;" title="In coda">\u23F3</span>';
     if (status === 'read') return '<span style="color:#2563eb;font-size:11px;" title="Letto">\u2713\u2713</span>';
     if (status === 'delivered') return '<span style="color:#94a3b8;font-size:11px;" title="Consegnato">\u2713\u2713</span>';
     return '<span style="color:#94a3b8;font-size:11px;" title="Inviato">\u2713</span>';
@@ -180,7 +187,7 @@ function initCommSocket() {
             transports: ['websocket', 'polling'],
             reconnection: true, reconnectionDelay: 2000, reconnectionAttempts: 10
         });
-        _commSocket.on('connect', function () { console.log('[Communication] Socket connected'); });
+        _commSocket.on('connect', function () { console.log('[Communication] Socket connected'); _commFlushOfflineQueue(); });
         _commSocket.on('new_message', function (d) { _commHandleNewMessage(d); });
         _commSocket.on('user_typing', function (d) { _commHandleTyping(d); });
         _commSocket.on('messages_read', function (d) { _commHandleMessagesRead(d); });
@@ -190,6 +197,7 @@ function initCommSocket() {
         _commSocket.on('disconnect', function (r) { console.warn('[Communication] Socket disconnected:', r); });
         _commSocket.on('connect_error', function (e) { console.warn('[Communication] Socket error:', e.message); });
     } catch (_) { /* socket init failure is non-critical */ }
+    window.addEventListener('online', _commFlushOfflineQueue);
 }
 
 function disconnectCommSocket() {
@@ -617,7 +625,13 @@ function _commRenderChat(container, convId, messages, meta) {
     // Input row
     var isClosed = meta && meta.status === 'closed';
     if (!isClosed) {
+        html += '<div id="comm-file-preview" style="display:none;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px;font-size:12px;color:#1e3a5f;display:none;align-items:center;gap:8px;">' +
+            '<span id="comm-file-preview-name"></span>' +
+            '<span style="cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearFile()" title="Rimuovi">\u00D7</span></div>';
         html += '<div class="comm-input-row" data-testid="comm-input-row">' +
+            '<label style="cursor:pointer;font-size:20px;padding:8px;color:#64748b;flex-shrink:0;" title="Allega file">' +
+            '\uD83D\uDCCE<input type="file" id="comm-file-input" style="display:none" ' +
+            'accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleFileSelect(this)"></label>' +
             '<textarea id="comm-msg-input" data-testid="comm-msg-input" placeholder="Scrivi un messaggio..." rows="1" ' +
             'onkeydown="_commKeydown(event,\'' + convId + '\')" oninput="_commEmitTyping(\'' + convId + '\')"></textarea>' +
             '<button class="comm-btn comm-btn-primary" data-testid="comm-send-btn" onclick="_commSend(\'' + convId + '\')">Invia</button></div>';
@@ -667,7 +681,28 @@ function _commRenderBubble(msg, isOwn) {
             '<span style="font-size:11px;color:#64748b;">' + _commEscape(_commTriageInfo(msg.triage_level).text) + '</span></div>';
     }
 
-    html += '<div>' + _commEscape(msg.content || '') + '</div>';
+    // Render attachment content based on message type
+    var msgType = msg.type || msg.message_type || 'text';
+    if ((msgType === 'image' || msgType === 'audio' || msgType === 'video' || msgType === 'file') && msg.media_url) {
+        var dlUrl = _commApiBase() + '/api/communication/attachments/' + (msg.attachment_id || '') + '/download';
+        // Try to build download URL from attachment_id in media_url path
+        var aidMatch = (msg.media_url || '').match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        if (aidMatch) dlUrl = _commApiBase() + '/api/communication/attachments/' + aidMatch[1] + '/download';
+        var fname = _commEscape(msg.content || msg.original_filename || 'File');
+        var fsize = msg.media_size_bytes ? ' (' + _commFormatFileSize(msg.media_size_bytes) + ')' : '';
+        if (msgType === 'image') {
+            html += '<div><img src="' + dlUrl + '" alt="' + fname + '" style="max-width:280px;max-height:280px;border-radius:8px;cursor:pointer;" ' +
+                'onclick="window.open(this.src,\'_blank\')" onerror="this.style.display=\'none\'" loading="lazy" /></div>';
+        } else if (msgType === 'audio') {
+            html += '<div><audio controls preload="none" style="max-width:260px;"><source src="' + dlUrl + '" type="' + _commEscape(msg.media_type || 'audio/mpeg') + '"></audio></div>';
+        } else if (msgType === 'video') {
+            html += '<div><video controls preload="none" style="max-width:280px;border-radius:8px;"><source src="' + dlUrl + '" type="' + _commEscape(msg.media_type || 'video/mp4') + '"></video></div>';
+        } else {
+            html += '<div><a href="' + dlUrl + '" target="_blank" style="color:inherit;text-decoration:underline;">\uD83D\uDCC4 ' + fname + fsize + '</a></div>';
+        }
+    } else {
+        html += '<div>' + _commEscape(msg.content || '') + '</div>';
+    }
 
     // Follow-up chips for AI messages
     if (isAiMsg && msg.follow_up_questions && msg.follow_up_questions.length > 0) {
@@ -710,17 +745,20 @@ async function _commSend(conversationId) {
     var input = document.getElementById('comm-msg-input');
     if (!input) return;
     var text = input.value.trim();
-    if (!text) return;
+    var hasFile = !!_commSelectedFile;
+    if (!text && !hasFile) return;
     if (_commAiSending) return;
 
     input.value = '';
     var isAi = _commCurrentConversationType === 'ai';
     var userId = _commGetCurrentUserId();
+    var fileToSend = _commSelectedFile;
+    _commClearFile();
 
     // Optimistic render for user message
     var container = document.getElementById('comm-chat-messages');
     if (container) {
-        var tempMsg = { content: text, sender_id: userId, created_at: new Date().toISOString(), delivery_status: 'sent' };
+        var tempMsg = { content: text || (fileToSend ? fileToSend.name : ''), sender_id: userId, created_at: new Date().toISOString(), delivery_status: 'sent' };
         if (_commReplyTo) tempMsg.reply_to_content = _commReplyTo.content;
         container.innerHTML += _commRenderBubble(tempMsg, true);
         container.scrollTop = container.scrollHeight;
@@ -736,14 +774,28 @@ async function _commSend(conversationId) {
         input.disabled = true;
     }
 
-    var body = { content: text };
-    if (_commReplyTo && !isAi) body.reply_to_message_id = _commReplyTo.message_id;
+    var replyToId = (_commReplyTo && !isAi) ? _commReplyTo.message_id : null;
     _commCancelReply();
 
     try {
-        var resp = await fetch(_commApiBase() + '/api/communication/conversations/' + conversationId + '/messages', {
-            method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify(body)
-        });
+        var resp;
+        if (hasFile && fileToSend) {
+            // File attachment upload via FormData
+            var formData = new FormData();
+            formData.append('file', fileToSend);
+            if (text) formData.append('content', text);
+            resp = await fetch(_commApiBase() + '/api/communication/conversations/' + conversationId + '/messages/upload', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getAuthToken() },
+                body: formData
+            });
+        } else {
+            var body = { content: text };
+            if (replyToId) body.reply_to_message_id = replyToId;
+            resp = await fetch(_commApiBase() + '/api/communication/conversations/' + conversationId + '/messages', {
+                method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify(body)
+            });
+        }
         if (!resp.ok) {
             var errData = null;
             try { errData = await resp.json(); } catch(_){}
@@ -778,6 +830,15 @@ async function _commSend(conversationId) {
         }
         // For human chats, the optimistic message stays; socket will confirm
     } catch (e) {
+        // Offline queue: if network error on text message, queue it
+        if (!hasFile && !isAi && (e instanceof TypeError || !navigator.onLine)) {
+            _commQueueOfflineMessage(conversationId, text, replyToId);
+            // Update optimistic bubble to show pending icon
+            var lastBubble = container ? container.querySelector('[data-msg-id=""]:last-child [data-delivery-status], .comm-msg:last-child [data-delivery-status]') : null;
+            if (lastBubble) lastBubble.innerHTML = _commDeliveryIcon('pending');
+            console.warn('[Communication] Message queued offline');
+            return;
+        }
         console.error('[Communication] Failed to send message:', e);
         if (typeof showToast === 'function') showToast("Errore nell'invio del messaggio", 'error');
         var spinnerEl = document.getElementById('comm-ai-spinner');
@@ -1035,6 +1096,102 @@ async function loadPetConversations(petId) {
     } catch (e) {
         listEl.innerHTML = '';
     }
+}
+
+// =========================================================================
+// Section 8: File attachment helpers
+// =========================================================================
+function _commHandleFileSelect(input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 10 * 1024 * 1024) {
+        if (typeof showToast === 'function') showToast('File troppo grande (max 10 MB)', 'warning');
+        input.value = '';
+        return;
+    }
+    _commSelectedFile = file;
+    var previewEl = document.getElementById('comm-file-preview');
+    var nameEl = document.getElementById('comm-file-preview-name');
+    if (previewEl) previewEl.style.display = 'flex';
+    if (nameEl) nameEl.textContent = '\uD83D\uDCCE ' + file.name + ' (' + _commFormatFileSize(file.size) + ')';
+}
+
+function _commClearFile() {
+    _commSelectedFile = null;
+    var previewEl = document.getElementById('comm-file-preview');
+    if (previewEl) previewEl.style.display = 'none';
+    var fileInput = document.getElementById('comm-file-input');
+    if (fileInput) fileInput.value = '';
+}
+
+function _commFormatFileSize(bytes) {
+    if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// =========================================================================
+// Section 9: Offline message queue (IndexedDB)
+// =========================================================================
+function _commOpenOfflineDb() {
+    return new Promise(function (resolve, reject) {
+        if (_commOfflineDb) { resolve(_commOfflineDb); return; }
+        if (!window.indexedDB) { reject(new Error('No IndexedDB')); return; }
+        var req = indexedDB.open(_commOfflineDbName, 1);
+        req.onupgradeneeded = function (e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains('pending_messages')) {
+                db.createObjectStore('pending_messages', { keyPath: 'id', autoIncrement: true });
+            }
+        };
+        req.onsuccess = function (e) { _commOfflineDb = e.target.result; resolve(_commOfflineDb); };
+        req.onerror = function () { reject(req.error); };
+    });
+}
+
+function _commQueueOfflineMessage(conversationId, content, replyToId) {
+    _commOpenOfflineDb().then(function (db) {
+        var tx = db.transaction('pending_messages', 'readwrite');
+        tx.objectStore('pending_messages').add({
+            conversationId: conversationId,
+            content: content,
+            replyToId: replyToId || null,
+            timestamp: new Date().toISOString()
+        });
+    }).catch(function (e) { console.error('[Communication] Offline queue save failed:', e); });
+}
+
+async function _commFlushOfflineQueue() {
+    if (_commFlushingQueue || !navigator.onLine) return;
+    _commFlushingQueue = true;
+    try {
+        var db = await _commOpenOfflineDb();
+        var tx = db.transaction('pending_messages', 'readonly');
+        var store = tx.objectStore('pending_messages');
+        var all = await new Promise(function (resolve, reject) {
+            var req = store.getAll();
+            req.onsuccess = function () { resolve(req.result || []); };
+            req.onerror = function () { reject(req.error); };
+        });
+        for (var i = 0; i < all.length; i++) {
+            var msg = all[i];
+            try {
+                var body = { content: msg.content };
+                if (msg.replyToId) body.reply_to_message_id = msg.replyToId;
+                var resp = await fetch(_commApiBase() + '/api/communication/conversations/' + msg.conversationId + '/messages', {
+                    method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify(body)
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                // Delete from store on success
+                var dtx = db.transaction('pending_messages', 'readwrite');
+                dtx.objectStore('pending_messages').delete(msg.id);
+            } catch (e) {
+                console.warn('[Communication] Offline flush failed for message, will retry:', e.message);
+                break; // Stop on first failure, retry later
+            }
+        }
+    } catch (e) { console.error('[Communication] Offline flush error:', e); }
+    _commFlushingQueue = false;
 }
 
 // Handle push notification navigation

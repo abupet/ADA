@@ -2,6 +2,7 @@
 // Socket.io server per comunicazione real-time
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const { getPool } = require("./db");
 
 const onlineUsers = new Map(); // userId → Set<socketId>
 
@@ -69,8 +70,54 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         socket.on("typing_stop", ({ conversationId }) => {
             socket.to(`conv:${conversationId}`).emit("user_typing", { userId, typing: false });
         });
-        socket.on("message_read", ({ messageId, conversationId }) => {
-            socket.to(`conv:${conversationId}`).emit("messages_read", { messageIds: [messageId], readBy: userId });
+        // Delivery status: message_delivered — persist to DB then broadcast
+        socket.on("message_delivered", async ({ messageId, conversationId }) => {
+            if (!messageId) return;
+            try {
+                const pool = getPool();
+                await pool.query(
+                    "UPDATE comm_messages SET delivery_status = 'delivered', delivered_at = NOW() " +
+                    "WHERE message_id = $1 AND delivery_status = 'sent'",
+                    [messageId]
+                );
+                socket.to(`conv:${conversationId}`).emit("delivery_update", { messageId, status: "delivered" });
+            } catch (e) { console.error("[WS] message_delivered error:", e.message); }
+        });
+
+        // Delivery status: conversation_seen — mark all unread messages as read
+        socket.on("conversation_seen", async ({ conversationId }) => {
+            if (!conversationId) return;
+            try {
+                const pool = getPool();
+                // Upsert conversation_seen
+                await pool.query(
+                    "INSERT INTO conversation_seen (conversation_id, user_id, last_seen_at) " +
+                    "VALUES ($1, $2, NOW()) " +
+                    "ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_seen_at = NOW()",
+                    [conversationId, userId]
+                );
+                // Mark all unread messages from OTHER senders as read
+                await pool.query(
+                    "UPDATE comm_messages SET delivery_status = 'read', is_read = true, read_at = NOW() " +
+                    "WHERE conversation_id = $1 AND sender_id != $2 AND delivery_status != 'read'",
+                    [conversationId, userId]
+                );
+                socket.to(`conv:${conversationId}`).emit("messages_read", { conversationId, readBy: userId });
+            } catch (e) { console.error("[WS] conversation_seen error:", e.message); }
+        });
+
+        // Delivery status: message_read — persist single message read to DB
+        socket.on("message_read", async ({ messageId, conversationId }) => {
+            if (!messageId) return;
+            try {
+                const pool = getPool();
+                await pool.query(
+                    "UPDATE comm_messages SET delivery_status = 'read', is_read = true, read_at = NOW() " +
+                    "WHERE message_id = $1 AND delivery_status != 'read'",
+                    [messageId]
+                );
+                socket.to(`conv:${conversationId}`).emit("messages_read", { messageIds: [messageId], readBy: userId });
+            } catch (e) { console.error("[WS] message_read error:", e.message); }
         });
 
         // Call signaling (WebRTC)
@@ -127,6 +174,12 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                 if (sockets.size === 0) {
                     onlineUsers.delete(userId);
                     commNs.emit("user_offline", { userId });
+                    // Update last_seen_at (fire-and-forget)
+                    try {
+                        const pool = getPool();
+                        pool.query("UPDATE users SET last_seen_at = NOW() WHERE user_id = $1", [userId])
+                            .catch(() => {});
+                    } catch (_) {}
                 }
             }
             messageRates.delete(socket.id);
