@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.15.10 (2026-02-12)
+- Feat: **WebSocket delivery events con persistenza DB** — gli eventi `message_delivered`, `conversation_seen` e `message_read` ora aggiornano il database (`comm_messages.delivery_status`, `conversation_seen` table) invece di essere solo broadcast; lo stato di consegna (✓/✓✓/✓✓ blu) riflette lo stato reale persistito
+- Feat: **Aggiornamento `last_seen_at` su disconnect** — quando un utente si disconnette dal WebSocket, `users.last_seen_at` viene aggiornato per tracciare l'ultimo accesso
+- Feat: **Coda messaggi offline** — se l'utente è offline durante l'invio di un messaggio, il messaggio viene salvato in IndexedDB (`ADA_COMM_QUEUE`) e inviato automaticamente al ritorno della connessione; icona ⏳ per messaggi in coda
+- Feat: **Allegati file inline** — pulsante 📎 nella chat per inviare immagini, PDF, audio e video (max 10 MB); preview file prima dell'invio; rendering inline nelle bolle (img, audio player, video player, link download per PDF/file)
+- Feat: **Download allegati da DB** — nuovo endpoint `GET /api/communication/attachments/:id/download` che serve il file binario dalla colonna `file_data BYTEA` (Render ha FS effimero); upload ora salva anche `file_data` nel DB
+- SQL: Migration `015_comm_attachments_data.sql` — aggiunge colonna `file_data BYTEA` a `comm_attachments`
+
 ## v8.15.9 (2026-02-12)
 - Fix: Creazione conversazione ADA falliva con 403 — `INSERT INTO communication_settings` ora imposta `chatbot_enabled = true` di default, evitando che `requireAiEnabled()` blocchi la creazione AI dopo la visita alle Impostazioni
 - Fix: Badge non letti non si azzerava — aggiunta route `POST /api/communication/conversations/:id/read` che marca tutti i messaggi della conversazione come letti e aggiorna `conversation_seen`
