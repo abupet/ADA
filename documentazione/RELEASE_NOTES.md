@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.15.12 (2026-02-12)
+- Feat: **Image cache BYTEA su promo_items** — nuove colonne `image_cached`, `image_cached_mime`, `image_cached_at`, `image_cached_hash` per resilienza URL esterni; endpoint pubblico `GET /api/promo-items/:id/image` serve da cache DB o redirect a URL
+- Feat: **Upload/delete/bulk-cache immagini** — 3 route admin per caricare, eliminare e cachare in bulk le immagini dei prodotti da URL esterni
+- Feat: **Premio assicurativo dinamico** — `POST /api/insurance/quote/:petId` ora legge `base_premium_monthly` e dati piano dal `promo_item` selezionato; `coverage_data` include provider, tier, prevenzione, addons
+- Feat: **Seed demo con piano dal catalogo** — Phase 12 del seed engine ora cerca il miglior piano insurance pubblicato e usa il suo premio base invece del valore hardcoded
+- Feat: **Seed Santevet** — 5 piani assicurativi reali (Light, Confort, Premium Cane, Premium Gatto, Cat Indoor) in `santevet-insurance-seed.json`; script `seed-insurance.js` e route `POST /api/seed/insurance/load-plans`
+- Feat: **Auto-cache immagini** — durante URL validation e seed import, le immagini vengono automaticamente scaricate e cachate nel DB
+- Fix: **SELECT * su promo_items eliminato** — dopo l'aggiunta della colonna BYTEA, tutte le query di lista usano colonne esplicite per evitare di caricare blob in memoria
+- Feat: **Frontend usa endpoint immagine resiliente** — `app-promo.js` ora usa `/api/promo-items/:id/image` per le immagini dei prodotti, con fallback a placeholder
+- SQL: Migration `016_promo_image_cache.sql` — aggiunge colonne BYTEA + metadata per image cache su `promo_items`
+
 ## v8.15.11 (2026-02-12)
 - Fix: **Risposta ADA non visibile** — il frontend cercava `data.ai_message` ma il backend restituisce `data.assistant_message`; aggiunto al fallback chain, ora la risposta AI appare immediatamente nella chat
 - Fix: **Centro Privacy flag non persistenti** — i toggle Promozioni/Nutrizione/Assicurazione erano sempre OFF perché il frontend si aspettava un array `consents[]` ma il backend restituisce un oggetto piatto; aggiunto parsing per entrambi i formati (flat + array)

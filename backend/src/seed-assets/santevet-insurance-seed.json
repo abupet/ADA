@@ -1,0 +1,181 @@
+[
+  {
+    "name": "Santevet Light",
+    "category": "service",
+    "service_type": "insurance",
+    "species": ["dog", "cat"],
+    "lifecycle_target": ["puppy", "adult", "senior"],
+    "description": "Assicurazione all risk: rimborso 50% spese vet. Massimale 2.000\u20ac/anno. Franchigia 20\u20ac. Prevenzione 30\u20ac/anno.",
+    "extended_description": "## Santevet Light\n\n- **Rimborso**: 50% su ogni fattura\n- **Massimale**: 2.000 \u20ac/anno\n- **Franchigia**: 20 \u20ac/anno\n- **Prevenzione**: 30 \u20ac/anno (vaccini, antiparassitari, sverminazione, sterilizzazione, microchip)\n- **Carenza**: 0 giorni infortuni, 45 giorni malattie\n- **Opzioni**: Assistenza 2\u20ac/mese, RC 8,50\u20ac/mese (solo cane, fino a 250.000\u20ac)\n- Copertura a vita, nessun questionario medico, microchip obbligatorio\n\n*L'Equite Assurances via Vetassur SARL. Assistenza: Europ Assistance Italia.*",
+    "product_url": "https://www.santevet.it/assicurazione-cane",
+    "tags_include": [],
+    "tags_exclude": [],
+    "priority": 0,
+    "insurance_data": {
+      "provider": "santevet", "plan_tier": "light", "plan_label_it": "Light", "all_risk": true,
+      "coverage_pct": 50, "annual_limit": 2000, "deductible": 20, "deductible_type": "annual",
+      "prevention_budget": 30,
+      "prevention_services": ["vaccini","antiparassitari","sverminazione","sterilizzazione","microchippatura"],
+      "therapeutic_food_coverage_pct": null, "therapeutic_food_max_annual": null,
+      "covered_services": {
+        "emergency": true, "specialist_consultations": true, "surgery": true, "anesthesia": true,
+        "hospitalization": true, "day_hospital": true, "diagnostics_xray": true, "diagnostics_ultrasound": true,
+        "diagnostics_ct": true, "diagnostics_mri": true, "diagnostics_lab": true, "medications": true,
+        "alternative_osteopathy": true, "alternative_physiotherapy": true, "alternative_acupuncture": true,
+        "dental_cleaning": true, "ambulance": true, "radiotherapy": true
+      },
+      "waiting_days": { "accident": 0, "illness": 45 },
+      "subscription": { "age_min_months": 2, "age_max_years_at_signup": 10, "microchip_required": true, "medical_questionnaire": false, "coverage_lifetime": true },
+      "exclusions": ["patologie_preesistenti","interventi_estetici","cure_non_veterinarie"],
+      "addons": [
+        { "name": "Assistenza", "monthly_eur": 2.00, "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale"] },
+        { "name": "Assistenza + RC", "monthly_eur": 8.50, "rc_max_damage_eur": 250000, "rc_legal_costs_eur": 10000, "species_restriction": ["dog"], "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale","rc_danni_terzi"] }
+      ],
+      "base_premium_monthly": 9.90,
+      "provider_info": { "company_name": "Santevet", "legal_entity": "Vetassur SARL", "insurer": "L'Equite Assurances", "assistance_partner": "Europ Assistance Italia S.p.A.", "phone_italy": "800 959 102", "email": "info@santevet.it", "trustpilot_rating": 4.0, "trustpilot_reviews": 553 }
+    }
+  },
+  {
+    "name": "Santevet Confort",
+    "category": "service",
+    "service_type": "insurance",
+    "species": ["dog", "cat"],
+    "lifecycle_target": ["puppy", "adult", "senior"],
+    "description": "Assicurazione all risk: rimborso 70% spese vet. Massimale 3.500\u20ac/anno. Franchigia 50\u20ac. Prevenzione 75\u20ac/anno. Copertura a vita malattie croniche.",
+    "extended_description": "## Santevet Confort\n\n- **Rimborso**: 70% su ogni fattura\n- **Massimale**: 3.500 \u20ac/anno\n- **Franchigia**: 50 \u20ac/anno\n- **Prevenzione**: 75 \u20ac/anno\n- **Malattie croniche** (diabete, artrosi, allergie): coperte a vita\n- **Carenza**: 0 giorni infortuni, 45 giorni malattie\n- **Opzioni**: Assistenza 2\u20ac/mese, RC 8,50\u20ac/mese (solo cane)\n\n*L'Equite Assurances via Vetassur SARL. Assistenza: Europ Assistance Italia.*",
+    "product_url": "https://www.santevet.it/assicurazione-cane",
+    "tags_include": ["clinical:chronic","lifecycle:adult"],
+    "tags_exclude": [],
+    "priority": 5,
+    "insurance_data": {
+      "provider": "santevet", "plan_tier": "confort", "plan_label_it": "Confort", "all_risk": true,
+      "coverage_pct": 70, "annual_limit": 3500, "deductible": 50, "deductible_type": "annual",
+      "prevention_budget": 75,
+      "prevention_services": ["vaccini","antiparassitari","sverminazione","sterilizzazione","microchippatura"],
+      "therapeutic_food_coverage_pct": null, "therapeutic_food_max_annual": null,
+      "covered_services": {
+        "emergency": true, "specialist_consultations": true, "surgery": true, "anesthesia": true,
+        "hospitalization": true, "day_hospital": true, "diagnostics_xray": true, "diagnostics_ultrasound": true,
+        "diagnostics_ct": true, "diagnostics_mri": true, "diagnostics_lab": true, "medications": true,
+        "alternative_osteopathy": true, "alternative_physiotherapy": true, "alternative_acupuncture": true,
+        "dental_cleaning": true, "ambulance": true, "radiotherapy": true
+      },
+      "waiting_days": { "accident": 0, "illness": 45 },
+      "subscription": { "age_min_months": 2, "age_max_years_at_signup": 10, "microchip_required": true, "medical_questionnaire": false, "coverage_lifetime": true },
+      "exclusions": ["patologie_preesistenti","interventi_estetici","cure_non_veterinarie"],
+      "addons": [
+        { "name": "Assistenza", "monthly_eur": 2.00, "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale"] },
+        { "name": "Assistenza + RC", "monthly_eur": 8.50, "rc_max_damage_eur": 250000, "rc_legal_costs_eur": 10000, "species_restriction": ["dog"], "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale","rc_danni_terzi"] }
+      ],
+      "base_premium_monthly": 19.90,
+      "provider_info": { "company_name": "Santevet", "legal_entity": "Vetassur SARL", "insurer": "L'Equite Assurances", "assistance_partner": "Europ Assistance Italia S.p.A.", "phone_italy": "800 959 102", "email": "info@santevet.it", "trustpilot_rating": 4.0, "trustpilot_reviews": 553 }
+    }
+  },
+  {
+    "name": "Santevet Premium \u2014 Cane",
+    "category": "service",
+    "service_type": "insurance",
+    "species": ["dog"],
+    "lifecycle_target": ["puppy", "adult", "senior"],
+    "description": "Massima protezione cane: rimborso 90% spese vet. Massimale 5.000\u20ac/anno. Franchigia 70\u20ac. Prevenzione 100\u20ac/anno. Medicina alternativa, TAC, RM, radioterapia incluse.",
+    "extended_description": "## Santevet Premium Cane\n\n- **Rimborso**: 90% su ogni fattura\n- **Massimale**: 5.000 \u20ac/anno\n- **Franchigia**: 70 \u20ac/anno\n- **Prevenzione**: 100 \u20ac/anno\n- Copre: chirurgia, ricovero, farmaci, diagnostica avanzata (TAC, RM), medicina alternativa, radioterapia, odontoiatria\n- **Razze indicate**: Bulldog, Pastore Tedesco, Golden Retriever, Labrador, Cavalier, Boxer, Dobermann\n- **Opzioni**: Assistenza 2\u20ac/mese, RC 8,50\u20ac/mese (fino a 250.000\u20ac)\n\n*L'Equite Assurances via Vetassur SARL.*",
+    "product_url": "https://www.santevet.it/assicurazione-cane",
+    "tags_include": ["clinical:cardiac","clinical:renal","clinical:endocrine","clinical:hepatic","clinical:obesity","clinical:ortho"],
+    "tags_exclude": [],
+    "priority": 10,
+    "insurance_data": {
+      "provider": "santevet", "plan_tier": "premium", "plan_label_it": "Premium", "all_risk": true,
+      "coverage_pct": 90, "annual_limit": 5000, "deductible": 70, "deductible_type": "annual",
+      "prevention_budget": 100,
+      "prevention_services": ["vaccini","antiparassitari","sverminazione","sterilizzazione","microchippatura"],
+      "therapeutic_food_coverage_pct": null, "therapeutic_food_max_annual": null,
+      "covered_services": {
+        "emergency": true, "specialist_consultations": true, "surgery": true, "anesthesia": true,
+        "hospitalization": true, "day_hospital": true, "diagnostics_xray": true, "diagnostics_ultrasound": true,
+        "diagnostics_ct": true, "diagnostics_mri": true, "diagnostics_lab": true, "medications": true,
+        "alternative_osteopathy": true, "alternative_physiotherapy": true, "alternative_acupuncture": true,
+        "dental_cleaning": true, "ambulance": true, "radiotherapy": true
+      },
+      "waiting_days": { "accident": 0, "illness": 45 },
+      "subscription": { "age_min_months": 2, "age_max_years_at_signup": 10, "microchip_required": true, "medical_questionnaire": false, "coverage_lifetime": true },
+      "exclusions": ["patologie_preesistenti","interventi_estetici","cure_non_veterinarie"],
+      "addons": [
+        { "name": "Assistenza", "monthly_eur": 2.00, "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale"] },
+        { "name": "Assistenza + RC", "monthly_eur": 8.50, "rc_max_damage_eur": 250000, "rc_legal_costs_eur": 10000, "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale","rc_danni_terzi"] }
+      ],
+      "base_premium_monthly": 32.00,
+      "provider_info": { "company_name": "Santevet", "legal_entity": "Vetassur SARL", "insurer": "L'Equite Assurances", "assistance_partner": "Europ Assistance Italia S.p.A.", "phone_italy": "800 959 102", "email": "info@santevet.it", "trustpilot_rating": 4.0, "trustpilot_reviews": 553 }
+    }
+  },
+  {
+    "name": "Santevet Premium \u2014 Gatto",
+    "category": "service",
+    "service_type": "insurance",
+    "species": ["cat"],
+    "lifecycle_target": ["puppy", "adult", "senior"],
+    "description": "Massima protezione gatto: rimborso 90% spese vet. Massimale 5.000\u20ac/anno. Franchigia 75\u20ac. Prevenzione 100\u20ac/anno. Per gatti indoor e outdoor di tutte le razze.",
+    "extended_description": "## Santevet Premium Gatto\n\n- **Rimborso**: 90% su ogni fattura\n- **Massimale**: 5.000 \u20ac/anno\n- **Franchigia**: 75 \u20ac/anno (nota: 75\u20ac gatto vs 70\u20ac cane)\n- **Prevenzione**: 100 \u20ac/anno\n- **Razze indicate**: Persiano, Maine Coon, Ragdoll, Siamese, Bengala\n- **Opzione**: solo Assistenza 2\u20ac/mese (RC non disponibile per gatti)\n\n*L'Equite Assurances via Vetassur SARL.*",
+    "product_url": "https://www.santevet.it/assicurazione-gatto",
+    "tags_include": ["clinical:cardiac","clinical:renal","clinical:endocrine","clinical:hepatic","clinical:obesity"],
+    "tags_exclude": [],
+    "priority": 10,
+    "insurance_data": {
+      "provider": "santevet", "plan_tier": "premium", "plan_label_it": "Premium", "all_risk": true,
+      "coverage_pct": 90, "annual_limit": 5000, "deductible": 75, "deductible_type": "annual",
+      "prevention_budget": 100,
+      "prevention_services": ["vaccini","antiparassitari","sverminazione","sterilizzazione","microchippatura"],
+      "therapeutic_food_coverage_pct": null, "therapeutic_food_max_annual": null,
+      "covered_services": {
+        "emergency": true, "specialist_consultations": true, "surgery": true, "anesthesia": true,
+        "hospitalization": true, "day_hospital": true, "diagnostics_xray": true, "diagnostics_ultrasound": true,
+        "diagnostics_ct": true, "diagnostics_mri": true, "diagnostics_lab": true, "medications": true,
+        "alternative_osteopathy": true, "alternative_physiotherapy": true, "alternative_acupuncture": true,
+        "dental_cleaning": true, "ambulance": true, "radiotherapy": true
+      },
+      "waiting_days": { "accident": 0, "illness": 45 },
+      "subscription": { "age_min_months": 2, "age_max_years_at_signup": 10, "microchip_required": true, "medical_questionnaire": false, "coverage_lifetime": true },
+      "exclusions": ["patologie_preesistenti","interventi_estetici","cure_non_veterinarie"],
+      "addons": [
+        { "name": "Assistenza", "monthly_eur": 2.00, "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale"] }
+      ],
+      "base_premium_monthly": 28.00,
+      "provider_info": { "company_name": "Santevet", "legal_entity": "Vetassur SARL", "insurer": "L'Equite Assurances", "assistance_partner": "Europ Assistance Italia S.p.A.", "phone_italy": "800 959 102", "email": "info@santevet.it", "trustpilot_rating": 4.0, "trustpilot_reviews": 553 }
+    }
+  },
+  {
+    "name": "Santevet Cat Indoor",
+    "category": "service",
+    "service_type": "insurance",
+    "species": ["cat"],
+    "lifecycle_target": ["puppy", "adult", "senior"],
+    "description": "Per gatti d'appartamento: rimborso 90% spese vet. Massimale 2.000\u20ac/anno. Franchigia 50\u20ac. Prevenzione 70\u20ac/anno. Include alimento terapeutico 50\u20ac/anno. Copre cadute balcone/finestra.",
+    "extended_description": "## Santevet Cat Indoor\n\n- **Rimborso**: 90% su ogni fattura\n- **Massimale**: 2.000 \u20ac/anno\n- **Franchigia**: 50 \u20ac/anno\n- **Prevenzione**: 70 \u20ac/anno\n- **Alimento terapeutico**: rimborso 20% fino a 50\u20ac/anno (diabete, calcoli urinari)\n- **Copre** cadute da balcone/finestra\n- **Esclude** infortuni in luoghi aperti (liti con gatti randagi)\n- **Opzione**: solo Assistenza 2\u20ac/mese\n\n*L'Equite Assurances via Vetassur SARL.*",
+    "product_url": "https://www.santevet.it/assicurazione-gatto",
+    "tags_include": ["housing:indoor"],
+    "tags_exclude": [],
+    "priority": 8,
+    "insurance_data": {
+      "provider": "santevet", "plan_tier": "cat_indoor", "plan_label_it": "Cat Indoor", "all_risk": true,
+      "coverage_pct": 90, "annual_limit": 2000, "deductible": 50, "deductible_type": "annual",
+      "prevention_budget": 70,
+      "prevention_services": ["vaccini","antiparassitari","sverminazione","sterilizzazione","microchippatura"],
+      "therapeutic_food_coverage_pct": 20, "therapeutic_food_max_annual": 50,
+      "covered_services": {
+        "emergency": true, "specialist_consultations": true, "surgery": true, "anesthesia": true,
+        "hospitalization": true, "day_hospital": true, "diagnostics_xray": true, "diagnostics_ultrasound": true,
+        "diagnostics_ct": true, "diagnostics_mri": true, "diagnostics_lab": true, "medications": true,
+        "alternative_osteopathy": true, "alternative_physiotherapy": true, "alternative_acupuncture": true,
+        "dental_cleaning": true, "ambulance": true, "radiotherapy": true
+      },
+      "special_coverage": { "balcony_window_falls": true, "outdoor_incidents_excluded": true },
+      "waiting_days": { "accident": 0, "illness": 45 },
+      "subscription": { "age_min_months": 2, "age_max_years_at_signup": 10, "microchip_required": true, "medical_questionnaire": false, "coverage_lifetime": true },
+      "exclusions": ["patologie_preesistenti","interventi_estetici","cure_non_veterinarie","infortuni_luoghi_aperti"],
+      "addons": [
+        { "name": "Assistenza", "monthly_eur": 2.00, "services": ["petsitter_5gg","consulenza_veterinaria","consulenza_nutrizionale","consulenza_legale"] }
+      ],
+      "base_premium_monthly": 14.90,
+      "provider_info": { "company_name": "Santevet", "legal_entity": "Vetassur SARL", "insurer": "L'Equite Assurances", "assistance_partner": "Europ Assistance Italia S.p.A.", "phone_italy": "800 959 102", "email": "info@santevet.it", "trustpilot_rating": 4.0, "trustpilot_reviews": 553 }
+    }
+  }
+]

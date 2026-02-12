@@ -152,6 +152,22 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
         }
     });
 
+    // POST /api/seed/insurance/load-plans — Load Santevet insurance plans
+    router.post('/api/seed/insurance/load-plans', requireAuth, requireRole(adminRoles), async (req, res) => {
+        try {
+            const { getPool } = require('./db');
+            const pool = getPool();
+            const tenantId = req.body?.tenant_id;
+            if (!tenantId) return res.status(400).json({ error: 'tenant_id_required' });
+            const { seedInsurancePlans } = require('./seed-insurance');
+            const result = await seedInsurancePlans(pool, tenantId);
+            res.json({ status: 'ok', ...result });
+        } catch (e) {
+            console.error('POST /api/seed/insurance/load-plans error', e);
+            res.status(500).json({ error: 'server_error' });
+        }
+    });
+
     // GET /api/seed/promo/tenants — List available tenants for the seed promo wizard
     router.get('/api/seed/promo/tenants', requireAuth, requireRole(adminRoles), async (req, res) => {
         try {

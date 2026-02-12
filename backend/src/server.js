@@ -356,7 +356,7 @@ app.use(promoRouter({ requireAuth }));
 
 // --- Admin routes (PR 2) - requires DATABASE_URL ---
 if (process.env.DATABASE_URL) {
-  app.use(adminRouter({ requireAuth }));
+  app.use(adminRouter({ requireAuth, upload }));
   app.use(dashboardRouter({ requireAuth }));
   // --- Seed Engine routes (PR 14) ---
   app.use(seedRouter({ requireAuth, getOpenAiKey }));

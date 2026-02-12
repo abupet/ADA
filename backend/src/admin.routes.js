@@ -6,7 +6,15 @@ const { getPool } = require("./db");
 const { requireRole } = require("./rbac.middleware");
 const { randomUUID } = require("crypto");
 
-function adminRouter({ requireAuth }) {
+// Columns for list queries — excludes image_cached BYTEA to avoid loading blobs
+const PROMO_COLS = `promo_item_id, tenant_id, name, category, species, lifecycle_target,
+  description, extended_description, image_url, product_url, tags_include, tags_exclude,
+  priority, status, version, service_type, nutrition_data, insurance_data,
+  url_check_status, url_last_checked_at,
+  image_cached_mime, image_cached_at, image_cached_hash,
+  created_at, updated_at`;
+
+function adminRouter({ requireAuth, upload }) {
   const router = express.Router();
   const pool = getPool();
 
@@ -30,7 +38,7 @@ function adminRouter({ requireAuth }) {
         const offset = (page - 1) * limit;
 
         let query =
-          "SELECT * FROM promo_items WHERE tenant_id = $1";
+          `SELECT ${PROMO_COLS} FROM promo_items WHERE tenant_id = $1`;
         const params = [tenantId];
         let paramIdx = 2;
 
@@ -98,7 +106,7 @@ function adminRouter({ requireAuth }) {
       try {
         const { tenantId, itemId } = req.params;
         const { rows } = await pool.query(
-          "SELECT * FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1",
+          `SELECT ${PROMO_COLS} FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1`,
           [itemId, tenantId]
         );
         if (!rows[0]) return res.status(404).json({ error: "not_found" });
@@ -186,7 +194,7 @@ function adminRouter({ requireAuth }) {
         const patch = req.body || {};
 
         const current = await pool.query(
-          "SELECT * FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1",
+          `SELECT ${PROMO_COLS} FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1`,
           [itemId, tenantId]
         );
         if (!current.rows[0]) return res.status(404).json({ error: "not_found" });
@@ -259,7 +267,7 @@ function adminRouter({ requireAuth }) {
         };
 
         const current = await pool.query(
-          "SELECT * FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1",
+          `SELECT ${PROMO_COLS} FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2 LIMIT 1`,
           [itemId, tenantId]
         );
         if (!current.rows[0]) return res.status(404).json({ error: "not_found" });
@@ -803,6 +811,182 @@ function adminRouter({ requireAuth }) {
         res.status(500).json({ error: "server_error" });
       } finally {
         client.release();
+      }
+    }
+  );
+
+  // ==============================
+  // IMAGE CACHE ROUTES
+  // ==============================
+
+  // GET /api/promo-items/:itemId/image — Serve cached image or redirect to URL
+  router.get("/api/promo-items/:itemId/image", async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const { rows } = await pool.query(
+        "SELECT image_cached, image_cached_mime, image_url FROM promo_items WHERE promo_item_id = $1 LIMIT 1",
+        [itemId]
+      );
+      if (!rows[0]) return res.status(404).json({ error: "not_found" });
+
+      const item = rows[0];
+      if (item.image_cached && item.image_cached_mime) {
+        res.set("Content-Type", item.image_cached_mime);
+        res.set("Cache-Control", "public, max-age=86400");
+        res.set("X-Image-Source", "db-cache");
+        return res.send(item.image_cached);
+      }
+      if (item.image_url) {
+        res.set("X-Image-Source", "redirect");
+        return res.redirect(302, item.image_url);
+      }
+      res.status(404).json({ error: "no_image" });
+    } catch (e) {
+      console.error("GET /api/promo-items/:itemId/image error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // POST /api/admin/:tenantId/promo-items/:itemId/image — Upload cached image
+  router.post(
+    "/api/admin/:tenantId/promo-items/:itemId/image",
+    requireAuth, requireRole(adminRoles),
+    upload.single("image"),
+    async (req, res) => {
+      try {
+        const { tenantId, itemId } = req.params;
+        const check = await pool.query(
+          "SELECT promo_item_id FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2",
+          [itemId, tenantId]
+        );
+        if (!check.rows[0]) return res.status(404).json({ error: "not_found" });
+        if (!req.file) return res.status(400).json({ error: "missing_image" });
+
+        const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+        if (!ALLOWED.includes(req.file.mimetype)) {
+          return res.status(400).json({ error: "unsupported_type", allowed: ALLOWED });
+        }
+        if (req.file.size > 2 * 1024 * 1024) {
+          return res.status(400).json({ error: "file_too_large", max_bytes: 2097152 });
+        }
+
+        const crypto = require("crypto");
+        const hash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+
+        const { rows } = await pool.query(
+          `UPDATE promo_items
+           SET image_cached = $3, image_cached_mime = $4,
+               image_cached_at = NOW(), image_cached_hash = $5, updated_at = NOW()
+           WHERE promo_item_id = $1 AND tenant_id = $2
+           RETURNING promo_item_id, image_cached_mime, image_cached_at, image_cached_hash`,
+          [itemId, tenantId, req.file.buffer, req.file.mimetype, hash]
+        );
+        res.json({ status: "ok", image_url: `/api/promo-items/${itemId}/image`, ...rows[0] });
+      } catch (e) {
+        console.error("POST promo-items/:itemId/image error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // DELETE /api/admin/:tenantId/promo-items/:itemId/image
+  router.delete(
+    "/api/admin/:tenantId/promo-items/:itemId/image",
+    requireAuth, requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId, itemId } = req.params;
+        await pool.query(
+          `UPDATE promo_items SET image_cached = NULL, image_cached_mime = NULL,
+           image_cached_at = NULL, image_cached_hash = NULL, updated_at = NOW()
+           WHERE promo_item_id = $1 AND tenant_id = $2`,
+          [itemId, tenantId]
+        );
+        res.json({ status: "ok" });
+      } catch (e) {
+        console.error("DELETE promo-items/:itemId/image error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // POST /api/admin/:tenantId/promo-items/cache-images — Fetch & cache all external images
+  router.post(
+    "/api/admin/:tenantId/promo-items/cache-images",
+    requireAuth, requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const force = req.body?.force === true;
+
+        const condition = force
+          ? "image_url IS NOT NULL AND image_url != ''"
+          : "image_url IS NOT NULL AND image_url != '' AND image_cached IS NULL";
+
+        const { rows: items } = await pool.query(
+          `SELECT promo_item_id, image_url, image_cached_hash
+           FROM promo_items WHERE tenant_id = $1 AND ${condition}`,
+          [tenantId]
+        );
+
+        const crypto = require("crypto");
+        const results = [];
+
+        for (const item of items) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const resp = await fetch(item.image_url, {
+              signal: controller.signal,
+              headers: { "User-Agent": "ADA-ImageCache/1.0" },
+            });
+            clearTimeout(timeout);
+
+            if (!resp.ok) {
+              results.push({ id: item.promo_item_id, status: "error", code: resp.status });
+              continue;
+            }
+            const ct = (resp.headers.get("content-type") || "").split(";")[0].trim();
+            if (!ct.startsWith("image/")) {
+              results.push({ id: item.promo_item_id, status: "not_image", contentType: ct });
+              continue;
+            }
+            const buffer = Buffer.from(await resp.arrayBuffer());
+            if (buffer.length > 5 * 1024 * 1024) {
+              results.push({ id: item.promo_item_id, status: "too_large", size: buffer.length });
+              continue;
+            }
+            const hash = crypto.createHash("sha256").update(buffer).digest("hex");
+            if (!force && hash === item.image_cached_hash) {
+              results.push({ id: item.promo_item_id, status: "unchanged" });
+              continue;
+            }
+
+            await pool.query(
+              `UPDATE promo_items SET image_cached = $2, image_cached_mime = $3,
+               image_cached_at = NOW(), image_cached_hash = $4, updated_at = NOW()
+               WHERE promo_item_id = $1`,
+              [item.promo_item_id, buffer, ct, hash]
+            );
+            results.push({ id: item.promo_item_id, status: "cached", mime: ct, size: buffer.length });
+          } catch (fetchErr) {
+            results.push({
+              id: item.promo_item_id,
+              status: "fetch_error",
+              error: fetchErr.name === "AbortError" ? "timeout" : fetchErr.message,
+            });
+          }
+        }
+
+        res.json({
+          total: items.length,
+          cached: results.filter(r => r.status === "cached").length,
+          errors: results.filter(r => !["cached","unchanged"].includes(r.status)).length,
+          results,
+        });
+      } catch (e) {
+        console.error("POST cache-images error", e);
+        res.status(500).json({ error: "server_error" });
       }
     }
   );
