@@ -7,8 +7,6 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 
 const { petsRouter } = require("./pets.routes");
-const { petsSyncRouter } = require("./pets.sync.routes");
-const { syncRouter } = require("./sync.routes");
 const { documentsRouter } = require("./documents.routes");
 const { promoRouter } = require("./promo.routes");
 const { requireRole } = require("./rbac.middleware");
@@ -89,8 +87,6 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 // Static seed-assets (placeholder images for seed engine)
 app.use('/api/seed-assets', express.static(path.join(__dirname, 'seed-assets')));
-// Higher JSON limit for pet sync (photos are base64 in payload)
-app.use("/api/sync/pets/push", express.json({ limit: "50mb" }));
 app.use(express.json({ limit: "2mb" }));
 
 // --- Correlation ID middleware (PR 13) ---
@@ -347,12 +343,10 @@ app.get("/api/settings/debug-mode", requireAuth, async (req, res) => {
   }
 });
 
-// --- Pets routes (offline sync + CRUD) ---
+// --- Pets & Documents routes (online-only CRUD) ---
 // CI may run without DATABASE_URL; avoid crashing the server in that case.
 if (process.env.DATABASE_URL) {
   app.use(petsRouter({ requireAuth }));
-  app.use(petsSyncRouter({ requireAuth }));
-  app.use(syncRouter({ requireAuth }));
   app.use(documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest, isMockEnv }));
 }
 
