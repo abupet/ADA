@@ -1,6 +1,6 @@
-// backend/src/communication.routes.js v1
-// Communication system REST API: AI settings, conversations, messages, unread counts
-// Follows patterns from documents.routes.js and nutrition.routes.js
+// backend/src/communication.routes.js v2
+// Communication system REST API: unified messaging (human + AI),
+// AI settings, conversations, messages, unread counts, delivery status, reply, soft delete
 
 const express = require("express");
 const crypto = require("crypto");
@@ -14,294 +14,343 @@ function isValidUuid(value) {
   return typeof value === "string" && UUID_REGEX.test(value);
 }
 
+// --- AI constants (migrated from chatbot.routes.js) ---
+const SESSION_TIMEOUT_MINUTES = 30;
+const MAX_MESSAGES_PER_SESSION = 50;
+const MAX_HISTORY_MESSAGES = 10;
+
+const CHATBOT_SYSTEM_PROMPT = [
+  "Sei l\u2019Assistente ADA, un assistente veterinario digitale progettato per aiutare i proprietari di animali domestici a valutare i sintomi e decidere il livello di urgenza.",
+  "",
+  "REGOLE FONDAMENTALI:",
+  "1. Rispondi SEMPRE in italiano.",
+  "2. NON fare mai diagnosi. Sei un assistente di triage, non un veterinario.",
+  "3. Sii empatico, chiaro e rassicurante.",
+  "4. Fai domande mirate per raccogliere informazioni utili al triage.",
+  "5. NON ripetere in ogni messaggio di consultare il veterinario. L'utente vede gi\u00e0 il disclaimer permanente che le informazioni non sostituiscono il parere del veterinario. Suggerisci la visita veterinaria SOLO quando rilevi sintomi sospetti o preoccupanti (triage GIALLO o ROSSO). Per triage VERDE, non menzionare il veterinario a meno che i sintomi non persistano.",
+  "",
+  "LIVELLI DI TRIAGE:",
+  "- VERDE (green): Situazione da monitorare a casa. Nessuna urgenza immediata.",
+  "- GIALLO (yellow): Consigliata visita veterinaria programmata entro 24-48 ore.",
+  "- ROSSO (red): EMERGENZA. Consigliare visita veterinaria IMMEDIATA.",
+  "",
+  "DISCLAIMER (EU AI Act):",
+  "- Questo sistema di intelligenza artificiale non sostituisce il parere di un medico veterinario.",
+  "",
+  "FORMATO RISPOSTA:",
+  "Alla fine di OGNI tua risposta, aggiungi un commento nascosto con il triage strutturato nel seguente formato esatto:",
+  '<!--TRIAGE:{"level":"green|yellow|red","action":"monitor|vet_appointment|emergency","follow_up":["domanda1","domanda2"]}-->',
+].join("\n");
+
+const MOCK_ASSISTANT_RESPONSE = {
+  content:
+    "Capisco la tua preoccupazione. Da quello che descrivi, sembra una situazione da monitorare con attenzione. " +
+    "Ti consiglio di osservare il comportamento del tuo animale nelle prossime ore.\n\n" +
+    '<!--TRIAGE:{"level":"green","action":"monitor","follow_up":["Da quanto tempo noti questi sintomi?","Il tuo animale mangia e beve regolarmente?"]}-->',
+  triage: { level: "green", action: "monitor", follow_up: ["Da quanto tempo noti questi sintomi?", "Il tuo animale mangia e beve regolarmente?"] },
+};
+
+// --- AI helper functions (from chatbot.routes.js) ---
+
+async function buildPetContext(pool, petId, userId) {
+  try {
+    const petResult = await pool.query(
+      `SELECT name, species, breed, sex, birthdate, weight_kg, notes FROM pets WHERE pet_id = $1 LIMIT 1`,
+      [petId]
+    );
+    if (!petResult.rows[0]) return "";
+    const pet = petResult.rows[0];
+    const parts = [];
+    if (pet.name) parts.push(`Nome: ${pet.name}`);
+    if (pet.species) parts.push(`Specie: ${pet.species}`);
+    if (pet.breed) parts.push(`Razza: ${pet.breed}`);
+    if (pet.sex) parts.push(`Sesso: ${pet.sex}`);
+    if (pet.birthdate) parts.push(`Data di nascita: ${pet.birthdate}`);
+    if (pet.weight_kg) parts.push(`Peso: ${pet.weight_kg} kg`);
+    if (pet.notes) parts.push(`Note: ${pet.notes}`);
+    try {
+      const tagsResult = await pool.query(`SELECT tag_key, tag_value FROM pet_tags WHERE pet_id = $1 ORDER BY tag_key`, [petId]);
+      if (tagsResult.rows.length > 0) parts.push(`Tag: ${tagsResult.rows.map(t => `${t.tag_key}: ${t.tag_value}`).join(", ")}`);
+    } catch (e) { if (e.code !== "42P01") console.warn("buildPetContext: pet_tags error", e.message); }
+    return parts.join("\n").substring(0, 2000);
+  } catch (e) { return ""; }
+}
+
+function parseTriageFromResponse(content) {
+  if (!content || typeof content !== "string") return null;
+  const match = content.match(/<!--TRIAGE:(.*?)-->/s);
+  if (!match || !match[1]) return null;
+  try {
+    const triage = JSON.parse(match[1].trim());
+    const validLevels = ["green", "yellow", "red"];
+    const validActions = ["monitor", "vet_appointment", "emergency"];
+    if (!triage.level || !validLevels.includes(triage.level) || !triage.action || !validActions.includes(triage.action)) return null;
+    return { level: triage.level, action: triage.action, follow_up: Array.isArray(triage.follow_up) ? triage.follow_up : [] };
+  } catch (e) { return null; }
+}
+
+function cleanResponseContent(content) {
+  if (!content || typeof content !== "string") return content || "";
+  return content.replace(/<!--TRIAGE:.*?-->/gs, "").trim();
+}
+
+async function requireAiEnabled(pool, userId) {
+  try {
+    const result = await pool.query(`SELECT chatbot_enabled FROM communication_settings WHERE user_id = $1 LIMIT 1`, [userId]);
+    if (!result.rows[0]) return true;
+    return result.rows[0].chatbot_enabled === true;
+  } catch (e) { return true; }
+}
+
+async function _callOpenAi(apiKey, model, messages) {
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 1024 }),
+    });
+    if (!response.ok) { const errorText = await response.text(); return { ok: false, status: response.status, errorBody: errorText, content: null }; }
+    const data = await response.json();
+    const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : null;
+    if (!content) return { ok: false, status: 200, errorBody: "empty_response", content: null };
+    return { ok: true, status: 200, content };
+  } catch (e) { return { ok: false, status: 0, errorBody: e.message, content: null }; }
+}
+
 /**
  * Communication router factory.
- * @param {{ requireAuth: Function }} opts
- * @returns {express.Router}
+ * @param {{ requireAuth: Function, getOpenAiKey?: Function, isMockEnv?: boolean }} opts
  */
-function communicationRouter({ requireAuth }) {
+function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   const router = express.Router();
   const pool = getPool();
 
   // --- Helpers ---
-
-  /**
-   * Check if the current user is the owner or vet of a conversation.
-   * Returns the conversation row if access is allowed, or null.
-   */
   async function getConversationIfAllowed(conversationId, userId) {
     const { rows } = await pool.query(
-      "SELECT * FROM conversations " +
-      "WHERE conversation_id = $1 " +
-      "AND (owner_user_id = $2 OR vet_user_id = $2) " +
-      "LIMIT 1",
+      "SELECT * FROM conversations WHERE conversation_id = $1 AND (owner_user_id = $2 OR vet_user_id = $2) LIMIT 1",
       [conversationId, userId]
     );
     return rows[0] || null;
   }
 
   // --- AI Settings ---
-
-  // GET /api/communication/settings - read AI settings for current user
   router.get("/api/communication/settings", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-
-      // Auto-create row if it does not exist
-      await pool.query(
-        "INSERT INTO communication_settings (user_id) " +
-        "VALUES ($1) " +
-        "ON CONFLICT (user_id) DO NOTHING",
-        [userId]
-      );
-
+      await pool.query("INSERT INTO communication_settings (user_id, chatbot_enabled) VALUES ($1, true) ON CONFLICT (user_id) DO NOTHING", [userId]);
       const { rows } = await pool.query(
-        "SELECT user_id, chatbot_enabled, auto_transcription_enabled, created_at, updated_at " +
-        "FROM communication_settings " +
-        "WHERE user_id = $1 " +
-        "LIMIT 1",
+        "SELECT user_id, chatbot_enabled, auto_transcription_enabled, created_at, updated_at FROM communication_settings WHERE user_id = $1 LIMIT 1",
         [userId]
       );
-
       res.json(rows[0] || { user_id: userId, chatbot_enabled: true, auto_transcription_enabled: false });
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.json({ user_id: req.user.sub, chatbot_enabled: true, auto_transcription_enabled: false });
-      }
+      if (e.code === "42P01") return res.json({ user_id: req.user.sub, chatbot_enabled: true, auto_transcription_enabled: false });
       console.error("GET /api/communication/settings error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // PATCH /api/communication/settings - update AI settings
   router.patch("/api/communication/settings", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
       const { chatbot_enabled, auto_transcription_enabled } = req.body;
-
-      // Build SET clause dynamically for provided fields only
-      const setClauses = [];
-      const values = [];
-      let paramIndex = 1;
-
-      if (typeof chatbot_enabled === "boolean") {
-        setClauses.push("chatbot_enabled = $" + paramIndex++);
-        values.push(chatbot_enabled);
-      }
-      if (typeof auto_transcription_enabled === "boolean") {
-        setClauses.push("auto_transcription_enabled = $" + paramIndex++);
-        values.push(auto_transcription_enabled);
-      }
-
-      if (setClauses.length === 0) {
-        return res.status(400).json({ error: "no_valid_fields" });
-      }
-
-      setClauses.push("updated_at = NOW()");
-      values.push(userId);
-
-      const { rows } = await pool.query(
-        "UPDATE communication_settings " +
-        "SET " + setClauses.join(", ") + " " +
-        "WHERE user_id = $" + paramIndex + " " +
-        "RETURNING *",
-        values
-      );
-
-      if (!rows[0]) {
-        return res.status(404).json({ error: "settings_not_found" });
-      }
-
+      const setClauses = []; const values = []; let paramIndex = 1;
+      if (typeof chatbot_enabled === "boolean") { setClauses.push("chatbot_enabled = $" + paramIndex++); values.push(chatbot_enabled); }
+      if (typeof auto_transcription_enabled === "boolean") { setClauses.push("auto_transcription_enabled = $" + paramIndex++); values.push(auto_transcription_enabled); }
+      if (setClauses.length === 0) return res.status(400).json({ error: "no_valid_fields" });
+      setClauses.push("updated_at = NOW()"); values.push(userId);
+      const { rows } = await pool.query("UPDATE communication_settings SET " + setClauses.join(", ") + " WHERE user_id = $" + paramIndex + " RETURNING *", values);
+      if (!rows[0]) return res.status(404).json({ error: "settings_not_found" });
       res.json(rows[0]);
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(404).json({ error: "settings_not_found" });
-      }
+      if (e.code === "42P01") return res.status(404).json({ error: "settings_not_found" });
       console.error("PATCH /api/communication/settings error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // --- Users lookup (for recipient dropdown) ---
-
-  // GET /api/communication/users?role=vet|owner — list users by role
+  // --- Users lookup ---
   router.get("/api/communication/users", requireAuth, async (req, res) => {
     try {
       const roleParam = req.query.role;
-      if (!roleParam || !["vet", "owner"].includes(roleParam)) {
-        return res.status(400).json({ error: "invalid_role", message: "role must be vet or owner" });
-      }
-      const dbRole = roleParam; // 'vet' or 'owner' — matches base_role in DB directly
+      if (!roleParam || !["vet", "owner"].includes(roleParam)) return res.status(400).json({ error: "invalid_role" });
       const { rows } = await pool.query(
         "SELECT user_id, email, display_name FROM users WHERE base_role = $1 AND status = 'active' AND user_id != $2 ORDER BY display_name, email",
-        [dbRole, req.user.sub]
+        [roleParam, req.user.sub]
       );
       res.json({ users: rows });
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.json({ users: [] });
-      }
+      if (e.code === "42P01") return res.json({ users: [] });
       console.error("GET /api/communication/users error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
+  // GET /api/communication/users/:id/presence
+  router.get("/api/communication/users/:id/presence", requireAuth, async (req, res) => {
+    try {
+      const targetId = req.params.id;
+      if (targetId === "ada-assistant") return res.json({ online: true, last_seen_at: null });
+      const { isUserOnline } = require("./websocket");
+      const online = isUserOnline(targetId);
+      let lastSeen = null;
+      try {
+        const { rows } = await pool.query("SELECT last_seen_at FROM users WHERE user_id = $1 LIMIT 1", [targetId]);
+        if (rows[0]) lastSeen = rows[0].last_seen_at;
+      } catch (_) {}
+      res.json({ online, last_seen_at: lastSeen });
+    } catch (e) {
+      res.json({ online: false, last_seen_at: null });
+    }
+  });
+
   // --- Conversations ---
 
-  // POST /api/communication/conversations - create a new conversation
+  // POST /api/communication/conversations — create (supports both human and AI)
   router.post("/api/communication/conversations", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-      const { pet_id, vet_user_id, owner_override_id, subject } = req.body;
+      const { pet_id, vet_user_id, owner_override_id, subject, recipient_type } = req.body;
+      const recipientType = recipient_type || "human";
 
-      if (!pet_id || !isValidUuid(pet_id)) {
-        return res.status(400).json({ error: "invalid_pet_id" });
-      }
+      // pet_id optional
+      if (pet_id && !isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
 
       const conversationId = crypto.randomUUID();
-
-      // If owner_override_id is set, current user is vet, recipient is owner
-      // Otherwise, current user is owner, vet_user_id is the recipient
       let ownerUserId, vetUserId;
-      if (owner_override_id && typeof owner_override_id === 'string' && owner_override_id.trim()) {
-        vetUserId = userId;
-        ownerUserId = owner_override_id;
-      } else {
+
+      if (recipientType === "ai") {
+        // Verify AI enabled
+        const aiEnabled = await requireAiEnabled(pool, userId);
+        if (!aiEnabled) return res.status(403).json({ error: "chatbot_disabled" });
         ownerUserId = userId;
-        vetUserId = vet_user_id || null;
+        vetUserId = "ada-assistant";
+      } else {
+        // Human conversation (existing logic)
+        if (owner_override_id && typeof owner_override_id === "string" && owner_override_id.trim()) {
+          vetUserId = userId;
+          ownerUserId = owner_override_id;
+        } else {
+          ownerUserId = userId;
+          vetUserId = vet_user_id || null;
+        }
       }
 
       const { rows } = await pool.query(
-        "INSERT INTO conversations " +
-        "(conversation_id, pet_id, owner_user_id, vet_user_id, subject, status) " +
-        "VALUES ($1, $2, $3, $4, $5, 'active') " +
-        "RETURNING *",
-        [conversationId, pet_id, ownerUserId, vetUserId, subject || null]
+        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, subject, status, recipient_type) " +
+        "VALUES ($1, $2, $3, $4, $5, 'active', $6) RETURNING *",
+        [conversationId, pet_id || null, ownerUserId, vetUserId, subject || null, recipientType]
       );
 
-      res.status(201).json(rows[0]);
-    } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(500).json({ error: "table_not_found" });
+      const conversation = rows[0];
+
+      // AI welcome message
+      if (recipientType === "ai") {
+        const welcomeContent = pet_id
+          ? "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti con il tuo animale?"
+          : "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti?";
+        const welcomeId = crypto.randomUUID();
+        await pool.query(
+          "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, delivery_status) " +
+          "VALUES ($1, $2, 'ada-assistant', 'text', $3, 'assistant', 'read')",
+          [welcomeId, conversationId, welcomeContent]
+        );
+        await pool.query("UPDATE conversations SET message_count = 1, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
       }
+
+      res.status(201).json(conversation);
+    } catch (e) {
+      if (e.code === "42P01") return res.status(500).json({ error: "table_not_found" });
       console.error("POST /api/communication/conversations error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // GET /api/communication/conversations - list conversations
+  // GET /api/communication/conversations — list (unified: human + AI)
   router.get("/api/communication/conversations", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
       const { pet_id, status } = req.query;
 
       let query = "SELECT c.*, " +
-                  "p.name AS pet_name, " +
-                  "lm.content AS last_message_text, " +
-                  "lm.created_at AS last_message_at, " +
-                  "COALESCE(ur.cnt, 0)::int AS unread_count " +
-                  "FROM conversations c " +
-                  "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
-                  "LEFT JOIN LATERAL (" +
-                  "  SELECT content, created_at FROM comm_messages " +
-                  "  WHERE conversation_id = c.conversation_id " +
-                  "  ORDER BY created_at DESC LIMIT 1" +
-                  ") lm ON true " +
-                  "LEFT JOIN LATERAL (" +
-                  "  SELECT COUNT(*) AS cnt FROM comm_messages " +
-                  "  WHERE conversation_id = c.conversation_id " +
-                  "  AND sender_id <> $1 AND is_read = false" +
-                  ") ur ON true " +
-                  "WHERE (c.owner_user_id = $1 OR c.vet_user_id = $1)";
+        "p.name AS pet_name, " +
+        "lm.content AS last_message_text, lm.sender_id AS last_message_sender, " +
+        "lm.created_at AS last_message_at, " +
+        "COALESCE(ur.cnt, 0)::int AS unread_count, " +
+        "COALESCE(mc.msg_count, 0)::int AS total_messages " +
+        "FROM conversations c " +
+        "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+        "LEFT JOIN LATERAL (" +
+        "  SELECT content, sender_id, created_at FROM comm_messages " +
+        "  WHERE conversation_id = c.conversation_id AND deleted_at IS NULL " +
+        "  ORDER BY created_at DESC LIMIT 1" +
+        ") lm ON true " +
+        "LEFT JOIN LATERAL (" +
+        "  SELECT COUNT(*) AS cnt FROM comm_messages " +
+        "  WHERE conversation_id = c.conversation_id " +
+        "  AND sender_id <> $1 AND is_read = false AND deleted_at IS NULL" +
+        ") ur ON true " +
+        "LEFT JOIN LATERAL (" +
+        "  SELECT COUNT(*) AS msg_count FROM comm_messages " +
+        "  WHERE conversation_id = c.conversation_id AND deleted_at IS NULL" +
+        ") mc ON true " +
+        "WHERE (c.owner_user_id = $1 OR c.vet_user_id = $1)";
       const values = [userId];
       let paramIndex = 2;
 
       if (pet_id) {
-        if (!isValidUuid(pet_id)) {
-          return res.status(400).json({ error: "invalid_pet_id" });
-        }
+        if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
         query += " AND c.pet_id = $" + paramIndex++;
         values.push(pet_id);
       }
-
       if (status) {
         const allowedStatuses = ["active", "closed", "archived"];
-        if (!allowedStatuses.includes(status)) {
-          return res.status(400).json({ error: "invalid_status" });
-        }
+        if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "invalid_status" });
         query += " AND c.status = $" + paramIndex++;
         values.push(status);
       }
 
-      query += " ORDER BY c.updated_at DESC";
+      query += " ORDER BY COALESCE(lm.created_at, c.updated_at) DESC";
 
       const { rows } = await pool.query(query, values);
       res.json({ conversations: rows });
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.json({ conversations: [] });
-      }
+      if (e.code === "42P01") return res.json({ conversations: [] });
       console.error("GET /api/communication/conversations error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // GET /api/communication/conversations/:id - single conversation detail
+  // GET /api/communication/conversations/:id
   router.get("/api/communication/conversations/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      if (!isValidUuid(id)) {
-        return res.status(400).json({ error: "invalid_conversation_id" });
-      }
-
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
       const conversation = await getConversationIfAllowed(id, req.user.sub);
-      if (!conversation) {
-        return res.status(404).json({ error: "not_found" });
-      }
-
+      if (!conversation) return res.status(404).json({ error: "not_found" });
       res.json(conversation);
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(404).json({ error: "not_found" });
-      }
+      if (e.code === "42P01") return res.status(404).json({ error: "not_found" });
       console.error("GET /api/communication/conversations/:id error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // PATCH /api/communication/conversations/:id - close or archive a conversation
+  // PATCH /api/communication/conversations/:id — close, archive, or reopen
   router.patch("/api/communication/conversations/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      if (!isValidUuid(id)) {
-        return res.status(400).json({ error: "invalid_conversation_id" });
-      }
-
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
       const { status } = req.body;
-      const allowedStatuses = ["closed", "archived"];
-      if (!status || !allowedStatuses.includes(status)) {
-        return res.status(400).json({ error: "invalid_status" });
-      }
-
-      // Verify access
+      const allowedStatuses = ["active", "closed", "archived"];
+      if (!status || !allowedStatuses.includes(status)) return res.status(400).json({ error: "invalid_status" });
       const conversation = await getConversationIfAllowed(id, req.user.sub);
-      if (!conversation) {
-        return res.status(404).json({ error: "not_found" });
-      }
-
-      const { rows } = await pool.query(
-        "UPDATE conversations " +
-        "SET status = $1, updated_at = NOW() " +
-        "WHERE conversation_id = $2 " +
-        "RETURNING *",
-        [status, id]
-      );
-
+      if (!conversation) return res.status(404).json({ error: "not_found" });
+      const { rows } = await pool.query("UPDATE conversations SET status = $1, updated_at = NOW() WHERE conversation_id = $2 RETURNING *", [status, id]);
       res.json(rows[0]);
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(404).json({ error: "not_found" });
-      }
+      if (e.code === "42P01") return res.status(404).json({ error: "not_found" });
       console.error("PATCH /api/communication/conversations/:id error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -309,186 +358,335 @@ function communicationRouter({ requireAuth }) {
 
   // --- Messages ---
 
-  // GET /api/communication/conversations/:id/messages - paginated messages (cursor-based)
+  // GET /api/communication/conversations/:id/messages — paginated (cursor-based, excludes soft-deleted)
   router.get("/api/communication/conversations/:id/messages", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      if (!isValidUuid(id)) {
-        return res.status(400).json({ error: "invalid_conversation_id" });
-      }
-
-      // Verify access
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
       const conversation = await getConversationIfAllowed(id, req.user.sub);
-      if (!conversation) {
-        return res.status(404).json({ error: "not_found" });
-      }
+      if (!conversation) return res.status(404).json({ error: "not_found" });
 
       const before = req.query.before;
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
-
-      let query;
-      let values;
-
+      let query, values;
       if (before && isValidUuid(before)) {
-        // Cursor-based: get messages created before the given message
-        query = "SELECT * FROM comm_messages " +
-                "WHERE conversation_id = $1 " +
-                "AND created_at < (" +
-                "  SELECT created_at FROM comm_messages WHERE message_id = $2" +
-                ") " +
-                "ORDER BY created_at DESC " +
-                "LIMIT $3";
+        query = "SELECT m.*, u.display_name AS sender_name, u.base_role AS sender_role FROM comm_messages m LEFT JOIN users u ON u.user_id = m.sender_id WHERE m.conversation_id = $1 AND m.deleted_at IS NULL AND m.created_at < (SELECT created_at FROM comm_messages WHERE message_id = $2) ORDER BY m.created_at DESC LIMIT $3";
         values = [id, before, limit];
       } else {
-        // No cursor: get the most recent messages
-        query = "SELECT * FROM comm_messages " +
-                "WHERE conversation_id = $1 " +
-                "ORDER BY created_at DESC " +
-                "LIMIT $2";
+        query = "SELECT m.*, u.display_name AS sender_name, u.base_role AS sender_role FROM comm_messages m LEFT JOIN users u ON u.user_id = m.sender_id WHERE m.conversation_id = $1 AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT $2";
         values = [id, limit];
       }
-
       const { rows } = await pool.query(query, values);
-
-      // Reverse to return in chronological ASC order
       rows.reverse();
+
+      // Clean AI triage comments from visible content
+      for (const msg of rows) {
+        if (msg.ai_role === "assistant" && msg.content) {
+          msg.content = cleanResponseContent(msg.content);
+        }
+      }
 
       res.json({ messages: rows });
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.json({ messages: [] });
-      }
+      if (e.code === "42P01") return res.json({ messages: [] });
       console.error("GET /api/communication/conversations/:id/messages error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // POST /api/communication/conversations/:id/messages - send a message
+  // POST /api/communication/conversations/:id/messages — send a message (human or AI)
   router.post("/api/communication/conversations/:id/messages", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      if (!isValidUuid(id)) {
-        return res.status(400).json({ error: "invalid_conversation_id" });
-      }
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
 
-      // Verify access
       const conversation = await getConversationIfAllowed(id, req.user.sub);
-      if (!conversation) {
-        return res.status(404).json({ error: "not_found" });
-      }
+      if (!conversation) return res.status(404).json({ error: "not_found" });
 
-      const { content, type } = req.body;
-
-      // Validate content
-      if (!content || typeof content !== "string" || content.trim().length === 0) {
-        return res.status(400).json({ error: "content_required" });
-      }
-      if (content.length > 5000) {
-        return res.status(400).json({ error: "content_too_long" });
-      }
+      const { content, type, reply_to_message_id } = req.body;
+      if (!content || typeof content !== "string" || content.trim().length === 0) return res.status(400).json({ error: "content_required" });
+      if (content.length > 5000) return res.status(400).json({ error: "content_too_long" });
 
       const messageType = type || "text";
       const messageId = crypto.randomUUID();
       const senderId = req.user.sub;
 
-      const { rows } = await pool.query(
-        "INSERT INTO comm_messages " +
-        "(message_id, conversation_id, sender_id, content, type) " +
-        "VALUES ($1, $2, $3, $4, $5) " +
-        "RETURNING *",
-        [messageId, id, senderId, content.trim(), messageType]
-      );
+      // Validate reply_to if provided
+      if (reply_to_message_id && !isValidUuid(reply_to_message_id)) return res.status(400).json({ error: "invalid_reply_to" });
 
+      // --- AI conversation handling ---
+      if (conversation.recipient_type === "ai") {
+        // Check session limits
+        if (conversation.status !== "active") return res.status(400).json({ error: "conversation_closed" });
+
+        const msgCount = conversation.message_count || 0;
+        if (msgCount >= MAX_MESSAGES_PER_SESSION) return res.status(400).json({ error: "session_limit_reached", limit: MAX_MESSAGES_PER_SESSION });
+
+        // Check timeout
+        const lastActive = new Date(conversation.updated_at || conversation.created_at);
+        const minutesSince = (Date.now() - lastActive.getTime()) / (1000 * 60);
+        if (minutesSince > SESSION_TIMEOUT_MINUTES) {
+          await pool.query("UPDATE conversations SET status = 'closed', updated_at = NOW() WHERE conversation_id = $1", [id]);
+          return res.status(400).json({ error: "session_expired" });
+        }
+
+        // Check AI enabled
+        const aiEnabled = await requireAiEnabled(pool, senderId);
+        if (!aiEnabled) return res.status(403).json({ error: "chatbot_disabled" });
+
+        // Save user message
+        await pool.query(
+          "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, delivery_status) VALUES ($1, $2, $3, $4, $5, 'user', 'read')",
+          [messageId, id, senderId, messageType, content.trim()]
+        );
+
+        // Build AI response
+        let assistantContent, triageData;
+        if (isMockEnv) {
+          assistantContent = MOCK_ASSISTANT_RESPONSE.content;
+          triageData = MOCK_ASSISTANT_RESPONSE.triage;
+        } else {
+          const petContext = conversation.pet_id ? await buildPetContext(pool, conversation.pet_id, senderId) : "";
+          const systemContent = petContext ? `${CHATBOT_SYSTEM_PROMPT}\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}` : CHATBOT_SYSTEM_PROMPT;
+          const historyResult = await pool.query(
+            "SELECT ai_role AS role, content FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
+            [id, MAX_HISTORY_MESSAGES]
+          );
+          const historyMessages = historyResult.rows.reverse().map(m => ({ role: m.role || "user", content: m.content }));
+          const openaiMessages = [{ role: "system", content: systemContent }, ...historyMessages];
+
+          const apiKey = typeof getOpenAiKey === "function" ? getOpenAiKey() : null;
+          if (!apiKey) return res.status(500).json({ error: "openai_key_not_configured" });
+
+          let model = "gpt-4o-mini";
+          let aiResponse = await _callOpenAi(apiKey, model, openaiMessages);
+          if (!aiResponse.ok) return res.status(502).json({ error: "ai_request_failed" });
+
+          assistantContent = aiResponse.content;
+          triageData = parseTriageFromResponse(assistantContent);
+
+          // Upgrade to gpt-4o for yellow/red triage
+          if (triageData && (triageData.level === "yellow" || triageData.level === "red")) {
+            const upgradeResponse = await _callOpenAi(apiKey, "gpt-4o", openaiMessages);
+            if (upgradeResponse.ok) {
+              assistantContent = upgradeResponse.content;
+              const upgradedTriage = parseTriageFromResponse(assistantContent);
+              if (upgradedTriage) triageData = upgradedTriage;
+            }
+          }
+          if (!triageData) triageData = { level: "green", action: "monitor", follow_up: [] };
+        }
+
+        // Save assistant message
+        const assistantMsgId = crypto.randomUUID();
+        await pool.query(
+          "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, triage_level, triage_action, follow_up_questions, delivery_status) " +
+          "VALUES ($1, $2, 'ada-assistant', 'text', $3, 'assistant', $4, $5, $6, 'read')",
+          [assistantMsgId, id, assistantContent, triageData.level, triageData.action, JSON.stringify(triageData.follow_up)]
+        );
+
+        // Update conversation
+        await pool.query(
+          "UPDATE conversations SET message_count = message_count + 2, triage_level = $1, updated_at = NOW() WHERE conversation_id = $2",
+          [triageData.level, id]
+        );
+
+        return res.status(201).json({
+          user_message: { message_id: messageId, conversation_id: id, sender_id: senderId, content: content.trim(), ai_role: "user", created_at: new Date().toISOString() },
+          assistant_message: {
+            message_id: assistantMsgId, conversation_id: id, sender_id: "ada-assistant",
+            content: cleanResponseContent(assistantContent),
+            ai_role: "assistant", triage_level: triageData.level, triage_action: triageData.action,
+            follow_up_questions: triageData.follow_up,
+            created_at: new Date().toISOString(),
+          },
+          triage: triageData,
+        });
+      }
+
+      // --- Human conversation ---
+      const { rows } = await pool.query(
+        "INSERT INTO comm_messages (message_id, conversation_id, sender_id, content, type, reply_to_message_id, delivery_status) " +
+        "VALUES ($1, $2, $3, $4, $5, $6, 'sent') RETURNING *",
+        [messageId, id, senderId, content.trim(), messageType, reply_to_message_id || null]
+      );
       const newMessage = rows[0];
 
-      // Update conversation updated_at
-      await pool.query(
-        "UPDATE conversations SET updated_at = NOW() WHERE conversation_id = $1",
-        [id]
-      );
+      await pool.query("UPDATE conversations SET updated_at = NOW() WHERE conversation_id = $1", [id]);
 
-      // Broadcast via Socket.io (commNs may be null in mock/test mode)
+      // Broadcast via Socket.io
       const commNs = req.app.get("commNs");
-      if (commNs) {
-        commNs.to("conv:" + id).emit("new_message", newMessage);
+      if (commNs) commNs.to("conv:" + id).emit("new_message", newMessage);
+
+      // Notify recipient's user room for badge update (reaches user on ANY page)
+      const recipientUserId = (conversation.owner_user_id === senderId) ? conversation.vet_user_id : conversation.owner_user_id;
+      if (commNs && recipientUserId) {
+        commNs.to("user:" + recipientUserId).emit("new_message_notification", {
+          conversation_id: id,
+          sender_id: senderId,
+          message_id: newMessage.message_id,
+          preview: content.trim().substring(0, 100),
+          created_at: newMessage.created_at
+        });
       }
+
+      // Push notification (fire-and-forget)
+      try {
+        const { sendPushToUser } = require("./push.routes");
+        const { isUserOnline } = require("./websocket");
+        const recipientId = (conversation.owner_user_id === senderId) ? conversation.vet_user_id : conversation.owner_user_id;
+        if (recipientId && !isUserOnline(recipientId)) {
+          const senderName = req.user.display_name || req.user.email || "Utente";
+          sendPushToUser(recipientId, {
+            title: senderName,
+            body: content.substring(0, 100),
+            icon: "/icon-192.png",
+            badge: "/icon-192.png",
+            data: { type: "new_message", conversationId: id, messageId: newMessage.message_id },
+            tag: "conv-" + id,
+          });
+        }
+      } catch (_) {}
 
       res.status(201).json(newMessage);
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(500).json({ error: "table_not_found" });
-      }
+      if (e.code === "42P01") return res.status(500).json({ error: "table_not_found" });
       console.error("POST /api/communication/conversations/:id/messages error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // PATCH /api/communication/messages/:id/read - mark message as read
+  // PATCH /api/communication/messages/:id/read
   router.patch("/api/communication/messages/:id/read", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      if (!isValidUuid(id)) {
-        return res.status(400).json({ error: "invalid_message_id" });
-      }
-
-      const userId = req.user.sub;
-
-      // Verify the user has access to the conversation containing this message
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_message_id" });
       const msgCheck = await pool.query(
-        "SELECT m.message_id, m.conversation_id " +
-        "FROM comm_messages m " +
-        "JOIN conversations c ON c.conversation_id = m.conversation_id " +
-        "WHERE m.message_id = $1 " +
-        "AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
-        "LIMIT 1",
-        [id, userId]
+        "SELECT m.message_id, m.conversation_id FROM comm_messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE m.message_id = $1 AND (c.owner_user_id = $2 OR c.vet_user_id = $2) LIMIT 1",
+        [id, req.user.sub]
       );
-
-      if (!msgCheck.rows[0]) {
-        return res.status(404).json({ error: "not_found" });
-      }
-
+      if (!msgCheck.rows[0]) return res.status(404).json({ error: "not_found" });
       const { rows } = await pool.query(
-        "UPDATE comm_messages " +
-        "SET is_read = true, read_at = NOW() " +
-        "WHERE message_id = $1 " +
-        "RETURNING *",
+        "UPDATE comm_messages SET is_read = true, read_at = NOW(), delivery_status = 'read', delivered_at = COALESCE(delivered_at, NOW()) WHERE message_id = $1 RETURNING *",
         [id]
       );
-
       res.json(rows[0]);
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(404).json({ error: "not_found" });
-      }
+      if (e.code === "42P01") return res.status(404).json({ error: "not_found" });
       console.error("PATCH /api/communication/messages/:id/read error", e);
       res.status(500).json({ error: "server_error" });
     }
   });
 
-  // --- Unread Count ---
+  // POST /api/communication/conversations/:id/read — mark all messages in a conversation as read
+  router.post("/api/communication/conversations/:id/read", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
+      const userId = req.user.sub;
+      const conversation = await getConversationIfAllowed(id, userId);
+      if (!conversation) return res.status(404).json({ error: "not_found" });
+      await pool.query(
+        "UPDATE comm_messages SET is_read = true, read_at = NOW(), delivery_status = 'read' WHERE conversation_id = $1 AND sender_id != $2 AND is_read = false",
+        [id, userId]
+      );
+      await pool.query(
+        "INSERT INTO conversation_seen (conversation_id, user_id, last_seen_at) VALUES ($1, $2, NOW()) ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_seen_at = NOW()",
+        [id, userId]
+      );
+      res.json({ success: true });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ success: true });
+      console.error("POST /api/communication/conversations/:id/read error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
 
-  // GET /api/communication/unread-count - count unread messages across all conversations
+  // PATCH /api/communication/messages/:id/delete — soft delete own message (human chats only)
+  router.patch("/api/communication/messages/:id/delete", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_message_id" });
+      const userId = req.user.sub;
+      const msgCheck = await pool.query(
+        "SELECT m.message_id, m.sender_id, c.recipient_type FROM comm_messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE m.message_id = $1 AND m.sender_id = $2 AND m.deleted_at IS NULL LIMIT 1",
+        [id, userId]
+      );
+      if (!msgCheck.rows[0]) return res.status(404).json({ error: "not_found" });
+      if (msgCheck.rows[0].recipient_type === "ai") return res.status(400).json({ error: "cannot_delete_ai_messages" });
+      const { rows } = await pool.query(
+        "UPDATE comm_messages SET deleted_at = NOW(), deleted_by = $1 WHERE message_id = $2 RETURNING message_id, deleted_at",
+        [userId, id]
+      );
+      res.json(rows[0]);
+    } catch (e) {
+      if (e.code === "42P01") return res.status(404).json({ error: "not_found" });
+      console.error("PATCH /api/communication/messages/:id/delete error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // --- Unread Count ---
   router.get("/api/communication/unread-count", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-
       const { rows } = await pool.query(
-        "SELECT COUNT(*)::int AS unread_count " +
-        "FROM comm_messages m " +
-        "JOIN conversations c ON c.conversation_id = m.conversation_id " +
-        "WHERE (c.owner_user_id = $1 OR c.vet_user_id = $1) " +
-        "AND m.sender_id != $1 " +
-        "AND m.is_read = false",
+        "SELECT COUNT(*)::int AS unread_count FROM comm_messages m JOIN conversations c ON c.conversation_id = m.conversation_id WHERE (c.owner_user_id = $1 OR c.vet_user_id = $1) AND m.sender_id != $1 AND m.is_read = false AND m.deleted_at IS NULL",
         [userId]
       );
-
       res.json({ unread_count: rows[0]?.unread_count || 0 });
     } catch (e) {
-      if (e.code === "42P01") {
-        return res.json({ unread_count: 0 });
-      }
+      if (e.code === "42P01") return res.json({ unread_count: 0 });
       console.error("GET /api/communication/unread-count error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // --- Backward-compatible chatbot session endpoints (delegate to conversations) ---
+
+  // POST /api/chatbot/sessions — create AI conversation (backward compat)
+  router.post("/api/chatbot/sessions", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user.sub;
+      const enabled = await requireAiEnabled(pool, userId);
+      if (!enabled) return res.status(403).json({ error: "chatbot_disabled" });
+      const { pet_id } = req.body || {};
+      if (pet_id && !isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
+      const conversationId = crypto.randomUUID();
+      await pool.query(
+        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, type, status, recipient_type) VALUES ($1, $2, $3, 'ada-assistant', 'chat', 'active', 'ai')",
+        [conversationId, pet_id || null, userId]
+      );
+      // Welcome message
+      const welcomeContent = pet_id
+        ? "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti con il tuo animale?"
+        : "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti?";
+      await pool.query(
+        "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, delivery_status) VALUES ($1, $2, 'ada-assistant', 'text', $3, 'assistant', 'read')",
+        [crypto.randomUUID(), conversationId, welcomeContent]
+      );
+      await pool.query("UPDATE conversations SET message_count = 1, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
+      res.status(201).json({ session: { session_id: conversationId, owner_user_id: userId, pet_id: pet_id || null, status: "active", message_count: 1, created_at: new Date().toISOString() } });
+    } catch (e) {
+      if (e.code === "42P01") return res.status(500).json({ error: "table_not_found" });
+      console.error("POST /api/chatbot/sessions error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // GET /api/chatbot/sessions — list AI conversations (backward compat)
+  router.get("/api/chatbot/sessions", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user.sub;
+      const { rows } = await pool.query(
+        "SELECT conversation_id AS session_id, owner_user_id, pet_id, status, message_count, subject AS summary, triage_level, created_at, updated_at AS last_message_at " +
+        "FROM conversations WHERE owner_user_id = $1 AND recipient_type = 'ai' ORDER BY updated_at DESC",
+        [userId]
+      );
+      res.json({ sessions: rows });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ sessions: [] });
+      console.error("GET /api/chatbot/sessions error", e);
       res.status(500).json({ error: "server_error" });
     }
   });

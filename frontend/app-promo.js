@@ -457,7 +457,12 @@
         var ctaUrl = rec.ctaUrl || rec.infoUrl || null;
 
         // Build card HTML
-        var imageUrl = rec.imageUrl || rec.image_url || null;
+        var imageUrl = null;
+        if (rec.promo_item_id) {
+            imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/promo-items/' + rec.promo_item_id + '/image';
+        } else {
+            imageUrl = rec.imageUrl || rec.image_url || null;
+        }
         if (!imageUrl) {
             var _idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
             imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/seed-assets/placeholder-prodotti/Prodotto_' + _idx + '.png';
@@ -465,7 +470,7 @@
         var description = rec.description || null;
 
         var html = [
-            '<span class="promo-badge">Consigliato per il tuo pet</span>'
+            '<span class="promo-badge">Consigliato per il tuo amico pet</span>'
         ];
 
         html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;var i=String(Math.floor(Math.random()*45)+1).padStart(2,\'0\');this.src=(typeof API_BASE_URL!==\'undefined\'?API_BASE_URL:\'\')+\'/api/seed-assets/placeholder-prodotti/Prodotto_\'+i+\'.png\';}">');
@@ -617,29 +622,43 @@
             return;
         }
         var imgUrl = rec.imageUrl || rec.image_url || '';
-        _showModal('Pagina di Acquisto (Simulata)', function(container) {
-            container.innerHTML = '<div style="text-align:center;padding:20px;">' +
-                '<div style="color:#dc2626;font-weight:600;border:2px dashed #dc2626;padding:10px;border-radius:8px;margin-bottom:20px;">' +
-                'Questa è una pagina simulata per test. Nessun acquisto reale verrà effettuato.</div>' +
-                '<div style="max-width:400px;margin:0 auto;text-align:left;">' +
-                (imgUrl ? '<img src="' + _escapeHtml(imgUrl) + '" style="width:100%;border-radius:8px;margin-bottom:12px;" onerror="this.style.display=\'none\'">' : '') +
-                '<h4 style="margin:0 0 8px;">' + _escapeHtml(rec.name || '') + '</h4>' +
-                '<p style="color:#555;font-size:13px;">' + _escapeHtml(rec.description || '') + '</p><hr>' +
-                '<p><strong>Prezzo:</strong> €XX,XX (placeholder)</p>' +
-                '<label>Quantità: <input type="number" value="1" min="1" max="10" style="width:60px;padding:4px;"></label><hr>' +
-                '<h4>Dati di spedizione</h4>' +
-                '<input placeholder="Nome e Cognome" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
-                '<input placeholder="Indirizzo" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
-                '<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
-                '<input placeholder="Città" style="flex:2;padding:8px;border:1px solid #ddd;border-radius:6px;"></div><hr>' +
-                '<h4>Metodo di pagamento</h4>' +
-                '<input placeholder="Numero carta" style="width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:6px;">' +
-                '<div style="display:flex;gap:8px;">' +
-                '<input placeholder="MM/AA" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;">' +
-                '<input placeholder="CVV" style="width:80px;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>' +
-                '<button class="btn btn-success" style="width:100%;margin-top:16px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>' +
-                '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="_closeModal()">Chiudi</button>' +
-                '</div></div>';
+        _showModal('Acquisto Prodotto', function(container) {
+            var h = [];
+            h.push('<div style="max-width:480px;margin:0 auto;">');
+            // Simulated banner
+            h.push('<div style="background:#fef3c7;color:#92400e;font-size:12px;text-align:center;padding:6px 12px;border-radius:6px;margin-bottom:16px;">Pagina simulata — nessun acquisto reale verrà effettuato</div>');
+            // Product image
+            if (imgUrl) {
+                h.push('<div style="text-align:center;margin-bottom:16px;"><img src="' + _escapeHtml(imgUrl) + '" style="max-width:100%;max-height:280px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.1);object-fit:contain;" onerror="this.style.display=\'none\'"></div>');
+            }
+            // Product name
+            h.push('<h3 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#1e293b;text-align:center;">' + _escapeHtml(rec.name || '') + '</h3>');
+            // Description card
+            if (rec.description) {
+                h.push('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:16px;font-size:14px;color:#475569;line-height:1.5;">' + _escapeHtml(rec.description) + '</div>');
+            }
+            // Price & quantity
+            h.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px 16px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;">');
+            h.push('<span style="font-size:18px;font-weight:700;color:#16a34a;">€XX,XX</span>');
+            h.push('<label style="font-size:13px;color:#555;">Quantità: <input type="number" value="1" min="1" max="10" style="width:54px;padding:6px;border:1px solid #d1d5db;border-radius:6px;text-align:center;"></label>');
+            h.push('</div>');
+            // Shipping
+            h.push('<div style="margin-bottom:16px;"><div style="font-weight:600;font-size:14px;color:#334155;margin-bottom:8px;">📦 Spedizione</div>');
+            h.push('<input placeholder="Nome e Cognome" style="width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<input placeholder="Indirizzo" style="width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<div style="display:flex;gap:8px;"><input placeholder="CAP" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<input placeholder="Città" style="flex:2;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;"></div></div>');
+            // Payment
+            h.push('<div style="margin-bottom:16px;"><div style="font-weight:600;font-size:14px;color:#334155;margin-bottom:8px;">💳 Pagamento</div>');
+            h.push('<input placeholder="Numero carta" style="width:100%;padding:10px 12px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<div style="display:flex;gap:8px;">');
+            h.push('<input placeholder="MM/AA" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">');
+            h.push('<input placeholder="CVV" style="width:80px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;"></div></div>');
+            // Buttons
+            h.push('<button class="btn btn-success" style="width:100%;padding:14px;font-size:15px;font-weight:600;border-radius:10px;opacity:0.6;cursor:not-allowed;" disabled>Conferma Acquisto (simulato)</button>');
+            h.push('<button class="btn btn-secondary" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;" onclick="_closeModal()">Chiudi</button>');
+            h.push('</div>');
+            container.innerHTML = h.join('');
         });
     }
 
@@ -865,14 +884,39 @@
             var consentData = results[0];
             var servicesData = results[1];
 
-            var consents = consentData.consents || [];
             var services = servicesData.services || [];
 
+            // Build consentMap from backend response (flat object or array)
             var consentMap = {};
-            consents.forEach(function (c) {
-                var key = c.consent_type + ':' + (c.scope || 'global');
-                consentMap[key] = c.status === 'opted_in';
-            });
+            if (consentData.consents && Array.isArray(consentData.consents)) {
+                consentData.consents.forEach(function (c) {
+                    var key = c.consent_type + ':' + (c.scope || 'global');
+                    consentMap[key] = c.status === 'opted_in';
+                });
+            } else {
+                if (consentData.marketing_global !== undefined) {
+                    consentMap['marketing_global:global'] = consentData.marketing_global === 'opted_in';
+                }
+                if (consentData.nutrition_plan !== undefined) {
+                    consentMap['nutrition_plan:global'] = consentData.nutrition_plan === 'opted_in';
+                }
+                if (consentData.insurance_data_sharing !== undefined) {
+                    consentMap['insurance_data_sharing:global'] = consentData.insurance_data_sharing === 'opted_in';
+                }
+                if (consentData.clinical_tags !== undefined) {
+                    consentMap['clinical_tags:global'] = consentData.clinical_tags === 'opted_in';
+                }
+                var brandMaps = {
+                    marketing_brand: consentData.brand_consents || {},
+                    nutrition_brand: consentData.nutrition_brand_consents || {},
+                    insurance_brand: consentData.insurance_brand_consents || {}
+                };
+                Object.keys(brandMaps).forEach(function (type) {
+                    Object.keys(brandMaps[type]).forEach(function (scope) {
+                        consentMap[type + ':' + scope] = brandMaps[type][scope] === 'opted_in';
+                    });
+                });
+            }
 
             var tenantsByType = {};
             services.forEach(function (svc) {

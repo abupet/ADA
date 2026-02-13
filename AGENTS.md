@@ -31,11 +31,11 @@ ADA è una SPA vanilla JS con backend Express.
 - Express 4, JWT auth, PostgreSQL via `pg`, multer per upload
 - Route: `pets.routes.js`, `pets.sync.routes.js`, `sync.routes.js`, `documents.routes.js`, `promo.routes.js`
 
-**SQL migrations** (`sql/`): 001–013
+**SQL migrations** (`sql/`): 001–017
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 8.15.5
+**Versione corrente:** 8.16.0
 
 ---
 

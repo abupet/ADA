@@ -206,6 +206,13 @@ async function initApp() {
     updateHistoryBadge();
     updateCostDisplay();
     restoreLastPage(); // Restore last viewed page
+
+    // Initialize communication socket and unread badge (real-time notifications)
+    try {
+        if (typeof initCommSocket === 'function') initCommSocket();
+        if (typeof updateCommUnreadBadge === 'function') updateCommUnreadBadge();
+        if (typeof startCommBadgePolling === 'function') startCommBadgePolling();
+    } catch(e) { console.warn('[CORE] Communication init failed:', e); }
 }
 
 function applyVersionInfo() {
@@ -298,9 +305,6 @@ async function navigateToPage(page) {
     if (page === 'communication') {
         try { if (typeof initCommunication === 'function') await initCommunication('communication-container'); } catch(e) { console.error('[CORE] initCommunication failed:', e); }
     }
-    if (page === 'chatbot') {
-        try { if (typeof initChatbot === 'function') initChatbot('chatbot-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
-    }
     if (page === 'qna-report') renderQnaReportDropdown();
     if (page === 'tips') {
         try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
@@ -309,6 +313,7 @@ async function navigateToPage(page) {
     }
     if (page === 'history') {
         try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch(e) {}
+        try { if (typeof loadPetConversations === 'function') loadPetConversations(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
     }
     syncLangSelectorsForCurrentDoc();
 
@@ -450,10 +455,10 @@ function applyRoleUI(role) {
 
     // Show super_admin-only nav items
     var hasSARole = activeRoles.indexOf('super_admin') !== -1;
-    ['nav-superadmin-users', 'nav-superadmin-tenants', 'nav-superadmin-policies', 'nav-superadmin-tags', 'nav-superadmin-audit', 'nav-superadmin-sources'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.style.display = hasSARole ? '' : 'none';
-    });
+    var gestEl = document.getElementById('nav-superadmin-gestione');
+    if (gestEl) gestEl.style.display = hasSARole ? '' : 'none';
+    var auditBtn = document.getElementById('debug-audit-btn');
+    if (auditBtn) auditBtn.style.display = hasSARole ? '' : 'none';
 
     // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');

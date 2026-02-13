@@ -5,71 +5,70 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Chatbot AI (ADA assistant): owner-only, messages, loading
+// @deep — Unified messaging: AI chatbot integrated into communication page
 // ---------------------------------------------------------------------------
 
-test.describe("Deep chatbot AI", () => {
+test.describe("Deep unified messaging (AI)", () => {
 
-  test("@deep Chatbot page loads (owner)", async ({ page }) => {
+  test("@deep Communication page loads (owner)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
-    await navigateTo(page, "chatbot");
+    await navigateTo(page, "communication");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Chatbot: message input visible", async ({ page }) => {
+  test("@deep Communication: new conversation button visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
-    await navigateTo(page, "chatbot");
+    await navigateTo(page, "communication");
 
-    const input = page.locator('#page-chatbot.active input, #page-chatbot.active textarea, [data-testid="chatbot-input"]');
-    const count = await input.count();
-    expect(count).toBeGreaterThan(0);
+    const newBtn = page.getByTestId("comm-new-btn");
+    await expect(newBtn).toBeVisible({ timeout: 5_000 });
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Chatbot: vet does NOT see chatbot nav item", async ({ page }) => {
+  test("@deep Communication: chatbot nav item no longer exists", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
 
-    // Chatbot nav should be in owner sidebar only
-    const chatbotNav = page.locator('#sidebar-vet .nav-item[data-page="chatbot"]');
+    // Chatbot nav should not exist at all anymore
+    const chatbotNav = page.locator('.nav-item[data-page="chatbot"]');
     const visible = await chatbotNav.isVisible().catch(() => false);
     expect(visible).toBe(false);
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Chatbot: owner sees nav item 'La tua assistente ADA'", async ({ page }) => {
+  test("@deep Communication: vet sees Messaggi nav", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
-    await login(page, { email: process.env.TEST_OWNER_EMAIL });
+    await login(page, { email: process.env.TEST_VET_EMAIL });
 
-    const navItem = page.locator('.nav-item[data-page="chatbot"]');
+    const navItem = page.locator('#sidebar-vet .nav-item[data-page="communication"]');
     await expect(navItem).toBeVisible();
-    await expect(navItem).toContainText("La tua assistente ADA");
+    await expect(navItem).toContainText("Messaggi");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Chatbot page: no hard errors", async ({ page }) => {
+  test("@deep Communication page: no hard errors on navigate", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
-    await navigateTo(page, "chatbot");
+    await navigateTo(page, "communication");
     await page.waitForTimeout(1000);
 
     // Navigate away and back
     await navigateTo(page, "patient");
-    await navigateTo(page, "chatbot");
+    await navigateTo(page, "communication");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });

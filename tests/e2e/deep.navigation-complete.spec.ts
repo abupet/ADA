@@ -52,7 +52,7 @@ test.describe("Deep navigation — all pages", () => {
     await mockAllEndpoints(page);
     await login(page);
 
-    const ownerOnly = ["qna", "photos", "vitals", "medications", "chatbot"];
+    const ownerOnly = ["qna", "photos", "vitals", "medications"];
     for (const p of ownerOnly) {
       await page.evaluate((pg: string) => (window as any).navigateToPage(pg), p);
       // Should NOT land on the page — either redirected or page not active

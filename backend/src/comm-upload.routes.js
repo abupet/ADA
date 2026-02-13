@@ -105,18 +105,19 @@ function commUploadRouter({ requireAuth, upload }) {
         );
         const newMessage = msgRows[0];
 
-        // 4. Insert attachment detail into comm_attachments
+        // 4. Insert attachment detail into comm_attachments (with file_data BYTEA)
         const isImage = mime.startsWith("image/");
         const { rows: attRows } = await pool.query(
           "INSERT INTO comm_attachments " +
           "(attachment_id, message_id, original_filename, stored_filename, file_path, " +
-          "mime_type, size_bytes, checksum_sha256, is_image, thumbnail_path) " +
-          "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) " +
-          "RETURNING *",
+          "mime_type, size_bytes, checksum_sha256, is_image, thumbnail_path, file_data) " +
+          "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) " +
+          "RETURNING attachment_id, message_id, original_filename, stored_filename, file_path, " +
+          "mime_type, size_bytes, checksum_sha256, is_image, thumbnail_path, created_at",
           [
             attachmentId, messageId, req.file.originalname || "file",
             storedFilename, filePath, mime, req.file.size,
-            checksum, isImage, null
+            checksum, isImage, null, req.file.buffer
           ]
         );
 
@@ -173,6 +174,43 @@ function commUploadRouter({ requireAuth, upload }) {
         return res.status(404).json({ error: "not_found" });
       }
       console.error("GET /api/communication/attachments/:id error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // GET /api/communication/attachments/:id/download
+  // Download the actual file binary (access-checked)
+  router.get("/api/communication/attachments/:id/download", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!isValidUuid(id)) {
+        return res.status(400).json({ error: "invalid_attachment_id" });
+      }
+
+      const { rows } = await pool.query(
+        "SELECT a.file_data, a.mime_type, a.original_filename FROM comm_attachments a " +
+        "JOIN comm_messages m ON m.message_id = a.message_id " +
+        "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+        "WHERE a.attachment_id = $1 " +
+        "AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
+        "LIMIT 1",
+        [id, req.user.sub]
+      );
+
+      if (!rows[0] || !rows[0].file_data) {
+        return res.status(404).json({ error: "not_found" });
+      }
+
+      const row = rows[0];
+      res.set("Content-Type", row.mime_type || "application/octet-stream");
+      const safeName = (row.original_filename || "file").replace(/["\r\n]/g, "");
+      res.set("Content-Disposition", 'inline; filename="' + safeName + '"');
+      res.send(row.file_data);
+    } catch (e) {
+      if (e.code === "42P01") {
+        return res.status(404).json({ error: "not_found" });
+      }
+      console.error("GET /api/communication/attachments/:id/download error", e);
       res.status(500).json({ error: "server_error" });
     }
   });

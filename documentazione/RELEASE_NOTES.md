@@ -1,5 +1,85 @@
 # Release Notes (cumulative)
 
+## v8.16.0
+
+### Badge messaggi non letti in tempo reale
+- Il socket WebSocket viene ora connesso all'avvio dell'app (non solo quando si entra nella pagina Messaggi)
+- Nuovo evento `new_message_notification` emesso alla room `user:{recipientId}` per raggiungere il destinatario ovunque si trovi nell'app
+- Il client ascolta `new_message_notification` e aggiorna il badge nel menu laterale in tempo reale
+- Polling obbligatorio ogni 60 secondi come fallback per garantire l'aggiornamento del badge anche con socket instabili
+- Il badge si aggiorna immediatamente al primo caricamento dell'app
+
+### service_type multi-servizio (TEXT → TEXT[])
+- Migration 017: `service_type` convertito da `TEXT` a `TEXT[]` (array PostgreSQL)
+- Un prodotto può ora appartenere a più servizi (es. `{promo, nutrition}`)
+- I prodotti food/supplement pubblicati vengono automaticamente migrati con `{promo, nutrition}`
+- Backend: tutte le query aggiornate per usare `ANY()` e `unnest()` dove necessario
+- Frontend: badge multipli nella tabella catalogo, filtro compatibile con array, CSV import/export con separatore `|`
+- Seed e insurance: query aggiornate per array
+
+## v8.15.12 (2026-02-12)
+- Feat: **Image cache BYTEA su promo_items** — nuove colonne `image_cached`, `image_cached_mime`, `image_cached_at`, `image_cached_hash` per resilienza URL esterni; endpoint pubblico `GET /api/promo-items/:id/image` serve da cache DB o redirect a URL
+- Feat: **Upload/delete/bulk-cache immagini** — 3 route admin per caricare, eliminare e cachare in bulk le immagini dei prodotti da URL esterni
+- Feat: **Premio assicurativo dinamico** — `POST /api/insurance/quote/:petId` ora legge `base_premium_monthly` e dati piano dal `promo_item` selezionato; `coverage_data` include provider, tier, prevenzione, addons
+- Feat: **Seed demo con piano dal catalogo** — Phase 12 del seed engine ora cerca il miglior piano insurance pubblicato e usa il suo premio base invece del valore hardcoded
+- Feat: **Seed Santevet** — 5 piani assicurativi reali (Light, Confort, Premium Cane, Premium Gatto, Cat Indoor) in `santevet-insurance-seed.json`; script `seed-insurance.js` e route `POST /api/seed/insurance/load-plans`
+- Feat: **Auto-cache immagini** — durante URL validation e seed import, le immagini vengono automaticamente scaricate e cachate nel DB
+- Fix: **SELECT * su promo_items eliminato** — dopo l'aggiunta della colonna BYTEA, tutte le query di lista usano colonne esplicite per evitare di caricare blob in memoria
+- Feat: **Frontend usa endpoint immagine resiliente** — `app-promo.js` ora usa `/api/promo-items/:id/image` per le immagini dei prodotti, con fallback a placeholder
+- SQL: Migration `016_promo_image_cache.sql` — aggiunge colonne BYTEA + metadata per image cache su `promo_items`
+
+## v8.15.11 (2026-02-12)
+- Fix: **Risposta ADA non visibile** — il frontend cercava `data.ai_message` ma il backend restituisce `data.assistant_message`; aggiunto al fallback chain, ora la risposta AI appare immediatamente nella chat
+- Fix: **Centro Privacy flag non persistenti** — i toggle Promozioni/Nutrizione/Assicurazione erano sempre OFF perché il frontend si aspettava un array `consents[]` ma il backend restituisce un oggetto piatto; aggiunto parsing per entrambi i formati (flat + array)
+- Fix: **Filtro catalogo con paginazione** — il server troncava a 100 item max, impedendo al filtro client-side di operare sull'intero catalogo; limite aumentato a 5000
+- Fix: **Pulsante Audit Log nella sezione Debug** — spostato dal card separato al gruppo pulsanti sistema, nell'ordine: Consumo API, Metriche API, Audit Log, Scarica/Cancella ADA.log
+- Fix: **Identificazione mittente nei messaggi** — ora tutti i messaggi (anche i propri) mostrano "Nome (Ruolo)" es. "Paolo Esposito (Veterinario)"; aggiunto sender_name e sender_role anche nel render ottimistico
+- Fix: **ADA troppo insistente nel suggerire il veterinario** — rimossa regola "Raccomanda SEMPRE la consultazione veterinaria"; ADA ora suggerisce la visita SOLO con triage giallo/rosso; per triage verde il disclaimer permanente è sufficiente
+
+## v8.15.10 (2026-02-12)
+- Feat: **WebSocket delivery events con persistenza DB** — gli eventi `message_delivered`, `conversation_seen` e `message_read` ora aggiornano il database (`comm_messages.delivery_status`, `conversation_seen` table) invece di essere solo broadcast; lo stato di consegna (✓/✓✓/✓✓ blu) riflette lo stato reale persistito
+- Feat: **Aggiornamento `last_seen_at` su disconnect** — quando un utente si disconnette dal WebSocket, `users.last_seen_at` viene aggiornato per tracciare l'ultimo accesso
+- Feat: **Coda messaggi offline** — se l'utente è offline durante l'invio di un messaggio, il messaggio viene salvato in IndexedDB (`ADA_COMM_QUEUE`) e inviato automaticamente al ritorno della connessione; icona ⏳ per messaggi in coda
+- Feat: **Allegati file inline** — pulsante 📎 nella chat per inviare immagini, PDF, audio e video (max 10 MB); preview file prima dell'invio; rendering inline nelle bolle (img, audio player, video player, link download per PDF/file)
+- Feat: **Download allegati da DB** — nuovo endpoint `GET /api/communication/attachments/:id/download` che serve il file binario dalla colonna `file_data BYTEA` (Render ha FS effimero); upload ora salva anche `file_data` nel DB
+- SQL: Migration `015_comm_attachments_data.sql` — aggiunge colonna `file_data BYTEA` a `comm_attachments`
+
+## v8.15.9 (2026-02-12)
+- Fix: Creazione conversazione ADA falliva con 403 — `INSERT INTO communication_settings` ora imposta `chatbot_enabled = true` di default, evitando che `requireAiEnabled()` blocchi la creazione AI dopo la visita alle Impostazioni
+- Fix: Badge non letti non si azzerava — aggiunta route `POST /api/communication/conversations/:id/read` che marca tutti i messaggi della conversazione come letti e aggiorna `conversation_seen`
+- Fix: Nome mittente generico "Utente" nei messaggi — `GET /conversations/:id/messages` ora fa JOIN con tabella `users` per restituire `sender_name` e `sender_role`; frontend formatta come "Nome (Veterinario)" o "Nome (Proprietario)"
+- Fix: Conversazione owner→vet senza pet falliva con errore 400 — rimosso il check `pet_id_required_for_human` che bloccava conversazioni umane senza pet associato (il DB accetta NULL)
+- Fix: Pet non visibili a vet/owner — `GET /api/pets` e `GET /api/pets/:pet_id` ora restituiscono tutti i pet per `vet` e `super_admin`, filtrano per `owner_user_id` solo per `owner`
+
+## v8.15.8 (2026-02-12)
+- Feat: **Messaging v2 Unified** — sistema messaggistica unificato WhatsApp-like che fonde chat umana (vet↔owner) e chatbot AI ADA in un'unica interfaccia
+- Feat: Nuova pagina conversazione unificata con lista mista (AI + umano), avatar, badge triage, stato consegna (✓/✓✓/✓✓ blu)
+- Feat: ADA come utente virtuale (`ada-assistant`) — conversazioni AI con triage (green/yellow/red), follow-up chips, banner EU AI Act, spinner "ADA sta pensando..."
+- Feat: Form "Nuova conversazione" unificato con selettore destinatario (🤖 ADA, 👨‍⚕️ Veterinario, 🧑 Proprietario), pet opzionale, oggetto
+- Feat: Separatori data tra messaggi (Oggi/Ieri/data completa), ricerca conversazioni client-side
+- Feat: Reply-to per chat umane con barra preview e riferimento nel messaggio
+- Feat: Soft delete messaggi propri (human chat) con UI "Questo messaggio è stato eliminato"
+- Feat: Web Push notifications con VAPID — subscribe/unsubscribe, preferenze notifica, quiet hours, handler push/notificationclick nel service worker
+- Feat: Sezione "Conversazioni relative a questo paziente" nella pagina Archivio Sanitario
+- SQL: Migration 014_messaging_v2 — ALTER conversations (pet_id nullable, recipient_type, triage_level, message_count), ALTER comm_messages (delivery_status, reply_to, soft delete, ai_role, triage, follow_up_questions), nuove tabelle push_subscriptions/notification_preferences/conversation_seen, migrazione dati da chat_sessions/chat_messages
+- Backend: `push.routes.js` nuovo — VAPID key, subscribe, unsubscribe, preferences, sendPushToUser()
+- Backend: `communication.routes.js` riscritto v2 — integrata logica AI chatbot (OpenAI, triage parsing, model upgrade), supporto recipient_type ai/human, soft delete, delivery status, backward-compatible chatbot endpoints
+- Rimosso: pagina chatbot separata (`page-chatbot`), nav item "La tua assistente ADA", `app-chatbot.js` script tag
+- Rimosso: 'chatbot' da pagine proprietario e super_admin (ora integrato in communication)
+
+## v8.15.7 (2026-02-12)
+- UI: Rimosso bottone "Ricarica" dalla sidebar (tutte le role)
+- Feat: Nuova pagina hub "Gestione" per super_admin — consolida 5 voci sidebar (Gestione Utenti, Gestione Tenant, Policies, Tag Dictionary, Fonti Tips) in una pagina con pulsanti
+- UI: Audit Log spostato nella pagina Debug (visibile solo a super_admin)
+- Fix: Filtri catalogo (priority, image, ext_desc, category, species) ora forzano reload completo da API invece di re-render parziale — risolve bug con dati incompleti quando si era su pagina 2+
+- Fix: Preview catalogo capped a 1000 prodotti con indicatore conteggio totale
+- Fix: Chatbot "Nuova conversazione" — aggiunto fallback `getCurrentPetId()` se nessun pet selezionato, e fix parsing `session_id` dalla risposta backend
+- UI: Pagina acquisto simulata ridisegnata con layout e-commerce moderno (immagine hero, card descrizione, banner disclaimer discreto)
+- Text: "Consigliato per il tuo pet" rinominato in "Consigliato per il tuo amico pet" (4 file)
+
+## v8.15.6 (2026-02-12)
+- Fix: Test login token caching — cached JWT tokens in-memory per email so only the first login per role hits the API; subsequent logins inject the token via `addInitScript` (zero API calls), avoiding production rate limiter (60 req/min) failures when running the full 216-test suite
+
 ## v8.15.5 (2026-02-12)
 - Feat: Eliminati 8 file test sync obsoleti: `smoke.coalescing`, `smoke.data-sync`, `smoke.pets-sync`, `smoke.pull-sync`, `smoke.sync-conflict`, `stress.concurrent-sync`, `deep.pwa-offline`, `smoke.pet-crud`
 - Fix: Helpers test (`api-mocks`, `pages`, `test-data`) — sync functions convertite in no-op per compatibilità con test `@deep`/`@stress`

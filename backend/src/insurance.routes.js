@@ -76,21 +76,39 @@ function insuranceRouter({ requireAuth }) {
       // Compute risk score
       const score = await computeRiskScore(pool, petId);
 
-      // Base premium calculation (simplified)
-      const basePremium = 15.0; // EUR/month
+      // Load insurance plan data from selected promo_item
+      let insData = null;
+      if (promoItemId) {
+        try {
+          const itemResult = await pool.query(
+            "SELECT insurance_data FROM promo_items WHERE promo_item_id = $1 AND 'insurance' = ANY(service_type)",
+            [promoItemId]
+          );
+          const raw = itemResult.rows[0]?.insurance_data;
+          if (raw && typeof raw === 'object') insData = raw;
+        } catch (_e) { /* fallback */ }
+      }
+
+      // Base premium from plan or fallback
+      const basePremium = (insData?.base_premium_monthly) ? Number(insData.base_premium_monthly) : 15.0;
       const monthlyPremium = Math.round(basePremium * score.price_multiplier * 100) / 100;
 
-      // Create policy in "quoted" status
+      // Create policy in "quoted" status with real plan data
       const policyId = "pol_" + randomUUID();
       const { rows } = await pool.query(
         `INSERT INTO insurance_policies (policy_id, pet_id, owner_user_id, tenant_id, promo_item_id, status, monthly_premium, risk_score_id, coverage_data)
          VALUES ($1, $2, $3, $4, $5, 'quoted', $6, $7, $8)
          RETURNING *`,
         [policyId, petId, ownerUserId, tenantId, promoItemId, monthlyPremium, score.score_id, JSON.stringify({
-          type: "base",
-          annual_limit: 5000,
-          deductible: 100,
-          coverage_pct: 80,
+          type: insData?.plan_tier || "base",
+          provider: insData?.provider || "generic",
+          plan_label_it: insData?.plan_label_it || "Base",
+          annual_limit: insData?.annual_limit || 5000,
+          deductible: insData?.deductible || 100,
+          coverage_pct: insData?.coverage_pct || 80,
+          prevention_budget: insData?.prevention_budget || 0,
+          therapeutic_food_max_annual: insData?.therapeutic_food_max_annual || null,
+          addons: insData?.addons || [],
         })]
       );
 

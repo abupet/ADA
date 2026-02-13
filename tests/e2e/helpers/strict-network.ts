@@ -4,6 +4,7 @@ import type { Page, Route, Request } from "@playwright/test";
  * STRICT_NETWORK=1:
  * - Blocca ogni richiesta verso host non in allowlist.
  * - Consente: localhost/127.0.0.1, abupet.github.io + github resources, e protocolli browser-safe.
+ * - Render backends (*.onrender.com): always allowed (needed for deployed tests).
  * - OpenAI:
  *    - consentita SOLO se ALLOW_OPENAI=1
  *
@@ -84,6 +85,9 @@ export async function applyStrictNetwork(page: Page) {
 
     // Allow any subdomain of github.io (rare but can happen)
     if (host.endsWith(".github.io")) return true;
+
+    // Allow Render backends (deployed tests)
+    if (host.endsWith(".onrender.com")) return true;
 
     return false;
   }

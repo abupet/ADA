@@ -162,7 +162,11 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
       // campaigns first (via the bool sort), then NULLs (no campaign), then others.
       const itemsResult = await pool.query(
         `SELECT DISTINCT ON (pi.promo_item_id)
-           pi.*, pc.campaign_id, pc.frequency_cap, pc.utm_campaign, pc.contexts
+           pi.promo_item_id, pi.tenant_id, pi.name, pi.category, pi.species, pi.lifecycle_target,
+           pi.description, pi.extended_description, pi.image_url, pi.product_url,
+           pi.tags_include, pi.tags_exclude, pi.priority, pi.status, pi.service_type,
+           pi.nutrition_data, pi.insurance_data, pi.updated_at,
+           pc.campaign_id, pc.frequency_cap, pc.utm_campaign, pc.contexts
          FROM promo_items pi
          LEFT JOIN campaign_items ci ON ci.promo_item_id = pi.promo_item_id
          LEFT JOIN promo_campaigns pc ON pc.campaign_id = ci.campaign_id
@@ -170,7 +174,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
            AND (pc.start_date IS NULL OR pc.start_date <= CURRENT_DATE)
            AND (pc.end_date IS NULL OR pc.end_date >= CURRENT_DATE)
          WHERE pi.status = 'published'
-           AND ($2::text IS NULL OR pi.service_type = $2)
+           AND ($2::text IS NULL OR $2 = ANY(pi.service_type))
          ORDER BY pi.promo_item_id,
                   (pc.contexts IS NOT NULL AND $1 = ANY(pc.contexts)) DESC NULLS LAST,
                   pi.priority DESC`,
