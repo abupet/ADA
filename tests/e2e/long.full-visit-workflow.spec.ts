@@ -3,7 +3,7 @@ import { login } from "./helpers/login";
 import { captureHardErrors } from "./helpers/console";
 import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected, switchRole, triggerSyncPush } from "./helpers/pages";
-import { testPetName } from "./helpers/test-data";
+import { testPetName, deleteAllUserPets } from "./helpers/test-data";
 
 // ---------------------------------------------------------------------------
 // @long — Full visit workflow: end-to-end simulation of a complete visit
@@ -11,6 +11,8 @@ import { testPetName } from "./helpers/test-data";
 
 test.describe("Long full visit workflow", () => {
   test.setTimeout(600_000); // 10 minutes
+
+  test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
   test("@long Complete vet visit workflow E2E", async ({ page }) => {
     const errors = captureHardErrors(page);

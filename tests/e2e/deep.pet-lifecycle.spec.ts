@@ -3,13 +3,15 @@ import { login } from "./helpers/login";
 import { captureHardErrors } from "./helpers/console";
 import { mockSyncEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected, triggerSyncPush } from "./helpers/pages";
-import { testPetName, waitForEmptyOutbox } from "./helpers/test-data";
+import { testPetName, waitForEmptyOutbox, deleteAllUserPets } from "./helpers/test-data";
 
 // ---------------------------------------------------------------------------
 // @deep — Full pet lifecycle: create, edit, delete, multi-pet
 // ---------------------------------------------------------------------------
 
 test.describe("Deep pet lifecycle", () => {
+
+  test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
   test("@deep Create pet with all fields populated", async ({ page }) => {
     const errors = captureHardErrors(page);
