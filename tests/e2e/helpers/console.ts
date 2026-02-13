@@ -16,6 +16,9 @@ export function captureHardErrors(page: Page) {
     // "Failed to load resource: the server responded with a status of 404 (Not Found)"
     if (/Failed to load resource:.*\b404\b.*Not Found/i.test(text)) return;
 
+    // 429 Too Many Requests — transient rate limiting on deployed backends, not an app bug.
+    if (/Failed to load resource:.*\b429\b/i.test(text)) return;
+
     // WebSocket connection failures are expected in mock/CI mode (no WS server).
     // "WebSocket connection to 'ws://...' failed: ..."
     if (/WebSocket connection to .* failed/i.test(text)) return;
