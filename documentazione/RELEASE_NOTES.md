@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.17.4
+
+### Fix messaggistica: referto, vet_ext, destinatari
+- Fix: **Referto vuoto per destinatario** — il download URL del referto ora estrae correttamente l'attachment_id (secondo UUID nel media_url, non il primo che era il conversation_id); il messaggio di testo viene mostrato separatamente dal link del file
+- Fix: **vet_ext non riesce a creare conversazione** — il pet_id viene ora incluso solo se il pet è nella lista del vet_ext; se il backend rifiuta il pet, la creazione viene ritentata senza pet_id; messaggi di errore specifici per `pet_not_assigned_to_you` e `referral_form_required`
+- Feat: **vet_int può messaggiare vet_ext** — aggiunta opzione "Veterinario Esterno" nel menu destinatari per vet_int e super_admin, che permette di selezionare e inviare messaggi ai vet_ext
+
 ## v8.17.3
 
 ### Bugfix batch 2 (8 issues from v8.17.0 audit)
