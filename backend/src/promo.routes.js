@@ -658,24 +658,50 @@ function promoRouter({ requireAuth }) {
     }
 
     try {
-      const { rows } = await pool.query(
+      // Get tenants with published items (with their service_types)
+      const { rows: publishedRows } = await pool.query(
         `SELECT DISTINCT unnest(pi.service_type) AS service_type, pi.tenant_id, t.name AS tenant_name
          FROM promo_items pi
          JOIN tenants t ON t.tenant_id = pi.tenant_id
          WHERE pi.status = 'published'
-         ORDER BY service_type, t.name`
+         ORDER BY service_type, tenant_name`
+      );
+
+      // Also get ALL active tenants (even without published items)
+      const { rows: allTenants } = await pool.query(
+        `SELECT tenant_id, name AS tenant_name FROM tenants WHERE status = 'active' ORDER BY name`
       );
 
       // Group by service_type
       const serviceMap = {};
-      for (const row of rows) {
+      for (const row of publishedRows) {
         if (!serviceMap[row.service_type]) {
           serviceMap[row.service_type] = { service_type: row.service_type, tenants: [] };
         }
-        serviceMap[row.service_type].tenants.push({
-          tenant_id: row.tenant_id,
-          name: row.tenant_name,
-        });
+        const existing = serviceMap[row.service_type].tenants.find(t => t.tenant_id === row.tenant_id);
+        if (!existing) {
+          serviceMap[row.service_type].tenants.push({
+            tenant_id: row.tenant_id,
+            name: row.tenant_name,
+          });
+        }
+      }
+
+      // Ensure all active tenants appear in default service types
+      const defaultTypes = ['promo', 'nutrition', 'insurance'];
+      for (const dtype of defaultTypes) {
+        if (!serviceMap[dtype]) {
+          serviceMap[dtype] = { service_type: dtype, tenants: [] };
+        }
+        for (const tenant of allTenants) {
+          const exists = serviceMap[dtype].tenants.find(t => t.tenant_id === tenant.tenant_id);
+          if (!exists) {
+            serviceMap[dtype].tenants.push({
+              tenant_id: tenant.tenant_id,
+              name: tenant.tenant_name,
+            });
+          }
+        }
       }
 
       res.json({ services: Object.values(serviceMap) });

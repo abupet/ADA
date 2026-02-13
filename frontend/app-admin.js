@@ -1145,8 +1145,10 @@
                 if (Array.isArray(user.tenants) && user.tenants.length > 0) {
                     tenantInfo = user.tenants.map(function (t) {
                         var tenantName = _tenantsCache.find(function (tc) { return tc.tenant_id === t.tenant_id; });
-                        return _escapeHtml((tenantName ? tenantName.name : t.tenant_id) + ' (' + t.role + ')');
-                    }).join(', ');
+                        var displayName = _escapeHtml((tenantName ? tenantName.name : t.tenant_id) + ' (' + t.role + ')');
+                        return displayName + ' <button class="btn btn-danger" style="padding:2px 6px;font-size:10px;margin-left:4px;" ' +
+                            'onclick="removeTenantFromUser(\'' + _escapeHtml(user.user_id) + '\',\'' + _escapeHtml(t.tenant_id) + '\')">&times;</button>';
+                    }).join('<br>');
                 } else {
                     tenantInfo = '<span style="color:#999;">-</span>';
                 }
@@ -1289,6 +1291,19 @@
             loadSuperadminUsers();
         }).catch(function () {
             if (typeof showToast === 'function') showToast('Errore assegnazione tenant.', 'error');
+        });
+    }
+
+    function removeTenantFromUser(userId, tenantId) {
+        if (!confirm('Rimuovere il tenant dall\'utente?')) return;
+        fetchApi('/api/superadmin/users/' + encodeURIComponent(userId) + '/tenants/' + encodeURIComponent(tenantId), {
+            method: 'DELETE'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            if (typeof showToast === 'function') showToast('Tenant rimosso.', 'success');
+            loadSuperadminUsers();
+        }).catch(function () {
+            if (typeof showToast === 'function') showToast('Errore rimozione tenant.', 'error');
         });
     }
 
@@ -3337,6 +3352,7 @@
     global.toggleUserStatus       = toggleUserStatus;
     global.promptResetPassword    = promptResetPassword;
     global.promptAssignTenant     = promptAssignTenant;
+    global.removeTenantFromUser   = removeTenantFromUser;
     global._onUsersFilterChange   = _onUsersFilterChange;
     // Policies
     global.loadSuperadminPolicies = loadSuperadminPolicies;

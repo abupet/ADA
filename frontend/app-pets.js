@@ -198,7 +198,7 @@ function updateSaveButtonState() {
 
 function _setPetFieldsReadOnly(readonly) {
     var inputIds = ['petName', 'petBreed', 'petBirthdate', 'petMicrochip', 'ownerPhone', 'visitDate'];
-    var selectIds = ['petSpecies', 'petSex', 'petLifestyle', 'petActivityLevel', 'petDietType', 'ownerName', 'ownerReferringVet'];
+    var selectIds = ['petSpecies', 'petSex', 'petLifestyle', 'petActivityLevel', 'petDietType'];
     var textInputIds = ['petDietPreferences', 'petKnownConditions', 'petCurrentMeds', 'petBehaviorNotes', 'petLocation'];
 
     inputIds.concat(textInputIds).forEach(function(id) {
@@ -217,13 +217,30 @@ function _setPetFieldsReadOnly(readonly) {
 // HIDE OWNER/VET DROPDOWNS FOR OWNER ROLE
 // ============================================
 
-function _hideOwnerVetDropdownsIfOwner() {
+function _applyOwnerVetDropdownRules() {
     var _jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+
     if (_jwtRole === 'owner') {
-        ['ownerName', 'ownerReferringVet', 'newOwnerName', 'newOwnerReferringVet'].forEach(function(id) {
+        // Owner: show dropdowns read-only
+        ['ownerName', 'ownerReferringVet', 'newOwnerName', 'newOwnerReferringVet',
+         'editOwnerName', 'editOwnerReferringVet'].forEach(function(id) {
             var el = document.getElementById(id);
-            if (el) { var fg = el.closest('.form-group'); if (fg) fg.style.display = 'none'; }
+            if (el) el.disabled = true;
         });
+    }
+
+    if (_jwtRole === 'vet_ext') {
+        // vet_ext: show dropdowns read-only, hide add/edit/delete buttons
+        ['ownerName', 'ownerReferringVet', 'editOwnerName', 'editOwnerReferringVet'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = true;
+        });
+        var addBtn = document.getElementById('addPetBtn');
+        var editBtn = document.getElementById('btnEditPet');
+        var deleteBtn = document.getElementById('btnDeletePet');
+        if (addBtn) addBtn.style.display = 'none';
+        if (editBtn) editBtn.style.display = 'none';
+        if (deleteBtn) deleteBtn.style.display = 'none';
     }
 }
 
@@ -310,6 +327,12 @@ async function onPetSelectorChange(selectElement) {
 // ============================================
 
 async function saveCurrentPet() {
+    // vet_ext cannot modify pets
+    var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (_jr === 'vet_ext') {
+        if (typeof showToast === 'function') showToast('Il veterinario esterno non può modificare pet', 'error');
+        return;
+    }
     var selector = document.getElementById('petSelector');
     if (!selector || selector.value === '') {
         alert('⚠️ Errore: Nessun pet selezionato.\n\nSeleziona un pet dalla lista prima di salvare.');
@@ -432,7 +455,7 @@ function openAddPetPage() {
     clearNewPetFields();
     navigateToPage('addpet');
     _loadOwnerAndVetDropdowns('newOwnerName', 'newOwnerReferringVet', null, null);
-    _hideOwnerVetDropdownsIfOwner();
+    _applyOwnerVetDropdownRules();
 }
 
 function cancelAddPet() {
@@ -450,6 +473,12 @@ function toggleNewPetLifestyleSection() {
 // ============================================
 
 async function saveNewPet() {
+    // vet_ext cannot create pets
+    var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (_jr === 'vet_ext') {
+        if (typeof showToast === 'function') showToast('Il veterinario esterno non può creare pet', 'error');
+        return;
+    }
     // Validate required fields
     var petName = document.getElementById('newPetName')?.value?.trim() || '';
     var petSpecies = document.getElementById('newPetSpecies')?.value || '';
@@ -582,8 +611,13 @@ function loadPetIntoMainFields(pet) {
     }
     // Load owner/vet dropdowns with current pet's values
     _loadOwnerAndVetDropdowns('ownerName', 'ownerReferringVet', pet.owner_user_id, pet.referring_vet_user_id);
-    // Hide dropdown owner/vet for owner role
-    _hideOwnerVetDropdownsIfOwner();
+    // Proprietario e Vet Esterno always read-only in Dati Pet
+    var _ownerSel = document.getElementById('ownerName');
+    var _vetSel = document.getElementById('ownerReferringVet');
+    if (_ownerSel) _ownerSel.disabled = true;
+    if (_vetSel) _vetSel.disabled = true;
+    // Apply owner/vet_ext dropdown rules
+    _applyOwnerVetDropdownRules();
 }
 
 // ============================================
@@ -744,7 +778,7 @@ async function initMultiPetSystem() {
 
     await updateSelectedPetHeaders();
     updateSaveButtonState();
-    _hideOwnerVetDropdownsIfOwner();
+    _applyOwnerVetDropdownRules();
 }
 
 // ============================================

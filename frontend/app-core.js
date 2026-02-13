@@ -499,7 +499,7 @@ function applyRoleUI(role) {
     const adminSection = document.getElementById('sidebar-admin');
     const testDemoSection = document.getElementById('sidebar-test-demo');
 
-    var showVet = activeRoles.indexOf(ROLE_VETERINARIO) !== -1;
+    var showVet = activeRoles.indexOf(ROLE_VETERINARIO) !== -1 || activeRoles.indexOf('vet_int') !== -1 || activeRoles.indexOf('vet_ext') !== -1;
     var showOwner = activeRoles.indexOf(ROLE_PROPRIETARIO) !== -1;
     var showAdmin = activeRoles.indexOf('admin_brand') !== -1 || activeRoles.indexOf('super_admin') !== -1;
     var showTestDemo = _isSA && activeRoles.indexOf('super_admin') !== -1;
@@ -508,6 +508,11 @@ function applyRoleUI(role) {
     if (ownerSection) ownerSection.style.display = showOwner ? '' : 'none';
     if (adminSection) adminSection.style.display = showAdmin ? '' : 'none';
     if (testDemoSection) testDemoSection.style.display = showTestDemo ? '' : 'none';
+
+    // Hide addpet nav for vet_ext
+    var jwtR = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    var addPetNav = document.querySelector('[data-page="addpet"]');
+    if (addPetNav) addPetNav.style.display = (jwtR === 'vet_ext') ? 'none' : '';
 
     // Show super_admin-only nav items
     var hasSARole = activeRoles.indexOf('super_admin') !== -1;
@@ -1195,6 +1200,15 @@ function openEditPetModal() {
     var currentOwnerId = pet ? pet.owner_user_id : null;
     var currentVetId = pet ? pet.referring_vet_user_id : null;
     _loadOwnerAndVetDropdowns('editOwnerName', 'editOwnerReferringVet', currentOwnerId, currentVetId);
+    // Owner/Vet Esterno: only vet/vet_int/super_admin can edit assignment
+    setTimeout(function() {
+        var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
+        var canEditAssignment = (_jr === 'vet' || _jr === 'vet_int' || _jr === 'super_admin');
+        var eo = document.getElementById('editOwnerName');
+        var ev = document.getElementById('editOwnerReferringVet');
+        if (eo) eo.disabled = !canEditAssignment;
+        if (ev) ev.disabled = !canEditAssignment;
+    }, 100);
 
     // Lifestyle fields
     var lifestyleMapping = {
@@ -1237,6 +1251,12 @@ function toggleEditPetLifestyleSection() {
 }
 
 async function saveEditPet() {
+    // vet_ext cannot modify pets
+    var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (_jr === 'vet_ext') {
+        if (typeof showToast === 'function') showToast('Il veterinario esterno non può modificare pet', 'error');
+        return;
+    }
     var petName = (document.getElementById('editPetName')?.value || '').trim();
     var petSpecies = document.getElementById('editPetSpecies')?.value || '';
 

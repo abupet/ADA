@@ -101,9 +101,13 @@ function commUploadRouter({ requireAuth, upload }) {
           "(message_id, conversation_id, sender_id, type, content, media_url, media_type, media_size_bytes) " +
           "VALUES ($1, $2, $3, $4, $5, $6, $7, $8) " +
           "RETURNING *",
-          [messageId, conversationId, senderId, msgType, safeName, filePath, mime, req.file.size]
+          [messageId, conversationId, senderId, msgType, (req.body && req.body.content) ? req.body.content.trim() : safeName, filePath, mime, req.file.size]
         );
         const newMessage = msgRows[0];
+        // Enrich with sender info for Socket.io
+        newMessage.sender_name = req.user.display_name || req.user.email || "Utente";
+        newMessage.sender_role = req.user.role || null;
+        newMessage.attachment_id = attachmentId;
 
         // 4. Insert attachment detail into comm_attachments (with file_data BYTEA)
         const isImage = mime.startsWith("image/");
@@ -131,6 +135,18 @@ function commUploadRouter({ requireAuth, upload }) {
         const commNs = req.app.get("commNs");
         if (commNs) {
           commNs.to("conv:" + conversationId).emit("new_message", newMessage);
+        }
+
+        // Notify recipient for badge update
+        const recipientUserId = (conversation.owner_user_id === senderId) ? conversation.vet_user_id : conversation.owner_user_id;
+        if (commNs && recipientUserId) {
+          commNs.to("user:" + recipientUserId).emit("new_message_notification", {
+            conversation_id: conversationId,
+            sender_id: senderId,
+            message_id: newMessage.message_id,
+            preview: (newMessage.content || safeName).substring(0, 100),
+            created_at: newMessage.created_at
+          });
         }
 
         res.status(201).json({ message: newMessage, attachment: attRows[0] });
