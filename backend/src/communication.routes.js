@@ -27,11 +27,17 @@ const CHATBOT_SYSTEM_PROMPT = [
   "2. NON fare mai diagnosi. Sei un assistente di triage, non un veterinario.",
   "3. Sii empatico, chiaro e rassicurante.",
   "4. Fai domande mirate per raccogliere informazioni utili al triage.",
-  "5. NON ripetere in ogni messaggio di consultare il veterinario. L'utente vede gi\u00e0 il disclaimer permanente che le informazioni non sostituiscono il parere del veterinario. Suggerisci la visita veterinaria SOLO quando rilevi sintomi sospetti o preoccupanti (triage GIALLO o ROSSO). Per triage VERDE, non menzionare il veterinario a meno che i sintomi non persistano.",
+  "5. REGOLA CRITICA SUL VETERINARIO:",
+  "   - L'utente vede GI\u00c0 un disclaimer permanente: 'le informazioni non sostituiscono il parere del veterinario'.",
+  "   - NON ripetere MAI di consultare il veterinario se il triage \u00e8 VERDE.",
+  "   - NON scrivere frasi come 'ti consiglio di consultare il veterinario', 'sarebbe opportuno far valutare', 'meglio sentire il veterinario', etc. quando la situazione \u00e8 verde.",
+  "   - Suggerisci la visita veterinaria SOLO se rilevi sintomi sospetti o preoccupanti che giustificano un triage GIALLO o ROSSO.",
+  "   - In caso di triage VERDE, concentrati su consigli pratici di monitoraggio casalingo SENZA menzionare il veterinario.",
+  "   - Anche con triage GIALLO, menziona il veterinario UNA SOLA VOLTA, non ripeterlo in ogni messaggio.",
   "",
   "LIVELLI DI TRIAGE:",
-  "- VERDE (green): Situazione da monitorare a casa. Nessuna urgenza immediata.",
-  "- GIALLO (yellow): Consigliata visita veterinaria programmata entro 24-48 ore.",
+  "- VERDE (green): Situazione da monitorare a casa. Nessuna urgenza. NON menzionare il veterinario.",
+  "- GIALLO (yellow): Consigliata visita veterinaria programmata entro 24-48 ore. Menzionalo UNA volta.",
   "- ROSSO (red): EMERGENZA. Consigliare visita veterinaria IMMEDIATA.",
   "",
   "DISCLAIMER (EU AI Act):",
@@ -44,8 +50,8 @@ const CHATBOT_SYSTEM_PROMPT = [
 
 const MOCK_ASSISTANT_RESPONSE = {
   content:
-    "Capisco la tua preoccupazione. Da quello che descrivi, sembra una situazione da monitorare con attenzione. " +
-    "Ti consiglio di osservare il comportamento del tuo animale nelle prossime ore.\n\n" +
+    "Capisco la tua preoccupazione. Da quello che descrivi, sembra una situazione tranquilla da monitorare. " +
+    "Ti consiglio di osservare il comportamento del tuo animale nelle prossime ore e di annotare eventuali cambiamenti.\n\n" +
     '<!--TRIAGE:{"level":"green","action":"monitor","follow_up":["Da quanto tempo noti questi sintomi?","Il tuo animale mangia e beve regolarmente?"]}-->',
   triage: { level: "green", action: "monitor", follow_up: ["Da quanto tempo noti questi sintomi?", "Il tuo animale mangia e beve regolarmente?"] },
 };
@@ -174,10 +180,20 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   router.get("/api/communication/users", requireAuth, async (req, res) => {
     try {
       const roleParam = req.query.role;
-      if (!roleParam || !["vet", "owner"].includes(roleParam)) return res.status(400).json({ error: "invalid_role" });
+      // Map role param to DB roles
+      let dbRoles;
+      if (roleParam === "vet" || roleParam === "vet_int") {
+        dbRoles = ["vet_int"];
+      } else if (roleParam === "vet_ext") {
+        dbRoles = ["vet_ext"];
+      } else if (roleParam === "owner") {
+        dbRoles = ["owner"];
+      } else {
+        return res.status(400).json({ error: "invalid_role" });
+      }
       const { rows } = await pool.query(
-        "SELECT user_id, email, display_name FROM users WHERE base_role = $1 AND status = 'active' AND user_id != $2 ORDER BY display_name, email",
-        [roleParam, req.user.sub]
+        "SELECT user_id, email, display_name, base_role FROM users WHERE base_role = ANY($1) AND status = 'active' AND user_id != $2 ORDER BY display_name, email",
+        [dbRoles, req.user.sub]
       );
       res.json({ users: rows });
     } catch (e) {
@@ -205,17 +221,61 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
     }
   });
 
+  // --- Owner / Vet-ext lookups (for pet data dropdowns) ---
+  router.get("/api/communication/owners", requireAuth, async (req, res) => {
+    try {
+      const { rows } = await pool.query(
+        "SELECT user_id, display_name, email FROM users WHERE base_role = 'owner' AND status = 'active' ORDER BY display_name, email"
+      );
+      res.json({ users: rows });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ users: [] });
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  router.get("/api/communication/vet-exts", requireAuth, async (req, res) => {
+    try {
+      const { rows } = await pool.query(
+        "SELECT user_id, display_name, email FROM users WHERE base_role = 'vet_ext' AND status = 'active' ORDER BY display_name, email"
+      );
+      res.json({ users: rows });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ users: [] });
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // --- Conversations ---
 
   // POST /api/communication/conversations — create (supports both human and AI)
   router.post("/api/communication/conversations", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-      const { pet_id, vet_user_id, owner_override_id, subject, recipient_type } = req.body;
+      const { pet_id, vet_user_id, owner_override_id, subject, recipient_type, referral_form, initial_message } = req.body;
       const recipientType = recipient_type || "human";
+      const callerRole = req.user.role;
 
       // pet_id optional
       if (pet_id && !isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
+
+      // Validate initial_message (required for human conversations)
+      if (recipientType !== "ai" && (!initial_message || typeof initial_message !== "string" || !initial_message.trim())) {
+        return res.status(400).json({ error: "initial_message_required" });
+      }
+
+      // vet_ext validation
+      if (callerRole === "vet_ext" && recipientType !== "ai") {
+        if (!referral_form || typeof referral_form !== "object") {
+          return res.status(400).json({ error: "referral_form_required" });
+        }
+        if (pet_id) {
+          const petCheck = await pool.query("SELECT referring_vet_user_id FROM pets WHERE pet_id = $1", [pet_id]);
+          if (!petCheck.rows[0] || petCheck.rows[0].referring_vet_user_id !== userId) {
+            return res.status(403).json({ error: "pet_not_assigned_to_you" });
+          }
+        }
+      }
 
       const conversationId = crypto.randomUUID();
       let ownerUserId, vetUserId;
@@ -227,7 +287,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         ownerUserId = userId;
         vetUserId = "ada-assistant";
       } else {
-        // Human conversation (existing logic)
+        // Human conversation
         if (owner_override_id && typeof owner_override_id === "string" && owner_override_id.trim()) {
           vetUserId = userId;
           ownerUserId = owner_override_id;
@@ -238,15 +298,15 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       }
 
       const { rows } = await pool.query(
-        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, subject, status, recipient_type) " +
-        "VALUES ($1, $2, $3, $4, $5, 'active', $6) RETURNING *",
-        [conversationId, pet_id || null, ownerUserId, vetUserId, subject || null, recipientType]
+        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, subject, status, recipient_type, referral_form) " +
+        "VALUES ($1, $2, $3, $4, $5, 'active', $6, $7) RETURNING *",
+        [conversationId, pet_id || null, ownerUserId, vetUserId, subject || null, recipientType, referral_form ? JSON.stringify(referral_form) : null]
       );
 
       const conversation = rows[0];
 
-      // AI welcome message
       if (recipientType === "ai") {
+        // AI welcome message
         const welcomeContent = pet_id
           ? "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti con il tuo animale?"
           : "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti?";
@@ -255,6 +315,15 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, delivery_status) " +
           "VALUES ($1, $2, 'ada-assistant', 'text', $3, 'assistant', 'read')",
           [welcomeId, conversationId, welcomeContent]
+        );
+        await pool.query("UPDATE conversations SET message_count = 1, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
+      } else if (initial_message && initial_message.trim()) {
+        // Insert first message for human conversations
+        const firstMsgId = crypto.randomUUID();
+        await pool.query(
+          "INSERT INTO comm_messages (message_id, conversation_id, sender_id, content, type, delivery_status) " +
+          "VALUES ($1, $2, $3, $4, 'text', 'sent')",
+          [firstMsgId, conversationId, userId, initial_message.trim()]
         );
         await pool.query("UPDATE conversations SET message_count = 1, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
       }
@@ -275,12 +344,18 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
       let query = "SELECT c.*, " +
         "p.name AS pet_name, " +
+        "uOwner.display_name AS owner_display_name, " +
+        "uVet.display_name AS vet_display_name, " +
+        "uOwner.base_role AS owner_role, " +
+        "uVet.base_role AS vet_role, " +
         "lm.content AS last_message_text, lm.sender_id AS last_message_sender, " +
         "lm.created_at AS last_message_at, " +
         "COALESCE(ur.cnt, 0)::int AS unread_count, " +
         "COALESCE(mc.msg_count, 0)::int AS total_messages " +
         "FROM conversations c " +
         "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+        "LEFT JOIN users uOwner ON uOwner.user_id = c.owner_user_id " +
+        "LEFT JOIN users uVet ON uVet.user_id = c.vet_user_id " +
         "LEFT JOIN LATERAL (" +
         "  SELECT content, sender_id, created_at FROM comm_messages " +
         "  WHERE conversation_id = c.conversation_id AND deleted_at IS NULL " +
@@ -348,7 +423,20 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       const conversation = await getConversationIfAllowed(id, req.user.sub);
       if (!conversation) return res.status(404).json({ error: "not_found" });
       const { rows } = await pool.query("UPDATE conversations SET status = $1, updated_at = NOW() WHERE conversation_id = $2 RETURNING *", [status, id]);
-      res.json(rows[0]);
+      const updated = rows[0];
+
+      // Notify via WebSocket
+      const commNs = req.app.get("commNs");
+      if (commNs) {
+        const statusPayload = { conversation_id: id, status: status, changed_by: req.user.sub };
+        commNs.to("conv:" + id).emit("conversation_status_changed", statusPayload);
+        const recipientUserId = (updated.owner_user_id === req.user.sub) ? updated.vet_user_id : updated.owner_user_id;
+        if (recipientUserId) {
+          commNs.to("user:" + recipientUserId).emit("conversation_status_changed", statusPayload);
+        }
+      }
+
+      res.json(updated);
     } catch (e) {
       if (e.code === "42P01") return res.status(404).json({ error: "not_found" });
       console.error("PATCH /api/communication/conversations/:id error", e);
@@ -402,6 +490,11 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
       const conversation = await getConversationIfAllowed(id, req.user.sub);
       if (!conversation) return res.status(404).json({ error: "not_found" });
+
+      // Block sending to closed conversations
+      if (conversation.status === "closed" && conversation.recipient_type !== "ai") {
+        return res.status(403).json({ error: "conversation_closed", message: "La conversazione è chiusa. Riaprila per inviare nuovi messaggi." });
+      }
 
       const { content, type, reply_to_message_id } = req.body;
       if (!content || typeof content !== "string" || content.trim().length === 0) return res.status(400).json({ error: "content_required" });
@@ -511,6 +604,9 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         [messageId, id, senderId, content.trim(), messageType, reply_to_message_id || null]
       );
       const newMessage = rows[0];
+      // Enrich with sender info for Socket.io (not in DB RETURNING)
+      newMessage.sender_name = req.user.display_name || req.user.email || "Utente";
+      newMessage.sender_role = req.user.role || null;
 
       await pool.query("UPDATE conversations SET updated_at = NOW() WHERE conversation_id = $1", [id]);
 

@@ -1,5 +1,25 @@
 # Release Notes (cumulative)
 
+## v8.17.0
+
+### Ruoli vet_int/vet_ext, form sintetici referenti, UX messaggi
+- Feat: **Ruoli vet_int e vet_ext** — il ruolo `vet` viene sostituito da `vet_int` (veterinario interno) e `vet_ext` (veterinario esterno/referente); SQL migration 018 migra automaticamente i vet esistenti a vet_int; RBAC middleware aggiornato per backward compatibility
+- Feat: **Form sintetici per vet_ext** — 5 tipologie di form clinici (diagnostica immagini, chirurgia ortopedica, cardiologia, endoscopia/gastro, dermatologia) obbligatori alla creazione di una conversazione da parte di un vet_ext; il form compilato e visibile in cima alla conversazione per entrambi gli interlocutori
+- Feat: **Filtro stato conversazioni** — nuovo dropdown Tutte/Aperte/Chiuse nella lista conversazioni; ogni card mostra attributo data-status
+- Feat: **Chiudi/Riapri conversazione** — pulsanti nella lista e nell'header della conversazione; backend emette evento WebSocket `conversation_status_changed`; invio messaggi bloccato su conversazioni chiuse
+- Feat: **Primo messaggio obbligatorio** — la creazione di una conversazione umana richiede un messaggio iniziale; il backend lo inserisce come primo messaggio della conversazione
+- Feat: **Nome completo nella lista conversazioni** — formato "Nome Cognome (Ruolo)" con JOINs lato backend per display_name
+- Feat: **Follow-up chips AI intelligenti** — domande chiuse (si/no) mostrano pulsanti "Si"/"No", domande aperte pre-popolano l'input con la domanda
+- Feat: **Proprietario e Vet referente nei Dati Pet** — campi Proprietario e Veterinario referente diventano dropdown; nuove API `/api/communication/owners` e `/api/communication/vet-exts`
+- Feat: **Anteprima prodotto completa** — la preview ora carica tutti i prodotti (non solo i 20 della pagina corrente) prima della navigazione
+- Feat: **Novita versione dinamiche** — le release notes nella pagina Info sono ora dinamiche da config.js
+- Feat: **Super admin role selector** — aggiunti checkbox vet_int e vet_ext; ruolo attivo nascosto per tutti tranne super_admin
+- Fix: **Tenant flag nel Centro Privacy** — corretto bug che mostrava "Partner" invece del nome del tenant; il parsing ora flattena correttamente svc.tenants[]
+- Fix: **Sender name/role nei messaggi real-time** — i messaggi via Socket.io ora includono sender_name e sender_role dal DB
+- Fix: **ADA prompt rafforzato** — regole piu forti per non menzionare il veterinario nei triage verdi
+- Feat: **Seed engine aggiornato** — i pet seed vengono ora assegnati a owner e vet_ext random dal DB
+- SQL: Migration `018_vet_roles_and_referral.sql` — migra vet->vet_int, aggiunge referring_vet_user_id a pets, referral_form JSONB a conversations
+
 ## v8.16.2
 
 ### Cleanup pet nei test e2e

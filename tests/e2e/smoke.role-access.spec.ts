@@ -11,9 +11,9 @@ test.describe("Role-based access control", () => {
     await page.locator('.nav-item[data-page="debug"]').click();
     await expect(page.locator("#page-debug")).toBeVisible();
 
-    // Vet: roleToggleLabelBlock and roleToggleContainer should be visible
-    await expect(page.locator("#roleToggleLabelBlock")).toBeVisible();
-    await expect(page.locator("#roleToggleContainer")).toBeVisible();
+    // v8.17.0: role toggle hidden for all except super_admin
+    await expect(page.locator("#roleToggleLabelBlock")).not.toBeVisible();
+    await expect(page.locator("#roleToggleContainer")).not.toBeVisible();
 
     // superAdminRoleSelector should be hidden for non-super_admin
     await expect(page.locator("#superAdminRoleSelector")).not.toBeVisible();
@@ -54,10 +54,10 @@ test.describe("Role-based access control", () => {
     await page.locator('.nav-item[data-page="debug"]').click();
     await expect(page.locator("#page-debug")).toBeVisible();
 
-    // super_admin: checkboxes visible, toggle hidden
+    // super_admin: checkboxes visible, toggle visible (v8.17.0)
     await expect(page.locator("#superAdminRoleSelector")).toBeVisible();
-    await expect(page.locator("#roleToggleLabelBlock")).not.toBeVisible();
-    await expect(page.locator("#roleToggleContainer")).not.toBeVisible();
+    await expect(page.locator("#roleToggleLabelBlock")).toBeVisible();
+    await expect(page.locator("#roleToggleContainer")).toBeVisible();
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });

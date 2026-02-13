@@ -212,7 +212,20 @@
         var sexSel = document.getElementById('newPetSex');
         if (sexSel && !sexSel.value) sexSel.value = _pick(sexOptions);
         _setVal('newPetMicrochip', '380' + String(_rand(100000000000, 999999999999)));
-        _setVal('newOwnerName', ownerNames[ownerIdx]);
+        // Select random owner from dropdown (§9.2)
+        var ownerSel = document.getElementById('newOwnerName');
+        if (ownerSel && ownerSel.options.length > 1) {
+            var randomOwnerIdx = 1 + Math.floor(Math.random() * (ownerSel.options.length - 1));
+            ownerSel.selectedIndex = randomOwnerIdx;
+        } else {
+            _setVal('newOwnerName', ownerNames[ownerIdx]);
+        }
+        // Select random vet_ext from dropdown (70% chance)
+        var vetSel = document.getElementById('newOwnerReferringVet');
+        if (vetSel && vetSel.options.length > 1 && Math.random() > 0.3) {
+            var randomVetIdx = 1 + Math.floor(Math.random() * (vetSel.options.length - 1));
+            vetSel.selectedIndex = randomVetIdx;
+        }
         _setVal('newOwnerPhone', ownerPhones[ownerIdx]);
         _setVal('newVisitDate', _isoDate(new Date()));
 
