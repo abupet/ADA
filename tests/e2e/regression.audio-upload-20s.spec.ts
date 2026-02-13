@@ -1,10 +1,13 @@
-// regression.audio-upload-20s.spec.ts v5
+// regression.audio-upload-20s.spec.ts v6
 import { test, expect } from "./helpers/test-base";
 import { login } from "./helpers/login";
 import { Fixtures } from "./helpers/fixtures";
 import { captureHardErrors } from "./helpers/console";
 
 test("Upload audio breve 20s (fixture) – regression", async ({ page }) => {
+  // Audio upload requires MOCK backend (OpenAI transcription not available on deployed backends).
+  test.skip(process.env.DEPLOYED === "1", "Audio upload requires MOCK backend");
+
   const errors = captureHardErrors(page);
 
   await login(page);
