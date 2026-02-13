@@ -81,8 +81,26 @@ function runMiddleware(middleware, req) {
   const req = mockReq({ sub: "ada-user" }, { "x-ada-role": "vet" });
   const { res, nextCalled } = runMiddleware(mw, req);
   assert.strictEqual(nextCalled, true, "vet should pass");
-  assert.strictEqual(req.promoAuth.role, "vet");
-  console.log("  PASS: legacy JWT ada-user with X-Ada-Role: vet");
+  assert.strictEqual(req.promoAuth.role, "vet_int"); // v8.17.0: vet maps to vet_int
+  console.log("  PASS: legacy JWT ada-user with X-Ada-Role: vet → vet_int");
+})();
+
+(function testLegacyJwtVetInt() {
+  const mw = requireRole(["vet"]);
+  const req = mockReq({ sub: "ada-user" }, { "x-ada-role": "vet_int" });
+  const { res, nextCalled } = runMiddleware(mw, req);
+  assert.strictEqual(nextCalled, true, "vet_int should pass where vet is allowed");
+  assert.strictEqual(req.promoAuth.role, "vet_int");
+  console.log("  PASS: legacy JWT ada-user with X-Ada-Role: vet_int");
+})();
+
+(function testLegacyJwtVetExt() {
+  const mw = requireRole(["vet"]);
+  const req = mockReq({ sub: "ada-user" }, { "x-ada-role": "vet_ext" });
+  const { res, nextCalled } = runMiddleware(mw, req);
+  assert.strictEqual(nextCalled, true, "vet_ext should pass where vet is allowed");
+  assert.strictEqual(req.promoAuth.role, "vet_ext");
+  console.log("  PASS: legacy JWT ada-user with X-Ada-Role: vet_ext");
 })();
 
 (function testLegacyJwtForbidden() {
@@ -164,6 +182,25 @@ function runMiddleware(middleware, req) {
   assert.strictEqual(nextCalled, true);
   assert.strictEqual(req.promoAuth.tenantId, "t1", "admin_brand gets JWT tenant when no param");
   console.log("  PASS: admin_brand without tenantId param -> uses JWT tenantId");
+})();
+
+// v8.17.0: V2 JWT vet_int/vet_ext allowed where 'vet' is in allowedRoles
+(function testV2JwtVetIntAllowedAsVet() {
+  const mw = requireRole(["vet"]);
+  const req = mockReq({ sub: "vet-1", role: "vet_int" }, {}, {});
+  const { res, nextCalled } = runMiddleware(mw, req);
+  assert.strictEqual(nextCalled, true, "vet_int allowed where vet is expected");
+  assert.strictEqual(req.promoAuth.role, "vet_int");
+  console.log("  PASS: V2 JWT vet_int allowed where 'vet' in allowedRoles");
+})();
+
+(function testV2JwtVetExtAllowedAsVet() {
+  const mw = requireRole(["vet"]);
+  const req = mockReq({ sub: "vet-2", role: "vet_ext" }, {}, {});
+  const { res, nextCalled } = runMiddleware(mw, req);
+  assert.strictEqual(nextCalled, true, "vet_ext allowed where vet is expected");
+  assert.strictEqual(req.promoAuth.role, "vet_ext");
+  console.log("  PASS: V2 JWT vet_ext allowed where 'vet' in allowedRoles");
 })();
 
 console.log("OK rbac.middleware.test.js");
