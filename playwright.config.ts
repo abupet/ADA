@@ -22,7 +22,9 @@ export default defineConfig({
   expect: { timeout: isDeployed ? 20_000 : 10_000 },
 
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // Deployed mode: 1 worker to avoid rate-limiting on deployed backends (60 req/min default).
+  // Local CI: 2 workers for speed (backend has RATE_LIMIT_PER_MIN=600).
+  workers: isDeployed ? 1 : (process.env.CI ? 2 : undefined),
 
   use: {
     baseURL,
