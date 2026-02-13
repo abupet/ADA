@@ -215,6 +215,60 @@ async function initApp() {
     } catch(e) { console.warn('[CORE] Communication init failed:', e); }
 }
 
+function makeFilterableSelect(selectId) {
+    var select = document.getElementById(selectId);
+    if (!select || select.dataset.filterable === 'true') return;
+    select.dataset.filterable = 'true';
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative;width:100%;';
+    select.parentNode.insertBefore(wrapper, select);
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Cerca...';
+    input.style.cssText = 'width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;';
+    var dropdown = document.createElement('div');
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#fff;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px;z-index:1000;display:none;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+    wrapper.appendChild(input);
+    wrapper.appendChild(dropdown);
+    select.style.display = 'none';
+    function updateDropdown() {
+        var filter = input.value.toLowerCase();
+        var html = '';
+        for (var i = 0; i < select.options.length; i++) {
+            var opt = select.options[i];
+            if (!filter || opt.text.toLowerCase().indexOf(filter) !== -1) {
+                var bg = opt.value === select.value ? '#e8f0fe' : '#fff';
+                html += '<div data-value="' + opt.value + '" style="padding:8px 12px;cursor:pointer;font-size:13px;background:' + bg + ';" onmouseover="this.style.background=\'#f0f4ff\'" onmouseout="this.style.background=\'' + bg + '\'">' + opt.text + '</div>';
+            }
+        }
+        dropdown.innerHTML = html || '<div style="padding:8px 12px;color:#999;">Nessun risultato</div>';
+        dropdown.style.display = '';
+    }
+    input.addEventListener('focus', updateDropdown);
+    input.addEventListener('input', updateDropdown);
+    dropdown.addEventListener('click', function(e) {
+        var target = e.target.closest ? e.target.closest('[data-value]') : e.target;
+        while (target && !target.dataset.value) target = target.parentElement;
+        if (target && target.dataset.value !== undefined) {
+            select.value = target.dataset.value;
+            input.value = target.textContent;
+            dropdown.style.display = 'none';
+            select.dispatchEvent(new Event('change'));
+        }
+    });
+    document.addEventListener('click', function(e) {
+        if (!wrapper.contains(e.target)) dropdown.style.display = 'none';
+    });
+    if (select.selectedIndex > 0) input.value = select.options[select.selectedIndex].text;
+}
+
+function formatUserNameWithRole(displayName, role) {
+    var name = displayName || '';
+    if (role === 'vet_int') return name + ' (Vet. interno)';
+    if (role === 'vet_ext') return name + ' (Vet. esterno)';
+    return name;
+}
+
 function applyVersionInfo() {
     const versionEl = document.getElementById('appVersion');
     const releaseNotesEl = document.getElementById('appReleaseNotesVersion');
@@ -470,11 +524,11 @@ function applyRoleUI(role) {
     if (icon) icon.textContent = roleIcons[r] || '🩺';
     if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
 
-    // Hide role toggle for all except super_admin (§7.1)
+    // Hide role toggle button and label for all users
     var roleToggleContainer = document.getElementById('roleToggleContainer');
     var roleToggleLabelBlock = document.getElementById('roleToggleLabelBlock');
-    if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? '' : 'none';
-    if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? '' : 'none';
+    if (roleToggleContainer) roleToggleContainer.style.display = 'none';
+    if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = 'none';
 
     // Show super_admin role selector (checkboxes) if user is super_admin
     var saSelector = document.getElementById('superAdminRoleSelector');
@@ -482,7 +536,7 @@ function applyRoleUI(role) {
         saSelector.style.display = _isSA ? '' : 'none';
         // Sync checkbox states
         if (_isSA) {
-            var cbMap = { 'saRoleVet': 'veterinario', 'saRoleVetInt': 'vet_int', 'saRoleVetExt': 'vet_ext', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+            var cbMap = { 'saRoleVetInt': 'vet_int', 'saRoleVetExt': 'vet_ext', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
             Object.keys(cbMap).forEach(function(cbId) {
                 var cb = document.getElementById(cbId);
                 if (cb) cb.checked = activeRoles.indexOf(cbMap[cbId]) !== -1;
@@ -546,9 +600,9 @@ function initRoleSystem() {
         } else if (jwtRole === 'admin_brand') {
             setActiveRole('admin_brand');
         } else if (jwtRole === 'super_admin') {
-            // super_admin: default to veterinario + super_admin on first login
+            // super_admin: default to vet_int + super_admin on first login
             if (typeof setActiveRoles === 'function') {
-                setActiveRoles(['veterinario', 'super_admin']);
+                setActiveRoles(['vet_int', 'super_admin']);
             } else {
                 setActiveRole(ROLE_VETERINARIO);
             }
@@ -1083,7 +1137,7 @@ function onSuperAdminRoleChange(role) {
 }
 
 function onSuperAdminRoleToggle() {
-    var cbMap = { 'saRoleVet': 'veterinario', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+    var cbMap = { 'saRoleVetInt': 'vet_int', 'saRoleVetExt': 'vet_ext', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
     var selected = [];
     Object.keys(cbMap).forEach(function(cbId) {
         var cb = document.getElementById(cbId);
@@ -1091,8 +1145,8 @@ function onSuperAdminRoleToggle() {
     });
     // Ensure at least one role is selected
     if (selected.length === 0) {
-        selected = ['veterinario'];
-        var vetCb = document.getElementById('saRoleVet');
+        selected = ['vet_int'];
+        var vetCb = document.getElementById('saRoleVetInt');
         if (vetCb) vetCb.checked = true;
     }
     if (typeof setActiveRoles === 'function') {
@@ -1100,7 +1154,8 @@ function onSuperAdminRoleToggle() {
     }
     applyRoleUI(selected[0]);
     var labels = {
-        'veterinario': 'Veterinario',
+        'vet_int': 'Vet Interno',
+        'vet_ext': 'Vet Esterno',
         'proprietario': 'Proprietario',
         'admin_brand': 'Admin Brand',
         'super_admin': 'Super Admin'

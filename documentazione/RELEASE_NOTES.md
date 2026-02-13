@@ -1,5 +1,28 @@
 # Release Notes (cumulative)
 
+## v8.17.2
+
+### Bugfix batch (20 issues from v8.17.0 audit)
+- Fix: **Messaggio doppio** — il WebSocket handler ora ignora i propri messaggi (già renderizzati ottimisticamente), eliminando la duplicazione (BUG 8)
+- Fix: **Ruoli vet_int/vet_ext non validi** — aggiunto vet_int e vet_ext a validRoles in dashboard.routes.js per creazione/modifica utenti (BUG 3)
+- Fix: **debugEnabled → debugLogEnabled** — il pulsante TEST ora appare correttamente quando Debug è attivo (BUG 13)
+- Fix: **ADA non risponde al primo messaggio** — quando si crea una conversazione AI con messaggio iniziale, ADA genera subito una risposta (BUG 17)
+- Fix: **Conversazione chiusa appare aperta** — il backend GET messages ora restituisce status, subject, referral_form, pet_name e triage_level (BUG 12)
+- Fix: **Form referral non visibile** — il referral_form viene ora parsato da stringa JSON e visualizzato correttamente (BUG 14)
+- Fix: **Referto non apribile dal destinatario** — le query di accesso documenti ora verificano owner_user_id, pet owner e referring_vet (BUG 11)
+- Fix: **Filtro utenti perde focus** — separato rendering tabella da rendering pagina in Gestione Utenti (BUG 4)
+- Fix: **Dropdown Proprietario/Vet vuoti in Dati Pet** — loadPetIntoMainFields ora carica i dropdown (BUG 2)
+- Fix: **Owner non può eliminare pet** — nascosti dropdown owner/vet per ruolo owner, forzato ownerUserId=null (BUG 1)
+- Fix: **Input conversazione chiusa** — textarea disabilitata con placeholder informativo (BUG 9)
+- Fix: **Badge Messaggi non appare** — socket e polling inizializzati all'avvio app, polling ridotto a 30s (BUG 10)
+- Fix: **Super admin role selector** — rimosso checkbox Veterinario, aggiornato cbMap per vet_int/vet_ext, roleToggle nascosto per tutti (BUG 5)
+- Fix: **Account prima sezione** — spostato consent banner dopo Account card in Impostazioni (BUG 6)
+- Feat: **Dropdown filtrabili** — nuova utility makeFilterableSelect per dropdown utenti con ricerca testuale (BUG 16)
+- Feat: **Label ruolo nelle liste** — formatUserNameWithRole mostra "(Vet. interno)" o "(Vet. esterno)" accanto ai nomi (BUG 18)
+- Fix: **Campo Animale rimosso** — il form nuova conversazione usa automaticamente il pet selezionato (BUG 15)
+- Nota: BUG 7 (consent flags) è un problema di dati DB (solo un tenant con prodotti), non un bug del codice
+- Nota: BUG 19 (preview limit) e BUG 20 (form obbligatorio vet_ext) erano già risolti
+
 ## v8.17.1
 
 ### Bugfix pet CRUD per vet, edit pet dropdown, gestione utenti migliorata

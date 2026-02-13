@@ -920,9 +920,6 @@
                     <h2>⚙️ Impostazioni</h2>
 
                 </div>
-                <!-- Consent banner (PR 3) -->
-                <div id="settings-consent-container"></div>
-
                 <!-- Account Info Card (visible to all users) -->
                 <div class="card" id="settingsAccountCard" data-testid="account-info-card">
                     <h3>Il mio Account</h3>
@@ -945,6 +942,9 @@
                     </div>
                     <button class="btn btn-secondary" onclick="openChangePasswordModal()" data-testid="change-password-button">🔒 Cambia Password</button>
                 </div>
+
+                <!-- Consent banner (PR 3) — after account card -->
+                <div id="settings-consent-container"></div>
 
                 <div class="card" id="settingsSpeakersCard">
                     <button class="section-toggle" onclick="toggleSpeakersSection()" data-testid="toggle-speakers-section-button">
@@ -1180,11 +1180,7 @@
                         </button>
                     </div>
                     <div id="superAdminRoleSelector" style="display:none; margin-top:10px;">
-                        <label id="superAdminRoleSelectorLabel" style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Ruoli attivi (super admin)</label>
                         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
-                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
-                                <input type="checkbox" id="saRoleVet" value="veterinario" onchange="onSuperAdminRoleToggle()"> 🩺 Veterinario
-                            </label>
                             <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
                                 <input type="checkbox" id="saRoleVetInt" value="vet_int" onchange="onSuperAdminRoleToggle()"> 🩺 Vet Interno
                             </label>

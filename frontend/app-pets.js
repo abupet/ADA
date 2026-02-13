@@ -214,6 +214,20 @@ function _setPetFieldsReadOnly(readonly) {
 }
 
 // ============================================
+// HIDE OWNER/VET DROPDOWNS FOR OWNER ROLE
+// ============================================
+
+function _hideOwnerVetDropdownsIfOwner() {
+    var _jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (_jwtRole === 'owner') {
+        ['ownerName', 'ownerReferringVet', 'newOwnerName', 'newOwnerReferringVet'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) { var fg = el.closest('.form-group'); if (fg) fg.style.display = 'none'; }
+        });
+    }
+}
+
+// ============================================
 // OWNER / VET_EXT DROPDOWN LOADERS (§6)
 // ============================================
 
@@ -228,9 +242,11 @@ async function _loadOwnerAndVetDropdowns(ownerSelectId, vetSelectId, currentOwne
                 var html = '<option value="">-- Seleziona proprietario --</option>';
                 (data.users || []).forEach(function(u) {
                     var selected = (u.user_id === currentOwnerId) ? ' selected' : '';
-                    html += '<option value="' + u.user_id + '"' + selected + '>' + (u.display_name || u.email) + '</option>';
+                    var label = typeof formatUserNameWithRole === 'function' ? formatUserNameWithRole(u.display_name || u.email, u.base_role || u.role) : (u.display_name || u.email);
+                    html += '<option value="' + u.user_id + '"' + selected + '>' + label + '</option>';
                 });
                 ownerSel.innerHTML = html;
+                if (typeof makeFilterableSelect === 'function') makeFilterableSelect(ownerSelectId);
             }
         }
     } catch (e) { console.error('Load owners error', e); }
@@ -244,9 +260,11 @@ async function _loadOwnerAndVetDropdowns(ownerSelectId, vetSelectId, currentOwne
                 var html2 = '<option value="">— Nessuno —</option>';
                 (data2.users || []).forEach(function(u) {
                     var selected = (u.user_id === currentVetId) ? ' selected' : '';
-                    html2 += '<option value="' + u.user_id + '"' + selected + '>' + (u.display_name || u.email) + '</option>';
+                    var label = typeof formatUserNameWithRole === 'function' ? formatUserNameWithRole(u.display_name || u.email, u.base_role || u.role) : (u.display_name || u.email);
+                    html2 += '<option value="' + u.user_id + '"' + selected + '>' + label + '</option>';
                 });
                 vetSel.innerHTML = html2;
+                if (typeof makeFilterableSelect === 'function') makeFilterableSelect(vetSelectId);
             }
         }
     } catch (e) { console.error('Load vet_exts error', e); }
@@ -322,6 +340,9 @@ async function saveCurrentPet() {
     // Read owner/vet dropdowns (§6)
     var ownerUserId = (document.getElementById('ownerName') || {}).value || null;
     var referringVetUserId = (document.getElementById('ownerReferringVet') || {}).value || null;
+    // Owner role: force null so backend uses JWT sub
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (jwtRole === 'owner') { ownerUserId = null; referringVetUserId = null; }
 
     var patch = {
         name: patient.petName,
@@ -411,6 +432,7 @@ function openAddPetPage() {
     clearNewPetFields();
     navigateToPage('addpet');
     _loadOwnerAndVetDropdowns('newOwnerName', 'newOwnerReferringVet', null, null);
+    _hideOwnerVetDropdownsIfOwner();
 }
 
 function cancelAddPet() {
@@ -449,6 +471,9 @@ async function saveNewPet() {
     // Read owner/vet dropdowns (§6)
     var ownerUserId = (document.getElementById('newOwnerName') || {}).value || null;
     var referringVetUserId = (document.getElementById('newOwnerReferringVet') || {}).value || null;
+    // Owner role: force null so backend uses JWT sub
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (jwtRole === 'owner') { ownerUserId = null; referringVetUserId = null; }
 
     var body = {
         name: patient.petName,
@@ -555,6 +580,10 @@ function loadPetIntoMainFields(pet) {
     if (typeof updateVitalsChart === 'function') {
         updateVitalsChart();
     }
+    // Load owner/vet dropdowns with current pet's values
+    _loadOwnerAndVetDropdowns('ownerName', 'ownerReferringVet', pet.owner_user_id, pet.referring_vet_user_id);
+    // Hide dropdown owner/vet for owner role
+    _hideOwnerVetDropdownsIfOwner();
 }
 
 // ============================================
@@ -715,6 +744,7 @@ async function initMultiPetSystem() {
 
     await updateSelectedPetHeaders();
     updateSaveButtonState();
+    _hideOwnerVetDropdownsIfOwner();
 }
 
 // ============================================

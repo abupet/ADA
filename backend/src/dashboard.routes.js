@@ -1387,7 +1387,7 @@ function dashboardRouter({ requireAuth }) {
           return res.status(400).json({ error: "email_and_password_required" });
         }
 
-        const validRoles = ["owner", "vet", "admin_brand", "super_admin"];
+        const validRoles = ["owner", "vet", "vet_int", "vet_ext", "admin_brand", "super_admin"];
         const role = validRoles.includes(base_role) ? base_role : "owner";
 
         const bcrypt = require("bcryptjs");
@@ -1431,7 +1431,7 @@ function dashboardRouter({ requireAuth }) {
         for (const key of allowed) {
           if (Object.prototype.hasOwnProperty.call(patch, key)) {
             if (key === "base_role") {
-              const validRoles = ["owner", "vet", "admin_brand", "super_admin"];
+              const validRoles = ["owner", "vet", "vet_int", "vet_ext", "admin_brand", "super_admin"];
               if (!validRoles.includes(patch[key])) continue;
             }
             if (key === "status") {
