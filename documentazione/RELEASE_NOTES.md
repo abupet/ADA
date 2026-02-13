@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.16.1
+
+### Nightly CI (REAL) stabilizzazione
+- Fix: **Rate limiting su backend deployed** — Playwright ora usa 1 worker in modalità deployed (era 2) per evitare di superare il rate limit di 60 req/min del backend; il login helper ha retry con backoff esponenziale (2s→4s→8s) fino a 3 tentativi in modalità deployed
+- Fix: **Audio upload skip in deployed mode** — I test di regressione audio (`regression.audio-upload-20s`, `regression.audio-upload-100s`) vengono ora saltati in modalità DEPLOYED perché richiedono la trascrizione OpenAI disponibile solo in MOCK mode
+- Fix: **Browser crash flaky** — La riduzione a 1 worker elimina la contesa di risorse che causava "browser has been closed" e "browserContext.close: Test ended" sui test super_admin
+
 ## v8.16.0
 
 ### Badge messaggi non letti in tempo reale

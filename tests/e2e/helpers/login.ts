@@ -59,11 +59,14 @@ export async function login(
   }
 
   // --- Slow path: full UI login (first call per email) ---
-  const retries = options?.retries ?? 1;
+  // Deployed backends have lower rate limits; allow more retries with backoff.
+  const isDeployed = process.env.DEPLOYED === "1";
+  const retries = options?.retries ?? (isDeployed ? 3 : 1);
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
-      await page.waitForTimeout(1000);
+      // Exponential backoff: 2s, 4s, 8s — gives the rate limiter time to reset.
+      await page.waitForTimeout(Math.min(2000 * Math.pow(2, attempt - 1), 10_000));
     }
 
     await gotoApp(page);
