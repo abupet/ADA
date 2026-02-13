@@ -923,7 +923,18 @@
                 var svcType = svc.service_type || svc.type;
                 if (!svcType) return;
                 if (!tenantsByType[svcType]) tenantsByType[svcType] = [];
-                tenantsByType[svcType].push(svc);
+                // Fix §13: flatten tenants from each service object
+                if (Array.isArray(svc.tenants)) {
+                    svc.tenants.forEach(function(t) {
+                        tenantsByType[svcType].push({
+                            tenant_id: t.tenant_id,
+                            tenant_name: t.name || t.tenant_name || t.brand_name,
+                            name: t.name || t.tenant_name || t.brand_name
+                        });
+                    });
+                } else {
+                    tenantsByType[svcType].push(svc);
+                }
             });
 
             var html = [

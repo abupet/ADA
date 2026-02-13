@@ -197,8 +197,8 @@ function updateSaveButtonState() {
 }
 
 function _setPetFieldsReadOnly(readonly) {
-    var inputIds = ['petName', 'petBreed', 'petBirthdate', 'petMicrochip', 'ownerName', 'ownerPhone', 'visitDate'];
-    var selectIds = ['petSpecies', 'petSex', 'petLifestyle', 'petActivityLevel', 'petDietType'];
+    var inputIds = ['petName', 'petBreed', 'petBirthdate', 'petMicrochip', 'ownerPhone', 'visitDate'];
+    var selectIds = ['petSpecies', 'petSex', 'petLifestyle', 'petActivityLevel', 'petDietType', 'ownerName', 'ownerReferringVet'];
     var textInputIds = ['petDietPreferences', 'petKnownConditions', 'petCurrentMeds', 'petBehaviorNotes', 'petLocation'];
 
     inputIds.concat(textInputIds).forEach(function(id) {
@@ -211,6 +211,45 @@ function _setPetFieldsReadOnly(readonly) {
     });
     var hh = document.getElementById('petHousehold');
     if (hh) hh.disabled = readonly;
+}
+
+// ============================================
+// OWNER / VET_EXT DROPDOWN LOADERS (§6)
+// ============================================
+
+async function _loadOwnerAndVetDropdowns(ownerSelectId, vetSelectId, currentOwnerId, currentVetId) {
+    // Load owners
+    try {
+        var resp = await fetchApi('/api/communication/owners', { method: 'GET' });
+        if (resp && resp.ok) {
+            var data = await resp.json();
+            var ownerSel = document.getElementById(ownerSelectId);
+            if (ownerSel) {
+                var html = '<option value="">-- Seleziona proprietario --</option>';
+                (data.users || []).forEach(function(u) {
+                    var selected = (u.user_id === currentOwnerId) ? ' selected' : '';
+                    html += '<option value="' + u.user_id + '"' + selected + '>' + (u.display_name || u.email) + '</option>';
+                });
+                ownerSel.innerHTML = html;
+            }
+        }
+    } catch (e) { console.error('Load owners error', e); }
+    // Load vet_ext
+    try {
+        var resp2 = await fetchApi('/api/communication/vet-exts', { method: 'GET' });
+        if (resp2 && resp2.ok) {
+            var data2 = await resp2.json();
+            var vetSel = document.getElementById(vetSelectId);
+            if (vetSel) {
+                var html2 = '<option value="">— Nessuno —</option>';
+                (data2.users || []).forEach(function(u) {
+                    var selected = (u.user_id === currentVetId) ? ' selected' : '';
+                    html2 += '<option value="' + u.user_id + '"' + selected + '>' + (u.display_name || u.email) + '</option>';
+                });
+                vetSel.innerHTML = html2;
+            }
+        }
+    } catch (e) { console.error('Load vet_exts error', e); }
 }
 
 // ============================================
@@ -230,6 +269,8 @@ async function onPetSelectorChange(selectElement) {
             currentPetId = value;
             localStorage.setItem('ada_current_pet_id', value);
             loadPetIntoMainFields(pet);
+            // Load owner/vet dropdowns with current pet's values
+            _loadOwnerAndVetDropdowns('ownerName', 'ownerReferringVet', pet.owner_user_id, pet.referring_vet_user_id);
         }
     }
 
@@ -278,6 +319,10 @@ async function saveCurrentPet() {
     var isVet = (typeof getActiveRole === 'function') && getActiveRole() === ROLE_VETERINARIO;
     var diaryVal = document.getElementById('diaryText')?.value || '';
 
+    // Read owner/vet dropdowns (§6)
+    var ownerUserId = (document.getElementById('ownerName') || {}).value || null;
+    var referringVetUserId = (document.getElementById('ownerReferringVet') || {}).value || null;
+
     var patch = {
         name: patient.petName,
         species: patient.petSpecies,
@@ -295,7 +340,9 @@ async function saveCurrentPet() {
         history_data: historyData,
         photos: photos,
         photos_count: photos.length,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        owner_user_id: ownerUserId,
+        referring_vet_user_id: referringVetUserId
     };
     if (isVet) { patch.notes = diaryVal; } else { patch.owner_diary = diaryVal; }
 
@@ -363,6 +410,7 @@ async function deleteCurrentPet() {
 function openAddPetPage() {
     clearNewPetFields();
     navigateToPage('addpet');
+    _loadOwnerAndVetDropdowns('newOwnerName', 'newOwnerReferringVet', null, null);
 }
 
 function cancelAddPet() {
@@ -398,6 +446,10 @@ async function saveNewPet() {
     var patient = getNewPetPatientData();
     var lifestyle = getNewPetLifestyleData();
 
+    // Read owner/vet dropdowns (§6)
+    var ownerUserId = (document.getElementById('newOwnerName') || {}).value || null;
+    var referringVetUserId = (document.getElementById('newOwnerReferringVet') || {}).value || null;
+
     var body = {
         name: patient.petName,
         species: patient.petSpecies,
@@ -409,7 +461,9 @@ async function saveNewPet() {
         microchip: patient.petMicrochip || null,
         visit_date: patient.visitDate || null,
         lifestyle: lifestyle,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        owner_user_id: ownerUserId,
+        referring_vet_user_id: referringVetUserId
     };
 
     try {
@@ -508,7 +562,7 @@ function loadPetIntoMainFields(pet) {
 // ============================================
 
 function clearNewPetFields() {
-    var fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetAge', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerPhone', 'newVisitDate',
+    var fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetAge', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerReferringVet', 'newOwnerPhone', 'newVisitDate',
                     'newPetLifestyle', 'newPetActivityLevel', 'newPetDietType', 'newPetDietPreferences', 'newPetKnownConditions', 'newPetCurrentMeds', 'newPetBehaviorNotes', 'newPetSeasonContext', 'newPetLocation'];
     fields.forEach(function(id) {
         var el = document.getElementById(id);

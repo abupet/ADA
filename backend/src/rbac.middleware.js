@@ -25,17 +25,26 @@ function requireRole(allowedRoles) {
 
     // Legacy JWT (single-user auth)
     if (user.sub === "ada-user") {
-      const legacyRole =
-        req.headers["x-ada-role"] === "vet" ? "vet" : "owner";
-      if (!allowedRoles.includes(legacyRole)) {
+      const headerRole = req.headers["x-ada-role"] || "";
+      const legacyRole = (headerRole === "vet" || headerRole === "vet_int" || headerRole === "vet_ext") ? headerRole : "owner";
+      // Map legacy 'vet' to 'vet_int' for new role system
+      const effectiveRole = legacyRole === "vet" ? "vet_int" : legacyRole;
+      // Check if allowed (accept both old 'vet' and new 'vet_int'/'vet_ext')
+      const isAllowed = allowedRoles.includes(effectiveRole) ||
+        (effectiveRole === "vet_int" && allowedRoles.includes("vet")) ||
+        (legacyRole === "vet" && (allowedRoles.includes("vet_int") || allowedRoles.includes("vet_ext")));
+      if (!isAllowed) {
         return res.status(403).json({ error: "forbidden" });
       }
-      req.promoAuth = { userId: "ada-user", role: legacyRole, tenantId: null };
+      req.promoAuth = { userId: "ada-user", role: effectiveRole, tenantId: null };
       return next();
     }
 
-    // V2 JWT
-    if (!allowedRoles.includes(user.role)) {
+    // V2 JWT — map vet_int/vet_ext to match routes that use 'vet'
+    const userRole = user.role;
+    const roleAllowed = allowedRoles.includes(userRole) ||
+      ((userRole === "vet_int" || userRole === "vet_ext") && allowedRoles.includes("vet"));
+    if (!roleAllowed) {
       return res.status(403).json({ error: "forbidden" });
     }
 

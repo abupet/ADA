@@ -2646,10 +2646,32 @@
     var _previewIndex = 0;
     var _previewTotalBeforeCap = 0;
 
-    function previewPromoItem(itemId) {
+    async function previewPromoItem(itemId) {
+        var originalItems = _catalogItems;
+
+        // Load all items if paginated (§11)
+        if (_catalogItems.length < _catalogTotal) {
+            try {
+                var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+                if (tenantId) {
+                    var statusParam = _catalogStatusFilter ? '&status=' + _catalogStatusFilter : '';
+                    var searchParam = _catalogSearchTerm ? '&search=' + encodeURIComponent(_catalogSearchTerm) : '';
+                    var resp = await fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items?page=1&limit=9999' + statusParam + searchParam);
+                    if (resp && resp.ok) {
+                        var data = await resp.json();
+                        _catalogItems = data.items || [];
+                    }
+                }
+            } catch (e) { console.error('Preview load all error:', e); }
+        }
+
         _filteredPreviewItems = _getFilteredCatalogItems();
         _previewTotalBeforeCap = _filteredPreviewItems.length;
         if (_filteredPreviewItems.length > 1000) _filteredPreviewItems = _filteredPreviewItems.slice(0, 1000);
+
+        // Restore original items for table paging
+        _catalogItems = originalItems;
+
         if (itemId) {
             var idx = _filteredPreviewItems.findIndex(function (i) { return i.promo_item_id === itemId; });
             if (idx >= 0) _previewIndex = idx;

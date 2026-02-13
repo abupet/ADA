@@ -73,7 +73,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.16.2';
+const ADA_VERSION = '8.17.0';
+const ADA_RELEASE_NOTES = 'Form sintetici per veterinari referenti, ruoli vet_int/vet_ext, chiudi/riapri conversazioni, filtro stato, primo messaggio obbligatorio, proprietario e vet referente nei Dati Pet.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -125,6 +126,12 @@ function getActiveRole() {
                 // Default: last saved or veterinario
                 return stored || ROLE_VETERINARIO;
             }
+        }
+        // For vet_int/vet_ext JWT roles, default to veterinario
+        if (typeof getJwtRole === 'function') {
+            var jr = getJwtRole();
+            if (jr === 'vet_int' || jr === 'vet_ext' || jr === 'vet') return ROLE_VETERINARIO;
+            if (jr === 'owner') return ROLE_PROPRIETARIO;
         }
         var storedRole = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
         if (storedRole === ROLE_PROPRIETARIO) return ROLE_PROPRIETARIO;
@@ -571,6 +578,15 @@ function getJwtEmail() {
 function isSuperAdmin() {
     if (typeof getJwtRole !== 'function') return false;
     return getJwtRole() === 'super_admin';
+}
+
+function isVetExt() {
+    return typeof getJwtRole === 'function' && getJwtRole() === 'vet_ext';
+}
+
+function isVetInt() {
+    var r = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    return r === 'vet_int' || r === 'vet';
 }
 
 // Helper: blob to base64 data URL

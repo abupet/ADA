@@ -404,6 +404,19 @@ async function _runSeedJob(pool, config, openAiKey) {
     _updateProgress(3, 8, 'Inserting pets');
     _log('Phase 3: Inserting pets into database...');
 
+    // Load existing owners and vet_ext users for random assignment
+    let availableOwners = [];
+    let availableVetExts = [];
+    try {
+      const ownersResult = await pool.query("SELECT user_id, display_name FROM users WHERE base_role = 'owner' AND status = 'active'");
+      availableOwners = ownersResult.rows;
+    } catch (_e) { _log('Warning: could not load owners: ' + _e.message); }
+    try {
+      const vetExtsResult = await pool.query("SELECT user_id, display_name FROM users WHERE base_role = 'vet_ext' AND status = 'active'");
+      availableVetExts = vetExtsResult.rows;
+    } catch (_e) { _log('Warning: could not load vet_exts: ' + _e.message); }
+    _log(`Found ${availableOwners.length} owners and ${availableVetExts.length} vet_exts for assignment`);
+
     let petChangeErrors = 0;
     const petIds = [];
     for (let i = 0; i < pets.length; i++) {
@@ -414,12 +427,18 @@ async function _runSeedJob(pool, config, openAiKey) {
 
       const notes = (pet.diary || '') + ' [seed]';
 
+      // Assign random owner (if available) otherwise use seed ownerUserId
+      const assignedOwner = availableOwners.length > 0 ? availableOwners[Math.floor(Math.random() * availableOwners.length)] : null;
+      const effectiveOwner = assignedOwner ? assignedOwner.user_id : ownerUserId;
+      // Assign random vet_ext (70% chance, if available)
+      const assignedVetExt = availableVetExts.length > 0 && Math.random() > 0.3 ? availableVetExts[Math.floor(Math.random() * availableVetExts.length)] : null;
+
       try {
         const ins = await pool.query(
-          `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, version)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+          `INSERT INTO pets (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, referring_vet_user_id, version)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)
            RETURNING *`,
-          [petId, ownerUserId, pet.name, SPECIES_IT[pet.species] || pet.species, pet.breed, pet.sex, pet.birthdate, pet.weightKg, notes]
+          [petId, effectiveOwner, pet.name, SPECIES_IT[pet.species] || pet.species, pet.breed, pet.sex, pet.birthdate, pet.weightKg, notes, assignedVetExt ? assignedVetExt.user_id : null]
         );
         petIds.push(petId);
 

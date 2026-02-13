@@ -18,8 +18,13 @@ function petsRouter({ requireAuth }) {
   router.get("/api/pets", requireAuth, async (req, res) => {
     try {
       const role = req.user?.role;
-      if (role === "vet" || role === "super_admin") {
+      if (role === "vet" || role === "vet_int" || role === "super_admin") {
         const { rows } = await pool.query("SELECT * FROM pets ORDER BY updated_at DESC");
+        return res.json({ pets: rows });
+      }
+      if (role === "vet_ext") {
+        // vet_ext sees only pets assigned to them
+        const { rows } = await pool.query("SELECT * FROM pets WHERE referring_vet_user_id = $1 ORDER BY updated_at DESC", [req.user?.sub]);
         return res.json({ pets: rows });
       }
       const owner_user_id = req.user?.sub;
@@ -41,8 +46,10 @@ function petsRouter({ requireAuth }) {
       if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
       const role = req.user?.role;
       let rows;
-      if (role === "vet" || role === "super_admin") {
+      if (role === "vet" || role === "vet_int" || role === "super_admin") {
         ({ rows } = await pool.query("SELECT * FROM pets WHERE pet_id = $1 LIMIT 1", [pet_id]));
+      } else if (role === "vet_ext") {
+        ({ rows } = await pool.query("SELECT * FROM pets WHERE referring_vet_user_id = $1 AND pet_id = $2 LIMIT 1", [req.user?.sub, pet_id]));
       } else {
         const owner_user_id = req.user?.sub;
         ({ rows } = await pool.query("SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 LIMIT 1", [owner_user_id, pet_id]));
@@ -84,13 +91,17 @@ function petsRouter({ requireAuth }) {
       if (req.body.updated_at) extraData.updated_at = req.body.updated_at;
       const extraDataJson = Object.keys(extraData).length > 0 ? JSON.stringify(extraData) : null;
 
+      // Override owner_user_id if explicitly provided (dropdown selection)
+      const effectiveOwnerId = req.body.owner_user_id || owner_user_id;
+      const referringVetUserId = req.body.referring_vet_user_id || null;
+
       const { rows } = await pool.query(
         `INSERT INTO pets
-          (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, extra_data, version)
+          (pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, extra_data, referring_vet_user_id, version)
          VALUES
-          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1)
+          ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1)
          RETURNING *`,
-        [pet_id, owner_user_id, name, species, breed, sex, birthdate, weight_kg, notes, extraDataJson]
+        [pet_id, effectiveOwnerId, name, species, breed, sex, birthdate, weight_kg, notes, extraDataJson, referringVetUserId]
       );
 
       // change log
@@ -145,6 +156,10 @@ function petsRouter({ requireAuth }) {
         if (Object.prototype.hasOwnProperty.call(patch, k)) next[k] = patch[k];
       }
 
+      // Handle referring_vet_user_id and owner_user_id from patch
+      const nextReferringVet = patch.referring_vet_user_id !== undefined ? patch.referring_vet_user_id : current.referring_vet_user_id;
+      const nextOwnerId = patch.owner_user_id || owner_user_id;
+
       // Rich data: merge into extra_data JSONB
       let extraData = current.extra_data || {};
       if (typeof extraData === 'string') try { extraData = JSON.parse(extraData); } catch (_) { extraData = {}; }
@@ -160,11 +175,13 @@ function petsRouter({ requireAuth }) {
         `UPDATE pets SET
           name=$3, species=$4, breed=$5, sex=$6, birthdate=$7, weight_kg=$8, notes=$9,
           extra_data=$10,
+          referring_vet_user_id=$11,
+          owner_user_id=$12,
           version = version + 1,
           updated_at = NOW()
          WHERE owner_user_id=$1 AND pet_id=$2
          RETURNING *`,
-        [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes, JSON.stringify(extraData)]
+        [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes, JSON.stringify(extraData), nextReferringVet || null, nextOwnerId]
       );
 
       await client.query(

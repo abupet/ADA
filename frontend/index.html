@@ -421,8 +421,16 @@
                             <input type="text" id="petMicrochip" placeholder="N° Microchip">
                         </div>
                         <div class="form-group">
-                            <label>Proprietario</label>
-                            <input type="text" id="ownerName" placeholder="Nome proprietario">
+                            <label>Proprietario *</label>
+                            <select id="ownerName" required>
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Veterinario referente</label>
+                            <select id="ownerReferringVet">
+                                <option value="">— Nessuno —</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Telefono</label>
@@ -559,8 +567,16 @@
                             <input type="text" id="newPetMicrochip" placeholder="N° Microchip">
                         </div>
                         <div class="form-group">
-                            <label>Proprietario</label>
-                            <input type="text" id="newOwnerName" placeholder="Nome proprietario">
+                            <label>Proprietario *</label>
+                            <select id="newOwnerName" required>
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Veterinario referente</label>
+                            <select id="newOwnerReferringVet">
+                                <option value="">— Nessuno —</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label>Telefono</label>
@@ -1014,7 +1030,7 @@
 
                     <h3 style="margin-top: 20px;">Informazioni</h3>
                         <p><strong>Versione:</strong> ADA v<span id="appVersion">--</span></p>
-                    <p><strong>Novità v<span id="appReleaseNotesVersion">--</span>:</strong> Registrazione lunga a chunk con trascrizione in parallelo, profili automatici per dispositivo, UI runtime della coda, cache audio test e debug avanzato.</p>
+                    <p><strong>Novità v<span id="appReleaseNotesVersion">--</span>:</strong> <span id="appReleaseNotesText">Caricamento...</span></p>
                 </div>
             </div>
 
@@ -1168,6 +1184,12 @@
                         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
                             <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
                                 <input type="checkbox" id="saRoleVet" value="veterinario" onchange="onSuperAdminRoleToggle()"> 🩺 Veterinario
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleVetInt" value="vet_int" onchange="onSuperAdminRoleToggle()"> 🩺 Vet Interno
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
+                                <input type="checkbox" id="saRoleVetExt" value="vet_ext" onchange="onSuperAdminRoleToggle()"> 🔗 Vet Esterno
                             </label>
                             <label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer;">
                                 <input type="checkbox" id="saRoleOwner" value="proprietario" onchange="onSuperAdminRoleToggle()"> 🐾 Proprietario

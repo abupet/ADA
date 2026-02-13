@@ -221,6 +221,8 @@ function applyVersionInfo() {
     const loginVersionEl = document.getElementById('loginVersion');
     if (versionEl) versionEl.textContent = ADA_VERSION;
     if (releaseNotesEl) releaseNotesEl.textContent = ADA_VERSION;
+    var releaseNotesTextEl = document.getElementById('appReleaseNotesText');
+    if (releaseNotesTextEl) releaseNotesTextEl.textContent = typeof ADA_RELEASE_NOTES !== 'undefined' ? ADA_RELEASE_NOTES : '';
     if (loginVersionEl) loginVersionEl.textContent = 'v' + ADA_VERSION;
     if (document && document.title) {
         document.title = `ADA v${ADA_VERSION} - AI Driven AbuPet`;
@@ -468,11 +470,11 @@ function applyRoleUI(role) {
     if (icon) icon.textContent = roleIcons[r] || '🩺';
     if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
 
-    // Debug page: for super_admin hide the toggle button and "Ruolo attivo" label
+    // Hide role toggle for all except super_admin (§7.1)
     var roleToggleContainer = document.getElementById('roleToggleContainer');
     var roleToggleLabelBlock = document.getElementById('roleToggleLabelBlock');
-    if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? 'none' : '';
-    if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? 'none' : '';
+    if (roleToggleContainer) roleToggleContainer.style.display = _isSA ? '' : 'none';
+    if (roleToggleLabelBlock) roleToggleLabelBlock.style.display = _isSA ? '' : 'none';
 
     // Show super_admin role selector (checkboxes) if user is super_admin
     var saSelector = document.getElementById('superAdminRoleSelector');
@@ -480,7 +482,7 @@ function applyRoleUI(role) {
         saSelector.style.display = _isSA ? '' : 'none';
         // Sync checkbox states
         if (_isSA) {
-            var cbMap = { 'saRoleVet': 'veterinario', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
+            var cbMap = { 'saRoleVet': 'veterinario', 'saRoleVetInt': 'vet_int', 'saRoleVetExt': 'vet_ext', 'saRoleOwner': 'proprietario', 'saRoleAdmin': 'admin_brand', 'saRoleSA': 'super_admin' };
             Object.keys(cbMap).forEach(function(cbId) {
                 var cb = document.getElementById(cbId);
                 if (cb) cb.checked = activeRoles.indexOf(cbMap[cbId]) !== -1;

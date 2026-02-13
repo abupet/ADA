@@ -198,6 +198,14 @@ function initCommSocket() {
         _commSocket.on('disconnect', function (r) { console.warn('[Communication] Socket disconnected:', r); });
         _commSocket.on('connect_error', function (e) { console.warn('[Communication] Socket error:', e.message); });
         // Real-time badge: receive notification when a message arrives in ANY conversation
+        _commSocket.on('conversation_status_changed', function (d) {
+            if (_commCurrentConversationId && d && d.conversation_id === _commCurrentConversationId) {
+                // Reload the conversation to reflect status change
+                openConversation(_commCurrentConversationId);
+            } else if (!_commCurrentConversationId) {
+                initCommunication(_commContainerId || 'communication-container');
+            }
+        });
         _commSocket.on('new_message_notification', function (d) {
             updateCommUnreadBadge();
             // If user is viewing the conversation list (not inside a chat), refresh it
@@ -280,7 +288,11 @@ async function initCommunication(containerId) {
     container.innerHTML = '<div class="comm-container" data-testid="comm-container">' +
         '<div class="comm-header"><h3>Messaggi</h3>' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-new-btn">Nuova conversazione</button></div>' +
-        '<input type="text" class="comm-search" data-testid="comm-search" placeholder="Cerca conversazione..." oninput="_commFilterList(this.value)" />' +
+        '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
+        '<input type="text" class="comm-search" data-testid="comm-search" placeholder="Cerca conversazione..." oninput="_commFilterList()" style="flex:1;margin-bottom:0;" />' +
+        '<select id="comm-status-filter" data-testid="comm-status-filter" onchange="_commFilterList()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;width:auto;min-width:100px;">' +
+        '<option value="">Tutte</option><option value="active">Aperte</option><option value="closed">Chiuse</option>' +
+        '</select></div>' +
         '<div id="comm-new-form-area"></div>' +
         '<div id="comm-conv-list-area"><p style="color:#94a3b8;text-align:center;">Caricamento...</p></div></div>';
 
@@ -325,11 +337,18 @@ function _commBuildConvListHtml(conversations) {
             avatarCls = 'comm-conv-avatar comm-conv-avatar-ai';
             avatarContent = '\uD83E\uDD16';
         } else {
-            var otherName = c.vet_display_name || c.owner_display_name || '';
-            if (!otherName) {
-                otherName = (userId === c.vet_user_id) ? (c.owner_display_name || 'Proprietario') : (c.vet_display_name || 'Veterinario');
+            var isCurrentUserOwner = (userId === c.owner_user_id);
+            var otherName, otherRole;
+            if (isCurrentUserOwner) {
+                otherName = c.vet_display_name || 'Veterinario';
+                otherRole = c.vet_role || 'vet_int';
+            } else {
+                otherName = c.owner_display_name || 'Proprietario';
+                otherRole = c.owner_role || 'owner';
             }
-            name = _commEscape(otherName);
+            var roleLabels = { 'owner': 'Proprietario', 'vet': 'Veterinario', 'vet_int': 'Veterinario', 'vet_ext': 'Vet. Referente', 'admin_brand': 'Admin', 'super_admin': 'Super Admin' };
+            var roleLabel = roleLabels[otherRole] || otherRole;
+            name = _commEscape(otherName + ' (' + roleLabel + ')');
             avatarCls = 'comm-conv-avatar comm-conv-avatar-human';
             avatarContent = _commEscape((otherName || 'U').charAt(0).toUpperCase());
         }
@@ -342,7 +361,14 @@ function _commBuildConvListHtml(conversations) {
         var stLbl = c.status === 'closed' ? 'Chiusa' : 'Aperta';
         var triageHtml = isAi && c.triage_level ? _commTriageBadgeHtml(c.triage_level) : '';
 
-        html += '<li class="comm-conv-card" data-testid="comm-conv-card" data-search="' +
+        var isOpen = c.status !== 'closed';
+        var toggleBtnHtml = '<button class="comm-status-toggle-btn" data-testid="comm-status-toggle" ' +
+            'onclick="event.stopPropagation(); _commToggleConversationStatus(\'' + c.conversation_id + '\', \'' + (isOpen ? 'closed' : 'active') + '\')" ' +
+            'style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid ' + (isOpen ? '#f59e0b' : '#22c55e') + ';' +
+            'background:' + (isOpen ? '#fffbeb' : '#f0fdf4') + ';color:' + (isOpen ? '#b45309' : '#166534') + ';cursor:pointer;white-space:nowrap;">' +
+            (isOpen ? 'Chiudi' : 'Riapri') + '</button>';
+
+        html += '<li class="comm-conv-card" data-testid="comm-conv-card" data-status="' + (c.status || 'active') + '" data-search="' +
             _commEscape((name + ' ' + petName + ' ' + (c.subject || '') + ' ' + preview).toLowerCase()) +
             '" onclick="openConversation(\'' + c.conversation_id + '\')">' +
             '<div class="' + avatarCls + '">' + avatarContent + '</div>' +
@@ -352,17 +378,24 @@ function _commBuildConvListHtml(conversations) {
             (preview ? '<div class="comm-conv-preview">' + preview + '</div>' : '') +
             '</div><div class="comm-conv-meta"><div class="comm-conv-time">' + time + '</div>' +
             (unread > 0 ? '<div class="comm-badge" data-testid="comm-unread-count">' + unread + '</div>' : '') +
+            (!isAi ? '<div style="margin-top:4px;">' + toggleBtnHtml + '</div>' : '') +
             '</div></li>';
     }
     return html + '</ul>';
 }
 
-function _commFilterList(query) {
-    var q = (query || '').toLowerCase().trim();
+function _commFilterList() {
+    var searchInput = document.querySelector('[data-testid="comm-search"]');
+    var statusFilter = document.getElementById('comm-status-filter');
+    var q = (searchInput ? searchInput.value : '').toLowerCase().trim();
+    var statusVal = statusFilter ? statusFilter.value : '';
     var cards = document.querySelectorAll('[data-testid="comm-conv-card"]');
     cards.forEach(function (card) {
         var search = card.getAttribute('data-search') || '';
-        card.style.display = (!q || search.indexOf(q) !== -1) ? '' : 'none';
+        var cardStatus = card.getAttribute('data-status') || '';
+        var matchSearch = !q || search.indexOf(q) !== -1;
+        var matchStatus = !statusVal || cardStatus === statusVal;
+        card.style.display = (matchSearch && matchStatus) ? '' : 'none';
     });
 }
 
@@ -380,14 +413,35 @@ async function _commShowNewForm(containerId) {
     }
 
     var role = _commGetRole();
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    var isVetExtUser = jwtRole === 'vet_ext';
+
     // Build recipient type options
     var recipientOpts = '<option value="ai">\uD83E\uDD16 ADA - Assistente</option>';
-    if (role === 'proprietario') {
+    if (isVetExtUser) {
+        // vet_ext can only message vet_int
+        recipientOpts = '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
+    } else if (role === 'proprietario') {
         recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
     } else {
         recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
         recipientOpts += '<option value="owner">\uD83E\uDDD1 Proprietario</option>';
     }
+
+    var subjectHtml = isVetExtUser ? '' :
+        '<label for="comm-new-subject">Oggetto (opzionale)</label>' +
+        '<input type="text" id="comm-new-subject" placeholder="Es: Controllo post-operatorio" />';
+
+    var referralFormHtml = isVetExtUser ?
+        '<label for="comm-referral-type">Tipo form clinico</label>' +
+        '<select id="comm-referral-type" onchange="_commOnReferralTypeChange()"><option value="">-- Seleziona tipo --</option>' +
+        '<option value="diagnostica_immagini">\uD83D\uDD0D Diagnostica per Immagini</option>' +
+        '<option value="chirurgia_ortopedia">\uD83E\uDDB4 Chirurgia / Ortopedia</option>' +
+        '<option value="cardiologia">\u2764\uFE0F Cardiologia</option>' +
+        '<option value="endoscopia_gastro">\uD83D\uDD2C Endoscopia / Gastroenterologia</option>' +
+        '<option value="dermatologia">\uD83E\uDE79 Dermatologia / Citologia avanzata</option></select>' +
+        '<div id="comm-referral-fields"></div>' +
+        ((typeof debugEnabled !== 'undefined' && debugEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="_commFillTestForm()">Test</button>' : '') : '';
 
     area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
         '<label for="comm-new-dest-type">Destinatario</label>' +
@@ -398,8 +452,10 @@ async function _commShowNewForm(containerId) {
         '<label for="comm-new-pet">Animale</label>' +
         '<select id="comm-new-pet"><option value="">Caricamento...</option></select>' +
         '<div class="comm-pet-hint" id="comm-pet-hint">\uD83D\uDCA1 Seleziona un animale per ricevere consigli pi\u00f9 precisi</div>' +
-        '<label for="comm-new-subject">Oggetto (opzionale)</label>' +
-        '<input type="text" id="comm-new-subject" placeholder="Es: Controllo post-operatorio" />' +
+        subjectHtml +
+        referralFormHtml +
+        '<label for="comm-new-first-message">Primo messaggio</label>' +
+        '<textarea id="comm-new-first-message" placeholder="Scrivi il primo messaggio della conversazione..." rows="3" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>' +
         '<div style="margin-top:14px;display:flex;gap:8px;">' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation()">Crea</button>' +
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
@@ -485,10 +541,47 @@ async function _commCreateConversation() {
         return;
     }
 
+    // Validate first message (required for human conversations)
+    var firstMessage = (document.getElementById('comm-new-first-message') || {}).value || '';
+    if (destType !== 'ai' && !firstMessage.trim()) {
+        if (typeof showToast === 'function') showToast('Inserisci il primo messaggio', 'warning');
+        return;
+    }
+
+    // Validate referral form for vet_ext
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    var referralForm = null;
+    if (jwtRole === 'vet_ext' && destType !== 'ai') {
+        var formType = (document.getElementById('comm-referral-type') || {}).value || '';
+        if (!formType) {
+            if (typeof showToast === 'function') showToast('Seleziona il tipo di form clinico', 'warning');
+            return;
+        }
+        var formDef = typeof REFERRAL_FORMS !== 'undefined' ? REFERRAL_FORMS[formType] : null;
+        if (formDef) {
+            var fields = {};
+            var missingRequired = [];
+            for (var fi = 0; fi < formDef.fields.length; fi++) {
+                var fd = formDef.fields[fi];
+                var el = document.getElementById('ref-field-' + fd.id);
+                var val = el ? el.value.trim() : '';
+                if (fd.required && !val) missingRequired.push(fd.label);
+                if (val) fields[fd.id] = val;
+            }
+            if (missingRequired.length > 0) {
+                if (typeof showToast === 'function') showToast('Campi obbligatori: ' + missingRequired.join(', '), 'warning');
+                return;
+            }
+            referralForm = { form_type: formType, form_label: formDef.label, fields: fields, compiled_at: new Date().toISOString() };
+        }
+    }
+
     try {
         var body = { recipient_type: destType === 'ai' ? 'ai' : 'human' };
         if (petId) body.pet_id = petId;
         if (subject) body.subject = subject;
+        if (firstMessage.trim()) body.initial_message = firstMessage.trim();
+        if (referralForm) body.referral_form = referralForm;
 
         if (destType === 'ai') {
             body.vet_user_id = 'ada-assistant';
@@ -594,6 +687,46 @@ function _commRenderChat(container, convId, messages, meta) {
     }
     html += '</div>';
 
+    // Conversation status bar (for human chats)
+    if (!isAi) {
+        var convStatus = meta && meta.status || 'active';
+        var isConvOpen = convStatus !== 'closed';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0 12px;">';
+        html += '<span class="comm-status-badge ' + (isConvOpen ? 'comm-status-open' : 'comm-status-closed') + '">' + (isConvOpen ? 'Aperta' : 'Chiusa') + '</span>';
+        html += '<button id="comm-conv-status-btn" onclick="_commToggleConversationStatus(\'' + convId + '\', \'' + (isConvOpen ? 'closed' : 'active') + '\')" ' +
+            'style="font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid ' + (isConvOpen ? '#f59e0b' : '#22c55e') + ';' +
+            'background:' + (isConvOpen ? '#fffbeb' : '#f0fdf4') + ';color:' + (isConvOpen ? '#b45309' : '#166534') + ';cursor:pointer;">' +
+            (isConvOpen ? 'Chiudi' : 'Riapri') + '</button>';
+        html += '</div>';
+    }
+
+    // Referral form banner (for vet_ext conversations)
+    if (meta && meta.referral_form && meta.referral_form.form_type) {
+        var form = meta.referral_form;
+        var formDef = typeof REFERRAL_FORMS !== 'undefined' ? REFERRAL_FORMS[form.form_type] : null;
+        var formLabel = formDef ? formDef.label : form.form_label || 'Form clinico';
+        html += '<div class="comm-referral-form-banner" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;margin:8px 0;padding:12px 16px;">';
+        html += '<div style="font-weight:700;color:#0369a1;margin-bottom:8px;font-size:14px;">\uD83D\uDCCB ' + _commEscape(formLabel) + '</div>';
+        if (formDef && formDef.fields && form.fields) {
+            for (var fi = 0; fi < formDef.fields.length; fi++) {
+                var fieldDef = formDef.fields[fi];
+                var fval = form.fields[fieldDef.id];
+                if (fval && (typeof fval === 'string' ? fval.trim() : fval)) {
+                    var displayVal = fval;
+                    if (fieldDef.type === 'select' && fieldDef.options) {
+                        for (var oi = 0; oi < fieldDef.options.length; oi++) {
+                            if (fieldDef.options[oi].value === fval) { displayVal = fieldDef.options[oi].label; break; }
+                        }
+                    }
+                    html += '<div style="margin-bottom:4px;"><span style="font-weight:600;color:#334155;font-size:12px;">' +
+                        _commEscape(fieldDef.label) + ':</span> <span style="color:#475569;font-size:13px;">' +
+                        _commEscape(displayVal) + '</span></div>';
+                }
+            }
+        }
+        html += '</div>';
+    }
+
     // AI disclaimer
     if (isAi) {
         html += '<div class="comm-ai-disclaimer" data-testid="comm-ai-disclaimer">' +
@@ -673,7 +806,7 @@ function _commRenderBubble(msg, isOwn) {
     if (isAiMsg) {
         sender = '\uD83E\uDD16 ADA';
     } else {
-        var roleMap = { vet: 'Veterinario', owner: 'Proprietario', admin: 'Admin', super_admin: 'Super Admin' };
+        var roleMap = { owner: 'Proprietario', vet: 'Veterinario', vet_int: 'Veterinario', vet_ext: 'Vet. Referente', admin_brand: 'Admin', super_admin: 'Super Admin' };
         var roleLabel = roleMap[msg.sender_role] || '';
         var senderName = msg.sender_name || (isOwn ? (typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : null) || 'Tu' : 'Utente');
         sender = _commEscape(senderName + (roleLabel ? ' (' + roleLabel + ')' : ''));
@@ -717,12 +850,22 @@ function _commRenderBubble(msg, isOwn) {
         html += '<div>' + _commEscape(msg.content || '') + '</div>';
     }
 
-    // Follow-up chips for AI messages
+    // Follow-up chips for AI messages — intelligent yes/no vs open question
     if (isAiMsg && msg.follow_up_questions && msg.follow_up_questions.length > 0) {
         html += '<div class="comm-followups" data-testid="comm-followups">';
         for (var j = 0; j < msg.follow_up_questions.length; j++) {
             var q = msg.follow_up_questions[j];
-            html += '<span class="comm-chip" data-testid="comm-chip" onclick="_commSendChip(this)" data-question="' + _commEscape(q) + '">' + _commEscape(q) + '</span>';
+            if (_commIsYesNoQuestion(q)) {
+                // Yes/No closed question — show question + two answer chips
+                html += '<div class="comm-chip-group" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px;">';
+                html += '<span style="font-size:13px;color:#475569;flex:1 1 100%;margin-bottom:2px;">' + _commEscape(q) + '</span>';
+                html += '<span class="comm-chip" data-testid="comm-chip" onclick="_commSendChipAnswer(\'' + _commEscapeAttr(q) + '\',\'Sì\')" style="background:#dcfce7;border-color:#86efac;">Sì</span>';
+                html += '<span class="comm-chip" data-testid="comm-chip" onclick="_commSendChipAnswer(\'' + _commEscapeAttr(q) + '\',\'No\')" style="background:#fee2e2;border-color:#fca5a5;">No</span>';
+                html += '</div>';
+            } else {
+                // Open question — click pre-fills input for custom answer
+                html += '<span class="comm-chip" data-testid="comm-chip" onclick="_commPrepareOpenAnswer(\'' + _commEscapeAttr(q) + '\')">' + _commEscape(q) + '</span>';
+            }
         }
         html += '</div>';
     }
@@ -955,6 +1098,29 @@ async function _commLoadMore(conversationId) {
     } catch (e) {
         console.error('[Communication] Failed to load more messages:', e);
         if (typeof showToast === 'function') showToast('Errore nel caricamento dei messaggi', 'error');
+    }
+}
+
+// Toggle conversation status (close/reopen)
+async function _commToggleConversationStatus(conversationId, newStatus) {
+    try {
+        var resp = await fetch(_commApiBase() + '/api/communication/conversations/' + conversationId, {
+            method: 'PATCH',
+            headers: _commAuthHeaders(),
+            body: JSON.stringify({ status: newStatus })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (typeof showToast === 'function') {
+            showToast('Conversazione ' + (newStatus === 'closed' ? 'chiusa' : 'riaperta'), 'success');
+        }
+        // If inside the conversation, reload it; otherwise reload the list
+        if (_commCurrentConversationId === conversationId) {
+            openConversation(conversationId);
+        } else {
+            initCommunication(_commContainerId || 'communication-container');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Errore nel cambio stato', 'error');
     }
 }
 
@@ -1226,6 +1392,196 @@ async function _commFlushOfflineQueue() {
         }
     } catch (e) { console.error('[Communication] Offline flush error:', e); }
     _commFlushingQueue = false;
+}
+
+// =========================================================================
+// Section 10: Referral forms for vet_ext
+// =========================================================================
+var REFERRAL_FORMS = {
+    diagnostica_immagini: {
+        label: '\uD83D\uDD0D Diagnostica per Immagini (Rx / Eco / TC)',
+        fields: [
+            { id: 'tipo_esame', label: 'Tipo esame richiesto', type: 'text', placeholder: 'Es: Rx torace 2 proiezioni, Eco addome, TC cranio', required: true },
+            { id: 'sospetto_diagnostico', label: 'Sospetto diagnostico', type: 'textarea', placeholder: 'Es: Versamento pleurico? Massa mediastinica?', required: true },
+            { id: 'sintomi_principali', label: 'Sintomi principali', type: 'textarea', placeholder: 'Es: Dispnea da 3 gg, tachipnea', required: true },
+            { id: 'terapie_in_corso', label: 'Terapie in corso', type: 'textarea', placeholder: 'Es: Furosemide 2mg/kg BID', required: false },
+            { id: 'esami_gia_eseguiti', label: 'Esami gi\u00e0 eseguiti', type: 'textarea', placeholder: 'Es: Emocromo, eco FAST', required: false },
+            { id: 'sedazione', label: 'Note sedazione', type: 'text', placeholder: 'Es: Paziente aggressivo, preferibile sedazione', required: false },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [
+                { value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' },
+                { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' },
+                { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }
+            ], required: true },
+            { id: 'note', label: 'Note per il collega', type: 'textarea', placeholder: 'Es: Proprietaria ansiosa...', required: false }
+        ]
+    },
+    chirurgia_ortopedia: {
+        label: '\uD83E\uDDB4 Chirurgia / Ortopedia',
+        fields: [
+            { id: 'intervento_richiesto', label: 'Intervento / Valutazione richiesta', type: 'textarea', placeholder: 'Es: Valutazione rottura LCA ginocchio sx', required: true },
+            { id: 'dinamica_anamnesi', label: 'Dinamica / Anamnesi', type: 'textarea', placeholder: 'Es: Zoppia acuta post-corsa, 5 gg fa', required: true },
+            { id: 'esami_preoperatori', label: 'Esami pre-operatori eseguiti', type: 'textarea', placeholder: 'Es: Emocromo + biochimico OK', required: false },
+            { id: 'rx_gia_fatte', label: 'Rx gi\u00e0 eseguite', type: 'text', placeholder: 'Es: S\u00ec, 2 proiezioni ginocchio', required: false },
+            { id: 'patologie_pregresse', label: 'Patologie pregresse', type: 'textarea', placeholder: 'Es: Displasia anca lieve bilaterale', required: false },
+            { id: 'farmaci_in_corso', label: 'Farmaci in corso', type: 'textarea', placeholder: 'Es: Robenacoxib 1mg/kg SID da 3 gg', required: false },
+            { id: 'allergie', label: 'Allergie note', type: 'text', placeholder: 'Es: Nessuna', required: false },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [
+                { value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' },
+                { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' },
+                { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }
+            ], required: true },
+            { id: 'note', label: 'Note / Disponibilit\u00e0 proprietario', type: 'textarea', placeholder: 'Es: Flessibile, preferisce inizio settimana', required: false }
+        ]
+    },
+    cardiologia: {
+        label: '\u2764\uFE0F Cardiologia',
+        fields: [
+            { id: 'motivo_consulenza', label: 'Motivo della consulenza', type: 'textarea', placeholder: 'Es: Soffio cardiaco grado IV/VI, peggiorato', required: true },
+            { id: 'sintomi_attuali', label: 'Sintomi attuali', type: 'textarea', placeholder: 'Es: Tosse notturna, intolleranza esercizio, sincope', required: true },
+            { id: 'ultima_ecocardiografia', label: 'Ultima ecocardiografia', type: 'textarea', placeholder: 'Es: 8 mesi fa: rigurgito mitralico moderato', required: false },
+            { id: 'terapia_cardiologica', label: 'Terapia cardiologica in corso', type: 'textarea', placeholder: 'Es: Pimobendan 0.25mg/kg BID, Benazepril...', required: false },
+            { id: 'esami_recenti', label: 'Esami recenti', type: 'textarea', placeholder: 'Es: Rx torace, creatinina 1.4', required: false },
+            { id: 'richiesta_specifica', label: 'Cosa chiedo', type: 'textarea', placeholder: 'Es: Rivalutazione stadio ACVIM + adeguamento terapia', required: true },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [
+                { value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' },
+                { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' },
+                { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }
+            ], required: true },
+            { id: 'note', label: 'Note per il collega', type: 'textarea', placeholder: '', required: false }
+        ]
+    },
+    endoscopia_gastro: {
+        label: '\uD83D\uDD2C Endoscopia / Gastroenterologia',
+        fields: [
+            { id: 'esame_richiesto', label: 'Esame richiesto', type: 'text', placeholder: 'Es: Gastroscopia + biopsie', required: true },
+            { id: 'problema_principale', label: 'Problema principale', type: 'textarea', placeholder: 'Es: Vomito cronico intermittente da 3 mesi', required: true },
+            { id: 'frequenza_sintomi', label: 'Frequenza sintomi', type: 'text', placeholder: 'Es: 3-4 episodi/settimana, a digiuno', required: true },
+            { id: 'iter_diagnostico', label: 'Iter diagnostico gi\u00e0 fatto', type: 'textarea', placeholder: 'Es: Emocromo, biochimico, cPLI, eco addome...', required: false },
+            { id: 'risposta_terapie', label: 'Risposta a terapie', type: 'textarea', placeholder: 'Es: Omeprazolo parziale risposta...', required: false },
+            { id: 'sospetto', label: 'Sospetto diagnostico', type: 'textarea', placeholder: 'Es: IBD? Gastropatia cronica?', required: true },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [
+                { value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' },
+                { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' },
+                { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }
+            ], required: true },
+            { id: 'note', label: 'Note (es. digiuno pre-esame)', type: 'textarea', placeholder: 'Es: Informo proprietario io o lo fate voi?', required: false }
+        ]
+    },
+    dermatologia: {
+        label: '\uD83E\uDE79 Dermatologia / Citologia avanzata',
+        fields: [
+            { id: 'motivo_consulenza', label: 'Motivo consulenza', type: 'textarea', placeholder: 'Es: Dermatite cronica recidivante', required: true },
+            { id: 'localizzazione_lesioni', label: 'Localizzazione lesioni', type: 'textarea', placeholder: 'Es: Interdigitale, periauricolare, piega labiale', required: true },
+            { id: 'durata', label: 'Durata', type: 'text', placeholder: 'Es: Da oltre 1 anno, peggiora in estate', required: true },
+            { id: 'esami_gia_fatti', label: 'Esami gi\u00e0 fatti', type: 'textarea', placeholder: 'Es: Raschiato negativo, citologia: cocchi++', required: false },
+            { id: 'terapie_tentate', label: 'Terapie tentate', type: 'textarea', placeholder: 'Es: Cefalessina 6 sett, Oclacitinib...', required: false },
+            { id: 'richiesta_specifica', label: 'Cosa chiedo', type: 'textarea', placeholder: 'Es: Test allergologici intradermici + piano immunoterapia?', required: true },
+            { id: 'allergie_farmaci', label: 'Allergie a farmaci', type: 'text', placeholder: 'Es: Reazione GI a metronidazolo', required: false },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [
+                { value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' },
+                { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' },
+                { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }
+            ], required: true },
+            { id: 'note', label: 'Note per il collega', type: 'textarea', placeholder: '', required: false }
+        ]
+    }
+};
+
+function _commOnReferralTypeChange() {
+    var formType = (document.getElementById('comm-referral-type') || {}).value || '';
+    var container = document.getElementById('comm-referral-fields');
+    if (!container) return;
+    if (!formType || !REFERRAL_FORMS[formType]) { container.innerHTML = ''; return; }
+    var formDef = REFERRAL_FORMS[formType];
+    var html = '';
+    for (var i = 0; i < formDef.fields.length; i++) {
+        var f = formDef.fields[i];
+        var reqMark = f.required ? ' *' : '';
+        html += '<label for="ref-field-' + f.id + '" style="margin-top:10px;">' + _commEscape(f.label) + reqMark + '</label>';
+        if (f.type === 'select') {
+            html += '<select id="ref-field-' + f.id + '" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;">';
+            html += '<option value="">-- Seleziona --</option>';
+            for (var j = 0; j < f.options.length; j++) {
+                html += '<option value="' + f.options[j].value + '">' + _commEscape(f.options[j].label) + '</option>';
+            }
+            html += '</select>';
+        } else if (f.type === 'textarea') {
+            html += '<textarea id="ref-field-' + f.id + '" placeholder="' + _commEscape(f.placeholder || '') + '" rows="2" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>';
+        } else {
+            html += '<input type="text" id="ref-field-' + f.id + '" placeholder="' + _commEscape(f.placeholder || '') + '" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;" />';
+        }
+    }
+    container.innerHTML = html;
+}
+
+function _commFillTestForm() {
+    var formType = (document.getElementById('comm-referral-type') || {}).value || '';
+    if (!formType) { if (typeof showToast === 'function') showToast('Seleziona prima il tipo di form', 'warning'); return; }
+    var testData = _commGetTestFormData(formType);
+    var formDef = REFERRAL_FORMS[formType];
+    if (!formDef) return;
+    for (var i = 0; i < formDef.fields.length; i++) {
+        var f = formDef.fields[i];
+        var el = document.getElementById('ref-field-' + f.id);
+        if (el && testData[f.id]) el.value = testData[f.id];
+    }
+}
+
+function _commGetTestFormData(formType) {
+    var data = {
+        diagnostica_immagini: { tipo_esame: 'Rx torace 2 proiezioni', sospetto_diagnostico: 'Versamento pleurico? Massa mediastinica?', sintomi_principali: 'Dispnea da 3 gg, tachipnea, abbattimento', terapie_in_corso: 'Furosemide 2mg/kg BID da ieri', esami_gia_eseguiti: 'Emocromo nella norma', sedazione: 'Paziente aggressivo, preferibile sedazione', urgenza: 'entro_1_settimana', note: 'Proprietario disponibile qualsiasi giorno' },
+        chirurgia_ortopedia: { intervento_richiesto: 'Valutazione rottura LCA ginocchio sx', dinamica_anamnesi: 'Zoppia acuta post-corsa al parco, 5 gg fa', esami_preoperatori: 'Emocromo + biochimico nella norma', rx_gia_fatte: 'S\u00ec, 2 proiezioni', patologie_pregresse: 'Nessuna rilevante', farmaci_in_corso: 'Robenacoxib 1mg/kg SID da 3 gg', allergie: 'Nessuna nota', urgenza: 'entro_24h', note: 'Proprietario molto preoccupato' },
+        cardiologia: { motivo_consulenza: 'Soffio cardiaco grado IV/VI, peggiorato', sintomi_attuali: 'Tosse notturna, intolleranza esercizio, 2 episodi sincopali', ultima_ecocardiografia: '8 mesi fa: rigurgito mitralico moderato', terapia_cardiologica: 'Pimobendan 0.25mg/kg BID, Benazepril 0.5mg/kg SID', esami_recenti: 'Rx torace in allegato, creatinina 1.4', richiesta_specifica: 'Rivalutazione stadio ACVIM + adeguamento terapia', urgenza: 'entro_1_settimana', note: '' },
+        endoscopia_gastro: { esame_richiesto: 'Gastroscopia + biopsie', problema_principale: 'Vomito cronico intermittente da 3 mesi', frequenza_sintomi: '3-4 episodi/settimana, a digiuno', iter_diagnostico: 'Emocromo, biochimico, cPLI, eco addome: tutto nella norma', risposta_terapie: 'Omeprazolo parziale risposta', sospetto: 'IBD? Linfoma intestinale low-grade?', urgenza: 'entro_1_settimana', note: 'Informo io il proprietario sul digiuno pre-esame' },
+        dermatologia: { motivo_consulenza: 'Dermatite cronica recidivante', localizzazione_lesioni: 'Interdigitale 4 arti, periauricolare, piega labiale', durata: 'Da oltre 1 anno, peggiora in estate', esami_gia_fatti: 'Raschiato negativo, citologia: cocchi ++', terapie_tentate: 'Cefalessina 6 sett, Oclacitinib', richiesta_specifica: 'Test allergologici intradermici + piano immunoterapia', allergie_farmaci: 'Nessuna nota', urgenza: 'programmabile', note: '' }
+    };
+    return data[formType] || {};
+}
+
+// =========================================================================
+// Section 11: Follow-up chips — intelligent yes/no and open questions
+// =========================================================================
+function _commIsYesNoQuestion(question) {
+    if (!question || typeof question !== 'string') return false;
+    var q = question.toLowerCase().trim();
+    var yesNoPatterns = [
+        /\bregolarmente\b/, /\bnormalmente\b/,
+        /\bha (avuto|fatto|mostrato|presentato)\b/,
+        /\b\u00e8 (cambiato|peggiorato|migliorato|successo|accaduto|presente|comparso)\b/,
+        /\bci sono (stati|state)\b/, /\bhai notato\b/,
+        /\bsta (mangiando|bevendo|dormendo)\b/, /\bpresenta\b/,
+        /\bsoffre di\b/, /\b\u00e8 (vaccinato|sterilizzat|castrat|microchippat)\b/,
+        /\bassume\b.*farmac/, /\bprende\b.*medicinali/,
+        /\bmangia\b.*regolar/, /\bbeve\b.*regolar/
+    ];
+    for (var i = 0; i < yesNoPatterns.length; i++) {
+        if (yesNoPatterns[i].test(q)) return true;
+    }
+    return false;
+}
+
+function _commEscapeAttr(str) {
+    return (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function _commSendChipAnswer(question, answer) {
+    if (!_commCurrentConversationId) return;
+    var input = document.getElementById('comm-msg-input');
+    if (input) {
+        input.value = question + ' \u2192 ' + answer;
+        _commSend(_commCurrentConversationId);
+    }
+}
+
+function _commPrepareOpenAnswer(question) {
+    if (!_commCurrentConversationId) return;
+    var input = document.getElementById('comm-msg-input');
+    if (input) {
+        input.value = question + ' Risposta: ';
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        if (typeof showToast === 'function') showToast('Completa la risposta e premi Invio', 'info');
+    }
 }
 
 // Handle push notification navigation
