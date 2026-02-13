@@ -54,10 +54,10 @@ test.describe("Role-based access control", () => {
     await page.locator('.nav-item[data-page="debug"]').click();
     await expect(page.locator("#page-debug")).toBeVisible();
 
-    // super_admin: checkboxes visible, toggle visible (v8.17.0)
+    // super_admin: checkboxes visible, toggle hidden (v8.17.2 — BUG 5)
     await expect(page.locator("#superAdminRoleSelector")).toBeVisible();
-    await expect(page.locator("#roleToggleLabelBlock")).toBeVisible();
-    await expect(page.locator("#roleToggleContainer")).toBeVisible();
+    await expect(page.locator("#roleToggleLabelBlock")).toBeHidden();
+    await expect(page.locator("#roleToggleContainer")).toBeHidden();
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
