@@ -5,7 +5,8 @@
 //                   getAuthToken(), getJwtUserId(), getAllPets(), getCurrentPetId()
 // Globals exposed:  initCommSocket(), disconnectCommSocket(), initCommunication(),
 //                   openConversation(), updateCommUnreadBadge(), loadAiSettingsUI(),
-//                   subscribeToPush(), loadPetConversations()
+//                   startCommBadgePolling(), stopCommBadgePolling(),
+//                   subscribeToPush(), handlePushNavigation()
 
 // =========================================================================
 // Internal state
@@ -196,6 +197,14 @@ function initCommSocket() {
         _commSocket.on('user_offline', function (d) { _commHandleUserOnline(d, false); });
         _commSocket.on('disconnect', function (r) { console.warn('[Communication] Socket disconnected:', r); });
         _commSocket.on('connect_error', function (e) { console.warn('[Communication] Socket error:', e.message); });
+        // Real-time badge: receive notification when a message arrives in ANY conversation
+        _commSocket.on('new_message_notification', function (d) {
+            updateCommUnreadBadge();
+            // If user is viewing the conversation list (not inside a chat), refresh it
+            if (!_commCurrentConversationId && document.getElementById('comm-conv-list-area')) {
+                initCommunication(_commContainerId || 'communication-container');
+            }
+        });
     } catch (_) { /* socket init failure is non-critical */ }
     window.addEventListener('online', _commFlushOfflineQueue);
 }
@@ -975,6 +984,25 @@ async function updateCommUnreadBadge() {
             }
         });
     } catch (e) { /* silent */ }
+}
+
+// Polling for unread badge (every 60 seconds, fallback for unreliable socket)
+var _commBadgePollingInterval = null;
+
+function startCommBadgePolling() {
+    if (_commBadgePollingInterval) return;
+    _commBadgePollingInterval = setInterval(function() {
+        if (typeof getAuthToken === 'function' && getAuthToken()) {
+            updateCommUnreadBadge();
+        }
+    }, 60000);
+}
+
+function stopCommBadgePolling() {
+    if (_commBadgePollingInterval) {
+        clearInterval(_commBadgePollingInterval);
+        _commBadgePollingInterval = null;
+    }
 }
 
 // =========================================================================

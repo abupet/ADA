@@ -1213,7 +1213,7 @@ async function _runDemoJob(pool, config, openAiKey) {
             try {
               const planRes = await pool.query(
                 `SELECT promo_item_id, insurance_data FROM promo_items
-                 WHERE tenant_id = $1 AND service_type = 'insurance' AND status = 'published'
+                 WHERE tenant_id = $1 AND 'insurance' = ANY(service_type) AND status = 'published'
                  ORDER BY priority DESC LIMIT 1`,
                 [tenantId]
               );

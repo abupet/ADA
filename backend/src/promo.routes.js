@@ -659,11 +659,11 @@ function promoRouter({ requireAuth }) {
 
     try {
       const { rows } = await pool.query(
-        `SELECT DISTINCT pi.service_type, pi.tenant_id, t.name AS tenant_name
+        `SELECT DISTINCT unnest(pi.service_type) AS service_type, pi.tenant_id, t.name AS tenant_name
          FROM promo_items pi
          JOIN tenants t ON t.tenant_id = pi.tenant_id
          WHERE pi.status = 'published'
-         ORDER BY pi.service_type, t.name`
+         ORDER BY service_type, t.name`
       );
 
       // Group by service_type

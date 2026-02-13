@@ -91,7 +91,7 @@ async function generateNutritionPlan(pool, petId, ownerUserId, tenantId, getOpen
 
     // Load nutrition products from tenant
     const productsResult = await pool.query(
-      "SELECT name, category, description FROM promo_items WHERE tenant_id = $1 AND service_type = 'nutrition' AND status = 'published'",
+      "SELECT name, category, description FROM promo_items WHERE tenant_id = $1 AND 'nutrition' = ANY(service_type) AND status = 'published'",
       [tenantId]
     );
     const products = productsResult.rows;

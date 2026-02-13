@@ -20,7 +20,7 @@ async function seedInsurancePlans(pool, tenantId) {
           (promo_item_id, tenant_id, name, category, species, lifecycle_target,
            description, extended_description, image_url, product_url,
            tags_include, tags_exclude, priority, status, service_type, insurance_data)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'published','insurance',$14)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'published','{insurance}',$14)
          ON CONFLICT (promo_item_id) DO UPDATE SET
            name = EXCLUDED.name, insurance_data = EXCLUDED.insurance_data,
            description = EXCLUDED.description, extended_description = EXCLUDED.extended_description,

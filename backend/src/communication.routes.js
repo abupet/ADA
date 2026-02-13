@@ -518,6 +518,18 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       const commNs = req.app.get("commNs");
       if (commNs) commNs.to("conv:" + id).emit("new_message", newMessage);
 
+      // Notify recipient's user room for badge update (reaches user on ANY page)
+      const recipientUserId = (conversation.owner_user_id === senderId) ? conversation.vet_user_id : conversation.owner_user_id;
+      if (commNs && recipientUserId) {
+        commNs.to("user:" + recipientUserId).emit("new_message_notification", {
+          conversation_id: id,
+          sender_id: senderId,
+          message_id: newMessage.message_id,
+          preview: content.trim().substring(0, 100),
+          created_at: newMessage.created_at
+        });
+      }
+
       // Push notification (fire-and-forget)
       try {
         const { sendPushToUser } = require("./push.routes");
