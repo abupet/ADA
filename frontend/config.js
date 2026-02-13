@@ -73,7 +73,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.17.0';
+const ADA_VERSION = '8.17.1';
 const ADA_RELEASE_NOTES = 'Form sintetici per veterinari referenti, ruoli vet_int/vet_ext, chiudi/riapri conversazioni, filtro stato, primo messaggio obbligatorio, proprietario e vet referente nei Dati Pet.';
 
 // ============================================

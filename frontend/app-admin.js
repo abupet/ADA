@@ -1024,6 +1024,8 @@
 
     var _usersData = [];
     var _tenantsCache = [];
+    var _usersFilterText = '';
+    var _usersFilterRole = '';
 
     function loadSuperadminUsers(containerId) {
         var container = document.getElementById(containerId || 'superadmin-users-content');
@@ -1050,8 +1052,41 @@
         });
     }
 
+    function _getFilteredUsers() {
+        var text = _usersFilterText.toLowerCase().trim();
+        var role = _usersFilterRole;
+        return _usersData.filter(function (u) {
+            if (role && u.base_role !== role) return false;
+            if (text) {
+                var haystack = ((u.email || '') + ' ' + (u.display_name || '')).toLowerCase();
+                if (haystack.indexOf(text) === -1) return false;
+            }
+            return true;
+        });
+    }
+
+    function _onUsersFilterChange() {
+        _usersFilterText = (document.getElementById('usersFilterText') || {}).value || '';
+        _usersFilterRole = (document.getElementById('usersFilterRole') || {}).value || '';
+        var container = document.getElementById('superadmin-users-content');
+        if (container) _renderUsersPage(container);
+    }
+
     function _renderUsersPage(container) {
         var html = [];
+
+        // Filters row
+        html.push('<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">');
+        html.push('<input type="text" id="usersFilterText" placeholder="Cerca per nome o email..." value="' + _escapeHtml(_usersFilterText) + '" oninput="_onUsersFilterChange()" style="flex:1;min-width:180px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;">');
+        html.push('<select id="usersFilterRole" onchange="_onUsersFilterChange()" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;">');
+        html.push('<option value=""' + (!_usersFilterRole ? ' selected' : '') + '>Tutti i ruoli</option>');
+        html.push('<option value="owner"' + (_usersFilterRole === 'owner' ? ' selected' : '') + '>Owner</option>');
+        html.push('<option value="vet_int"' + (_usersFilterRole === 'vet_int' ? ' selected' : '') + '>Vet Int</option>');
+        html.push('<option value="vet_ext"' + (_usersFilterRole === 'vet_ext' ? ' selected' : '') + '>Vet Ext</option>');
+        html.push('<option value="admin_brand"' + (_usersFilterRole === 'admin_brand' ? ' selected' : '') + '>Admin Brand</option>');
+        html.push('<option value="super_admin"' + (_usersFilterRole === 'super_admin' ? ' selected' : '') + '>Super Admin</option>');
+        html.push('</select>');
+        html.push('</div>');
 
         // Create user button
         html.push('<div style="margin-bottom:16px;">');
@@ -1067,7 +1102,8 @@
         html.push('<div><label style="font-size:12px;font-weight:600;">Nome</label><input type="text" id="newUserDisplayName" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="Nome completo"></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Ruolo</label><select id="newUserRole" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
         html.push('<option value="owner">Owner (Proprietario)</option>');
-        html.push('<option value="vet">Vet (Veterinario)</option>');
+        html.push('<option value="vet_int">Vet Int (Veterinario Interno)</option>');
+        html.push('<option value="vet_ext">Vet Ext (Veterinario Esterno)</option>');
         html.push('<option value="admin_brand">Admin Brand</option>');
         html.push('<option value="super_admin">Super Admin</option>');
         html.push('</select></div>');
@@ -1079,12 +1115,13 @@
         html.push('</div>');
 
         // Users table
-        if (_usersData.length === 0) {
+        var filteredUsers = _getFilteredUsers();
+        if (filteredUsers.length === 0) {
             html.push('<p style="color:#888;">Nessun utente trovato.</p>');
         } else {
             html.push('<table class="admin-table">');
             html.push('<tr><th>Email</th><th>Nome</th><th>Ruolo</th><th>Stato</th><th>Tenant</th><th>Azioni</th></tr>');
-            _usersData.forEach(function (user) {
+            filteredUsers.forEach(function (user) {
                 var statusBadge = user.status === 'active'
                     ? '<span style="color:#16a34a;font-weight:600;">attivo</span>'
                     : '<span style="color:#dc2626;font-weight:600;">disabilitato</span>';
@@ -3285,6 +3322,7 @@
     global.toggleUserStatus       = toggleUserStatus;
     global.promptResetPassword    = promptResetPassword;
     global.promptAssignTenant     = promptAssignTenant;
+    global._onUsersFilterChange   = _onUsersFilterChange;
     // Policies
     global.loadSuperadminPolicies = loadSuperadminPolicies;
     global.showCreatePolicyForm   = showCreatePolicyForm;

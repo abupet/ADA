@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.17.1
+
+### Bugfix pet CRUD per vet, edit pet dropdown, gestione utenti migliorata
+- Fix: **DELETE/PATCH pets per ruoli vet** — le operazioni di modifica e cancellazione pet ora funzionano correttamente per vet_int, vet_ext e super_admin (prima il backend filtrava solo per owner_user_id, causando 404 per i vet)
+- Fix: **Modifica Pet — Proprietario dropdown** — il campo Proprietario nel modal "Modifica Pet" ora è una dropdown list (era un campo testo), con aggiunta della dropdown "Vet Esterno (referral)"
+- Fix: **Gestione Utenti — ruoli vet_int/vet_ext** — nel form "Nuovo Utente", la voce "Vet (Veterinario)" è stata sostituita con "Vet Int (Veterinario Interno)" e "Vet Ext (Veterinario Esterno)"
+- Feat: **Gestione Utenti — filtri** — aggiunta ricerca per testo (nome/email) e filtro per ruolo nella pagina Gestione Utenti
+
 ## v8.17.0
 
 ### Ruoli vet_int/vet_ext, form sintetici referenti, UX messaggi

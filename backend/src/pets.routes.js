@@ -120,7 +120,8 @@ function petsRouter({ requireAuth }) {
 
   // Update pet (optimistic concurrency via base_version)
   router.patch("/api/pets/:pet_id", requireAuth, async (req, res) => {
-    const owner_user_id = req.user?.sub;
+    const caller_user_id = req.user?.sub;
+    const role = req.user?.role;
     const { pet_id } = req.params;
     if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
     const { base_version, patch } = req.body || {};
@@ -135,10 +136,14 @@ function petsRouter({ requireAuth }) {
     }
     try {
       await client.query("BEGIN");
-      const cur = await client.query(
-        "SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 FOR UPDATE",
-        [owner_user_id, pet_id]
-      );
+      let cur;
+      if (role === "vet" || role === "vet_int" || role === "super_admin") {
+        cur = await client.query("SELECT * FROM pets WHERE pet_id = $1 FOR UPDATE", [pet_id]);
+      } else if (role === "vet_ext") {
+        cur = await client.query("SELECT * FROM pets WHERE referring_vet_user_id = $1 AND pet_id = $2 FOR UPDATE", [caller_user_id, pet_id]);
+      } else {
+        cur = await client.query("SELECT * FROM pets WHERE owner_user_id = $1 AND pet_id = $2 FOR UPDATE", [caller_user_id, pet_id]);
+      }
       if (!cur.rows[0]) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "not_found" });
@@ -158,7 +163,7 @@ function petsRouter({ requireAuth }) {
 
       // Handle referring_vet_user_id and owner_user_id from patch
       const nextReferringVet = patch.referring_vet_user_id !== undefined ? patch.referring_vet_user_id : current.referring_vet_user_id;
-      const nextOwnerId = patch.owner_user_id || owner_user_id;
+      const nextOwnerId = patch.owner_user_id || current.owner_user_id;
 
       // Rich data: merge into extra_data JSONB
       let extraData = current.extra_data || {};
@@ -173,21 +178,21 @@ function petsRouter({ requireAuth }) {
 
       const upd = await client.query(
         `UPDATE pets SET
-          name=$3, species=$4, breed=$5, sex=$6, birthdate=$7, weight_kg=$8, notes=$9,
-          extra_data=$10,
-          referring_vet_user_id=$11,
-          owner_user_id=$12,
+          name=$2, species=$3, breed=$4, sex=$5, birthdate=$6, weight_kg=$7, notes=$8,
+          extra_data=$9,
+          referring_vet_user_id=$10,
+          owner_user_id=$11,
           version = version + 1,
           updated_at = NOW()
-         WHERE owner_user_id=$1 AND pet_id=$2
+         WHERE pet_id=$1
          RETURNING *`,
-        [owner_user_id, pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes, JSON.stringify(extraData), nextReferringVet || null, nextOwnerId]
+        [pet_id, next.name, next.species, next.breed, next.sex, next.birthdate, next.weight_kg, next.notes, JSON.stringify(extraData), nextReferringVet || null, nextOwnerId]
       );
 
       await client.query(
         `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version)
          VALUES ($1,$2,'pet.upsert',$3,$4)`,
-        [owner_user_id, pet_id, upd.rows[0], upd.rows[0].version]
+        [current.owner_user_id, pet_id, upd.rows[0], upd.rows[0].version]
       );
 
       await client.query("COMMIT");
@@ -203,7 +208,8 @@ function petsRouter({ requireAuth }) {
 
   // Delete pet
   router.delete("/api/pets/:pet_id", requireAuth, async (req, res) => {
-    const owner_user_id = req.user?.sub;
+    const caller_user_id = req.user?.sub;
+    const role = req.user?.role;
     const { pet_id } = req.params;
     if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
 
@@ -216,20 +222,24 @@ function petsRouter({ requireAuth }) {
     }
     try {
       await client.query("BEGIN");
-      const cur = await client.query(
-        "SELECT version FROM pets WHERE owner_user_id=$1 AND pet_id=$2 FOR UPDATE",
-        [owner_user_id, pet_id]
-      );
+      let cur;
+      if (role === "vet" || role === "vet_int" || role === "super_admin") {
+        cur = await client.query("SELECT version, owner_user_id FROM pets WHERE pet_id=$1 FOR UPDATE", [pet_id]);
+      } else if (role === "vet_ext") {
+        cur = await client.query("SELECT version, owner_user_id FROM pets WHERE referring_vet_user_id=$1 AND pet_id=$2 FOR UPDATE", [caller_user_id, pet_id]);
+      } else {
+        cur = await client.query("SELECT version, owner_user_id FROM pets WHERE owner_user_id=$1 AND pet_id=$2 FOR UPDATE", [caller_user_id, pet_id]);
+      }
       if (!cur.rows[0]) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "not_found" });
       }
-      await client.query("DELETE FROM pets WHERE owner_user_id=$1 AND pet_id=$2", [owner_user_id, pet_id]);
+      await client.query("DELETE FROM pets WHERE pet_id=$1", [pet_id]);
 
       await client.query(
         `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version)
          VALUES ($1,$2,'pet.delete',NULL,$3)`,
-        [owner_user_id, pet_id, cur.rows[0].version]
+        [cur.rows[0].owner_user_id, pet_id, cur.rows[0].version]
       );
 
       await client.query("COMMIT");
