@@ -31,7 +31,7 @@ function requireRole(allowedRoles) {
       const effectiveRole = legacyRole === "vet" ? "vet_int" : legacyRole;
       // Check if allowed (accept both old 'vet' and new 'vet_int'/'vet_ext')
       const isAllowed = allowedRoles.includes(effectiveRole) ||
-        (effectiveRole === "vet_int" && allowedRoles.includes("vet")) ||
+        ((effectiveRole === "vet_int" || effectiveRole === "vet_ext") && allowedRoles.includes("vet")) ||
         (legacyRole === "vet" && (allowedRoles.includes("vet_int") || allowedRoles.includes("vet_ext")));
       if (!isAllowed) {
         return res.status(403).json({ error: "forbidden" });
