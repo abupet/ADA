@@ -1127,7 +1127,6 @@ function openEditPetModal() {
         'editPetBirthdate': document.getElementById('petBirthdate')?.value || '',
         'editPetSex': document.getElementById('petSex')?.value || '',
         'editPetMicrochip': document.getElementById('petMicrochip')?.value || '',
-        'editOwnerName': document.getElementById('ownerName')?.value || '',
         'editOwnerPhone': document.getElementById('ownerPhone')?.value || '',
         'editVisitDate': document.getElementById('visitDate')?.value || ''
     };
@@ -1135,6 +1134,12 @@ function openEditPetModal() {
         var el = document.getElementById(id);
         if (el) el.value = fields[id];
     }
+
+    // Load owner/vet dropdowns for edit modal
+    var pet = petsCache.find(function(p) { return (p.id || p.pet_id) === currentPetId; });
+    var currentOwnerId = pet ? pet.owner_user_id : null;
+    var currentVetId = pet ? pet.referring_vet_user_id : null;
+    _loadOwnerAndVetDropdowns('editOwnerName', 'editOwnerReferringVet', currentOwnerId, currentVetId);
 
     // Lifestyle fields
     var lifestyleMapping = {
@@ -1191,7 +1196,6 @@ async function saveEditPet() {
         'petBirthdate': 'editPetBirthdate',
         'petSex': 'editPetSex',
         'petMicrochip': 'editPetMicrochip',
-        'ownerName': 'editOwnerName',
         'ownerPhone': 'editOwnerPhone',
         'visitDate': 'editVisitDate'
     };
@@ -1200,6 +1204,13 @@ async function saveEditPet() {
         var dst = document.getElementById(mainId);
         if (src && dst) dst.value = src.value;
     }
+    // Copy dropdown selections (owner + vet referral)
+    var editOwnerSel = document.getElementById('editOwnerName');
+    var mainOwnerSel = document.getElementById('ownerName');
+    if (editOwnerSel && mainOwnerSel) mainOwnerSel.value = editOwnerSel.value;
+    var editVetSel = document.getElementById('editOwnerReferringVet');
+    var mainVetSel = document.getElementById('ownerReferringVet');
+    if (editVetSel && mainVetSel) mainVetSel.value = editVetSel.value;
 
     // Lifestyle
     var lifestyleMapping = {
