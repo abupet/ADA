@@ -1,5 +1,10 @@
 # Release Notes (cumulative)
 
+## v8.17.5
+
+### Fix: allegati non visibili nei messaggi
+- Fix: **Allegati invisibili per il destinatario** — i tag HTML `<img>`, `<audio>`, `<video>` e `<a>` non possono inviare l'header `Authorization: Bearer`; il download endpoint restituiva 401 e `onerror` nascondeva l'elemento. Ora il token JWT viene aggiunto come query parameter `?token=` all'URL di download, e il backend accetta l'autenticazione anche da query string
+
 ## v8.17.4
 
 ### Fix messaggistica: referto, vet_ext, destinatari
