@@ -204,7 +204,10 @@ app.post("/auth/login/v2", async (req, res) => {
 function requireJwt(req, res, next) {
   const authHeader = req.headers.authorization || "";
   const [scheme, token] = authHeader.split(" ");
-  if (scheme !== "Bearer" || !token) {
+  // Fallback: accept ?token= query param (needed for <img>, <audio>, <video> src attributes)
+  const qToken = req.query && req.query.token;
+  const effectiveToken = (scheme === "Bearer" && token) ? token : (qToken || null);
+  if (!effectiveToken) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
@@ -213,7 +216,7 @@ function requireJwt(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, effectiveJwtSecret);
+    const decoded = jwt.verify(effectiveToken, effectiveJwtSecret);
     req.user = decoded;
   } catch (error) {
     return res.status(401).json({ error: "Unauthorized" });

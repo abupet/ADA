@@ -73,8 +73,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.17.4';
-const ADA_RELEASE_NOTES = 'Fix: referto visibile con download funzionante, vet_ext crea conversazioni, vet_int può messaggiare vet_ext.';
+const ADA_VERSION = '8.17.5';
+const ADA_RELEASE_NOTES = 'Fix: allegati visibili nei messaggi (auth token per img/audio/video), referto download funzionante.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

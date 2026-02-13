@@ -848,6 +848,9 @@ function _commRenderBubble(msg, isOwn) {
         var allUuids = (msg.media_url || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
         if (allUuids.length >= 2) dlUrl = _commApiBase() + '/api/communication/attachments/' + allUuids[1] + '/download';
         else if (allUuids.length === 1) dlUrl = _commApiBase() + '/api/communication/attachments/' + allUuids[0] + '/download';
+        // Append auth token as query param (img/audio/video tags can't send Authorization header)
+        var _dlToken = typeof getAuthToken === 'function' ? getAuthToken() : '';
+        if (_dlToken) dlUrl += '?token=' + encodeURIComponent(_dlToken);
         // Extract filename from media_url path (after attachmentId_ prefix)
         var _urlParts = (msg.media_url || '').split('/');
         var _lastPart = _urlParts[_urlParts.length - 1] || '';
