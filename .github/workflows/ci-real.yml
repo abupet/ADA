@@ -10,7 +10,7 @@
 # ├────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
 # │ Database   │ Render prod (ada_db_zqld_user)               │ Neon dev (neondb_owner)                   │
 # ├────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
-# │ Test files │ tests/e2e/** from main of abupet/ada         │ tests/e2e/** from main of abupet/ada-dev  │
+# │ Test files │ tests/e2e/** from main of abupet/ada         │ tests/e2e/** from dev of abupet/ada       │
 # └────────────┴──────────────────────────────────────────────┴───────────────────────────────────────────┘
 #
 # No local server is started — Playwright talks directly to the deployed GitHub Pages
@@ -42,13 +42,13 @@ jobs:
           - environment: prod
             deploy_url: "https://abupet.github.io/ada/"
             backend_url: "https://ada-au40.onrender.com"
-            repo: ""                # empty = current repo (abupet/ada, default branch main)
+            ref: ""                 # empty = default branch (main)
             issue_label: "nightly-failure"
             issue_label_color: "d93f0b"
           - environment: dev
             deploy_url: "https://abupet.github.io/ada-dev/"
             backend_url: "https://ada-backend-dev.onrender.com"
-            repo: "abupet/ada-dev"  # checkout from ada-dev repo (main branch = synced from ada dev)
+            ref: "dev"              # checkout dev branch for test files
             issue_label: "nightly-failure-dev"
             issue_label_color: "e99695"
 
@@ -72,18 +72,12 @@ jobs:
 
     steps:
       # ── Checkout ──────────────────────────────────────────
-      # prod: checkout current repo (abupet/ada) main
-      # dev:  checkout abupet/ada-dev main (which mirrors ada dev branch)
-      - name: Checkout (current repo)
-        if: matrix.repo == ''
-        uses: actions/checkout@v4
-
-      - name: Checkout (ada-dev repo)
-        if: matrix.repo != ''
+      # prod: checkout current repo (abupet/ada) main branch
+      # dev:  checkout current repo (abupet/ada) dev branch
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          repository: ${{ matrix.repo }}
-          token: ${{ secrets.ADA_DEV_SYNC_TOKEN }}
+          ref: ${{ matrix.ref || '' }}
 
       # ── Node & deps ──────────────────────────────────────
       - name: Setup Node
@@ -177,7 +171,7 @@ jobs:
           - **Backend:** ${{ matrix.backend_url }}
           - **Run:** $RUN_URL
           - **Trigger:** ${{ github.event_name }}
-          - **Test source:** ${{ matrix.repo || github.repository }} (main)
+          - **Test source:** ${{ github.repository }}@${{ matrix.ref || 'main' }} (main)
 
           ### Next steps
           1. Check the [run logs]($RUN_URL) and download artifacts (playwright-report, test-results)
@@ -215,7 +209,7 @@ jobs:
             echo "| Environment | \`${{ matrix.environment }}\` |"
             echo "| Frontend | ${{ matrix.deploy_url }} |"
             echo "| Backend | ${{ matrix.backend_url }} |"
-            echo "| Test source | \`${{ matrix.repo || github.repository }}\` (main) |"
+            echo "| Test source | \`${{ github.repository }}@${{ matrix.ref || 'main' }}\` (main) |"
             echo "| DEPLOYED | ${DEPLOYED} |"
             echo "| STRICT_NETWORK | ${STRICT_NETWORK} |"
             echo "| ALLOW_OPENAI | ${ALLOW_OPENAI:-} |"
