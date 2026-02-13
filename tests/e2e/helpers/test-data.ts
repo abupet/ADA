@@ -57,3 +57,30 @@ export async function waitForEmptyOutbox(_page: Page, _timeout = 10_000) {
 export async function countOutbox(_page: Page): Promise<number> {
   return 0;
 }
+
+/**
+ * Delete all pets owned by the currently logged-in user via the API.
+ * Cleans up after tests that create pets so deployed environments stay clean.
+ * Safe to call even if no pets exist or page is in a broken state.
+ */
+export async function deleteAllUserPets(page: Page) {
+  try {
+    await page.evaluate(async () => {
+      const w = window as any;
+      if (typeof w.fetchApi !== "function") return;
+      try {
+        const resp = await w.fetchApi("/api/pets", { method: "GET" });
+        if (!resp || !resp.ok) return;
+        const data = await resp.json();
+        const pets = data.pets || [];
+        for (const pet of pets) {
+          try {
+            await w.fetchApi("/api/pets/" + pet.pet_id, { method: "DELETE" });
+          } catch (_) { /* ignore individual failures */ }
+        }
+      } catch (_) { /* ignore — API may be unavailable */ }
+    });
+  } catch (_) {
+    // Page may have crashed or navigated away — cleanup skipped
+  }
+}

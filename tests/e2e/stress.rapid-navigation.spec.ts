@@ -3,6 +3,7 @@ import { login } from "./helpers/login";
 import { captureHardErrors } from "./helpers/console";
 import { mockAllEndpoints } from "./helpers/api-mocks";
 import { ensurePetSelected, switchRole, ALL_PAGES } from "./helpers/pages";
+import { deleteAllUserPets } from "./helpers/test-data";
 
 // ---------------------------------------------------------------------------
 // @stress — Rapid navigation: 50 page switches, role toggles, double-clicks
@@ -10,6 +11,8 @@ import { ensurePetSelected, switchRole, ALL_PAGES } from "./helpers/pages";
 
 test.describe("Stress rapid navigation", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
   test("@stress 50 rapid page navigations", async ({ page }) => {
     const errors = captureHardErrors(page);

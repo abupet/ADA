@@ -3,6 +3,7 @@ import { login } from "./helpers/login";
 import { captureHardErrors } from "./helpers/console";
 import { mockAllEndpoints, mockSyncEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected } from "./helpers/pages";
+import { deleteAllUserPets } from "./helpers/test-data";
 import { Fixtures } from "./helpers/fixtures";
 import fs from "fs";
 
@@ -12,6 +13,8 @@ import fs from "fs";
 
 test.describe("Stress large data", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
   test("@stress Large transcription (10k words)", async ({ page }) => {
     const errors = captureHardErrors(page);
