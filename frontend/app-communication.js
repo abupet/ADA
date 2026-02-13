@@ -428,6 +428,7 @@ async function _commShowNewForm(containerId) {
         recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
     } else {
         recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
+        recipientOpts += '<option value="vet_ext">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Esterno</option>';
         recipientOpts += '<option value="owner">\uD83E\uDDD1 Proprietario</option>';
     }
 
@@ -558,14 +559,24 @@ async function _commCreateConversation() {
 
     try {
         var body = { recipient_type: destType === 'ai' ? 'ai' : 'human' };
-        if (petId) body.pet_id = petId;
+        // For vet_ext, only include pet_id if the pet is in their visible list
+        if (petId && jwtRole === 'vet_ext') {
+            var _vetExtPets = typeof getAllPets === 'function' ? (getAllPets() || []) : [];
+            var _petInList = false;
+            for (var _pi = 0; _pi < _vetExtPets.length; _pi++) {
+                if ((_vetExtPets[_pi].pet_id || _vetExtPets[_pi].petId) === petId) { _petInList = true; break; }
+            }
+            if (_petInList) body.pet_id = petId;
+        } else if (petId) {
+            body.pet_id = petId;
+        }
         if (subject) body.subject = subject;
         if (firstMessage.trim()) body.initial_message = firstMessage.trim();
         if (referralForm) body.referral_form = referralForm;
 
         if (destType === 'ai') {
             body.vet_user_id = 'ada-assistant';
-        } else if (destType === 'vet') {
+        } else if (destType === 'vet' || destType === 'vet_ext') {
             body.vet_user_id = recipientId;
         } else if (destType === 'owner') {
             body.owner_override_id = recipientId;
@@ -574,7 +585,23 @@ async function _commCreateConversation() {
         var resp = await fetch(_commApiBase() + '/api/communication/conversations', {
             method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify(body)
         });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        if (!resp.ok) {
+            var _errBody;
+            try { _errBody = await resp.json(); } catch(_){}
+            if (_errBody && _errBody.error === 'pet_not_assigned_to_you') {
+                if (typeof showToast === 'function') showToast('Il pet selezionato non \u00e8 assegnato a te. Riprovo senza pet...', 'warning');
+                delete body.pet_id;
+                resp = await fetch(_commApiBase() + '/api/communication/conversations', {
+                    method: 'POST', headers: _commAuthHeaders(), body: JSON.stringify(body)
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            } else if (_errBody && _errBody.error === 'referral_form_required') {
+                if (typeof showToast === 'function') showToast('Form clinico obbligatorio per vet esterni', 'warning');
+                return;
+            } else {
+                throw new Error('HTTP ' + resp.status);
+            }
+        }
         var data = await resp.json();
         if (typeof showToast === 'function') showToast('Conversazione creata', 'success');
         var fa = document.getElementById('comm-new-form-area');
@@ -816,20 +843,31 @@ function _commRenderBubble(msg, isOwn) {
     var msgType = msg.type || msg.message_type || 'text';
     if ((msgType === 'image' || msgType === 'audio' || msgType === 'video' || msgType === 'file') && msg.media_url) {
         var dlUrl = _commApiBase() + '/api/communication/attachments/' + (msg.attachment_id || '') + '/download';
-        // Try to build download URL from attachment_id in media_url path
-        var aidMatch = (msg.media_url || '').match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-        if (aidMatch) dlUrl = _commApiBase() + '/api/communication/attachments/' + aidMatch[1] + '/download';
-        var fname = _commEscape(msg.content || msg.original_filename || 'File');
+        // Extract attachment_id from media_url: /uploads/comm/{convId}/{attachmentId}_{filename}
+        // Must use the SECOND UUID (attachment_id), not the first (conversation_id)
+        var allUuids = (msg.media_url || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
+        if (allUuids.length >= 2) dlUrl = _commApiBase() + '/api/communication/attachments/' + allUuids[1] + '/download';
+        else if (allUuids.length === 1) dlUrl = _commApiBase() + '/api/communication/attachments/' + allUuids[0] + '/download';
+        // Extract filename from media_url path (after attachmentId_ prefix)
+        var _urlParts = (msg.media_url || '').split('/');
+        var _lastPart = _urlParts[_urlParts.length - 1] || '';
+        var _uidx = _lastPart.indexOf('_');
+        var fname = _uidx !== -1 ? _lastPart.substring(_uidx + 1) : (_lastPart || 'File');
+        fname = decodeURIComponent(fname);
         var fsize = msg.media_size_bytes ? ' (' + _commFormatFileSize(msg.media_size_bytes) + ')' : '';
+        // Show text content separately if present (user's message alongside the attachment)
+        if (msg.content && msg.content.trim() && msg.content.trim() !== fname) {
+            html += '<div>' + _commEscape(msg.content) + '</div>';
+        }
         if (msgType === 'image') {
-            html += '<div><img src="' + dlUrl + '" alt="' + fname + '" style="max-width:280px;max-height:280px;border-radius:8px;cursor:pointer;" ' +
+            html += '<div><img src="' + dlUrl + '" alt="' + _commEscape(fname) + '" style="max-width:280px;max-height:280px;border-radius:8px;cursor:pointer;" ' +
                 'onclick="window.open(this.src,\'_blank\')" onerror="this.style.display=\'none\'" loading="lazy" /></div>';
         } else if (msgType === 'audio') {
             html += '<div><audio controls preload="none" style="max-width:260px;"><source src="' + dlUrl + '" type="' + _commEscape(msg.media_type || 'audio/mpeg') + '"></audio></div>';
         } else if (msgType === 'video') {
             html += '<div><video controls preload="none" style="max-width:280px;border-radius:8px;"><source src="' + dlUrl + '" type="' + _commEscape(msg.media_type || 'video/mp4') + '"></video></div>';
         } else {
-            html += '<div><a href="' + dlUrl + '" target="_blank" style="color:inherit;text-decoration:underline;">\uD83D\uDCC4 ' + fname + fsize + '</a></div>';
+            html += '<div><a href="' + dlUrl + '" target="_blank" style="color:inherit;text-decoration:underline;">\uD83D\uDCC4 ' + _commEscape(fname) + fsize + '</a></div>';
         }
     } else {
         html += '<div>' + _commEscape(msg.content || '') + '</div>';

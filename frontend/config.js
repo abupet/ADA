@@ -73,8 +73,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.17.3';
-const ADA_RELEASE_NOTES = 'Bugfix batch 2: ruoli vet_int/vet_ext attivabili, referto con contenuto e notifica, pet proprietario/vet read-only, promo multi-tenant, de-assign tenant, super_admin wipe all pets, test auto-fill, pet species nei messaggi.';
+const ADA_VERSION = '8.17.4';
+const ADA_RELEASE_NOTES = 'Fix: referto visibile con download funzionante, vet_ext crea conversazioni, vet_int può messaggiare vet_ext.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
