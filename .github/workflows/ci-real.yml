@@ -1,10 +1,30 @@
-# ci-real.yml v9
+# ci-real.yml v10
+# Nightly E2E tests against DEPLOYED infrastructure (GitHub Pages + Render + DB).
+#
+# ┌────────────┬──────────────────────────────────────────────┬───────────────────────────────────────────┐
+# │ Componente │               test_real (prod)               │              test_real (dev)              │
+# ├────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
+# │ Frontend   │ https://abupet.github.io/ada/                │ https://abupet.github.io/ada-dev/         │
+# ├────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
+# │ Backend    │ https://ada-au40.onrender.com                │ https://ada-backend-dev.onrender.com      │
+# ├────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
+# │ Database   │ Render prod (ada_db_zqld_user)               │ Neon dev (neondb_owner)                   │
+# ├────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
+# │ Test files │ tests/e2e/** from main of abupet/ada         │ tests/e2e/** from main of abupet/ada-dev  │
+# └────────────┴──────────────────────────────────────────────┴───────────────────────────────────────────┘
+#
+# No local server is started — Playwright talks directly to the deployed GitHub Pages
+# frontend, which auto-detects the correct Render backend via runtime-config.js.
+#
+# DB wake-up: both Render and Neon DBs may be in standby. The workflow pings the
+# backend /api/health endpoint with a 2-minute timeout before running tests.
+
 name: CI (REAL)
 
 on:
   workflow_dispatch:
   schedule:
-    # Nightly at 02:30 Rome time (01:30 UTC during CET; GitHub schedules use UTC)
+    # Nightly at 02:30 Rome time (01:30 UTC during CET)
     - cron: "30 1 * * *"
 
 permissions:
@@ -20,18 +40,25 @@ jobs:
         environment: [prod, dev]
         include:
           - environment: prod
-            database_url_secret: DATABASE_URL
-            deploy_url_secret: DEPLOY_URL
+            deploy_url: "https://abupet.github.io/ada/"
+            backend_url: "https://ada-au40.onrender.com"
+            repo: ""                # empty = current repo (abupet/ada, default branch main)
+            issue_label: "nightly-failure"
+            issue_label_color: "d93f0b"
           - environment: dev
-            database_url_secret: DATABASE_URL_DEV
-            deploy_url_secret: DEPLOY_URL_DEV
+            deploy_url: "https://abupet.github.io/ada-dev/"
+            backend_url: "https://ada-backend-dev.onrender.com"
+            repo: "abupet/ada-dev"  # checkout from ada-dev repo (main branch = synced from ada dev)
+            issue_label: "nightly-failure-dev"
+            issue_label_color: "e99695"
 
     env:
       MODE: REAL
+      DEPLOYED: "1"
       STRICT_NETWORK: "1"
-      STRICT_ALLOW_HOSTS: "cdnjs.cloudflare.com"
+      STRICT_ALLOW_HOSTS: "cdnjs.cloudflare.com,ada-au40.onrender.com,ada-backend-dev.onrender.com"
       ALLOW_OPENAI: "1"
-      FRONTEND_ORIGIN: "http://localhost:4173"
+      DEPLOY_URL: ${{ matrix.deploy_url }}
       ADA_ENV: ${{ matrix.environment }}
       ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
       ADA_TEST_EMAIL: ${{ secrets.TEST_VET_EMAIL }}
@@ -41,14 +68,24 @@ jobs:
       TEST_OWNER_EMAIL: ${{ secrets.TEST_OWNER_EMAIL }}
       TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DEPLOY_URL: ${{ secrets[matrix.deploy_url_secret] }}
       RATE_LIMIT_PER_MIN: "600"
-      DATABASE_URL: ${{ secrets[matrix.database_url_secret] }}
 
     steps:
-      - name: Checkout
+      # ── Checkout ──────────────────────────────────────────
+      # prod: checkout current repo (abupet/ada) main
+      # dev:  checkout abupet/ada-dev main (which mirrors ada dev branch)
+      - name: Checkout (current repo)
+        if: matrix.repo == ''
         uses: actions/checkout@v4
 
+      - name: Checkout (ada-dev repo)
+        if: matrix.repo != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          token: ${{ secrets.ADA_DEV_SYNC_TOKEN }}
+
+      # ── Node & deps ──────────────────────────────────────
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -57,9 +94,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install backend dependencies
-        run: npm install --prefix backend
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -71,27 +105,34 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Start server
+      # ── Wake up backend + DB ─────────────────────────────
+      # Render free-tier and Neon can sleep. First request may take up to 2 min.
+      - name: Wake up backend (${{ matrix.environment }})
         run: |
-          nohup node backend/src/server.js > backend.log 2>&1 &
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then break; fi
-            sleep 1
+          echo "Pinging ${{ matrix.backend_url }}/api/health (timeout 120s)..."
+          for i in $(seq 1 24); do
+            if curl -fsS --max-time 10 "${{ matrix.backend_url }}/api/health" > /dev/null 2>&1; then
+              echo "Backend is awake after $((i * 5))s"
+              exit 0
+            fi
+            echo "  attempt $i/24 — waiting 5s..."
+            sleep 5
           done
-          curl -fsS http://127.0.0.1:3000/api/health > /dev/null
-          nohup npm run serve > server.log 2>&1 &
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:4173 > /dev/null
+          echo "::error::Backend ${{ matrix.backend_url }} did not respond within 120s"
+          exit 1
 
-      - name: Seed test users
-        run: node backend/src/seed.test-users.js
+      # ── Verify frontend is reachable ─────────────────────
+      - name: Verify frontend (${{ matrix.environment }})
+        run: |
+          echo "Checking ${{ matrix.deploy_url }}..."
+          curl -fsS --max-time 15 "${{ matrix.deploy_url }}" > /dev/null
+          echo "Frontend is reachable."
 
-      - name: CI tests (REAL)
+      # ── Run tests (no local server needed) ───────────────
+      - name: CI tests (REAL — deployed ${{ matrix.environment }})
         run: npm run test:ci:real
 
+      # ── Artifacts on failure ─────────────────────────────
       - name: Upload Playwright report (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -108,22 +149,7 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
 
-      - name: Upload server log (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-log-${{ matrix.environment }}
-          path: server.log
-          if-no-files-found: ignore
-
-      - name: Upload backend log (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-log-${{ matrix.environment }}
-          path: backend.log
-          if-no-files-found: ignore
-
+      # ── Issue management ─────────────────────────────────
       - name: Notify nightly failure (open/update issue)
         if: failure()
         env:
@@ -131,16 +157,14 @@ jobs:
         run: |
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
-          LABEL="nightly-failure"
+          LABEL="${{ matrix.issue_label }}"
 
-          # Ensure label exists
-          gh label create "$LABEL" --color "d93f0b" --description "Nightly CI (REAL) failure" 2>/dev/null || true
+          gh label create "$LABEL" --color "${{ matrix.issue_label_color }}" \
+            --description "Nightly CI (REAL/${{ matrix.environment }}) failure" 2>/dev/null || true
 
-          # Check for existing open issue
           ISSUE_NUM=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
 
           if [ -z "$ISSUE_NUM" ]; then
-            # Create new issue
             gh issue create \
               --title "Nightly CI (REAL/${{ matrix.environment }}) failed — $DATE" \
               --label "$LABEL" \
@@ -148,9 +172,12 @@ jobs:
           ## Nightly CI (REAL) failed
 
           - **Date:** $DATE
+          - **Environment:** ${{ matrix.environment }}
+          - **Frontend:** ${{ matrix.deploy_url }}
+          - **Backend:** ${{ matrix.backend_url }}
           - **Run:** $RUN_URL
-          - **Branch:** main
           - **Trigger:** ${{ github.event_name }}
+          - **Test source:** ${{ matrix.repo || github.repository }} (main)
 
           ### Next steps
           1. Check the [run logs]($RUN_URL) and download artifacts (playwright-report, test-results)
@@ -159,7 +186,6 @@ jobs:
           EOF
           )"
           else
-            # Comment on existing issue
             gh issue comment "$ISSUE_NUM" \
               --body "### Still failing — $DATE
           - **Run:** $RUN_URL
@@ -171,30 +197,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          LABEL="nightly-failure"
+          LABEL="${{ matrix.issue_label }}"
           ISSUE_NUM=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
           if [ -n "$ISSUE_NUM" ]; then
-            gh issue close "$ISSUE_NUM" --comment "Nightly CI (REAL) passed — auto-closing."
+            gh issue close "$ISSUE_NUM" --comment "Nightly CI (REAL/${{ matrix.environment }}) passed — auto-closing."
           fi
 
+      # ── Summary ──────────────────────────────────────────
       - name: Write CI summary
         if: always()
         run: |
           {
-            echo "## CI (REAL) summary"
+            echo "## CI (REAL — deployed) summary"
             echo ""
-            echo "- MODE: ${MODE}"
-            echo "- STRICT_NETWORK: ${STRICT_NETWORK}"
-            echo "- STRICT_ALLOW_HOSTS: ${STRICT_ALLOW_HOSTS:-}"
-            echo "- ALLOW_OPENAI: ${ALLOW_OPENAI:-}"
+            echo "| Component | Value |"
+            echo "|-----------|-------|"
+            echo "| Environment | \`${{ matrix.environment }}\` |"
+            echo "| Frontend | ${{ matrix.deploy_url }} |"
+            echo "| Backend | ${{ matrix.backend_url }} |"
+            echo "| Test source | \`${{ matrix.repo || github.repository }}\` (main) |"
+            echo "| DEPLOYED | ${DEPLOYED} |"
+            echo "| STRICT_NETWORK | ${STRICT_NETWORK} |"
+            echo "| ALLOW_OPENAI | ${ALLOW_OPENAI:-} |"
             echo ""
             echo "### Artifacts (available on failure)"
-            echo "- playwright-report"
-            echo "- test-results"
-            echo "- server-log"
-            echo ""
-            echo "### Useful commands (local)"
-            echo "- npm ci"
-            echo "- npm run serve  # port 4173"
-            echo "- npm run test:ci:real"
+            echo "- playwright-report-${{ matrix.environment }}"
+            echo "- test-results-${{ matrix.environment }}"
           } >> $GITHUB_STEP_SUMMARY
