@@ -4,12 +4,15 @@ import { captureHardErrors } from "./helpers/console";
 import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected, ALL_PAGES } from "./helpers/pages";
 import { measure, measurePageLoad } from "./helpers/perf";
+import { deleteAllUserPets } from "./helpers/test-data";
 
 // ---------------------------------------------------------------------------
 // @deep — Performance baselines: login time, navigation, DOM size
 // ---------------------------------------------------------------------------
 
 test.describe("Deep performance", () => {
+
+  test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
   test("@deep Login time < 15s", async ({ page }) => {
     const errors = captureHardErrors(page);

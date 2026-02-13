@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.16.2
+
+### Cleanup pet nei test e2e
+- Fix: **I test deep/stress/long ora puliscono i pet creati** — aggiunta helper `deleteAllUserPets(page)` che, al termine di ogni test, elimina via API tutti i pet dell'utente di test corrente; previene l'accumulo di centinaia di pet orfani nei DB deployed (dev/prod) dopo i nightly run
+- Aggiunto `test.afterEach` con cleanup in: `deep.pet-lifecycle`, `deep.performance`, `deep.security`, `long.full-visit-workflow`, `stress.large-data`, `stress.rapid-navigation`
+
 ## v8.16.1
 
 ### Nightly CI (REAL) stabilizzazione

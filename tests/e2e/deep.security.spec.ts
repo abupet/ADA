@@ -3,12 +3,15 @@ import { login } from "./helpers/login";
 import { captureHardErrors } from "./helpers/console";
 import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected } from "./helpers/pages";
+import { deleteAllUserPets } from "./helpers/test-data";
 
 // ---------------------------------------------------------------------------
 // @deep — Security: XSS, CSRF, JWT, file upload validation
 // ---------------------------------------------------------------------------
 
 test.describe("Deep security tests", () => {
+
+  test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
   test("@deep XSS: pet name with script tag is escaped", async ({ page }) => {
     const errors = captureHardErrors(page);
