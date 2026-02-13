@@ -206,6 +206,13 @@ async function initApp() {
     updateHistoryBadge();
     updateCostDisplay();
     restoreLastPage(); // Restore last viewed page
+
+    // Initialize communication socket and unread badge (real-time notifications)
+    try {
+        if (typeof initCommSocket === 'function') initCommSocket();
+        if (typeof updateCommUnreadBadge === 'function') updateCommUnreadBadge();
+        if (typeof startCommBadgePolling === 'function') startCommBadgePolling();
+    } catch(e) { console.warn('[CORE] Communication init failed:', e); }
 }
 
 function applyVersionInfo() {

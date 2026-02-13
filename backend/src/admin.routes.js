@@ -57,7 +57,7 @@ function adminRouter({ requireAuth, upload }) {
 
         const serviceType = req.query.service_type || null;
         if (serviceType) {
-          query += ` AND service_type = $${paramIdx}`;
+          query += ` AND $${paramIdx} = ANY(service_type)`;
           params.push(serviceType);
           paramIdx++;
         }
@@ -82,7 +82,7 @@ function adminRouter({ requireAuth, upload }) {
           countIdx++;
         }
         if (serviceType) {
-          countQuery += ` AND service_type = $${countIdx}`;
+          countQuery += ` AND $${countIdx} = ANY(service_type)`;
           countParams.push(serviceType);
           countIdx++;
         }
@@ -138,10 +138,12 @@ function adminRouter({ requireAuth, upload }) {
           tags_include = [],
           tags_exclude = [],
           priority = 0,
-          service_type = 'promo',
+          service_type = ['promo'],
           nutrition_data = null,
           insurance_data = null,
         } = req.body || {};
+
+        const serviceTypeArr = Array.isArray(service_type) ? service_type : [service_type || 'promo'];
 
         if (!name || !category) {
           return res.status(400).json({ error: "name_and_category_required" });
@@ -159,7 +161,7 @@ function adminRouter({ requireAuth, upload }) {
             itemId, tenantId, name, category, species, lifecycle_target,
             description, image_url, product_url, tags_include, tags_exclude, priority,
             extended_description,
-            service_type,
+            serviceTypeArr,
             nutrition_data ? JSON.stringify(nutrition_data) : null,
             insurance_data ? JSON.stringify(insurance_data) : null,
           ]
@@ -211,7 +213,12 @@ function adminRouter({ requireAuth, upload }) {
         for (const key of allowed) {
           if (Object.prototype.hasOwnProperty.call(patch, key)) {
             sets.push(`${key} = $${idx}`);
-            params.push(patch[key]);
+            if (key === 'service_type') {
+              const val = patch[key];
+              params.push(Array.isArray(val) ? val : [val || 'promo']);
+            } else {
+              params.push(patch[key]);
+            }
             idx++;
           }
         }

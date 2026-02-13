@@ -1,5 +1,22 @@
 # Release Notes (cumulative)
 
+## v8.16.0
+
+### Badge messaggi non letti in tempo reale
+- Il socket WebSocket viene ora connesso all'avvio dell'app (non solo quando si entra nella pagina Messaggi)
+- Nuovo evento `new_message_notification` emesso alla room `user:{recipientId}` per raggiungere il destinatario ovunque si trovi nell'app
+- Il client ascolta `new_message_notification` e aggiorna il badge nel menu laterale in tempo reale
+- Polling obbligatorio ogni 60 secondi come fallback per garantire l'aggiornamento del badge anche con socket instabili
+- Il badge si aggiorna immediatamente al primo caricamento dell'app
+
+### service_type multi-servizio (TEXT → TEXT[])
+- Migration 017: `service_type` convertito da `TEXT` a `TEXT[]` (array PostgreSQL)
+- Un prodotto può ora appartenere a più servizi (es. `{promo, nutrition}`)
+- I prodotti food/supplement pubblicati vengono automaticamente migrati con `{promo, nutrition}`
+- Backend: tutte le query aggiornate per usare `ANY()` e `unnest()` dove necessario
+- Frontend: badge multipli nella tabella catalogo, filtro compatibile con array, CSV import/export con separatore `|`
+- Seed e insurance: query aggiornate per array
+
 ## v8.15.12 (2026-02-12)
 - Feat: **Image cache BYTEA su promo_items** — nuove colonne `image_cached`, `image_cached_mime`, `image_cached_at`, `image_cached_hash` per resilienza URL esterni; endpoint pubblico `GET /api/promo-items/:id/image` serve da cache DB o redirect a URL
 - Feat: **Upload/delete/bulk-cache immagini** — 3 route admin per caricare, eliminare e cachare in bulk le immagini dei prodotti da URL esterni

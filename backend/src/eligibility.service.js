@@ -174,7 +174,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
            AND (pc.start_date IS NULL OR pc.start_date <= CURRENT_DATE)
            AND (pc.end_date IS NULL OR pc.end_date >= CURRENT_DATE)
          WHERE pi.status = 'published'
-           AND ($2::text IS NULL OR pi.service_type = $2)
+           AND ($2::text IS NULL OR $2 = ANY(pi.service_type))
          ORDER BY pi.promo_item_id,
                   (pc.contexts IS NOT NULL AND $1 = ANY(pc.contexts)) DESC NULLS LAST,
                   pi.priority DESC`,

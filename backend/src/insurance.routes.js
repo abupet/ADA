@@ -81,7 +81,7 @@ function insuranceRouter({ requireAuth }) {
       if (promoItemId) {
         try {
           const itemResult = await pool.query(
-            "SELECT insurance_data FROM promo_items WHERE promo_item_id = $1 AND service_type = 'insurance'",
+            "SELECT insurance_data FROM promo_items WHERE promo_item_id = $1 AND 'insurance' = ANY(service_type)",
             [promoItemId]
           );
           const raw = itemResult.rows[0]?.insurance_data;
