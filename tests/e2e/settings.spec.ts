@@ -37,6 +37,11 @@ test("@smoke Impostazioni/Sistema: non-super_admin debug ON vede card read-only"
 });
 
 test("@smoke Impostazioni/Sistema: non-super_admin debug OFF nasconde card", async ({ page }) => {
+  // In deployed mode, the global debug setting is fetched from the server and may
+  // override the local toggle (e.g., a super_admin has debug ON globally).
+  // Skip this test in deployed mode where server state is unpredictable.
+  test.skip(process.env.DEPLOYED === "1", "Server-side debug state unpredictable in deployed mode");
+
   await login(page);
 
   // Navigate to settings first and wait for system card to be visible,
