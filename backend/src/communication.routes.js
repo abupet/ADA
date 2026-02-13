@@ -407,6 +407,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
       let query = "SELECT c.*, " +
         "p.name AS pet_name, " +
+        "p.species AS pet_species, " +
         "uOwner.display_name AS owner_display_name, " +
         "uVet.display_name AS vet_display_name, " +
         "uOwner.base_role AS owner_role, " +
@@ -539,9 +540,13 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
       // Include conversation metadata (status, referral_form, subject, recipient_type)
       let petName = null;
+      let petSpecies = null;
       if (conversation.pet_id) {
-        const petRes = await pool.query("SELECT name FROM pets WHERE pet_id = $1 LIMIT 1", [conversation.pet_id]);
-        if (petRes.rows[0]) petName = petRes.rows[0].name;
+        const petRes = await pool.query("SELECT name, species FROM pets WHERE pet_id = $1 LIMIT 1", [conversation.pet_id]);
+        if (petRes.rows[0]) {
+          petName = petRes.rows[0].name;
+          petSpecies = petRes.rows[0].species;
+        }
       }
       let parsedReferralForm = null;
       if (conversation.referral_form) {
@@ -554,6 +559,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         recipient_type: conversation.recipient_type,
         referral_form: parsedReferralForm,
         pet_name: petName,
+        pet_species: petSpecies,
         triage_level: conversation.triage_level || null
       });
     } catch (e) {

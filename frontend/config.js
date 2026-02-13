@@ -73,8 +73,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.17.2';
-const ADA_RELEASE_NOTES = 'Bugfix batch: 18 fix tra cui messaggio doppio, dropdown filtrabili, ADA risponde al primo messaggio, form referral visibile, status conversazione, accesso documenti destinatario, ruoli vet_int/vet_ext validi.';
+const ADA_VERSION = '8.17.3';
+const ADA_RELEASE_NOTES = 'Bugfix batch 2: ruoli vet_int/vet_ext attivabili, referto con contenuto e notifica, pet proprietario/vet read-only, promo multi-tenant, de-assign tenant, super_admin wipe all pets, test auto-fill, pet species nei messaggi.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -96,6 +96,14 @@ const ROLE_PERMISSIONS = {
     admin_brand: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard', 'settings'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports', 'run_wizard']
+    },
+    vet_int: {
+        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication'],
+        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate']
+    },
+    vet_ext: {
+        pages: ['patient', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'document', 'communication'],
+        actions: ['view_profile', 'view_history', 'explain_document', 'communicate']
     },
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
@@ -171,7 +179,7 @@ function getActiveRoles() {
 }
 
 function setActiveRoles(rolesArray) {
-    var validRoles = ['veterinario', 'proprietario', 'admin_brand', 'super_admin'];
+    var validRoles = ['veterinario', 'vet_int', 'vet_ext', 'proprietario', 'admin_brand', 'super_admin'];
     var filtered = (rolesArray || []).filter(function(r) { return validRoles.indexOf(r) !== -1; });
     if (filtered.length === 0) filtered = ['veterinario'];
     try {

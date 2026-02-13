@@ -353,7 +353,9 @@ function _commBuildConvListHtml(conversations) {
             avatarCls = 'comm-conv-avatar comm-conv-avatar-human';
             avatarContent = _commEscape((otherName || 'U').charAt(0).toUpperCase());
         }
-        var petName = _commEscape(c.pet_name || 'Generale');
+        var _petLabel = c.pet_name || 'Generale';
+        if (c.pet_name && c.pet_species) _petLabel = c.pet_name + ' (' + c.pet_species + ')';
+        var petName = _commEscape(_petLabel);
         var preview = _commEscape(c.last_message_text || '');
         if (preview.length > 60) preview = preview.substring(0, 57) + '...';
         var time = _commFormatTime(c.last_message_at || c.updated_at);
@@ -441,8 +443,7 @@ async function _commShowNewForm(containerId) {
         '<option value="cardiologia">\u2764\uFE0F Cardiologia</option>' +
         '<option value="endoscopia_gastro">\uD83D\uDD2C Endoscopia / Gastroenterologia</option>' +
         '<option value="dermatologia">\uD83E\uDE79 Dermatologia / Citologia avanzata</option></select>' +
-        '<div id="comm-referral-fields"></div>' +
-        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="_commFillTestForm()">Test</button>' : '') : '';
+        '<div id="comm-referral-fields"></div>' : '';
 
     area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
         '<label for="comm-new-dest-type">Destinatario</label>' +
@@ -454,9 +455,10 @@ async function _commShowNewForm(containerId) {
         referralFormHtml +
         '<label for="comm-new-first-message">Primo messaggio</label>' +
         '<textarea id="comm-new-first-message" placeholder="Scrivi il primo messaggio della conversazione..." rows="3" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>' +
-        '<div style="margin-top:14px;display:flex;gap:8px;">' +
+        '<div style="margin-top:14px;display:flex;gap:8px;align-items:center;">' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation()">Crea</button>' +
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
+        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" onclick="_commFillTestForm()">Test</button>' : '') +
         '</div></div>';
 
     _commOnDestTypeChange();
@@ -651,6 +653,7 @@ function _commRenderChat(container, convId, messages, meta) {
     var isAi = _commCurrentConversationType === 'ai';
     var convSubject = (meta && meta.subject) || '';
     var convPetName = (meta && meta.pet_name) || 'Generale';
+    if (meta && meta.pet_name && meta.pet_species) convPetName = meta.pet_name + ' (' + meta.pet_species + ')';
     var convTriageLevel = (meta && meta.triage_level) || 'green';
 
     // Header
@@ -1506,6 +1509,18 @@ function _commFillTestForm() {
         var f = formDef.fields[i];
         var el = document.getElementById('ref-field-' + f.id);
         if (el && testData[f.id]) el.value = testData[f.id];
+    }
+    // Auto-fill primo messaggio
+    var firstMsgField = document.getElementById('comm-new-first-message');
+    if (firstMsgField) {
+        var testMessages = {
+            diagnostica_immagini: 'Buongiorno collega, richiedo consulto per Rx torace su paziente dispnoico da 3 giorni. Trovate i dettagli nel form allegato.',
+            chirurgia_ortopedia: 'Buongiorno collega, invio per valutazione rottura LCA ginocchio sinistro. Zoppia acuta post-corsa, 5 giorni fa.',
+            cardiologia: 'Buongiorno collega, richiedo rivalutazione cardiologica urgente. Soffio peggiorato con episodi sincopali.',
+            endoscopia_gastro: 'Buongiorno collega, richiedo gastroscopia con biopsie per vomito cronico intermittente da 3 mesi non responsivo a terapia.',
+            dermatologia: 'Buongiorno collega, invio per consulto dermatologico. Dermatite cronica recidivante da oltre 1 anno, peggiora in estate.'
+        };
+        firstMsgField.value = testMessages[formType] || 'Messaggio di test per verifica funzionalità.';
     }
 }
 

@@ -51,7 +51,8 @@ function seedRouter({ requireAuth, getOpenAiKey }) {
             const ownerUserId = req.user && req.user.sub ? req.user.sub : null;
             const mode = (req.body || {}).mode;
             if (mode === 'all' && ownerUserId) {
-                const result = await wipeAllUserPets(pool, ownerUserId);
+                const callerRole = req.user && req.user.role ? req.user.role : null;
+                const result = await wipeAllUserPets(pool, ownerUserId, callerRole);
                 return res.json({ status: 'wiped_all', details: result });
             }
             const result = await wipeSeededData(pool, ownerUserId);

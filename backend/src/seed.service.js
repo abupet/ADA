@@ -126,26 +126,33 @@ const SPECIES_IT = { dog: 'Cane', cat: 'Gatto', rabbit: 'Coniglio' };
 // Wipe ALL pets for a given user (admin "nuclear" option)
 // ---------------------------------------------------------------------------
 
-async function wipeAllUserPets(pool, ownerUserId) {
-  if (!ownerUserId) throw new Error('ownerUserId required');
+async function wipeAllUserPets(pool, callerUserId, callerRole) {
+  if (!callerUserId) throw new Error('callerUserId required');
   const results = { petsDeleted: 0, changesInserted: 0 };
 
-  const { rows: petRows } = await pool.query(
-    'SELECT pet_id FROM pets WHERE owner_user_id = $1',
-    [ownerUserId]
-  );
+  // super_admin: delete ALL pets; other roles: only own pets
+  let petQuery, petParams;
+  if (callerRole === 'super_admin') {
+    petQuery = 'SELECT pet_id, owner_user_id FROM pets';
+    petParams = [];
+  } else {
+    petQuery = 'SELECT pet_id, owner_user_id FROM pets WHERE owner_user_id = $1';
+    petParams = [callerUserId];
+  }
+
+  const { rows: petRows } = await pool.query(petQuery, petParams);
 
   for (const pet of petRows) {
     try {
       // FK-safe: delete children first
       await pool.query('DELETE FROM pet_tags WHERE pet_id = $1::text', [pet.pet_id]);
       await pool.query('DELETE FROM documents WHERE pet_id = $1', [pet.pet_id]);
-      await pool.query('DELETE FROM pets WHERE pet_id = $1 AND owner_user_id = $2', [pet.pet_id, ownerUserId]);
+      await pool.query('DELETE FROM pets WHERE pet_id = $1', [pet.pet_id]);
       // Insert pet.delete change for frontend sync
       await pool.query(
         `INSERT INTO pet_changes (owner_user_id, pet_id, change_type, record, version, device_id, op_id)
          VALUES ($1, $2, 'pet.delete', NULL, NULL, 'admin-wipe', $3)`,
-        [ownerUserId, pet.pet_id, randomUUID()]
+        [pet.owner_user_id || callerUserId, pet.pet_id, randomUUID()]
       );
       results.petsDeleted++;
       results.changesInserted++;

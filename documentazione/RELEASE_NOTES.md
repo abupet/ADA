@@ -1,5 +1,17 @@
 # Release Notes (cumulative)
 
+## v8.17.3
+
+### Bugfix batch 2 (8 issues from v8.17.0 audit)
+- Fix: **Ruoli vet_int/vet_ext non attivabili** — aggiunto vet_int/vet_ext a validRoles in setActiveRoles e ROLE_PERMISSIONS con pagine/azioni appropriate; showVet in applyRoleUI ora riconosce vet_int e vet_ext (BUG 2 CRITICO)
+- Fix: **Referto vuoto e sender "Utente"** — l'upload referto ora usa il contenuto del messaggio (non il filename) come testo; aggiunto sender_name, sender_role e attachment_id al messaggio WebSocket; notifica al destinatario via new_message_notification (BUG 5 CRITICO)
+- Fix: **Pet Proprietario/Vet inconsistente** — label "Proprietario *" diventa "Proprietario" (non obbligatorio), "Veterinario referente" diventa "Vet Esterno (referral)"; dropdown sempre read-only in Dati Pet; vet_ext non puo creare/modificare/eliminare pet (BUG 1 ALTO)
+- Fix: **super_admin "Elimina TUTTI i miei pet"** — wipeAllUserPets ora accetta callerRole; super_admin cancella TUTTI i pet, altri ruoli solo i propri (BUG 8 ALTO)
+- Fix: **Promo un solo tenant** — Centro Privacy ora mostra tutti i tenant attivi in tutti i service type (promo, nutrition, insurance), non solo quelli con prodotti pubblicati (BUG 4 MEDIO)
+- Fix: **Tenant non de-assegnabile** — aggiunto pulsante × per rimuovere un tenant da un utente nella Gestione Utenti con chiamata DELETE API (BUG 3 MEDIO)
+- Fix: **Test button posizione e auto-fill** — pulsante TEST spostato nella riga Crea/Annulla; auto-fill "Primo messaggio" con testo specifico per tipo di form (BUG 6 BASSO)
+- Feat: **Pet species nei messaggi** — nome e specie del pet visibili nella lista conversazioni e nell'header chat; backend restituisce pet_species nelle query GET conversations e GET messages (BUG 7 BASSO)
+
 ## v8.17.2
 
 ### Bugfix batch (20 issues from v8.17.0 audit)
