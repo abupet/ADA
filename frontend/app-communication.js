@@ -236,11 +236,12 @@ function _commHandleNewMessage(data) {
         var container = document.getElementById('comm-chat-messages');
         if (container) {
             var isOwn = data.sender_id === _commGetCurrentUserId();
-            container.innerHTML += _commRenderBubble(data, isOwn);
+            // Skip own messages — already rendered optimistically
+            if (isOwn) return;
+            container.innerHTML += _commRenderBubble(data, false);
             container.scrollTop = container.scrollHeight;
             _commMarkAsRead(_commCurrentConversationId);
-            // Emit delivered for human chats
-            if (_commCurrentConversationType === 'human' && !isOwn && _commSocket) {
+            if (_commCurrentConversationType === 'human' && _commSocket) {
                 _commSocket.emit('message_delivered', { messageId: data.message_id });
             }
         }
@@ -441,7 +442,7 @@ async function _commShowNewForm(containerId) {
         '<option value="endoscopia_gastro">\uD83D\uDD2C Endoscopia / Gastroenterologia</option>' +
         '<option value="dermatologia">\uD83E\uDE79 Dermatologia / Citologia avanzata</option></select>' +
         '<div id="comm-referral-fields"></div>' +
-        ((typeof debugEnabled !== 'undefined' && debugEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="_commFillTestForm()">Test</button>' : '') : '';
+        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="_commFillTestForm()">Test</button>' : '') : '';
 
     area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +
         '<label for="comm-new-dest-type">Destinatario</label>' +
@@ -449,9 +450,6 @@ async function _commShowNewForm(containerId) {
         '<div id="comm-new-recipient-row" style="display:none;">' +
         '<label for="comm-new-recipient">Seleziona destinatario</label>' +
         '<select id="comm-new-recipient" disabled><option value="">Caricamento...</option></select></div>' +
-        '<label for="comm-new-pet">Animale</label>' +
-        '<select id="comm-new-pet"><option value="">Caricamento...</option></select>' +
-        '<div class="comm-pet-hint" id="comm-pet-hint">\uD83D\uDCA1 Seleziona un animale per ricevere consigli pi\u00f9 precisi</div>' +
         subjectHtml +
         referralFormHtml +
         '<label for="comm-new-first-message">Primo messaggio</label>' +
@@ -461,28 +459,6 @@ async function _commShowNewForm(containerId) {
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
         '</div></div>';
 
-    // Populate pet dropdown
-    var petSelect = document.getElementById('comm-new-pet');
-    if (petSelect && typeof getAllPets === 'function') {
-        try {
-            var pets = await getAllPets();
-            if (Array.isArray(pets) && pets.length > 0) {
-                var optHtml = '<option value="">\u2014 Nessun animale (conversazione generale) \u2014</option>';
-                for (var i = 0; i < pets.length; i++) {
-                    var p = pets[i];
-                    var label = _commEscape((p.name || 'Pet') + ' (' + (p.species || '') + ')' + (p.breed ? ' - ' + p.breed : ''));
-                    optHtml += '<option value="' + _commEscape(p.id) + '">' + label + '</option>';
-                }
-                petSelect.innerHTML = optHtml;
-            } else {
-                petSelect.innerHTML = '<option value="">\u2014 Nessun animale \u2014</option>';
-            }
-        } catch (_) {
-            petSelect.innerHTML = '<option value="">Errore caricamento animali</option>';
-        }
-    }
-
-    // Show pet hint for AI
     _commOnDestTypeChange();
 }
 
@@ -520,10 +496,12 @@ async function _commLoadRecipients() {
         var optHtml = '<option value="">-- Seleziona --</option>';
         for (var i = 0; i < users.length; i++) {
             var u = users[i];
-            optHtml += '<option value="' + _commEscape(u.user_id) + '">' + _commEscape(u.display_name || u.email || u.user_id) + '</option>';
+            var _rl = typeof formatUserNameWithRole === 'function' ? formatUserNameWithRole(u.display_name || u.email || u.user_id, u.base_role || u.role) : (u.display_name || u.email || u.user_id);
+            optHtml += '<option value="' + _commEscape(u.user_id) + '">' + _commEscape(_rl) + '</option>';
         }
         recipientSelect.innerHTML = optHtml;
         recipientSelect.disabled = false;
+        if (typeof makeFilterableSelect === 'function') makeFilterableSelect('comm-new-recipient');
     } catch (_) {
         recipientSelect.innerHTML = '<option value="">Errore caricamento</option>';
     }
@@ -532,7 +510,7 @@ async function _commLoadRecipients() {
 async function _commCreateConversation() {
     var destType = (document.getElementById('comm-new-dest-type') || {}).value || 'ai';
     var recipientId = (document.getElementById('comm-new-recipient') || {}).value || '';
-    var petId = (document.getElementById('comm-new-pet') || {}).value || '';
+    var petId = typeof getCurrentPetId === 'function' ? (getCurrentPetId() || '') : '';
     var subject = (document.getElementById('comm-new-subject') || {}).value || '';
     petId = petId.trim(); subject = subject.trim(); recipientId = recipientId.trim();
 
@@ -701,8 +679,10 @@ function _commRenderChat(container, convId, messages, meta) {
     }
 
     // Referral form banner (for vet_ext conversations)
-    if (meta && meta.referral_form && meta.referral_form.form_type) {
-        var form = meta.referral_form;
+    var _rawReferralForm = meta && meta.referral_form;
+    if (typeof _rawReferralForm === 'string') { try { _rawReferralForm = JSON.parse(_rawReferralForm); } catch(_) { _rawReferralForm = null; } }
+    if (_rawReferralForm && _rawReferralForm.form_type) {
+        var form = _rawReferralForm;
         var formDef = typeof REFERRAL_FORMS !== 'undefined' ? REFERRAL_FORMS[form.form_type] : null;
         var formLabel = formDef ? formDef.label : form.form_label || 'Form clinico';
         html += '<div class="comm-referral-form-banner" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;margin:8px 0;padding:12px 16px;">';
@@ -778,7 +758,9 @@ function _commRenderChat(container, convId, messages, meta) {
             'onkeydown="_commKeydown(event,\'' + convId + '\')" oninput="_commEmitTyping(\'' + convId + '\')"></textarea>' +
             '<button class="comm-btn comm-btn-primary" data-testid="comm-send-btn" onclick="_commSend(\'' + convId + '\')">Invia</button></div>';
     } else {
-        html += '<div style="text-align:center;color:#94a3b8;font-size:13px;padding:12px;">Conversazione chiusa</div>';
+        html += '<div class="comm-input-row" data-testid="comm-input-row">' +
+            '<textarea disabled style="flex:1;padding:10px 14px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;resize:none;font-family:inherit;min-height:42px;background:#f1f5f9;color:#94a3b8;cursor:not-allowed;" ' +
+            'placeholder="La conversazione è chiusa. Se vuoi scrivere un messaggio riaprila."></textarea></div>';
     }
 
     container.innerHTML = html;
@@ -1159,9 +1141,9 @@ function startCommBadgePolling() {
     if (_commBadgePollingInterval) return;
     _commBadgePollingInterval = setInterval(function() {
         if (typeof getAuthToken === 'function' && getAuthToken()) {
-            updateCommUnreadBadge();
+            try { updateCommUnreadBadge(); } catch(_) {}
         }
-    }, 60000);
+    }, 30000);
 }
 
 function stopCommBadgePolling() {

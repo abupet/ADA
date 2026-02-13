@@ -73,8 +73,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.17.1';
-const ADA_RELEASE_NOTES = 'Form sintetici per veterinari referenti, ruoli vet_int/vet_ext, chiudi/riapri conversazioni, filtro stato, primo messaggio obbligatorio, proprietario e vet referente nei Dati Pet.';
+const ADA_VERSION = '8.17.2';
+const ADA_RELEASE_NOTES = 'Bugfix batch: 18 fix tra cui messaggio doppio, dropdown filtrabili, ADA risponde al primo messaggio, form referral visibile, status conversazione, accesso documenti destinatario, ruoli vet_int/vet_ext validi.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

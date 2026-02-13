@@ -225,7 +225,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   router.get("/api/communication/owners", requireAuth, async (req, res) => {
     try {
       const { rows } = await pool.query(
-        "SELECT user_id, display_name, email FROM users WHERE base_role = 'owner' AND status = 'active' ORDER BY display_name, email"
+        "SELECT user_id, display_name, email, base_role FROM users WHERE base_role = 'owner' AND status = 'active' ORDER BY display_name, email"
       );
       res.json({ users: rows });
     } catch (e) {
@@ -237,7 +237,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   router.get("/api/communication/vet-exts", requireAuth, async (req, res) => {
     try {
       const { rows } = await pool.query(
-        "SELECT user_id, display_name, email FROM users WHERE base_role = 'vet_ext' AND status = 'active' ORDER BY display_name, email"
+        "SELECT user_id, display_name, email, base_role FROM users WHERE base_role = 'vet_ext' AND status = 'active' ORDER BY display_name, email"
       );
       res.json({ users: rows });
     } catch (e) {
@@ -317,6 +317,69 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           [welcomeId, conversationId, welcomeContent]
         );
         await pool.query("UPDATE conversations SET message_count = 1, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
+
+        // If there is an initial_message, insert it and generate AI response
+        if (initial_message && initial_message.trim()) {
+          const userMsgId = crypto.randomUUID();
+          await pool.query(
+            "INSERT INTO comm_messages (message_id, conversation_id, sender_id, content, type, ai_role, delivery_status) " +
+            "VALUES ($1, $2, $3, $4, 'text', 'user', 'read')",
+            [userMsgId, conversationId, userId, initial_message.trim()]
+          );
+
+          const petContext = pet_id ? await buildPetContext(pool, pet_id, userId) : "";
+          const welcomeContent = pet_id
+            ? "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti con il tuo animale?"
+            : "Ciao! Sono ADA, la tua assistente veterinaria digitale. Come posso aiutarti?";
+          const historyMessages = [
+            { role: "assistant", content: welcomeContent },
+            { role: "user", content: initial_message.trim() }
+          ];
+          const systemContent = petContext ? `${CHATBOT_SYSTEM_PROMPT}\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}` : CHATBOT_SYSTEM_PROMPT;
+
+          try {
+            let assistantContent, triageData;
+            if (isMockEnv) {
+              assistantContent = MOCK_ASSISTANT_RESPONSE.content;
+              triageData = MOCK_ASSISTANT_RESPONSE.triage;
+            } else {
+              const apiKey = typeof getOpenAiKey === "function" ? getOpenAiKey() : null;
+              if (apiKey) {
+                const openaiMessages = [{ role: "system", content: systemContent }, ...historyMessages];
+                let aiResponse = await _callOpenAi(apiKey, "gpt-4o-mini", openaiMessages);
+                if (aiResponse.ok) {
+                  assistantContent = aiResponse.content;
+                  triageData = parseTriageFromResponse(assistantContent);
+                  if (triageData && (triageData.level === "yellow" || triageData.level === "red")) {
+                    const upgradeResponse = await _callOpenAi(apiKey, "gpt-4o", openaiMessages);
+                    if (upgradeResponse.ok) {
+                      assistantContent = upgradeResponse.content;
+                      const upgradedTriage = parseTriageFromResponse(assistantContent);
+                      if (upgradedTriage) triageData = upgradedTriage;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (assistantContent) {
+              if (!triageData) triageData = { level: "green", action: "monitor", follow_up: [] };
+              const aiMsgId = crypto.randomUUID();
+              await pool.query(
+                "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, triage_level, triage_action, follow_up_questions, delivery_status) " +
+                "VALUES ($1, $2, 'ada-assistant', 'text', $3, 'assistant', $4, $5, $6, 'read')",
+                [aiMsgId, conversationId, assistantContent, triageData.level, triageData.action, JSON.stringify(triageData.follow_up)]
+              );
+              await pool.query("UPDATE conversations SET message_count = 3, triage_level = $1, updated_at = NOW() WHERE conversation_id = $2",
+                [triageData.level, conversationId]);
+            } else {
+              await pool.query("UPDATE conversations SET message_count = 2, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
+            }
+          } catch (aiErr) {
+            console.error("AI initial response error:", aiErr);
+            await pool.query("UPDATE conversations SET message_count = 2, updated_at = NOW() WHERE conversation_id = $1", [conversationId]);
+          }
+        }
       } else if (initial_message && initial_message.trim()) {
         // Insert first message for human conversations
         const firstMsgId = crypto.randomUUID();
@@ -474,7 +537,25 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         }
       }
 
-      res.json({ messages: rows });
+      // Include conversation metadata (status, referral_form, subject, recipient_type)
+      let petName = null;
+      if (conversation.pet_id) {
+        const petRes = await pool.query("SELECT name FROM pets WHERE pet_id = $1 LIMIT 1", [conversation.pet_id]);
+        if (petRes.rows[0]) petName = petRes.rows[0].name;
+      }
+      let parsedReferralForm = null;
+      if (conversation.referral_form) {
+        try { parsedReferralForm = typeof conversation.referral_form === 'string' ? JSON.parse(conversation.referral_form) : conversation.referral_form; } catch (_) {}
+      }
+      res.json({
+        messages: rows,
+        status: conversation.status,
+        subject: conversation.subject,
+        recipient_type: conversation.recipient_type,
+        referral_form: parsedReferralForm,
+        pet_name: petName,
+        triage_level: conversation.triage_level || null
+      });
     } catch (e) {
       if (e.code === "42P01") return res.json({ messages: [] });
       console.error("GET /api/communication/conversations/:id/messages error", e);

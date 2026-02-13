@@ -1068,8 +1068,13 @@
     function _onUsersFilterChange() {
         _usersFilterText = (document.getElementById('usersFilterText') || {}).value || '';
         _usersFilterRole = (document.getElementById('usersFilterRole') || {}).value || '';
-        var container = document.getElementById('superadmin-users-content');
-        if (container) _renderUsersPage(container);
+        var tableContainer = document.getElementById('users-table-container');
+        if (tableContainer) {
+            _renderUsersTable(tableContainer);
+        } else {
+            var container = document.getElementById('superadmin-users-content');
+            if (container) _renderUsersPage(container);
+        }
     }
 
     function _renderUsersPage(container) {
@@ -1114,7 +1119,17 @@
         html.push('</div>');
         html.push('</div>');
 
-        // Users table
+        // Users table container (updated separately for filter changes)
+        html.push('<div id="users-table-container"></div>');
+
+        container.innerHTML = html.join('');
+        // Render table into its container
+        var tableContainer = document.getElementById('users-table-container');
+        if (tableContainer) _renderUsersTable(tableContainer);
+    }
+
+    function _renderUsersTable(container) {
+        var html = [];
         var filteredUsers = _getFilteredUsers();
         if (filteredUsers.length === 0) {
             html.push('<p style="color:#888;">Nessun utente trovato.</p>');

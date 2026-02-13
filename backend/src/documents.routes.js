@@ -199,7 +199,11 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_document_id" });
 
       const { rows } = await pool.query(
-        "SELECT * FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+        `SELECT d.* FROM documents d
+         LEFT JOIN pets p ON p.pet_id = d.pet_id
+         WHERE d.document_id = $1
+         AND (d.owner_user_id = $2 OR p.owner_user_id = $2 OR p.referring_vet_user_id = $2)
+         LIMIT 1`,
         [id, owner_user_id]
       );
       if (!rows[0]) return res.status(404).json({ error: "not_found" });
@@ -219,7 +223,11 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_document_id" });
 
       const { rows } = await pool.query(
-        "SELECT storage_key, original_filename, mime_type FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+        `SELECT d.storage_key, d.original_filename, d.mime_type FROM documents d
+         LEFT JOIN pets p ON p.pet_id = d.pet_id
+         WHERE d.document_id = $1
+         AND (d.owner_user_id = $2 OR p.owner_user_id = $2 OR p.referring_vet_user_id = $2)
+         LIMIT 1`,
         [id, owner_user_id]
       );
       if (!rows[0]) return res.status(404).json({ error: "not_found" });
@@ -250,7 +258,7 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_document_id" });
 
       const { rows } = await pool.query(
-        "SELECT * FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+        `SELECT d.* FROM documents d LEFT JOIN pets p ON p.pet_id = d.pet_id WHERE d.document_id = $1 AND (d.owner_user_id = $2 OR p.owner_user_id = $2 OR p.referring_vet_user_id = $2) LIMIT 1`,
         [id, owner_user_id]
       );
       if (!rows[0]) return res.status(404).json({ error: "not_found" });
@@ -288,7 +296,7 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_document_id" });
 
       const { rows } = await pool.query(
-        "SELECT * FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+        `SELECT d.* FROM documents d LEFT JOIN pets p ON p.pet_id = d.pet_id WHERE d.document_id = $1 AND (d.owner_user_id = $2 OR p.owner_user_id = $2 OR p.referring_vet_user_id = $2) LIMIT 1`,
         [id, owner_user_id]
       );
       if (!rows[0]) return res.status(404).json({ error: "not_found" });
@@ -311,7 +319,7 @@ function documentsRouter({ requireAuth, upload, getOpenAiKey, proxyOpenAiRequest
         }
         // Refresh doc with the newly read text
         const refreshed = await pool.query(
-          "SELECT * FROM documents WHERE document_id = $1 AND owner_user_id = $2 LIMIT 1",
+          `SELECT d.* FROM documents d LEFT JOIN pets p ON p.pet_id = d.pet_id WHERE d.document_id = $1 AND (d.owner_user_id = $2 OR p.owner_user_id = $2 OR p.referring_vet_user_id = $2) LIMIT 1`,
           [id, owner_user_id]
         );
         if (!refreshed.rows[0]) return res.status(404).json({ error: "not_found" });
