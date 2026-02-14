@@ -5,12 +5,12 @@ import { mockAllEndpoints, mockConsentEndpoints, mockSyncEndpoints } from "./hel
 import { navigateTo } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Consent center: GDPR toggles, services, brand consents
+// @deep @nightly — Consent center: GDPR toggles, services, brand consents
 // ---------------------------------------------------------------------------
 
 test.describe("Deep consent center", () => {
 
-  test("@deep Consent center renders on settings page", async ({ page }) => {
+  test("@deep @nightly Consent center renders on settings page", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -23,7 +23,7 @@ test.describe("Deep consent center", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep renderConsentCenter is callable", async ({ page }) => {
+  test("@deep @nightly renderConsentCenter is callable", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -34,7 +34,7 @@ test.describe("Deep consent center", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Consent toggle: marketing_global", async ({ page }) => {
+  test("@deep @nightly Consent toggle: marketing_global", async ({ page }) => {
     const errors = captureHardErrors(page);
     const consent = await mockConsentEndpoints(page);
     await mockSyncEndpoints(page);
@@ -49,7 +49,7 @@ test.describe("Deep consent center", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Consent toggle: nutrition_plan", async ({ page }) => {
+  test("@deep @nightly Consent toggle: nutrition_plan", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -64,7 +64,7 @@ test.describe("Deep consent center", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Consent toggle: insurance_data_sharing", async ({ page }) => {
+  test("@deep @nightly Consent toggle: insurance_data_sharing", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -78,7 +78,7 @@ test.describe("Deep consent center", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Services list rendering", async ({ page }) => {
+  test("@deep @nightly Services list rendering", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);

@@ -18,7 +18,7 @@ function petsRouter({ requireAuth }) {
   router.get("/api/pets", requireAuth, async (req, res) => {
     try {
       const role = req.user?.role;
-      if (role === "vet" || role === "vet_int" || role === "super_admin") {
+      if (role === "vet_int" || role === "super_admin") {
         const { rows } = await pool.query("SELECT * FROM pets ORDER BY updated_at DESC");
         return res.json({ pets: rows });
       }
@@ -46,7 +46,7 @@ function petsRouter({ requireAuth }) {
       if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
       const role = req.user?.role;
       let rows;
-      if (role === "vet" || role === "vet_int" || role === "super_admin") {
+      if (role === "vet_int" || role === "super_admin") {
         ({ rows } = await pool.query("SELECT * FROM pets WHERE pet_id = $1 LIMIT 1", [pet_id]));
       } else if (role === "vet_ext") {
         ({ rows } = await pool.query("SELECT * FROM pets WHERE referring_vet_user_id = $1 AND pet_id = $2 LIMIT 1", [req.user?.sub, pet_id]));
@@ -137,7 +137,7 @@ function petsRouter({ requireAuth }) {
     try {
       await client.query("BEGIN");
       let cur;
-      if (role === "vet" || role === "vet_int" || role === "super_admin") {
+      if (role === "vet_int" || role === "super_admin") {
         cur = await client.query("SELECT * FROM pets WHERE pet_id = $1 FOR UPDATE", [pet_id]);
       } else if (role === "vet_ext") {
         cur = await client.query("SELECT * FROM pets WHERE referring_vet_user_id = $1 AND pet_id = $2 FOR UPDATE", [caller_user_id, pet_id]);
@@ -223,7 +223,7 @@ function petsRouter({ requireAuth }) {
     try {
       await client.query("BEGIN");
       let cur;
-      if (role === "vet" || role === "vet_int" || role === "super_admin") {
+      if (role === "vet_int" || role === "super_admin") {
         cur = await client.query("SELECT version, owner_user_id FROM pets WHERE pet_id=$1 FOR UPDATE", [pet_id]);
       } else if (role === "vet_ext") {
         cur = await client.query("SELECT version, owner_user_id FROM pets WHERE referring_vet_user_id=$1 AND pet_id=$2 FOR UPDATE", [caller_user_id, pet_id]);

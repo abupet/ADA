@@ -220,9 +220,15 @@ function _setPetFieldsReadOnly(readonly) {
 function _applyOwnerVetDropdownRules() {
     var _jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
 
+    // Dati Pet page: ALWAYS read-only for everyone
+    ['ownerName', 'ownerReferringVet'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = true;
+    });
+
     if (_jwtRole === 'owner') {
-        // Owner: show dropdowns read-only
-        ['ownerName', 'ownerReferringVet', 'newOwnerName', 'newOwnerReferringVet',
+        // Owner: cannot change assignment anywhere
+        ['newOwnerName', 'newOwnerReferringVet',
          'editOwnerName', 'editOwnerReferringVet'].forEach(function(id) {
             var el = document.getElementById(id);
             if (el) el.disabled = true;
@@ -230,8 +236,9 @@ function _applyOwnerVetDropdownRules() {
     }
 
     if (_jwtRole === 'vet_ext') {
-        // vet_ext: show dropdowns read-only, hide add/edit/delete buttons
-        ['ownerName', 'ownerReferringVet', 'editOwnerName', 'editOwnerReferringVet'].forEach(function(id) {
+        // vet_ext: read-only everywhere, hide add/edit/delete buttons
+        ['ownerName', 'ownerReferringVet',
+         'editOwnerName', 'editOwnerReferringVet'].forEach(function(id) {
             var el = document.getElementById(id);
             if (el) el.disabled = true;
         });
@@ -365,7 +372,8 @@ async function saveCurrentPet() {
     var referringVetUserId = (document.getElementById('ownerReferringVet') || {}).value || null;
     // Owner role: force null so backend uses JWT sub
     var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
-    if (jwtRole === 'owner') { ownerUserId = null; referringVetUserId = null; }
+    if (jwtRole === 'owner') { ownerUserId = null; }
+    // DO NOT force referringVetUserId to null for owners
 
     var patch = {
         name: patient.petName,
@@ -502,7 +510,8 @@ async function saveNewPet() {
     var referringVetUserId = (document.getElementById('newOwnerReferringVet') || {}).value || null;
     // Owner role: force null so backend uses JWT sub
     var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
-    if (jwtRole === 'owner') { ownerUserId = null; referringVetUserId = null; }
+    if (jwtRole === 'owner') { ownerUserId = null; }
+    // DO NOT force referringVetUserId to null for owners
 
     var body = {
         name: patient.petName,

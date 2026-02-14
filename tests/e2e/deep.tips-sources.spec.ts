@@ -5,12 +5,12 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, switchToSuperAdmin } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Tips and sources: admin pages, globals
+// @deep @nightly — Tips and sources: admin pages, globals
 // ---------------------------------------------------------------------------
 
 test.describe("Deep tips & sources", () => {
 
-  test("@deep Super admin: fonti tips page loads", async ({ page }) => {
+  test("@deep @nightly Super admin: fonti tips page loads", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -21,7 +21,7 @@ test.describe("Deep tips & sources", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Tips globals available", async ({ page }) => {
+  test("@deep @nightly Tips globals available", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -36,7 +36,7 @@ test.describe("Deep tips & sources", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Tips page: no hard errors", async ({ page }) => {
+  test("@deep @nightly Tips page: no hard errors", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });

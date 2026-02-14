@@ -76,7 +76,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   router.post(
     "/api/nutrition/plan/:planId/validate",
     requireAuth,
-    requireRole(["vet", "super_admin"]),
+    requireRole(["vet_int", "super_admin"]),
     async (req, res) => {
       try {
         const { planId } = req.params;
@@ -102,7 +102,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   router.post(
     "/api/nutrition/plan/:planId/reject",
     requireAuth,
-    requireRole(["vet", "super_admin"]),
+    requireRole(["vet_int", "super_admin"]),
     async (req, res) => {
       try {
         const { planId } = req.params;
@@ -129,7 +129,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   router.patch(
     "/api/nutrition/plan/:planId",
     requireAuth,
-    requireRole(["vet", "super_admin"]),
+    requireRole(["vet_int", "super_admin"]),
     async (req, res) => {
       try {
         const { planId } = req.params;

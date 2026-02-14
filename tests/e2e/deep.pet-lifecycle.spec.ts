@@ -6,14 +6,14 @@ import { navigateTo, ensurePetSelected, triggerSyncPush } from "./helpers/pages"
 import { testPetName, waitForEmptyOutbox, deleteAllUserPets } from "./helpers/test-data";
 
 // ---------------------------------------------------------------------------
-// @deep — Full pet lifecycle: create, edit, delete, multi-pet
+// @deep @nightly — Full pet lifecycle: create, edit, delete, multi-pet
 // ---------------------------------------------------------------------------
 
 test.describe("Deep pet lifecycle", () => {
 
   test.afterEach(async ({ page }) => { await deleteAllUserPets(page); });
 
-  test("@deep Create pet with all fields populated", async ({ page }) => {
+  test("@deep @nightly Create pet with all fields populated", async ({ page }) => {
     const errors = captureHardErrors(page);
     const sync = await mockSyncEndpoints(page);
     await login(page);
@@ -41,7 +41,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Create cat pet — species dropdown change", async ({ page }) => {
+  test("@deep @nightly Create cat pet — species dropdown change", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);
@@ -70,7 +70,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Edit pet: change name triggers sync patch", async ({ page }) => {
+  test("@deep @nightly Edit pet: change name triggers sync patch", async ({ page }) => {
     const errors = captureHardErrors(page);
     const sync = await mockSyncEndpoints(page);
     await login(page);
@@ -100,7 +100,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Delete pet: confirm dialog removes pet from dropdown", async ({ page }) => {
+  test("@deep @nightly Delete pet: confirm dialog removes pet from dropdown", async ({ page }) => {
     const errors = captureHardErrors(page);
     const sync = await mockSyncEndpoints(page);
     await login(page);
@@ -127,7 +127,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Delete pet: cancel dialog keeps pet", async ({ page }) => {
+  test("@deep @nightly Delete pet: cancel dialog keeps pet", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);
@@ -155,7 +155,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Create multiple pets and switch between them", async ({ page }) => {
+  test("@deep @nightly Create multiple pets and switch between them", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);
@@ -185,7 +185,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Pet selector switch updates patient page", async ({ page }) => {
+  test("@deep @nightly Pet selector switch updates patient page", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);
@@ -206,7 +206,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Pet with special characters in name", async ({ page }) => {
+  test("@deep @nightly Pet with special characters in name", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);
@@ -231,7 +231,7 @@ test.describe("Deep pet lifecycle", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep History badge exists after pet creation", async ({ page }) => {
+  test("@deep @nightly History badge exists after pet creation", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);

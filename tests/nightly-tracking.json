@@ -1,0 +1,16 @@
+{
+  "_comment": "Auto-updated by weekly-full.yml. Tracks deep test stability for @nightly promotion.",
+  "deep.chatbot-ai": { "results": [], "promoted": false },
+  "deep.recording-workflow": { "results": [], "promoted": false },
+  "deep.performance": { "results": [], "promoted": false },
+  "deep.responsive-ui": { "results": [], "promoted": false },
+  "deep.communication-chat": { "results": [], "promoted": false },
+  "deep.security": { "results": [], "promoted": false },
+  "deep.soap-workflow": { "results": [], "promoted": false },
+  "deep.seed-engine": { "results": [], "promoted": false },
+  "deep.accessibility": { "results": [], "promoted": false },
+  "deep.superadmin": { "results": [], "promoted": false },
+  "deep.owner-flows": { "results": [], "promoted": false },
+  "deep.diary-qna": { "results": [], "promoted": false },
+  "deep.photos-vitals-meds": { "results": [], "promoted": false }
+}

@@ -7,12 +7,12 @@ import { Fixtures } from "./helpers/fixtures";
 import fs from "fs";
 
 // ---------------------------------------------------------------------------
-// @deep — Documents: upload, list, viewer, AI read, security
+// @deep @nightly — Documents: upload, list, viewer, AI read, security
 // ---------------------------------------------------------------------------
 
 test.describe("Deep documents", () => {
 
-  test("@deep Upload valid PDF (mock)", async ({ page }) => {
+  test("@deep @nightly Upload valid PDF (mock)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     const docs = await mockDocumentsEndpoints(page);
@@ -34,7 +34,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Upload valid JPG image (mock)", async ({ page }) => {
+  test("@deep @nightly Upload valid JPG image (mock)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     const docs = await mockDocumentsEndpoints(page);
@@ -55,7 +55,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Upload valid PNG image (mock)", async ({ page }) => {
+  test("@deep @nightly Upload valid PNG image (mock)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await mockDocumentsEndpoints(page);
@@ -76,7 +76,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Reject file > 10MB", async ({ page }) => {
+  test("@deep @nightly Reject file > 10MB", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await mockDocumentsEndpoints(page);
@@ -98,7 +98,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Reject EXE file with wrong extension", async ({ page }) => {
+  test("@deep @nightly Reject EXE file with wrong extension", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await mockDocumentsEndpoints(page);
@@ -120,7 +120,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Documents list rendering (mock)", async ({ page }) => {
+  test("@deep @nightly Documents list rendering (mock)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
 
@@ -148,7 +148,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Vet: 'Leggi' button visible in document view", async ({ page }) => {
+  test("@deep @nightly Vet: 'Leggi' button visible in document view", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await mockDocumentsEndpoints(page);
@@ -165,7 +165,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Owner: 'Spiegami il documento' button visible", async ({ page }) => {
+  test("@deep @nightly Owner: 'Spiegami il documento' button visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await mockDocumentsEndpoints(page);
@@ -181,7 +181,7 @@ test.describe("Deep documents", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep History badge updates", async ({ page }) => {
+  test("@deep @nightly History badge updates", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await mockDocumentsEndpoints(page);

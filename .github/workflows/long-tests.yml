@@ -1,5 +1,5 @@
 # long-tests.yml v2
-name: Long tests (manual)
+name: Long tests (manual — all deep/stress/long)
 
 on:
   workflow_dispatch:

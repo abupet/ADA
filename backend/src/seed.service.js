@@ -264,6 +264,8 @@ function startSeedJob(pool, config, openAiKey) {
     catPct: parseInt(config.catPct) || 30,
     rabbitPct: parseInt(config.rabbitPct) || 10,
     ownerUserId: config.ownerUserId || 'ada-user',
+    targetOwnerUserId: config.targetOwnerUserId || null,
+    targetVetExtUserId: config.targetVetExtUserId || null,
   };
 
   currentJob = {
@@ -434,11 +436,15 @@ async function _runSeedJob(pool, config, openAiKey) {
 
       const notes = (pet.diary || '') + ' [seed]';
 
-      // Assign random owner (if available) otherwise use seed ownerUserId
-      const assignedOwner = availableOwners.length > 0 ? availableOwners[Math.floor(Math.random() * availableOwners.length)] : null;
+      // Assign owner: use explicit override if provided, otherwise random
+      const assignedOwner = config.targetOwnerUserId
+          ? { user_id: config.targetOwnerUserId }
+          : (availableOwners.length > 0 ? availableOwners[Math.floor(Math.random() * availableOwners.length)] : null);
       const effectiveOwner = assignedOwner ? assignedOwner.user_id : ownerUserId;
-      // Assign random vet_ext (70% chance, if available)
-      const assignedVetExt = availableVetExts.length > 0 && Math.random() > 0.3 ? availableVetExts[Math.floor(Math.random() * availableVetExts.length)] : null;
+      // Assign vet_ext: use explicit override if provided, otherwise random (70% chance)
+      const assignedVetExt = config.targetVetExtUserId
+          ? { user_id: config.targetVetExtUserId }
+          : (availableVetExts.length > 0 && Math.random() > 0.3 ? availableVetExts[Math.floor(Math.random() * availableVetExts.length)] : null);
 
       try {
         const ins = await pool.query(

@@ -21,6 +21,7 @@ var _commAiSending = false;
 var _commReplyTo = null; // { message_id, content, sender_name }
 var _commContainerId = null;
 var _commSelectedFile = null; // File object for attachment upload
+var _commNewFormSelectedFile = null; // File object for new conversation form
 
 // Offline queue state
 var _commOfflineDb = null;
@@ -347,7 +348,7 @@ function _commBuildConvListHtml(conversations) {
                 otherName = c.owner_display_name || 'Proprietario';
                 otherRole = c.owner_role || 'owner';
             }
-            var roleLabels = { 'owner': 'Proprietario', 'vet': 'Veterinario', 'vet_int': 'Veterinario', 'vet_ext': 'Vet. Referente', 'admin_brand': 'Admin', 'super_admin': 'Super Admin' };
+            var roleLabels = { 'owner': 'Proprietario', 'vet_int': 'Veterinario', 'vet_ext': 'Vet. Referente', 'admin_brand': 'Admin', 'super_admin': 'Super Admin' };
             var roleLabel = roleLabels[otherRole] || otherRole;
             name = _commEscape(otherName + ' (' + roleLabel + ')');
             avatarCls = 'comm-conv-avatar comm-conv-avatar-human';
@@ -423,11 +424,11 @@ async function _commShowNewForm(containerId) {
     var recipientOpts = '<option value="ai">\uD83E\uDD16 ADA - Assistente</option>';
     if (isVetExtUser) {
         // vet_ext can only message vet_int
-        recipientOpts = '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
+        recipientOpts = '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
     } else if (role === 'proprietario') {
-        recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
+        recipientOpts += '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
     } else {
-        recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
+        recipientOpts += '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
         recipientOpts += '<option value="vet_ext">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Esterno</option>';
         recipientOpts += '<option value="owner">\uD83E\uDDD1 Proprietario</option>';
     }
@@ -456,10 +457,17 @@ async function _commShowNewForm(containerId) {
         referralFormHtml +
         '<label for="comm-new-first-message">Primo messaggio</label>' +
         '<textarea id="comm-new-first-message" placeholder="Scrivi il primo messaggio della conversazione..." rows="3" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>' +
+        '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">' +
+        '<label style="cursor:pointer;font-size:18px;color:#64748b;" title="Allega file">' +
+        '📎<input type="file" id="comm-new-file-input" style="display:none" accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleNewFormFileSelect(this)">' +
+        '</label>' +
+        '<span id="comm-new-file-preview" style="font-size:12px;color:#64748b;"></span>' +
+        '<span id="comm-new-file-clear" style="display:none;cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearNewFormFile()">×</span>' +
+        '</div>' +
         '<div style="margin-top:14px;display:flex;gap:8px;align-items:center;">' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation()">Crea</button>' +
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
-        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" onclick="_commFillTestForm()">Test</button>' : '') +
+        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled && isVetExtUser) ? '<button type="button" class="comm-btn comm-btn-secondary" onclick="_commFillTestForm()">Test</button>' : '') +
         '</div></div>';
 
     _commOnDestTypeChange();
@@ -524,8 +532,8 @@ async function _commCreateConversation() {
 
     // Validate first message (required for human conversations)
     var firstMessage = (document.getElementById('comm-new-first-message') || {}).value || '';
-    if (destType !== 'ai' && !firstMessage.trim()) {
-        if (typeof showToast === 'function') showToast('Inserisci il primo messaggio', 'warning');
+    if (destType !== 'ai' && !firstMessage.trim() && !_commNewFormSelectedFile) {
+        if (typeof showToast === 'function') showToast('Inserisci il primo messaggio o allega un file', 'warning');
         return;
     }
 
@@ -576,7 +584,7 @@ async function _commCreateConversation() {
 
         if (destType === 'ai') {
             body.vet_user_id = 'ada-assistant';
-        } else if (destType === 'vet' || destType === 'vet_ext') {
+        } else if (destType === 'vet_int' || destType === 'vet_ext') {
             body.vet_user_id = recipientId;
         } else if (destType === 'owner') {
             body.owner_override_id = recipientId;
@@ -608,6 +616,21 @@ async function _commCreateConversation() {
         if (fa) fa.innerHTML = '';
         // Open the new conversation directly
         var convId = data.conversation_id || (data.conversation && data.conversation.conversation_id);
+        // After successful conversation creation, send attachment if present
+        if (_commNewFormSelectedFile && convId) {
+            try {
+                var formData = new FormData();
+                formData.append('file', _commNewFormSelectedFile);
+                await fetch(_commApiBase() + '/api/communication/conversations/' + convId + '/messages/upload', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + getAuthToken() },
+                    body: formData
+                });
+                _commClearNewFormFile();
+            } catch(e) {
+                console.error('[Communication] Failed to upload attachment for new conversation:', e);
+            }
+        }
         if (convId) {
             openConversation(convId);
         } else {
@@ -992,6 +1015,18 @@ async function _commSend(conversationId) {
         }
         var data = await resp.json();
 
+        // Re-render the last own message with server data (includes media_url for attachments)
+        if (hasFile && !isAi && data && data.message) {
+            var lastOwnBubble = container ? container.querySelector('.comm-msg-own:last-child') : null;
+            if (lastOwnBubble) {
+                var serverMsg = data.message;
+                serverMsg.sender_id = userId;
+                serverMsg.sender_name = typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : 'Tu';
+                serverMsg.sender_role = typeof getJwtRole === 'function' ? getJwtRole() : '';
+                lastOwnBubble.outerHTML = _commRenderBubble(serverMsg, true);
+            }
+        }
+
         if (isAi) {
             // Remove spinner
             var spinner = document.getElementById('comm-ai-spinner');
@@ -1340,6 +1375,8 @@ function _commHandleFileSelect(input) {
     var nameEl = document.getElementById('comm-file-preview-name');
     if (previewEl) previewEl.style.display = 'flex';
     if (nameEl) nameEl.textContent = '\uD83D\uDCCE ' + file.name + ' (' + _commFormatFileSize(file.size) + ')';
+    var msgInput = document.getElementById('comm-msg-input');
+    if (msgInput) msgInput.placeholder = 'Allegato pronto per l\'invio. Scrivi un messaggio...';
 }
 
 function _commClearFile() {
@@ -1348,12 +1385,40 @@ function _commClearFile() {
     if (previewEl) previewEl.style.display = 'none';
     var fileInput = document.getElementById('comm-file-input');
     if (fileInput) fileInput.value = '';
+    var msgInput = document.getElementById('comm-msg-input');
+    if (msgInput) msgInput.placeholder = 'Scrivi un messaggio...';
 }
 
 function _commFormatFileSize(bytes) {
     if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ── New conversation form file attachment helpers ──
+function _commHandleNewFormFileSelect(input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 10 * 1024 * 1024) {
+        if (typeof showToast === 'function') showToast('File troppo grande (max 10 MB)', 'warning');
+        input.value = '';
+        return;
+    }
+    _commNewFormSelectedFile = file;
+    var previewEl = document.getElementById('comm-new-file-preview');
+    var clearEl = document.getElementById('comm-new-file-clear');
+    if (previewEl) previewEl.textContent = '\uD83D\uDCCE ' + file.name + ' (' + _commFormatFileSize(file.size) + ')';
+    if (clearEl) clearEl.style.display = 'inline';
+}
+
+function _commClearNewFormFile() {
+    _commNewFormSelectedFile = null;
+    var previewEl = document.getElementById('comm-new-file-preview');
+    var clearEl = document.getElementById('comm-new-file-clear');
+    var fileInput = document.getElementById('comm-new-file-input');
+    if (previewEl) previewEl.textContent = '';
+    if (clearEl) clearEl.style.display = 'none';
+    if (fileInput) fileInput.value = '';
 }
 
 // =========================================================================

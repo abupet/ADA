@@ -5,12 +5,12 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, switchToSuperAdmin } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Settings page: all sections, debug, consent, system card
+// @deep @nightly — Settings page: all sections, debug, consent, system card
 // ---------------------------------------------------------------------------
 
 test.describe("Deep settings", () => {
 
-  test("@deep Account info card visible", async ({ page }) => {
+  test("@deep @nightly Account info card visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -23,7 +23,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep AI settings container visible (vet)", async ({ page }) => {
+  test("@deep @nightly AI settings container visible (vet)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
@@ -35,7 +35,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Debug toggle ON/OFF", async ({ page }) => {
+  test("@deep @nightly Debug toggle ON/OFF", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -61,7 +61,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Consent center container visible", async ({ page }) => {
+  test("@deep @nightly Consent center container visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -75,7 +75,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep System card visible when debug ON", async ({ page }) => {
+  test("@deep @nightly System card visible when debug ON", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -90,7 +90,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Super admin: clinic logo card visible", async ({ page }) => {
+  test("@deep @nightly Super admin: clinic logo card visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -105,7 +105,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Super admin: debug page shows role checkboxes", async ({ page }) => {
+  test("@deep @nightly Super admin: debug page shows role checkboxes", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -119,7 +119,7 @@ test.describe("Deep settings", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Settings page: no hard errors", async ({ page }) => {
+  test("@deep @nightly Settings page: no hard errors", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);

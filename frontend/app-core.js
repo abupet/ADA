@@ -598,7 +598,7 @@ function initRoleSystem() {
 
     if (jwtRole && !storedRole) {
         // First login: set default role based on JWT role
-        if (jwtRole === 'vet') {
+        if (jwtRole === 'vet_int') {
             setActiveRole(ROLE_VETERINARIO);
         } else if (jwtRole === 'owner') {
             setActiveRole(ROLE_PROPRIETARIO);
@@ -1026,7 +1026,8 @@ function renderAccountInfo() {
     }
 
     var roleLabels = {
-        'vet': 'Veterinario',
+        'vet_int': 'Veterinario',
+        'vet_ext': 'Veterinario Esterno',
         'owner': 'Proprietario',
         'admin_brand': 'Admin Brand',
         'super_admin': 'Super Admin'
@@ -1203,7 +1204,7 @@ function openEditPetModal() {
     // Owner/Vet Esterno: only vet/vet_int/super_admin can edit assignment
     setTimeout(function() {
         var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
-        var canEditAssignment = (_jr === 'vet' || _jr === 'vet_int' || _jr === 'super_admin');
+        var canEditAssignment = (_jr === 'vet_int' || _jr === 'super_admin');
         var eo = document.getElementById('editOwnerName');
         var ev = document.getElementById('editOwnerReferringVet');
         if (eo) eo.disabled = !canEditAssignment;
