@@ -1353,6 +1353,17 @@ async function saveEditPet() {
 
     // Save via the existing save flow
     await saveCurrentPet();
+
+    // Reload pet from server to guarantee data consistency across views
+    var currentPetId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
+    if (currentPetId) {
+        setTimeout(async function() {
+            try {
+                var freshPet = typeof getPetById === 'function' ? await getPetById(currentPetId) : null;
+                if (freshPet && typeof loadPetIntoMainFields === 'function') loadPetIntoMainFields(freshPet);
+            } catch(e) {}
+        }, 500);
+    }
 }
 
 function cancelEditPet() {
