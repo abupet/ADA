@@ -165,7 +165,9 @@
             promoEventsPerPet: parseInt(document.getElementById('seedPromoEventsPerPet').value) || 5,
             dogPct: parseInt(document.getElementById('seedDogPct').value) || 60,
             catPct: parseInt(document.getElementById('seedCatPct').value) || 30,
-            rabbitPct: parseInt(document.getElementById('seedRabbitPct').value) || 10
+            rabbitPct: parseInt(document.getElementById('seedRabbitPct').value) || 10,
+            targetOwnerUserId: (document.getElementById('seedOwnerUserId') || {}).value || null,
+            targetVetExtUserId: (document.getElementById('seedVetExtUserId') || {}).value || null
         };
 
         fetchApi('/api/seed/start', {
@@ -615,6 +617,40 @@
             }).catch(function () {});
     }
 
+    // --- Load Owner / Vet Ext dropdowns (Phase 8B) ---
+    async function _seedLoadOwnerVetDropdowns() {
+        try {
+            var resp = await fetchApi('/api/communication/owners', { method: 'GET' });
+            if (resp && resp.ok) {
+                var data = await resp.json();
+                var sel = document.getElementById('seedOwnerUserId');
+                if (sel) {
+                    var html = '<option value="">— Casuale —</option>';
+                    (data.users || []).forEach(function(u) {
+                        var label = u.display_name || u.email || u.user_id;
+                        html += '<option value="' + u.user_id + '">' + _seedEscapeHtml(label) + '</option>';
+                    });
+                    sel.innerHTML = html;
+                }
+            }
+        } catch(e) {}
+        try {
+            var resp2 = await fetchApi('/api/communication/vet-exts', { method: 'GET' });
+            if (resp2 && resp2.ok) {
+                var data2 = await resp2.json();
+                var sel2 = document.getElementById('seedVetExtUserId');
+                if (sel2) {
+                    var html2 = '<option value="">— Casuale —</option>';
+                    (data2.users || []).forEach(function(u) {
+                        var label = u.display_name || u.email || u.user_id;
+                        html2 += '<option value="' + u.user_id + '">' + _seedEscapeHtml(label) + '</option>';
+                    });
+                    sel2.innerHTML = html2;
+                }
+            }
+        } catch(e) {}
+    }
+
     // --- Init: attach input listeners for estimate ---
     function _initEstimateListeners() {
         var ids = ['seedPetCount', 'seedSoapPerPet', 'seedDocsPerPet'];
@@ -651,5 +687,6 @@
     global.seedResetPromoSection = seedResetPromoSection;
     global.seedStartDemo = seedStartDemo;
     global.seedLoadDemoTenants = seedLoadDemoTenants;
+    global._seedLoadOwnerVetDropdowns = _seedLoadOwnerVetDropdowns;
 
 })(typeof window !== 'undefined' ? window : this);
