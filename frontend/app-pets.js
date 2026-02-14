@@ -40,6 +40,9 @@ function _normalizePetForUI(serverPet) {
     if (!serverPet) return serverPet;
     var p = Object.assign({}, serverPet);
     p.id = p.pet_id || p.id;
+    // PR2: Preserve assignment IDs for owner/vet dropdown refresh
+    if (serverPet.owner_user_id !== undefined) p.owner_user_id = serverPet.owner_user_id;
+    if (serverPet.referring_vet_user_id !== undefined) p.referring_vet_user_id = serverPet.referring_vet_user_id;
 
     // Parse extra_data JSONB (may be object or string)
     var extra = {};
@@ -227,11 +230,14 @@ function _applyOwnerVetDropdownRules() {
     });
 
     if (_jwtRole === 'owner') {
-        // Owner: cannot change assignment anywhere
-        ['newOwnerName', 'newOwnerReferringVet',
-         'editOwnerName', 'editOwnerReferringVet'].forEach(function(id) {
+        // Owner: cannot change Proprietario, but CAN change Vet Esterno (referral)
+        ['newOwnerName', 'editOwnerName'].forEach(function(id) {
             var el = document.getElementById(id);
             if (el) el.disabled = true;
+        });
+        ['newOwnerReferringVet', 'editOwnerReferringVet'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = false;
         });
     }
 

@@ -212,19 +212,33 @@
         var sexSel = document.getElementById('newPetSex');
         if (sexSel && !sexSel.value) sexSel.value = _pick(sexOptions);
         _setVal('newPetMicrochip', '380' + String(_rand(100000000000, 999999999999)));
-        // Select random owner from dropdown (§9.2)
-        var ownerSel = document.getElementById('newOwnerName');
-        if (ownerSel && ownerSel.options.length > 1) {
-            var randomOwnerIdx = 1 + Math.floor(Math.random() * (ownerSel.options.length - 1));
-            ownerSel.selectedIndex = randomOwnerIdx;
-        } else {
-            _setVal('newOwnerName', ownerNames[ownerIdx]);
+        // PR2: Select random owner/vet from dropdown with retry (dropdowns load async)
+        function _trySelectRandom(selectId) {
+            var sel = document.getElementById(selectId);
+            if (sel && sel.options.length > 1) {
+                var idx = 1 + Math.floor(Math.random() * (sel.options.length - 1));
+                sel.selectedIndex = idx;
+                return true;
+            }
+            return false;
         }
-        // Select random vet_ext from dropdown (70% chance)
-        var vetSel = document.getElementById('newOwnerReferringVet');
-        if (vetSel && vetSel.options.length > 1 && Math.random() > 0.3) {
-            var randomVetIdx = 1 + Math.floor(Math.random() * (vetSel.options.length - 1));
-            vetSel.selectedIndex = randomVetIdx;
+        // Immediate attempt
+        var ownerOk = _trySelectRandom('newOwnerName');
+        var vetOk = _trySelectRandom('newOwnerReferringVet');
+        // If dropdowns not ready, retry with polling (max 2 seconds)
+        if (!ownerOk || !vetOk) {
+            var _retryAttempts = 0;
+            var _retryInterval = setInterval(function() {
+                _retryAttempts++;
+                if (!ownerOk) ownerOk = _trySelectRandom('newOwnerName');
+                if (!vetOk) vetOk = _trySelectRandom('newOwnerReferringVet');
+                if ((ownerOk && vetOk) || _retryAttempts >= 10) {
+                    clearInterval(_retryInterval);
+                    if (!ownerOk && typeof showToast === 'function') {
+                        showToast('⚠️ Dropdown proprietari non ancora caricata', 'warning');
+                    }
+                }
+            }, 200);
         }
         _setVal('newOwnerPhone', ownerPhones[ownerIdx]);
         _setVal('newVisitDate', _isoDate(new Date()));
