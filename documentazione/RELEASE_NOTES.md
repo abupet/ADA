@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.20.1
+
+### Bugfix da code review
+- Fix: voice upload usa raw `fetch` invece di `fetchApi` (evita auto-abort 30s del global spinner)
+- Fix: `_commRemoveFile` aggiorna correttamente l'hint AI allegato quando si rimuovono file
+- Fix: emoji picker inserisce alla posizione 0 del cursore (prima falliva perche 0 e falsy)
+- Fix: cancellazione registrazione vocale ora rilascia correttamente il microfono (stop media stream tracks)
+- Fix: stringa `ADA_RELEASE_NOTES` aggiornata al contenuto v8.20.0
+- Cleanup: rimosso codice morto `SUPPORTED_AI_MIMES` / `isAiSupportedMime` dal backend (mai utilizzato)
+
 ## v8.20.0
 
 ### Bug Fix Rapidi (PR 1)

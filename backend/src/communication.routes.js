@@ -58,19 +58,6 @@ const MOCK_ASSISTANT_RESPONSE = {
 
 // --- AI helper functions (from chatbot.routes.js) ---
 
-// PR4: Supported MIME types for AI file analysis
-const SUPPORTED_AI_MIMES = [
-  "image/jpeg", "image/png", "image/gif", "image/webp",
-  "application/pdf",
-  "text/plain", "text/csv",
-  "audio/mpeg", "audio/wav", "audio/ogg", "audio/webm"
-];
-
-function isAiSupportedMime(mimeType) {
-  if (!mimeType) return false;
-  return SUPPORTED_AI_MIMES.some(function(m) { return mimeType === m || mimeType.startsWith(m.split("/")[0] + "/"); });
-}
-
 async function buildPetContext(pool, petId, userId) {
   try {
     const petResult = await pool.query(
