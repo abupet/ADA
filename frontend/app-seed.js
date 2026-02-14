@@ -631,6 +631,7 @@
                         html += '<option value="' + u.user_id + '">' + _seedEscapeHtml(label) + '</option>';
                     });
                     sel.innerHTML = html;
+                    if (typeof makeFilterableSelect === 'function') makeFilterableSelect('seedOwnerUserId');
                 }
             }
         } catch(e) {}
@@ -646,6 +647,7 @@
                         html2 += '<option value="' + u.user_id + '">' + _seedEscapeHtml(label) + '</option>';
                     });
                     sel2.innerHTML = html2;
+                    if (typeof makeFilterableSelect === 'function') makeFilterableSelect('seedVetExtUserId');
                 }
             }
         } catch(e) {}

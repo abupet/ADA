@@ -449,6 +449,9 @@ async function navigateToPage(page) {
         if (page === 'superadmin-sources' && typeof loadSuperadminSources === 'function') {
             loadSuperadminSources('superadmin-sources-content');
         }
+        if (page === 'seed' && typeof _seedLoadOwnerVetDropdowns === 'function') {
+            _seedLoadOwnerVetDropdowns();
+        }
     } catch(e) {}
 
     // Hide internal notes from proprietario (only vet sees them on SOAP page)
