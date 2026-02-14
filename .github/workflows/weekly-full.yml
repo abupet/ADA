@@ -1,0 +1,213 @@
+# weekly-full.yml v1
+# Weekly full test suite — runs ALL tests including @long on main and dev.
+name: Weekly Full Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sunday at 04:00 Rome time (03:00 UTC during CET)
+    - cron: "0 3 * * 0"
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  test_weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [main, dev]
+        include:
+          - branch: main
+            issue_label: "weekly-failure-main"
+            issue_label_color: "b60205"
+          - branch: dev
+            issue_label: "weekly-failure-dev"
+            issue_label_color: "d93f0b"
+
+    env:
+      MODE: MOCK
+      STRICT_NETWORK: "0"
+      FRONTEND_ORIGIN: "http://localhost:4173"
+      ADA_TEST_PASSWORD: ${{ secrets.ADA_TEST_PASSWORD }}
+      ADA_TEST_EMAIL: ${{ secrets.TEST_VET_EMAIL }}
+      TEST_SUPER_ADMIN_EMAIL: ${{ secrets.TEST_SUPER_ADMIN_EMAIL }}
+      TEST_ADMIN_BRAND_EMAIL: ${{ secrets.TEST_ADMIN_BRAND_EMAIL }}
+      TEST_VET_EMAIL: ${{ secrets.TEST_VET_EMAIL }}
+      TEST_OWNER_EMAIL: ${{ secrets.TEST_OWNER_EMAIL }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+      RATE_LIMIT_PER_MIN: "600"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm install --prefix backend
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Start server
+        run: |
+          nohup node backend/src/server.js > backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health > /dev/null
+          nohup npm run serve > server.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173 > /dev/null
+
+      - name: Seed test users
+        run: node backend/src/seed.test-users.js
+
+      - name: Weekly full tests
+        id: tests
+        run: npm run test:ci:weekly
+        continue-on-error: true
+
+      # ── Artifacts (always) ──
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-weekly-${{ matrix.branch }}
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload test-results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-weekly-${{ matrix.branch }}
+          path: test-results/
+          if-no-files-found: ignore
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log-weekly-${{ matrix.branch }}
+          path: server.log
+          if-no-files-found: ignore
+
+      - name: Upload backend log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log-weekly-${{ matrix.branch }}
+          path: backend.log
+          if-no-files-found: ignore
+
+      # ── Issue management (same pattern as nightly) ──
+      - name: Open/update failure issue
+        if: steps.tests.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+          LABEL="${{ matrix.issue_label }}"
+
+          gh label create "$LABEL" --color "${{ matrix.issue_label_color }}" \
+            --description "Weekly full (${{ matrix.branch }}) failure" 2>/dev/null || true
+
+          ISSUE_NUM=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+
+          if [ -z "$ISSUE_NUM" ]; then
+            gh issue create \
+              --title "Weekly full (${{ matrix.branch }}) failed — $DATE" \
+              --label "$LABEL" \
+              --body "## Weekly full tests failed
+
+          - **Date:** $DATE
+          - **Branch:** ${{ matrix.branch }}
+          - **Run:** $RUN_URL
+
+          ### Next steps
+          1. Check the [run logs]($RUN_URL) and download artifacts
+          2. Fix the failing test(s)
+          3. Close this issue when resolved"
+          else
+            gh issue comment "$ISSUE_NUM" \
+              --body "### Still failing — $DATE
+          - **Run:** $RUN_URL"
+          fi
+
+      - name: Close failure issue (on success)
+        if: steps.tests.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          LABEL="${{ matrix.issue_label }}"
+          ISSUE_NUM=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$ISSUE_NUM" ]; then
+            gh issue close "$ISSUE_NUM" --comment "Weekly full (${{ matrix.branch }}) passed — auto-closing."
+          fi
+
+      # ── Telegram notification on failure ──
+      - name: Notify Telegram (failure)
+        if: steps.tests.outcome == 'failure'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          MSG="❌ *Weekly full (${{ matrix.branch }}) FAILED*
+          📅 $(date -u +'%Y-%m-%d %H:%M UTC')
+          🔗 [View run]($RUN_URL)"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview="true" \
+            -d text="$MSG"
+
+      # ── Summary ──
+      - name: Write CI summary
+        if: always()
+        run: |
+          {
+            echo "## Weekly Full Tests summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Branch | \`${{ matrix.branch }}\` |"
+            echo "| Result | \`${{ steps.tests.outcome }}\` |"
+            echo ""
+            echo "### Artifacts"
+            echo "- playwright-report-weekly-${{ matrix.branch }}"
+            echo "- test-results-weekly-${{ matrix.branch }}"
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
