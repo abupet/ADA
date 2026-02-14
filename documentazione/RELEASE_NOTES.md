@@ -1,5 +1,39 @@
 # Release Notes (cumulative)
 
+## v8.19.0
+
+### Gestione Immagini Catalogo (FEATURE 1)
+- Backend: nuovo endpoint `POST /api/admin/:tenantId/promo-items/scrape-images` — scraping multi-strategia (Open Graph, Twitter card, Schema.org, euristica immagini, fallback AI con GPT-4o-mini)
+- Backend: nuovo endpoint `POST /api/admin/:tenantId/promo-items/:itemId/cache-from-url` — cache immagine da URL con validazione MIME e hash SHA-256
+- Backend: endpoint `cache-images` ora accetta filtro opzionale `item_ids`
+- Frontend: helper centralizzato `getProductImageUrl(item)` per risoluzione immagine (cached > URL > placeholder)
+- Frontend: pulsante "Gestione Immagini" nella toolbar catalogo con due modalita:
+  - Cache batch da URL per prodotti filtrati con progress
+  - Scraping + wizard di confronto side-by-side vecchia/nuova immagine con accetta/salta/URL manuale
+- UI: icone stato immagine nel catalogo (verde = cached, arancione = solo URL, grigio = nessuna)
+- Filtro immagini aggiornato per considerare anche immagini cached
+
+### Flag Debug Multi-Servizio (FEATURE 2)
+- Nuovo toggle "Visualizza sempre multi-servizio" nella pagina Debug
+- Quando attivo, mostra Nutrizione e Assicurazione per tutti i ruoli (bypass role check)
+- Persistenza in localStorage
+
+### Allegati Multipli nei Messaggi (FEATURE 3)
+- Supporto selezione multipla file nel pannello messaggi e nel form nuova conversazione
+- Preview multi-file con possibilita di rimuovere singoli file
+- Upload sequenziale: ogni file diventa un messaggio separato (pattern WhatsApp)
+- Placeholder dinamico con conteggio allegati
+
+### Dropdown Seed Engine (FEATURE 4)
+- Le dropdown Proprietario e Vet Esterno nel Seed Engine ora si popolano automaticamente alla navigazione
+- Applicato `makeFilterableSelect` per ricerca a sottostringa
+
+### Revisione UI/UX Pet Owner/Vet Ext (FEATURE 5)
+- Fix `makeFilterableSelect`: l'input di ricerca ora rispetta lo stato `disabled` della select tramite MutationObserver
+- Auto-assegnazione proprietario per ruolo owner nella creazione pet
+- Refresh automatico dati pet dopo modifica per garantire consistenza tra le tre viste
+- Icone lucchetto sui label Proprietario e Vet Esterno nella vista Dati Pet (sola lettura)
+
 ## v8.18.0
 
 ### CI: Nightly/Weekly test infrastructure upgrade
