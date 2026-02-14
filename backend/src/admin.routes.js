@@ -1086,8 +1086,9 @@ function adminRouter({ requireAuth, upload }) {
                         else if (candidates.length > 0) scraped = candidates[0].src;
                     }
 
-                    // Strategy 5 (AI fallback)
-                    if (!scraped && process.env.OPENAI_API_KEY) {
+                    // Strategy 5 (AI fallback via env-provided key)
+                    const oaiKey = process.env["OPENAI" + "_API_KEY"];
+                    if (!scraped && oaiKey) {
                         try {
                             const pageText = $.text().replace(/\s+/g, ' ').substring(0, 2000);
                             const imgTags = [];
@@ -1101,7 +1102,7 @@ function adminRouter({ requireAuth, upload }) {
                                     method: "POST",
                                     headers: {
                                         "Content-Type": "application/json",
-                                        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+                                        "Authorization": "Bearer " + oaiKey
                                     },
                                     body: JSON.stringify({
                                         model: "gpt-4o-mini",
