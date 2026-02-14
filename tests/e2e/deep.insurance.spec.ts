@@ -5,12 +5,12 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Insurance module: globals, container, risk score, coverage
+// @deep @nightly — Insurance module: globals, container, risk score, coverage
 // ---------------------------------------------------------------------------
 
 test.describe("Deep insurance", () => {
 
-  test("@deep Insurance globals available", async ({ page }) => {
+  test("@deep @nightly Insurance globals available", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -26,7 +26,7 @@ test.describe("Deep insurance", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Insurance container in DOM", async ({ page }) => {
+  test("@deep @nightly Insurance container in DOM", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -38,7 +38,7 @@ test.describe("Deep insurance", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Insurance: no policy state renders", async ({ page }) => {
+  test("@deep @nightly Insurance: no policy state renders", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -52,7 +52,7 @@ test.describe("Deep insurance", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Insurance consent toggle in settings", async ({ page }) => {
+  test("@deep @nightly Insurance consent toggle in settings", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);

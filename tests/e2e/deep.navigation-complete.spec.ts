@@ -5,12 +5,12 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, switchRole, switchToSuperAdmin, ALL_PAGES } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Complete navigation across all pages and roles
+// @deep @nightly — Complete navigation across all pages and roles
 // ---------------------------------------------------------------------------
 
 test.describe("Deep navigation — all pages", () => {
 
-  test("@deep Vet: all vet pages navigable without errors", async ({ page }) => {
+  test("@deep @nightly Vet: all vet pages navigable without errors", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -22,7 +22,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Owner: all owner pages navigable without errors", async ({ page }) => {
+  test("@deep @nightly Owner: all owner pages navigable without errors", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
@@ -34,7 +34,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Super admin: all admin pages navigable without errors", async ({ page }) => {
+  test("@deep @nightly Super admin: all admin pages navigable without errors", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -47,7 +47,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Route guard: vet cannot access owner-only pages", async ({ page }) => {
+  test("@deep @nightly Route guard: vet cannot access owner-only pages", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -63,7 +63,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Route guard: owner cannot access vet-only pages", async ({ page }) => {
+  test("@deep @nightly Route guard: owner cannot access vet-only pages", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
@@ -78,7 +78,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Route guard: non-super_admin cannot access admin pages", async ({ page }) => {
+  test("@deep @nightly Route guard: non-super_admin cannot access admin pages", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -93,7 +93,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Sidebar nav items match active role (vet)", async ({ page }) => {
+  test("@deep @nightly Sidebar nav items match active role (vet)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -107,7 +107,7 @@ test.describe("Deep navigation — all pages", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Rapid navigation: 20 random vet page switches", async ({ page }) => {
+  test("@deep @nightly Rapid navigation: 20 random vet page switches", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);

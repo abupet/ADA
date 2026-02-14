@@ -5,12 +5,12 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Nutrition module: globals, container, slot rendering
+// @deep @nightly — Nutrition module: globals, container, slot rendering
 // ---------------------------------------------------------------------------
 
 test.describe("Deep nutrition", () => {
 
-  test("@deep Nutrition globals available", async ({ page }) => {
+  test("@deep @nightly Nutrition globals available", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -26,7 +26,7 @@ test.describe("Deep nutrition", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Nutrition container in DOM", async ({ page }) => {
+  test("@deep @nightly Nutrition container in DOM", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -38,7 +38,7 @@ test.describe("Deep nutrition", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Nutrition: no plan state renders", async ({ page }) => {
+  test("@deep @nightly Nutrition: no plan state renders", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -53,7 +53,7 @@ test.describe("Deep nutrition", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Nutrition consent toggle in settings", async ({ page }) => {
+  test("@deep @nightly Nutrition consent toggle in settings", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);

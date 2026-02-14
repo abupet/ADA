@@ -5,12 +5,12 @@ import { mockAllEndpoints, mockSyncEndpoints } from "./helpers/api-mocks";
 import { navigateTo, ensurePetSelected } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Error handling: API errors, timeouts, offline, invalid responses
+// @deep @nightly — Error handling: API errors, timeouts, offline, invalid responses
 // ---------------------------------------------------------------------------
 
 test.describe("Deep error handling", () => {
 
-  test("@deep API 500: app does not crash on sync push failure", async ({ page }) => {
+  test("@deep @nightly API 500: app does not crash on sync push failure", async ({ page }) => {
     const errors = captureHardErrors(page);
 
     // Mock sync push to return 500
@@ -40,7 +40,7 @@ test.describe("Deep error handling", () => {
     expect(realErrors, realErrors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep API 401: triggers re-login flow", async ({ page }) => {
+  test("@deep @nightly API 401: triggers re-login flow", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockSyncEndpoints(page);
     await login(page);
@@ -65,7 +65,7 @@ test.describe("Deep error handling", () => {
     expect(appVisible || loginVisible).toBe(true);
   });
 
-  test("@deep API 403: forbidden handled gracefully", async ({ page }) => {
+  test("@deep @nightly API 403: forbidden handled gracefully", async ({ page }) => {
     const errors = captureHardErrors(page);
 
     await page.route("**/api/sync/pets/push", async (route) => {
@@ -91,7 +91,7 @@ test.describe("Deep error handling", () => {
     expect(realErrors, realErrors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Network offline: app does not crash", async ({ page, context }) => {
+  test("@deep @nightly Network offline: app does not crash", async ({ page, context }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);
@@ -115,7 +115,7 @@ test.describe("Deep error handling", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Invalid JSON response: no crash", async ({ page }) => {
+  test("@deep @nightly Invalid JSON response: no crash", async ({ page }) => {
     const errors = captureHardErrors(page);
 
     await page.route("**/api/sync/pets/push", async (route) => {
@@ -142,7 +142,7 @@ test.describe("Deep error handling", () => {
     expect(realErrors, realErrors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep API timeout: app handles slow responses", async ({ page }) => {
+  test("@deep @nightly API timeout: app handles slow responses", async ({ page }) => {
     test.setTimeout(120_000);
     const errors = captureHardErrors(page);
 
@@ -176,7 +176,7 @@ test.describe("Deep error handling", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep IndexedDB operations don't crash when DB is new", async ({ page }) => {
+  test("@deep @nightly IndexedDB operations don't crash when DB is new", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page);

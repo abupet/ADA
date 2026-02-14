@@ -42,7 +42,7 @@ export default defineConfig({
     {
       name: "chromium-deep",
       use: { browserName: "chromium" },
-      grep: /@deep|@stress/,
+      grep: /@deep|@stress|@nightly/,
       timeout: 180_000,
     },
   ]

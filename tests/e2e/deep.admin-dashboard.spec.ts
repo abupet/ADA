@@ -5,12 +5,12 @@ import { mockAllEndpoints } from "./helpers/api-mocks";
 import { navigateTo, switchToSuperAdmin } from "./helpers/pages";
 
 // ---------------------------------------------------------------------------
-// @deep — Admin dashboard, catalog, campaigns, CSV wizard
+// @deep @nightly — Admin dashboard, catalog, campaigns, CSV wizard
 // ---------------------------------------------------------------------------
 
 test.describe("Deep admin dashboard", () => {
 
-  test("@deep Dashboard: renders without errors", async ({ page }) => {
+  test("@deep @nightly Dashboard: renders without errors", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -21,7 +21,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Dashboard: data container present in DOM", async ({ page }) => {
+  test("@deep @nightly Dashboard: data container present in DOM", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -35,7 +35,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Catalog: page loads", async ({ page }) => {
+  test("@deep @nightly Catalog: page loads", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -46,7 +46,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Campaigns: page loads", async ({ page }) => {
+  test("@deep @nightly Campaigns: page loads", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -57,7 +57,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Wizard CSV: page loads", async ({ page }) => {
+  test("@deep @nightly Wizard CSV: page loads", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -68,7 +68,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Wizard CSV: download template callable", async ({ page }) => {
+  test("@deep @nightly Wizard CSV: download template callable", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -80,7 +80,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Wizard CSV: handleCsvUpload callable", async ({ page }) => {
+  test("@deep @nightly Wizard CSV: handleCsvUpload callable", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -92,7 +92,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Export CSV: exportPromoCsv callable", async ({ page }) => {
+  test("@deep @nightly Export CSV: exportPromoCsv callable", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
@@ -104,7 +104,7 @@ test.describe("Deep admin dashboard", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Admin pages: zero hard errors across all", async ({ page }) => {
+  test("@deep @nightly Admin pages: zero hard errors across all", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
