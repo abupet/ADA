@@ -467,7 +467,7 @@ async function _commShowNewForm(containerId) {
         '<div style="margin-top:14px;display:flex;gap:8px;align-items:center;">' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation()">Crea</button>' +
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
-        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled) ? '<button type="button" class="comm-btn comm-btn-secondary" onclick="_commFillTestForm()">Test</button>' : '') +
+        ((typeof debugLogEnabled !== 'undefined' && debugLogEnabled && isVetExtUser) ? '<button type="button" class="comm-btn comm-btn-secondary" onclick="_commFillTestForm()">Test</button>' : '') +
         '</div></div>';
 
     _commOnDestTypeChange();
