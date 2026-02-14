@@ -24,6 +24,41 @@ function clearAuthToken() {
     setAuthToken('');
 }
 
+// PR3: Global spinner for slow/failing API calls
+var _globalSpinnerEl = null;
+var _globalSpinnerCount = 0;
+
+function _showGlobalSpinner(message, isError) {
+    if (!_globalSpinnerEl) {
+        _globalSpinnerEl = document.createElement('div');
+        _globalSpinnerEl.id = 'global-fetch-spinner';
+        _globalSpinnerEl.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;' +
+            'display:none;align-items:center;justify-content:center;gap:12px;' +
+            'padding:12px 24px;font-size:14px;font-weight:600;transition:all 0.3s;';
+        document.body.appendChild(_globalSpinnerEl);
+        var style = document.createElement('style');
+        style.textContent = '@keyframes ada-pulse{0%,100%{opacity:.3}50%{opacity:1}}';
+        document.head.appendChild(style);
+    }
+    var bg = isError ? '#fef2f2' : '#eff6ff';
+    var fg = isError ? '#991b1b' : '#1e40af';
+    var bd = isError ? '#fecaca' : '#93c5fd';
+    _globalSpinnerEl.style.background = bg;
+    _globalSpinnerEl.style.color = fg;
+    _globalSpinnerEl.style.borderBottom = '2px solid ' + bd;
+    _globalSpinnerEl.innerHTML =
+        '<div style="display:flex;gap:4px;">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:currentColor;animation:ada-pulse 1.2s infinite;"></span>' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:currentColor;animation:ada-pulse 1.2s infinite 0.2s;"></span>' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:currentColor;animation:ada-pulse 1.2s infinite 0.4s;"></span>' +
+        '</div><span>' + (message || '') + '</span>';
+    _globalSpinnerEl.style.display = 'flex';
+}
+
+function _hideGlobalSpinner() {
+    if (_globalSpinnerEl) _globalSpinnerEl.style.display = 'none';
+}
+
 async function fetchApi(path, options = {}) {
     var headers = new Headers((options || {}).headers || {});
     var token = getAuthToken();
@@ -41,9 +76,35 @@ async function fetchApi(path, options = {}) {
         ADALog.dbg('API', method + ' ' + path + ' started', null);
     }
 
+    // PR3: Show spinner after 5s, abort after 30s (skip for paths that manage their own timeout)
+    var _spinnerTimer = null;
+    var _abortTimer = null;
+    var _internalController = null;
+    var skipSpinner = (options._skipGlobalSpinner === true) || (options.signal != null);
+
+    if (!skipSpinner) {
+        _spinnerTimer = setTimeout(function() {
+            _globalSpinnerCount++;
+            _showGlobalSpinner('Il server sta rispondendo…');
+        }, 5000);
+        _internalController = new AbortController();
+        _abortTimer = setTimeout(function() { _internalController.abort(); }, 30000);
+        if (!options.signal) options.signal = _internalController.signal;
+    }
+
+    function _clearTimers() {
+        if (_spinnerTimer) clearTimeout(_spinnerTimer);
+        if (_abortTimer) clearTimeout(_abortTimer);
+        if (!skipSpinner) {
+            _globalSpinnerCount = Math.max(0, _globalSpinnerCount - 1);
+            if (_globalSpinnerCount === 0) _hideGlobalSpinner();
+        }
+    }
+
     try {
         var response = await fetch(API_BASE_URL + path, { ...options, headers: headers });
         var durationMs = Date.now() - startMs;
+        _clearTimers();
 
         if (response.status === 401 && token) {
             clearAuthToken();
@@ -61,6 +122,14 @@ async function fetchApi(path, options = {}) {
         }
         return response;
     } catch (err) {
+        _clearTimers();
+        if (err.name === 'AbortError' && !skipSpinner) {
+            _showGlobalSpinner('Il server non risponde. Riprova tra qualche secondo…', true);
+            setTimeout(_hideGlobalSpinner, 8000);
+        } else if (err.message && err.message.indexOf('Failed to fetch') !== -1) {
+            _showGlobalSpinner('Errore di connessione. Verificare la rete.', true);
+            setTimeout(_hideGlobalSpinner, 8000);
+        }
         if (typeof ADALog !== 'undefined') {
             ADALog.err('API', method + ' ' + path + ' network error', {
                 durationMs: Date.now() - startMs,
@@ -73,7 +142,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.19.0';
+const ADA_VERSION = '8.20.0';
 const ADA_RELEASE_NOTES = 'Image management wizard, multi-file attachments, debug multi-service toggle, filterable select fix, pet UI improvements.';
 
 // ============================================

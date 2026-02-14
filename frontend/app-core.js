@@ -1237,10 +1237,11 @@ function openEditPetModal() {
     setTimeout(function() {
         var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
         var canEditAssignment = (_jr === 'vet_int' || _jr === 'super_admin');
+        var canEditVetReferral = canEditAssignment || (_jr === 'owner');
         var eo = document.getElementById('editOwnerName');
         var ev = document.getElementById('editOwnerReferringVet');
         if (eo) eo.disabled = !canEditAssignment;
-        if (ev) ev.disabled = !canEditAssignment;
+        if (ev) ev.disabled = !canEditVetReferral;
     }, 100);
 
     // Lifestyle fields
@@ -1354,11 +1355,14 @@ async function saveEditPet() {
     // Save via the existing save flow
     await saveCurrentPet();
 
-    // Reload pet from server to guarantee data consistency across views
+    // PR2: Force refresh from server after save to guarantee owner/vet consistency
     var currentPetId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
     if (currentPetId) {
         setTimeout(async function() {
             try {
+                if (typeof refreshPetsFromServer === 'function') {
+                    await refreshPetsFromServer(false);
+                }
                 var freshPet = typeof getPetById === 'function' ? await getPetById(currentPetId) : null;
                 if (freshPet && typeof loadPetIntoMainFields === 'function') loadPetIntoMainFields(freshPet);
             } catch(e) {}

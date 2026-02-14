@@ -8,7 +8,7 @@ const { randomUUID } = require("crypto");
 // --- Constants ---
 const SESSION_TIMEOUT_MINUTES = 30;
 const MAX_MESSAGES_PER_SESSION = 50;
-const MAX_HISTORY_MESSAGES = 10;
+const MAX_HISTORY_MESSAGES = 50;
 
 const CHATBOT_SYSTEM_PROMPT = [
   "Sei l\u2019Assistente ADA, un assistente veterinario digitale progettato per aiutare i proprietari di animali domestici a valutare i sintomi e decidere il livello di urgenza.",

@@ -17,7 +17,7 @@ function isValidUuid(value) {
 // --- AI constants (migrated from chatbot.routes.js) ---
 const SESSION_TIMEOUT_MINUTES = 30;
 const MAX_MESSAGES_PER_SESSION = 50;
-const MAX_HISTORY_MESSAGES = 10;
+const MAX_HISTORY_MESSAGES = 50;
 
 const CHATBOT_SYSTEM_PROMPT = [
   "Sei l\u2019Assistente ADA, un assistente veterinario digitale progettato per aiutare i proprietari di animali domestici a valutare i sintomi e decidere il livello di urgenza.",
@@ -58,10 +58,23 @@ const MOCK_ASSISTANT_RESPONSE = {
 
 // --- AI helper functions (from chatbot.routes.js) ---
 
+// PR4: Supported MIME types for AI file analysis
+const SUPPORTED_AI_MIMES = [
+  "image/jpeg", "image/png", "image/gif", "image/webp",
+  "application/pdf",
+  "text/plain", "text/csv",
+  "audio/mpeg", "audio/wav", "audio/ogg", "audio/webm"
+];
+
+function isAiSupportedMime(mimeType) {
+  if (!mimeType) return false;
+  return SUPPORTED_AI_MIMES.some(function(m) { return mimeType === m || mimeType.startsWith(m.split("/")[0] + "/"); });
+}
+
 async function buildPetContext(pool, petId, userId) {
   try {
     const petResult = await pool.query(
-      `SELECT name, species, breed, sex, birthdate, weight_kg, notes FROM pets WHERE pet_id = $1 LIMIT 1`,
+      `SELECT name, species, breed, sex, birthdate, weight_kg, notes, extra_data FROM pets WHERE pet_id = $1 LIMIT 1`,
       [petId]
     );
     if (!petResult.rows[0]) return "";
@@ -74,6 +87,19 @@ async function buildPetContext(pool, petId, userId) {
     if (pet.birthdate) parts.push(`Data di nascita: ${pet.birthdate}`);
     if (pet.weight_kg) parts.push(`Peso: ${pet.weight_kg} kg`);
     if (pet.notes) parts.push(`Note: ${pet.notes}`);
+    // PR4: Include lifestyle data from extra_data
+    try {
+      const extra = typeof pet.extra_data === "string" ? JSON.parse(pet.extra_data || "{}") : (pet.extra_data || {});
+      const ls = extra.lifestyle || {};
+      const lsParts = [];
+      if (ls.lifestyle) lsParts.push(`ambiente: ${ls.lifestyle}`);
+      if (ls.activityLevel) lsParts.push(`attività: ${ls.activityLevel}`);
+      if (ls.dietType) lsParts.push(`dieta: ${ls.dietType}`);
+      if (ls.knownConditions) lsParts.push(`patologie: ${ls.knownConditions}`);
+      if (ls.currentMeds) lsParts.push(`farmaci: ${ls.currentMeds}`);
+      if (ls.behaviorNotes) lsParts.push(`comportamento: ${ls.behaviorNotes}`);
+      if (lsParts.length > 0) parts.push(`Stile di vita: ${lsParts.join(", ")}`);
+    } catch (_) { /* extra_data parse error, skip */ }
     try {
       const tagsResult = await pool.query(`SELECT tag_key, tag_value FROM pet_tags WHERE pet_id = $1 ORDER BY tag_key`, [petId]);
       if (tagsResult.rows.length > 0) parts.push(`Tag: ${tagsResult.rows.map(t => `${t.tag_key}: ${t.tag_value}`).join(", ")}`);
@@ -335,7 +361,9 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
             { role: "assistant", content: welcomeContent },
             { role: "user", content: initial_message.trim() }
           ];
-          const systemContent = petContext ? `${CHATBOT_SYSTEM_PROMPT}\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}` : CHATBOT_SYSTEM_PROMPT;
+          let systemContent = CHATBOT_SYSTEM_PROMPT;
+          if (subject) systemContent += `\n\nOggetto della conversazione: ${subject}`;
+          if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
 
           try {
             let assistantContent, triageData;
@@ -627,7 +655,9 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           triageData = MOCK_ASSISTANT_RESPONSE.triage;
         } else {
           const petContext = conversation.pet_id ? await buildPetContext(pool, conversation.pet_id, senderId) : "";
-          const systemContent = petContext ? `${CHATBOT_SYSTEM_PROMPT}\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}` : CHATBOT_SYSTEM_PROMPT;
+          let systemContent = CHATBOT_SYSTEM_PROMPT;
+          if (conversation.subject) systemContent += `\n\nOggetto della conversazione: ${conversation.subject}`;
+          if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
           const historyResult = await pool.query(
             "SELECT ai_role AS role, content FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
             [id, MAX_HISTORY_MESSAGES]

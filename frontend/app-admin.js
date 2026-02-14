@@ -1424,6 +1424,8 @@
         html.push('<option value="">Immagine: Tutte</option>');
         html.push('<option value="with"' + (_catalogImageFilter === 'with' ? ' selected' : '') + '>Con immagine</option>');
         html.push('<option value="without"' + (_catalogImageFilter === 'without' ? ' selected' : '') + '>Senza immagine</option>');
+        html.push('<option value="cached"' + (_catalogImageFilter === 'cached' ? ' selected' : '') + '>In cache</option>');
+        html.push('<option value="online_only"' + (_catalogImageFilter === 'online_only' ? ' selected' : '') + '>Solo online</option>');
         html.push('</select>');
         html.push('<select onchange="filterCatalogExtDesc(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">');
         html.push('<option value="">Ext. Desc: Tutte</option>');
@@ -1559,6 +1561,8 @@
             var hasImage = !!(item.image_url || item.image_cached_at);
             if (_catalogImageFilter === 'with' && !hasImage) return false;
             if (_catalogImageFilter === 'without' && hasImage) return false;
+            if (_catalogImageFilter === 'cached' && !item.image_cached_at) return false;
+            if (_catalogImageFilter === 'online_only' && !(item.image_url && !item.image_cached_at)) return false;
             if (_catalogExtDescFilter === 'with' && !item.extended_description) return false;
             if (_catalogExtDescFilter === 'without' && item.extended_description) return false;
             if (_catalogCategoryFilter && item.category !== _catalogCategoryFilter) return false;
