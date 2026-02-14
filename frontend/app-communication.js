@@ -1375,6 +1375,8 @@ function _commHandleFileSelect(input) {
     var nameEl = document.getElementById('comm-file-preview-name');
     if (previewEl) previewEl.style.display = 'flex';
     if (nameEl) nameEl.textContent = '\uD83D\uDCCE ' + file.name + ' (' + _commFormatFileSize(file.size) + ')';
+    var msgInput = document.getElementById('comm-msg-input');
+    if (msgInput) msgInput.placeholder = 'Allegato pronto per l\'invio. Scrivi un messaggio...';
 }
 
 function _commClearFile() {
@@ -1383,6 +1385,8 @@ function _commClearFile() {
     if (previewEl) previewEl.style.display = 'none';
     var fileInput = document.getElementById('comm-file-input');
     if (fileInput) fileInput.value = '';
+    var msgInput = document.getElementById('comm-msg-input');
+    if (msgInput) msgInput.placeholder = 'Scrivi un messaggio...';
 }
 
 function _commFormatFileSize(bytes) {
