@@ -1015,6 +1015,18 @@ async function _commSend(conversationId) {
         }
         var data = await resp.json();
 
+        // Re-render the last own message with server data (includes media_url for attachments)
+        if (hasFile && !isAi && data && data.message) {
+            var lastOwnBubble = container ? container.querySelector('.comm-msg-own:last-child') : null;
+            if (lastOwnBubble) {
+                var serverMsg = data.message;
+                serverMsg.sender_id = userId;
+                serverMsg.sender_name = typeof getJwtDisplayName === 'function' ? getJwtDisplayName() : 'Tu';
+                serverMsg.sender_role = typeof getJwtRole === 'function' ? getJwtRole() : '';
+                lastOwnBubble.outerHTML = _commRenderBubble(serverMsg, true);
+            }
+        }
+
         if (isAi) {
             // Remove spinner
             var spinner = document.getElementById('comm-ai-spinner');
