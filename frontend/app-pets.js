@@ -326,6 +326,14 @@ async function onPetSelectorChange(selectElement) {
         await updateSelectedPetHeaders();
     }
 
+    // PR1: Refresh promo quando si cambia pet
+    try {
+        var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
+        if (typeof renderPromoSlot === 'function' && promoRole === 'proprietario') {
+            renderPromoSlot('patient-promo-container', 'pet_profile');
+        }
+    } catch(_promoErr) {}
+
     updateSaveButtonState();
 }
 

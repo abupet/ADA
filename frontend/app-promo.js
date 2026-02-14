@@ -509,6 +509,12 @@
         html.push('  <button type="button" class="promo-btn promo-btn--info" data-promo-action="close">Chiudi il suggerimento</button>');
         html.push('  <button type="button" class="promo-btn promo-btn--dismiss" data-promo-action="dismiss">Non mi interessa</button>');
         html.push('</div>');
+        // PR1: Debug-only analysis button
+        if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
+            html.push('<div style="margin-top:8px;text-align:center;">');
+            html.push('  <button type="button" class="promo-btn promo-btn--info" data-promo-action="analysis" style="font-size:11px;padding:4px 12px;">🔍 Analisi raccomandazione</button>');
+            html.push('</div>');
+        }
 
         cardEl.innerHTML = html.join('\n');
         cardEl.classList.remove('promo-card--hidden');
@@ -559,6 +565,13 @@
             });
         }
 
+        // PR1: Bind analysis button
+        var analysisBtn = cardEl.querySelector('[data-promo-action="analysis"]');
+        if (analysisBtn) {
+            analysisBtn.addEventListener('click', function () {
+                _showPromoAnalysis(productId, petId);
+            });
+        }
         if (dismissBtn) {
             dismissBtn.addEventListener('click', function () {
                 if (typeof ADALog !== 'undefined') {
@@ -1064,5 +1077,59 @@
     global.renderConsentBanner     = renderConsentBanner;
     global.renderConsentCenter     = renderConsentCenter;
     global.renderVetFlagButton     = renderVetFlagButton;
+
+// PR1: Debug analysis for promo recommendation
+function _showPromoAnalysis(productId, petId) {
+    if (!petId && typeof getCurrentPetId === 'function') petId = getCurrentPetId();
+    if (!petId) {
+        if (typeof showToast === 'function') showToast('Nessun pet selezionato', 'warning');
+        return;
+    }
+
+    (typeof getPetById === 'function' ? getPetById(petId) : Promise.resolve(null)).then(function(pet) {
+        if (!pet) {
+            alert('Pet non trovato nella cache');
+            return;
+        }
+        var p = pet.patient || {};
+        var ls = pet.lifestyle || {};
+        var age = '';
+        if (typeof _computeAgeFromBirthdate === 'function' && p.petBirthdate) {
+            age = _computeAgeFromBirthdate(p.petBirthdate);
+        } else {
+            age = p.petBirthdate || 'N/D';
+        }
+
+        var lines = [
+            '═══ ANALISI RACCOMANDAZIONE ═══',
+            '',
+            '📋 DATI PET UTILIZZATI:',
+            '  Nome: ' + (p.petName || pet.name || 'N/D'),
+            '  Specie: ' + (p.petSpecies || pet.species || 'N/D'),
+            '  Razza: ' + (p.petBreed || pet.breed || 'N/D'),
+            '  Età: ' + age,
+            '  Peso: ' + (pet.weight_kg || p.petWeightKg || 'N/D') + ' kg',
+            '  Sesso: ' + (p.petSex || pet.sex || 'N/D'),
+            '',
+            '🏠 STILE DI VITA:',
+            '  Ambiente: ' + (ls.lifestyle || 'N/D'),
+            '  Attività: ' + (ls.activityLevel || 'N/D'),
+            '  Dieta: ' + (ls.dietType || 'N/D'),
+            '  Preferenze: ' + (ls.dietPreferences || 'N/D'),
+            '  Patologie: ' + (ls.knownConditions || 'nessuna'),
+            '  Farmaci: ' + (ls.currentMeds || 'nessuno'),
+            '  Comportamento: ' + (ls.behaviorNotes || 'N/D'),
+            '  Località: ' + (ls.location || 'N/D'),
+            '',
+            '🏷️ TAG MATCHING:',
+            '  I tag vengono calcolati dal backend basandosi su',
+            '  specie, razza, età, peso, e condizioni note del',
+            '  pet per trovare il prodotto più pertinente.',
+            '',
+            '📦 Product ID: ' + (productId || 'N/D')
+        ];
+        alert(lines.join('\n'));
+    });
+}
 
 })(typeof window !== 'undefined' ? window : this);
