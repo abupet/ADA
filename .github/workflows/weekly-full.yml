@@ -10,7 +10,8 @@ on:
 
 permissions:
   issues: write
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   test_weekly:
@@ -190,6 +191,126 @@ jobs:
             -d parse_mode="Markdown" \
             -d disable_web_page_preview="true" \
             -d text="$MSG"
+
+      # ── Tracking & promotion (only on dev, always runs) ──
+      - name: Update test tracking
+        if: always() && matrix.branch == 'dev'
+        run: node scripts/ci/update-tracking.js dev
+
+      - name: Check promotion candidates
+        id: promotion
+        if: always() && matrix.branch == 'dev'
+        run: |
+          CANDIDATES=$(cat /tmp/promotion-candidates.json 2>/dev/null || echo "[]")
+          COUNT=$(echo "$CANDIDATES" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf-8'); console.log(JSON.parse(d).length)")
+
+          if [ "$COUNT" -gt "0" ]; then
+            echo "has_candidates=true" >> $GITHUB_OUTPUT
+            echo "candidates=$CANDIDATES" >> $GITHUB_OUTPUT
+          else
+            echo "has_candidates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create promotion PR
+        id: promote_pr
+        if: always() && matrix.branch == 'dev' && steps.promotion.outputs.has_candidates == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          CANDIDATES='${{ steps.promotion.outputs.candidates }}'
+          NAMES=$(echo "$CANDIDATES" | node -e "
+            const d=require('fs').readFileSync('/dev/stdin','utf-8');
+            JSON.parse(d).forEach(c => console.log(c.testName));
+          ")
+
+          # Promote each candidate
+          for name in $NAMES; do
+            node scripts/ci/promote-test.js "$name"
+          done
+
+          BRANCH="promote/nightly-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "test: promote deep tests to @nightly
+
+          Tests promoted based on ${{ steps.promotion.outputs.candidates }}" || true
+
+          if ! git diff --quiet HEAD~1 2>/dev/null; then
+            git push origin "$BRANCH"
+            PR_URL=$(gh pr create \
+              --base dev \
+              --title "📊 Promote deep tests to @nightly ($(date +%Y-%m-%d))" \
+              --label "test-promotion" \
+              --reviewer "${{ github.repository_owner }}" \
+              --body "## Test Promotion
+
+          The following deep tests have passed **4+ consecutive weekly runs** and are
+          candidates for promotion to the nightly test suite.
+
+          ### Candidates
+          $(echo "$CANDIDATES" | node -e "
+            const d=require('fs').readFileSync('/dev/stdin','utf-8');
+            JSON.parse(d).forEach(c => console.log('- **' + c.testName + '**: ' + c.streak + ' consecutive passes'));
+          ")
+
+          ### What this PR does
+          - Adds \`@nightly\` tag to the test descriptions
+          - Updates \`tests/nightly-tracking.json\` to mark as promoted
+
+          ---
+          ✅ Merge to promote | ❌ Close to skip (will re-propose next week)")
+
+            echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Ensure test-promotion label exists
+        if: always() && matrix.branch == 'dev' && steps.promotion.outputs.has_candidates == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "test-promotion" --color "0e8a16" \
+            --description "Deep test promoted to nightly" 2>/dev/null || true
+
+      - name: Notify Telegram (promotion candidates)
+        if: always() && matrix.branch == 'dev' && steps.promote_pr.outputs.pr_url
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          CANDIDATES='${{ steps.promotion.outputs.candidates }}'
+          DETAILS=$(echo "$CANDIDATES" | node -e "
+            const d=require('fs').readFileSync('/dev/stdin','utf-8');
+            JSON.parse(d).forEach(c => console.log('✅ ' + c.testName + ' (' + c.streak + ' pass)'));
+          ")
+
+          MSG="📊 *Test promotion candidates*
+
+          ${DETAILS}
+
+          🔗 ${{ steps.promote_pr.outputs.pr_url }}
+
+          ✅ Merge to promote to nightly
+          ❌ Close to skip"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview="true" \
+            -d text="$MSG"
+
+      # Also commit tracking updates back to dev
+      - name: Commit tracking updates
+        if: always() && matrix.branch == 'dev'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/nightly-tracking.json
+          git diff --staged --quiet || git commit -m "chore: update nightly tracking [skip ci]"
+          git push origin dev || true
 
       # ── Summary ──
       - name: Write CI summary
