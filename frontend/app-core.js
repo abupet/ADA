@@ -1203,7 +1203,7 @@ function openEditPetModal() {
     // Owner/Vet Esterno: only vet/vet_int/super_admin can edit assignment
     setTimeout(function() {
         var _jr = typeof getJwtRole === 'function' ? getJwtRole() : '';
-        var canEditAssignment = (_jr === 'vet' || _jr === 'vet_int' || _jr === 'super_admin');
+        var canEditAssignment = (_jr === 'vet_int' || _jr === 'super_admin');
         var eo = document.getElementById('editOwnerName');
         var ev = document.getElementById('editOwnerReferringVet');
         if (eo) eo.disabled = !canEditAssignment;
