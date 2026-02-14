@@ -1,0 +1,245 @@
+# nightly-autofix.yml v1
+# Auto-fix: triggered after nightly deep failure on dev branch.
+# Claude Code analyzes failures, attempts fixes, creates PR, notifies via Telegram.
+name: Nightly Auto-Fix (dev)
+
+on:
+  workflow_run:
+    workflows: ["Nightly Deep Tests"]
+    types: [completed]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto_fix:
+    # Only run if nightly deep failed AND it was the dev branch job
+    # We check for failure in the triggering workflow
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Playwright report from nightly
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-deep-dev
+          path: playwright-report/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true
+
+      - name: Download test-results from nightly
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results-deep-dev
+          path: test-results/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true
+
+      - name: Extract failure summary
+        id: failures
+        run: |
+          SUMMARY=""
+
+          # Try to extract from Playwright JSON report
+          if [ -f playwright-report/report.json ]; then
+            SUMMARY=$(node -e "
+              try {
+                const r = require('./playwright-report/report.json');
+                const walk = (suite) => {
+                  const fails = [];
+                  for (const spec of (suite.specs || [])) {
+                    for (const t of (spec.tests || [])) {
+                      for (const res of (t.results || [])) {
+                        if (res.status === 'failed' || res.status === 'timedOut') {
+                          fails.push(spec.title + ' — ' + (res.error?.message || 'unknown').slice(0, 300));
+                        }
+                      }
+                    }
+                  }
+                  for (const child of (suite.suites || [])) {
+                    fails.push(...walk(child));
+                  }
+                  return fails;
+                };
+                const all = r.suites ? r.suites.flatMap(walk) : [];
+                console.log(all.join('\n---\n') || 'No details found in report.json');
+              } catch(e) { console.log('Failed to parse report: ' + e.message); }
+            " 2>/dev/null)
+          fi
+
+          # Fallback: check test-results directory for error files
+          if [ -z "$SUMMARY" ] || [ "$SUMMARY" = "No details found in report.json" ]; then
+            if [ -d test-results ]; then
+              SUMMARY=$(find test-results -name "*.txt" -o -name "*.log" | head -5 | xargs cat 2>/dev/null | tail -200)
+            fi
+          fi
+
+          if [ -z "$SUMMARY" ]; then
+            SUMMARY="Could not extract failure details. Check the workflow run artifacts manually."
+          fi
+
+          # Write to file (avoids shell escaping issues)
+          echo "$SUMMARY" > /tmp/failure-summary.txt
+          echo "has_details=true" >> $GITHUB_OUTPUT
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Claude Code auto-fix
+        id: autofix
+        run: |
+          FAILURES=$(cat /tmp/failure-summary.txt)
+
+          claude-code --print \
+            "You are fixing failing nightly E2E tests in the ADA veterinary platform.
+
+          ## Failure details
+          ${FAILURES}
+
+          ## Instructions
+          1. Read the failing test file(s) to understand what they test
+          2. Read the application source code they interact with
+          3. Determine if the failure is:
+             a) A BUG in the application code → fix the application code
+             b) A FLAKY test (timing, race condition, selector) → fix the test
+             c) An ENVIRONMENT issue → skip with a TODO comment
+          4. Make the minimal fix necessary — do NOT refactor unrelated code
+          5. Do NOT delete or skip tests unless absolutely necessary
+          6. If you cannot determine the fix with confidence, create a file
+             /tmp/autofix-skipped.txt explaining why
+
+          ## Important constraints
+          - Only modify files under tests/e2e/, frontend/, or backend/src/
+          - Do NOT modify package.json, workflow files, or configuration
+          - Do NOT modify tests that are passing
+          - Keep all changes minimal and focused"
+
+          # Check if any files were modified
+          if git diff --quiet; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+            echo "No changes made by Claude Code"
+          else
+            echo "no_changes=false" >> $GITHUB_OUTPUT
+            git diff --stat
+          fi
+
+      - name: Create PR
+        id: create_pr
+        if: steps.autofix.outputs.no_changes != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="auto-fix/nightly-$(date +%Y%m%d-%H%M)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "fix(nightly): auto-fix from $(date +%Y-%m-%d)
+
+          Auto-generated by Claude Code based on nightly test failures.
+          Requires manual review before merge."
+
+          git push origin "$BRANCH"
+
+          FAILURES_SHORT=$(head -5 /tmp/failure-summary.txt)
+          PR_URL=$(gh pr create \
+            --base dev \
+            --title "🤖 fix(nightly): auto-fix $(date +%Y-%m-%d)" \
+            --label "auto-fix" \
+            --reviewer "${{ github.repository_owner }}" \
+            --body "## Auto-fix from nightly deep tests
+
+          **Source run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
+
+          ### Original failures
+          \`\`\`
+          ${FAILURES_SHORT}
+          \`\`\`
+
+          ### What was changed
+          $(git diff HEAD~1 --stat)
+
+          ---
+          ⚠️ **This PR was auto-generated by Claude Code. Review carefully before merging.**")
+
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+
+      # Create auto-fix label if it doesn't exist
+      - name: Ensure auto-fix label exists
+        if: steps.autofix.outputs.no_changes != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "auto-fix" --color "1d76db" \
+            --description "Auto-generated fix by Claude Code" 2>/dev/null || true
+
+      # ── Telegram notification ──
+      - name: Notify Telegram (PR created)
+        if: steps.create_pr.outputs.pr_url
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          FAILURES_ONELINE=$(head -3 /tmp/failure-summary.txt | tr '\n' ' ' | cut -c1-200)
+          MSG="🤖 *Nightly auto-fix PR created*
+
+          🔗 ${{ steps.create_pr.outputs.pr_url }}
+
+          📋 *Failures:*
+          ${FAILURES_ONELINE}
+
+          👉 Review and merge/close the PR"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview="true" \
+            -d text="$MSG"
+
+      - name: Notify Telegram (no fix possible)
+        if: steps.autofix.outputs.no_changes == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}"
+          REASON=""
+          if [ -f /tmp/autofix-skipped.txt ]; then
+            REASON=$(cat /tmp/autofix-skipped.txt | head -5 | tr '\n' ' ' | cut -c1-200)
+          fi
+
+          MSG="⚠️ *Nightly auto-fix: no changes made*
+
+          🔗 [Original run]($RUN_URL)
+          📋 ${REASON:-Claude Code could not determine a fix}
+
+          👉 Manual investigation needed"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview="true" \
+            -d text="$MSG"
