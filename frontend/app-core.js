@@ -282,6 +282,21 @@ function formatUserNameWithRole(displayName, role) {
     return name;
 }
 
+function getProductImageUrl(item) {
+    var baseUrl = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '';
+    if (!item) return baseUrl + _randomProductPlaceholderUrl();
+    if (item.image_cached_at || item.image_cached_mime) {
+        return baseUrl + '/api/promo-items/' + (item.promo_item_id || item.id) + '/image';
+    }
+    if (item.image_url) return item.image_url;
+    return baseUrl + _randomProductPlaceholderUrl();
+}
+
+function _randomProductPlaceholderUrl() {
+    var idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+    return '/api/seed-assets/placeholder-prodotti/Prodotto_' + idx + '.png';
+}
+
 function applyVersionInfo() {
     const versionEl = document.getElementById('appVersion');
     const releaseNotesEl = document.getElementById('appReleaseNotesVersion');

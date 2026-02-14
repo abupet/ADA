@@ -457,16 +457,9 @@
         var ctaUrl = rec.ctaUrl || rec.infoUrl || null;
 
         // Build card HTML
-        var imageUrl = null;
-        if (rec.promo_item_id) {
-            imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/promo-items/' + rec.promo_item_id + '/image';
-        } else {
-            imageUrl = rec.imageUrl || rec.image_url || null;
-        }
-        if (!imageUrl) {
-            var _idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
-            imageUrl = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/seed-assets/placeholder-prodotti/Prodotto_' + _idx + '.png';
-        }
+        var imageUrl = rec.promo_item_id
+            ? getProductImageUrl(rec)
+            : (rec.imageUrl || rec.image_url || getProductImageUrl(null));
         var description = rec.description || null;
 
         var html = [
@@ -621,7 +614,7 @@
             if (url) { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) { window.location.href = url; } }
             return;
         }
-        var imgUrl = rec.imageUrl || rec.image_url || '';
+        var imgUrl = rec.promo_item_id ? getProductImageUrl(rec) : (rec.imageUrl || rec.image_url || '');
         _showModal('Acquisto Prodotto', function(container) {
             var h = [];
             h.push('<div style="max-width:480px;margin:0 auto;">');

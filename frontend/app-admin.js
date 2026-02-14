@@ -614,9 +614,8 @@
         html += '<button class="btn btn-secondary" style="padding:4px 10px;" onclick="wizardPreviewNav(1)">&gt;</button>';
         html += '</div>';
         html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo amico pet</span>';
-        if (p.image_url) {
-            html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _escapeHtml(p.image_url) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
-        }
+        var _previewImgUrl = getProductImageUrl(p);
+        html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _escapeHtml(_previewImgUrl) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
         html += '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + _escapeHtml(p.name || '') + '</div>';
         html += '<div style="font-size:12px;color:#666;margin-bottom:6px;">' + _escapeHtml(p.description || '') + '</div>';
         html += '<div style="font-size:11px;color:#888;">Specie: ' + _escapeHtml(_translateSpecies(speciesArr)) + ' | Lifecycle: ' + _escapeHtml(_translateLifecycle(lcArr)) + '</div>';
@@ -1510,7 +1509,12 @@
                 html.push('<td>' + _escapeHtml(_translateLifecycle(item.lifecycle_target)) + '</td>');
                 html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
                 html.push('<td>' + (item.priority || 0) + '</td>');
-                html.push('<td>' + (item.image_url ? '🖼️' : '<span style="color:#ccc;">—</span>') + '</td>');
+                var imgIcon = item.image_cached_at
+                    ? '<span title="Immagine salvata nel DB" style="color:#059669;">🖼️</span>'
+                    : (item.image_url
+                        ? '<span title="Solo URL esterno" style="color:#f59e0b;">🔗</span>'
+                        : '<span style="color:#ccc;" title="Nessuna immagine">—</span>');
+                html.push('<td>' + imgIcon + '</td>');
                 html.push('<td>' + (item.extended_description ? '✅' : '<span style="color:#dc2626;">❌</span>') + '</td>');
                 html.push('<td style="white-space:nowrap;">');
 
@@ -1551,8 +1555,9 @@
                 var _stArr = Array.isArray(item.service_type) ? item.service_type : [item.service_type || 'promo'];
                 if (_stArr.indexOf(_catalogServiceTypeFilter) === -1) return false;
             }
-            if (_catalogImageFilter === 'with' && !item.image_url) return false;
-            if (_catalogImageFilter === 'without' && item.image_url) return false;
+            var hasImage = !!(item.image_url || item.image_cached_at);
+            if (_catalogImageFilter === 'with' && !hasImage) return false;
+            if (_catalogImageFilter === 'without' && hasImage) return false;
             if (_catalogExtDescFilter === 'with' && !item.extended_description) return false;
             if (_catalogExtDescFilter === 'without' && item.extended_description) return false;
             if (_catalogCategoryFilter && item.category !== _catalogCategoryFilter) return false;
