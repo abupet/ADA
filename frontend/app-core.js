@@ -244,8 +244,8 @@ function makeFilterableSelect(selectId) {
         dropdown.innerHTML = html || '<div style="padding:8px 12px;color:#999;">Nessun risultato</div>';
         dropdown.style.display = '';
     }
-    input.addEventListener('focus', updateDropdown);
-    input.addEventListener('input', updateDropdown);
+    input.addEventListener('focus', function() { if (!select.disabled) updateDropdown(); });
+    input.addEventListener('input', function() { if (!select.disabled) updateDropdown(); });
     dropdown.addEventListener('click', function(e) {
         var target = e.target.closest ? e.target.closest('[data-value]') : e.target;
         while (target && !target.dataset.value) target = target.parentElement;
@@ -260,6 +260,19 @@ function makeFilterableSelect(selectId) {
         if (!wrapper.contains(e.target)) dropdown.style.display = 'none';
     });
     if (select.selectedIndex > 0) input.value = select.options[select.selectedIndex].text;
+
+    // Sync disabled state from <select> to the filterable input wrapper
+    function _syncDisabledState() {
+        var isDisabled = select.disabled;
+        input.disabled = isDisabled;
+        input.style.backgroundColor = isDisabled ? '#f5f5f5' : '#fff';
+        input.style.color = isDisabled ? '#999' : '#333';
+        input.style.cursor = isDisabled ? 'not-allowed' : 'text';
+        if (isDisabled) dropdown.style.display = 'none';
+    }
+    _syncDisabledState();
+    var observer = new MutationObserver(function() { _syncDisabledState(); });
+    observer.observe(select, { attributes: true, attributeFilter: ['disabled'] });
 }
 
 function formatUserNameWithRole(displayName, role) {
@@ -267,6 +280,21 @@ function formatUserNameWithRole(displayName, role) {
     if (role === 'vet_int') return name + ' (Vet. interno)';
     if (role === 'vet_ext') return name + ' (Vet. esterno)';
     return name;
+}
+
+function getProductImageUrl(item) {
+    var baseUrl = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '';
+    if (!item) return baseUrl + _randomProductPlaceholderUrl();
+    if (item.image_cached_at || item.image_cached_mime) {
+        return baseUrl + '/api/promo-items/' + (item.promo_item_id || item.id) + '/image';
+    }
+    if (item.image_url) return item.image_url;
+    return baseUrl + _randomProductPlaceholderUrl();
+}
+
+function _randomProductPlaceholderUrl() {
+    var idx = String(Math.floor(Math.random() * 45) + 1).padStart(2, '0');
+    return '/api/seed-assets/placeholder-prodotti/Prodotto_' + idx + '.png';
 }
 
 function applyVersionInfo() {
@@ -393,7 +421,8 @@ async function navigateToPage(page) {
             renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
             // Insurance slot (multi-service)
-            if (typeof renderInsuranceSlot === 'function' && promoRole === 'proprietario') {
+            var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+            if (typeof renderInsuranceSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
                 if (page === 'patient') renderInsuranceSlot('patient-insurance-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
             }
         if (typeof renderVetFlagButton === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
@@ -435,6 +464,9 @@ async function navigateToPage(page) {
         }
         if (page === 'superadmin-sources' && typeof loadSuperadminSources === 'function') {
             loadSuperadminSources('superadmin-sources-content');
+        }
+        if (page === 'seed' && typeof _seedLoadOwnerVetDropdowns === 'function') {
+            _seedLoadOwnerVetDropdowns();
         }
     } catch(e) {}
 
@@ -1321,6 +1353,17 @@ async function saveEditPet() {
 
     // Save via the existing save flow
     await saveCurrentPet();
+
+    // Reload pet from server to guarantee data consistency across views
+    var currentPetId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
+    if (currentPetId) {
+        setTimeout(async function() {
+            try {
+                var freshPet = typeof getPetById === 'function' ? await getPetById(currentPetId) : null;
+                if (freshPet && typeof loadPetIntoMainFields === 'function') loadPetIntoMainFields(freshPet);
+            } catch(e) {}
+        }, 500);
+    }
 }
 
 function cancelEditPet() {
@@ -1341,6 +1384,25 @@ function initDebugLogSetting() {
     debugLogEnabled = saved !== 'false';
     const checkbox = document.getElementById('debugLogEnabled');
     if (checkbox) checkbox.checked = debugLogEnabled;
+
+    // Multi-service debug flag
+    try { _debugForceMultiService = localStorage.getItem('ada_debug_force_multi_service') === 'true'; } catch(e) {}
+    var fmsEl = document.getElementById('debugForceMultiService');
+    if (fmsEl) fmsEl.checked = _debugForceMultiService;
+}
+
+var _debugForceMultiService = false;
+
+function toggleDebugForceMultiService(enabled) {
+    _debugForceMultiService = !!enabled;
+    try { localStorage.setItem('ada_debug_force_multi_service', enabled ? 'true' : 'false'); } catch(e) {}
+    showToast(enabled ? 'Multi-servizio forzato ON' : 'Multi-servizio forzato OFF', 'success');
+    var currentPage = document.querySelector('.page.active');
+    if (currentPage) navigateToPage(currentPage.id.replace('page-', ''));
+}
+
+function isDebugForceMultiService() {
+    return _debugForceMultiService;
 }
 
 function toggleDebugLog(enabled) {

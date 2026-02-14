@@ -464,6 +464,27 @@ function openAddPetPage() {
     navigateToPage('addpet');
     _loadOwnerAndVetDropdowns('newOwnerName', 'newOwnerReferringVet', null, null);
     _applyOwnerVetDropdownRules();
+
+    // Auto-assign owner for 'owner' role
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    if (jwtRole === 'owner') {
+        var jwtUserId = typeof getJwtSub === 'function' ? getJwtSub() : '';
+        setTimeout(function() {
+            var ownerSel = document.getElementById('newOwnerName');
+            if (ownerSel && jwtUserId) {
+                ownerSel.value = jwtUserId;
+                var wrapper = ownerSel.parentElement;
+                if (wrapper) {
+                    var filterInput = wrapper.querySelector('input[type="text"]');
+                    if (filterInput) {
+                        var selectedOpt = ownerSel.options[ownerSel.selectedIndex];
+                        if (selectedOpt) filterInput.value = selectedOpt.text;
+                    }
+                }
+            }
+            _applyOwnerVetDropdownRules();
+        }, 300);
+    }
 }
 
 function cancelAddPet() {

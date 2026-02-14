@@ -925,6 +925,13 @@ function adminRouter({ requireAuth, upload }) {
       try {
         const { tenantId } = req.params;
         const force = req.body?.force === true;
+        const { item_ids } = req.body || {};
+        const params = [tenantId];
+        let itemFilter = '';
+        if (Array.isArray(item_ids) && item_ids.length > 0) {
+            params.push(item_ids);
+            itemFilter = ` AND promo_item_id = ANY($${params.length})`;
+        }
 
         const condition = force
           ? "image_url IS NOT NULL AND image_url != ''"
@@ -932,8 +939,8 @@ function adminRouter({ requireAuth, upload }) {
 
         const { rows: items } = await pool.query(
           `SELECT promo_item_id, image_url, image_cached_hash
-           FROM promo_items WHERE tenant_id = $1 AND ${condition}`,
-          [tenantId]
+           FROM promo_items WHERE tenant_id = $1 AND ${condition}${itemFilter}`,
+          params
         );
 
         const crypto = require("crypto");
@@ -995,6 +1002,197 @@ function adminRouter({ requireAuth, upload }) {
         console.error("POST cache-images error", e);
         res.status(500).json({ error: "server_error" });
       }
+    }
+  );
+
+  // POST /api/admin/:tenantId/promo-items/scrape-images
+  router.post(
+    "/api/admin/:tenantId/promo-items/scrape-images",
+    requireAuth, requireRole(adminRoles),
+    async (req, res) => {
+        try {
+            const { tenantId } = req.params;
+            const { item_ids } = req.body;
+            if (!Array.isArray(item_ids) || item_ids.length === 0)
+                return res.status(400).json({ error: "missing_item_ids" });
+            if (item_ids.length > 500)
+                return res.status(400).json({ error: "too_many_items", max: 500 });
+
+            const { rows: items } = await pool.query(
+                `SELECT promo_item_id, name, product_url, image_url, image_cached_mime
+                 FROM promo_items WHERE tenant_id = $1 AND promo_item_id = ANY($2)`,
+                [tenantId, item_ids]
+            );
+
+            const cheerio = require("cheerio");
+            const results = [];
+
+            for (const item of items) {
+                if (!item.product_url) {
+                    results.push({ id: item.promo_item_id, name: item.name, status: "no_product_url",
+                        current_image_url: item.image_url, has_cached: !!item.image_cached_mime, scraped_image_url: null });
+                    continue;
+                }
+                try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 15000);
+                    const resp = await fetch(item.product_url, {
+                        signal: controller.signal,
+                        headers: { "User-Agent": "Mozilla/5.0 (compatible; ADA-ImageScraper/1.0)", "Accept": "text/html" },
+                    });
+                    clearTimeout(timeout);
+                    if (!resp.ok) {
+                        results.push({ id: item.promo_item_id, name: item.name, status: "fetch_error", code: resp.status,
+                            current_image_url: item.image_url, has_cached: !!item.image_cached_mime, scraped_image_url: null });
+                        continue;
+                    }
+                    const html = await resp.text();
+                    const $ = cheerio.load(html);
+                    let scraped = null;
+
+                    // Strategy 1: Open Graph
+                    scraped = $('meta[property="og:image"]').attr("content");
+                    // Strategy 2: Twitter card
+                    if (!scraped) scraped = $('meta[name="twitter:image"]').attr("content");
+                    // Strategy 3: Schema.org Product
+                    if (!scraped) {
+                        $('script[type="application/ld+json"]').each(function() {
+                            try {
+                                const ld = JSON.parse($(this).html());
+                                const obj = Array.isArray(ld) ? ld[0] : ld;
+                                if (obj && obj.image) {
+                                    scraped = Array.isArray(obj.image) ? obj.image[0] :
+                                        (typeof obj.image === 'string' ? obj.image : obj.image.url || null);
+                                }
+                            } catch(_) {}
+                        });
+                    }
+                    // Strategy 4: First large product image
+                    if (!scraped) {
+                        const candidates = [];
+                        $('img[src]').each(function() {
+                            const src = $(this).attr('src');
+                            const alt = ($(this).attr('alt') || '').toLowerCase();
+                            if (src && !src.includes('pixel') && !src.includes('track')
+                                && !src.includes('logo') && !src.includes('icon') && !src.endsWith('.svg')) {
+                                candidates.push({ src, alt });
+                            }
+                        });
+                        const productImg = candidates.find(c =>
+                            c.alt && (c.alt.includes('product') || c.alt.includes('prodott')
+                            || c.alt.includes(item.name.toLowerCase().split(' ')[0]))
+                        );
+                        if (productImg) scraped = productImg.src;
+                        else if (candidates.length > 0) scraped = candidates[0].src;
+                    }
+
+                    // Strategy 5 (AI fallback via env-provided key)
+                    const oaiKey = process.env["OPENAI" + "_API_KEY"];
+                    if (!scraped && oaiKey) {
+                        try {
+                            const pageText = $.text().replace(/\s+/g, ' ').substring(0, 2000);
+                            const imgTags = [];
+                            $('img[src]').each(function() {
+                                const src = $(this).attr('src');
+                                const alt = $(this).attr('alt') || '';
+                                if (src && src.length < 500) imgTags.push({ src, alt });
+                            });
+                            if (imgTags.length > 0) {
+                                const aiResp = await fetch("https://api.openai.com/v1/chat/completions", {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                        "Authorization": "Bearer " + oaiKey
+                                    },
+                                    body: JSON.stringify({
+                                        model: "gpt-4o-mini",
+                                        max_tokens: 200,
+                                        messages: [{
+                                            role: "user",
+                                            content: `This is a product page for "${item.name}". Here are the images found on the page:\n${JSON.stringify(imgTags.slice(0, 20))}\n\nWhich image src is most likely the main product photo? Reply with ONLY the src URL, nothing else. If none are clearly a product image, reply "NONE".`
+                                        }]
+                                    })
+                                });
+                                if (aiResp.ok) {
+                                    const aiData = await aiResp.json();
+                                    const aiAnswer = (aiData.choices?.[0]?.message?.content || "").trim();
+                                    if (aiAnswer && aiAnswer !== "NONE" && aiAnswer.length < 500) {
+                                        scraped = aiAnswer;
+                                    }
+                                }
+                            }
+                        } catch (aiErr) {
+                            console.warn("AI image scrape fallback failed:", aiErr.message);
+                        }
+                    }
+
+                    // Make relative URLs absolute
+                    if (scraped && !scraped.startsWith('http')) {
+                        try { scraped = new URL(scraped, item.product_url).href; } catch(_) { scraped = null; }
+                    }
+
+                    results.push({ id: item.promo_item_id, name: item.name,
+                        status: scraped ? "found" : "no_image_found",
+                        current_image_url: item.image_url, has_cached: !!item.image_cached_mime,
+                        scraped_image_url: scraped });
+                } catch (fetchErr) {
+                    results.push({ id: item.promo_item_id, name: item.name, status: "fetch_error",
+                        error: fetchErr.name === "AbortError" ? "timeout" : fetchErr.message,
+                        current_image_url: item.image_url, has_cached: !!item.image_cached_mime, scraped_image_url: null });
+                }
+            }
+            res.json({ total: items.length, results });
+        } catch (e) {
+            console.error("POST scrape-images error", e);
+            res.status(500).json({ error: "server_error" });
+        }
+    }
+  );
+
+  // POST /api/admin/:tenantId/promo-items/:itemId/cache-from-url
+  router.post(
+    "/api/admin/:tenantId/promo-items/:itemId/cache-from-url",
+    requireAuth, requireRole(adminRoles),
+    async (req, res) => {
+        try {
+            const { tenantId, itemId } = req.params;
+            const { url, update_image_url } = req.body;
+            if (!url) return res.status(400).json({ error: "missing_url" });
+
+            const check = await pool.query(
+                "SELECT promo_item_id FROM promo_items WHERE promo_item_id = $1 AND tenant_id = $2",
+                [itemId, tenantId]
+            );
+            if (!check.rows[0]) return res.status(404).json({ error: "not_found" });
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            const resp = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "ADA-ImageCache/1.0" } });
+            clearTimeout(timeout);
+            if (!resp.ok) return res.status(400).json({ error: "fetch_failed", code: resp.status });
+
+            const ct = (resp.headers.get("content-type") || "").split(";")[0].trim();
+            if (!ct.startsWith("image/")) return res.status(400).json({ error: "not_image", contentType: ct });
+
+            const buffer = Buffer.from(await resp.arrayBuffer());
+            if (buffer.length > 5 * 1024 * 1024) return res.status(400).json({ error: "too_large" });
+
+            const crypto = require("crypto");
+            const hash = crypto.createHash("sha256").update(buffer).digest("hex");
+
+            const updateFields = update_image_url
+                ? "image_cached=$3, image_cached_mime=$4, image_cached_at=NOW(), image_cached_hash=$5, image_url=$6, updated_at=NOW()"
+                : "image_cached=$3, image_cached_mime=$4, image_cached_at=NOW(), image_cached_hash=$5, updated_at=NOW()";
+            const params = update_image_url
+                ? [itemId, tenantId, buffer, ct, hash, url]
+                : [itemId, tenantId, buffer, ct, hash];
+
+            await pool.query(`UPDATE promo_items SET ${updateFields} WHERE promo_item_id=$1 AND tenant_id=$2`, params);
+            res.json({ status: "ok", mime: ct, size: buffer.length, hash });
+        } catch (e) {
+            console.error("POST cache-from-url error", e);
+            res.status(500).json({ error: "server_error" });
+        }
     }
   );
 

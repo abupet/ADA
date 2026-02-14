@@ -614,9 +614,8 @@
         html += '<button class="btn btn-secondary" style="padding:4px 10px;" onclick="wizardPreviewNav(1)">&gt;</button>';
         html += '</div>';
         html += '<span style="display:inline-block;background:#22c55e;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:8px;">Consigliato per il tuo amico pet</span>';
-        if (p.image_url) {
-            html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _escapeHtml(p.image_url) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
-        }
+        var _previewImgUrl = getProductImageUrl(p);
+        html += '<div style="text-align:center;margin-bottom:8px;"><img src="' + _escapeHtml(_previewImgUrl) + '" style="max-height:120px;max-width:100%;border-radius:8px;" onerror="this.style.display=\'none\'"></div>';
         html += '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + _escapeHtml(p.name || '') + '</div>';
         html += '<div style="font-size:12px;color:#666;margin-bottom:6px;">' + _escapeHtml(p.description || '') + '</div>';
         html += '<div style="font-size:11px;color:#888;">Specie: ' + _escapeHtml(_translateSpecies(speciesArr)) + ' | Lifecycle: ' + _escapeHtml(_translateLifecycle(lcArr)) + '</div>';
@@ -1401,6 +1400,7 @@
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="catalogSearchReset()">Reset</button>');
         html.push('<button class="btn btn-success" style="font-size:12px;" onclick="bulkPublishDraft()">Pubblica tutti i draft</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="previewPromoItem()" title="Anteprima sequenziale prodotti filtrati">👁️ Anteprima</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="openImageManagement()" title="Gestione immagini prodotti filtrati">🖼️ Gestione Immagini</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
         html.push('</div>');
@@ -1510,7 +1510,12 @@
                 html.push('<td>' + _escapeHtml(_translateLifecycle(item.lifecycle_target)) + '</td>');
                 html.push('<td><span style="color:' + statusColor + ';font-weight:600;">' + _escapeHtml(item.status) + '</span></td>');
                 html.push('<td>' + (item.priority || 0) + '</td>');
-                html.push('<td>' + (item.image_url ? '🖼️' : '<span style="color:#ccc;">—</span>') + '</td>');
+                var imgIcon = item.image_cached_at
+                    ? '<span title="Immagine salvata nel DB" style="color:#059669;">🖼️</span>'
+                    : (item.image_url
+                        ? '<span title="Solo URL esterno" style="color:#f59e0b;">🔗</span>'
+                        : '<span style="color:#ccc;" title="Nessuna immagine">—</span>');
+                html.push('<td>' + imgIcon + '</td>');
                 html.push('<td>' + (item.extended_description ? '✅' : '<span style="color:#dc2626;">❌</span>') + '</td>');
                 html.push('<td style="white-space:nowrap;">');
 
@@ -1551,8 +1556,9 @@
                 var _stArr = Array.isArray(item.service_type) ? item.service_type : [item.service_type || 'promo'];
                 if (_stArr.indexOf(_catalogServiceTypeFilter) === -1) return false;
             }
-            if (_catalogImageFilter === 'with' && !item.image_url) return false;
-            if (_catalogImageFilter === 'without' && item.image_url) return false;
+            var hasImage = !!(item.image_url || item.image_cached_at);
+            if (_catalogImageFilter === 'with' && !hasImage) return false;
+            if (_catalogImageFilter === 'without' && hasImage) return false;
             if (_catalogExtDescFilter === 'with' && !item.extended_description) return false;
             if (_catalogExtDescFilter === 'without' && item.extended_description) return false;
             if (_catalogCategoryFilter && item.category !== _catalogCategoryFilter) return false;
@@ -2615,6 +2621,289 @@
         return '<span style="color:#dc2626;">' + _escapeHtml(status) + '</span>';
     }
 
+    // =========================================================================
+    // IMAGE MANAGEMENT WIZARD
+    // =========================================================================
+    var _scrapeResults = [];
+    var _scrapeResultsTenantId = '';
+
+    function openImageManagement() {
+        _showModal('Gestione Immagini', function(container) {
+            var h = [];
+            h.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">');
+
+            // Card 1: Cache images from URL
+            h.push('<div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px;background:#f8fafc;">');
+            h.push('<h4 style="margin:0 0 8px;font-size:15px;">Cache Immagini da URL</h4>');
+            h.push('<p style="font-size:12px;color:#666;margin:0 0 12px;">Scarica e salva nel DB le immagini dai URL esterni dei prodotti filtrati.</p>');
+            h.push('<button class="btn btn-primary" style="width:100%;font-size:13px;" onclick="batchCacheImagesFiltered()">Avvia Cache</button>');
+            h.push('</div>');
+
+            // Card 2: Scrape images from websites
+            h.push('<div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px;background:#f8fafc;">');
+            h.push('<h4 style="margin:0 0 8px;font-size:15px;">Cerca Immagini dai Siti Web</h4>');
+            h.push('<p style="font-size:12px;color:#666;margin:0 0 12px;">Analizza i siti web dei prodotti filtrati per trovare immagini migliori.</p>');
+            h.push('<button class="btn btn-success" style="width:100%;font-size:13px;" onclick="batchScrapeImagesFiltered()">Avvia Ricerca</button>');
+            h.push('</div>');
+
+            h.push('</div>');
+            h.push('<div id="image-mgmt-progress" style="margin-top:16px;"></div>');
+            container.innerHTML = h.join('');
+        });
+    }
+
+    function batchCacheImagesFiltered() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        var items = _getFilteredCatalogItems();
+        if (items.length === 0) {
+            if (typeof showToast === 'function') showToast('Nessun prodotto filtrato.', 'error');
+            return;
+        }
+        var itemIds = items.map(function(it) { return it.promo_item_id; });
+        var progressEl = document.getElementById('image-mgmt-progress');
+        if (progressEl) progressEl.innerHTML = '<div style="text-align:center;padding:16px;"><div style="font-size:14px;color:#1d4ed8;font-weight:600;">Cache in corso...</div><div style="margin-top:8px;background:#e2e8f0;border-radius:6px;height:8px;overflow:hidden;"><div id="cache-progress-bar" style="width:0%;height:100%;background:#3b82f6;transition:width 0.3s;"></div></div><div id="cache-progress-text" style="font-size:12px;color:#888;margin-top:4px;">Invio richiesta...</div></div>';
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/cache-images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_ids: itemIds, force: false })
+        }).then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) {
+                if (progressEl) progressEl.innerHTML = '<div style="color:#dc2626;padding:8px;">Errore durante il caching.</div>';
+                return;
+            }
+            var bar = document.getElementById('cache-progress-bar');
+            if (bar) bar.style.width = '100%';
+            var cached = data.cached || 0;
+            var errors = data.errors || 0;
+            var total = data.total || 0;
+            var h = '<div style="padding:16px;border:1px solid #e2e8f0;border-radius:10px;background:#f0fdf4;">';
+            h += '<h4 style="margin:0 0 8px;color:#059669;">Cache completata!</h4>';
+            h += '<div style="font-size:13px;"><strong>' + cached + '</strong> salvate, <strong>' + errors + '</strong> errori, <strong>' + total + '</strong> totale</div>';
+            if (data.results && data.results.length > 0) {
+                h += '<div style="max-height:200px;overflow-y:auto;margin-top:8px;font-size:11px;">';
+                data.results.forEach(function(r) {
+                    var color = r.status === 'cached' ? '#059669' : (r.status === 'unchanged' ? '#888' : '#dc2626');
+                    h += '<div style="color:' + color + ';">' + _escapeHtml(r.id) + ': ' + r.status + (r.error ? ' (' + _escapeHtml(r.error) + ')' : '') + '</div>';
+                });
+                h += '</div>';
+            }
+            h += '</div>';
+            if (progressEl) progressEl.innerHTML = h;
+            loadAdminCatalog();
+        }).catch(function(e) {
+            if (progressEl) progressEl.innerHTML = '<div style="color:#dc2626;padding:8px;">Errore: ' + _escapeHtml(e.message) + '</div>';
+        });
+    }
+
+    function batchScrapeImagesFiltered() {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+        var items = _getFilteredCatalogItems();
+        if (items.length === 0) {
+            if (typeof showToast === 'function') showToast('Nessun prodotto filtrato.', 'error');
+            return;
+        }
+        var itemIds = items.map(function(it) { return it.promo_item_id; });
+        if (itemIds.length > 500) {
+            if (typeof showToast === 'function') showToast('Troppi prodotti (max 500). Filtra meglio.', 'error');
+            return;
+        }
+        var progressEl = document.getElementById('image-mgmt-progress');
+        if (progressEl) progressEl.innerHTML = '<div style="text-align:center;padding:16px;"><div style="font-size:14px;color:#1d4ed8;font-weight:600;">Ricerca immagini in corso...</div><div style="margin-top:8px;background:#e2e8f0;border-radius:6px;height:8px;overflow:hidden;"><div id="scrape-progress-bar" style="width:10%;height:100%;background:#22c55e;transition:width 0.3s;"></div></div><div id="scrape-progress-text" style="font-size:12px;color:#888;margin-top:4px;">Analisi di ' + itemIds.length + ' prodotti...</div></div>';
+
+        _scrapeResultsTenantId = tenantId;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/scrape-images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_ids: itemIds })
+        }).then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) {
+                if (progressEl) progressEl.innerHTML = '<div style="color:#dc2626;padding:8px;">Errore durante lo scraping.</div>';
+                return;
+            }
+            var bar = document.getElementById('scrape-progress-bar');
+            if (bar) bar.style.width = '100%';
+
+            _scrapeResults = (data.results || []).filter(function(r) { return r.status === 'found'; });
+            var noUrl = (data.results || []).filter(function(r) { return r.status === 'no_product_url'; }).length;
+            var noImg = (data.results || []).filter(function(r) { return r.status === 'no_image_found'; }).length;
+            var errors = (data.results || []).filter(function(r) { return r.status === 'fetch_error'; }).length;
+
+            if (_scrapeResults.length === 0) {
+                if (progressEl) progressEl.innerHTML = '<div style="padding:16px;border:1px solid #e2e8f0;border-radius:10px;"><h4 style="margin:0 0 8px;color:#888;">Nessuna nuova immagine trovata</h4><div style="font-size:12px;color:#888;">' + noUrl + ' senza URL prodotto, ' + noImg + ' senza immagine trovata, ' + errors + ' errori</div></div>';
+                return;
+            }
+
+            _openScrapeWizard(0, { accepted: 0, skipped: 0 });
+        }).catch(function(e) {
+            if (progressEl) progressEl.innerHTML = '<div style="color:#dc2626;padding:8px;">Errore: ' + _escapeHtml(e.message) + '</div>';
+        });
+    }
+
+    function _openScrapeWizard(index, stats) {
+        if (index >= _scrapeResults.length) {
+            _showScrapeWizardSummary(stats);
+            return;
+        }
+        var item = _scrapeResults[index];
+        _showModal('Confronto Immagini (' + (index + 1) + '/' + _scrapeResults.length + ')', function(container) {
+            var h = [];
+            // Progress bar
+            var pct = Math.round(((index) / _scrapeResults.length) * 100);
+            h.push('<div style="background:#e2e8f0;border-radius:6px;height:6px;overflow:hidden;margin-bottom:12px;">');
+            h.push('<div style="width:' + pct + '%;height:100%;background:#3b82f6;transition:width 0.3s;"></div>');
+            h.push('</div>');
+
+            h.push('<div style="font-weight:600;font-size:14px;margin-bottom:4px;">' + _escapeHtml(item.name) + '</div>');
+            h.push('<div style="font-size:11px;color:#888;margin-bottom:12px;">ID: ' + _escapeHtml(item.id) + '</div>');
+
+            // Side by side comparison
+            h.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">');
+
+            // Old image
+            h.push('<div style="text-align:center;">');
+            h.push('<div style="font-size:11px;color:#888;margin-bottom:4px;font-weight:600;">Immagine attuale</div>');
+            if (item.current_image_url || item.has_cached) {
+                var oldSrc = item.has_cached
+                    ? ((typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/promo-items/' + item.id + '/image')
+                    : item.current_image_url;
+                h.push('<img src="' + _escapeHtml(oldSrc) + '" style="max-height:180px;max-width:100%;border-radius:8px;border:2px solid #e2e8f0;object-fit:contain;" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'block\'"><div style="display:none;color:#ccc;font-size:12px;">Errore caricamento</div>');
+            } else {
+                h.push('<div style="height:180px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;border-radius:8px;border:2px dashed #ddd;color:#ccc;font-size:12px;">Nessuna immagine</div>');
+            }
+            h.push('</div>');
+
+            // New (scraped) image
+            h.push('<div style="text-align:center;">');
+            h.push('<div style="font-size:11px;color:#059669;margin-bottom:4px;font-weight:600;">Nuova immagine trovata</div>');
+            h.push('<img id="scraped-preview-img" src="' + _escapeHtml(item.scraped_image_url) + '" style="max-height:180px;max-width:100%;border-radius:8px;border:2px solid #059669;object-fit:contain;" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'block\'"><div style="display:none;color:#dc2626;font-size:12px;">Errore caricamento</div>');
+            h.push('</div>');
+
+            h.push('</div>');
+
+            // URL display
+            h.push('<div style="font-size:11px;color:#888;word-break:break-all;margin-bottom:8px;">URL: ' + _escapeHtml(item.scraped_image_url || '') + '</div>');
+
+            // Manual URL input
+            h.push('<div style="margin-bottom:16px;">');
+            h.push('<div style="font-size:11px;color:#888;margin-bottom:4px;">Oppure inserisci un URL manuale:</div>');
+            h.push('<div style="display:flex;gap:4px;">');
+            h.push('<input id="manual-image-url" type="text" placeholder="https://..." style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;" value="' + _escapeHtml(item.scraped_image_url || '') + '">');
+            h.push('<button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="scrapeWizardPreviewManual()">Anteprima</button>');
+            h.push('</div>');
+            h.push('</div>');
+
+            // Action buttons
+            h.push('<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">');
+            h.push('<button class="btn btn-success" style="font-size:13px;padding:8px 16px;" onclick="scrapeWizardAccept(' + index + ')">Usa questa immagine</button>');
+            h.push('<button class="btn btn-secondary" style="font-size:13px;padding:8px 16px;" onclick="scrapeWizardSkip(' + index + ')">Mantieni la vecchia</button>');
+            h.push('<button class="btn btn-danger" style="font-size:12px;padding:6px 12px;" onclick="scrapeWizardSkipAll(' + index + ')">Salta tutti &rarr;</button>');
+            h.push('</div>');
+
+            // Stats so far
+            h.push('<div style="margin-top:12px;text-align:center;font-size:11px;color:#888;">Accettate: ' + stats.accepted + ' | Saltate: ' + stats.skipped + ' | Rimanenti: ' + (_scrapeResults.length - index) + '</div>');
+
+            container.innerHTML = h.join('');
+        });
+
+        // Store current state in data attributes for the action functions
+        var overlay = document.getElementById('admin-modal-overlay');
+        if (overlay) {
+            overlay.dataset.wizardIndex = index;
+            overlay.dataset.wizardAccepted = stats.accepted;
+            overlay.dataset.wizardSkipped = stats.skipped;
+        }
+    }
+
+    function scrapeWizardPreviewManual() {
+        var input = document.getElementById('manual-image-url');
+        var img = document.getElementById('scraped-preview-img');
+        if (input && img) {
+            img.src = input.value;
+            img.style.display = '';
+            if (img.nextSibling) img.nextSibling.style.display = 'none';
+        }
+    }
+
+    function _getScrapeWizardState() {
+        var overlay = document.getElementById('admin-modal-overlay');
+        if (!overlay) return null;
+        return {
+            index: parseInt(overlay.dataset.wizardIndex || '0', 10),
+            accepted: parseInt(overlay.dataset.wizardAccepted || '0', 10),
+            skipped: parseInt(overlay.dataset.wizardSkipped || '0', 10)
+        };
+    }
+
+    function scrapeWizardAccept(index) {
+        var state = _getScrapeWizardState();
+        if (!state) return;
+        var item = _scrapeResults[index];
+        if (!item) return;
+        var url = (document.getElementById('manual-image-url') || {}).value || item.scraped_image_url;
+        if (!url) {
+            if (typeof showToast === 'function') showToast('Nessun URL immagine', 'error');
+            return;
+        }
+
+        // Disable buttons during save
+        var btns = document.querySelectorAll('#admin-modal-overlay button');
+        btns.forEach(function(b) { b.disabled = true; });
+
+        fetchApi('/api/admin/' + encodeURIComponent(_scrapeResultsTenantId) + '/promo-items/' + encodeURIComponent(item.id) + '/cache-from-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url, update_image_url: true })
+        }).then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (data && data.status === 'ok') {
+                if (typeof showToast === 'function') showToast('Immagine salvata per ' + item.name, 'success');
+                _openScrapeWizard(index + 1, { accepted: state.accepted + 1, skipped: state.skipped });
+            } else {
+                if (typeof showToast === 'function') showToast('Errore salvataggio immagine', 'error');
+                btns.forEach(function(b) { b.disabled = false; });
+            }
+        }).catch(function(e) {
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+            btns.forEach(function(b) { b.disabled = false; });
+        });
+    }
+
+    function scrapeWizardSkip(index) {
+        var state = _getScrapeWizardState();
+        if (!state) return;
+        _openScrapeWizard(index + 1, { accepted: state.accepted, skipped: state.skipped + 1 });
+    }
+
+    function scrapeWizardSkipAll(index) {
+        var state = _getScrapeWizardState();
+        if (!state) return;
+        var remaining = _scrapeResults.length - index;
+        _showScrapeWizardSummary({ accepted: state.accepted, skipped: state.skipped + remaining });
+    }
+
+    function _showScrapeWizardSummary(stats) {
+        _showModal('Ricerca Immagini Completata', function(container) {
+            var h = [];
+            h.push('<div style="text-align:center;padding:16px;">');
+            h.push('<div style="font-size:48px;margin-bottom:12px;">&#10004;</div>');
+            h.push('<h3 style="margin:0 0 16px;color:#059669;">Operazione completata</h3>');
+            h.push('<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:360px;margin:0 auto 16px;">');
+            h.push('<div style="background:#f0fdf4;border-radius:8px;padding:12px;"><div style="font-size:24px;font-weight:700;color:#059669;">' + stats.accepted + '</div><div style="font-size:11px;color:#888;">Accettate</div></div>');
+            h.push('<div style="background:#fef3c7;border-radius:8px;padding:12px;"><div style="font-size:24px;font-weight:700;color:#f59e0b;">' + stats.skipped + '</div><div style="font-size:11px;color:#888;">Saltate</div></div>');
+            h.push('<div style="background:#f0f9ff;border-radius:8px;padding:12px;"><div style="font-size:24px;font-weight:700;color:#3b82f6;">' + _scrapeResults.length + '</div><div style="font-size:11px;color:#888;">Totale</div></div>');
+            h.push('</div>');
+            h.push('<button class="btn btn-primary" style="padding:10px 24px;" onclick="_closeModal();loadAdminCatalog();">Chiudi</button>');
+            h.push('</div>');
+            container.innerHTML = h.join('');
+        });
+    }
+
     function validateAllCatalogUrls() {
         var tenantId = _getAdminTenantId();
         if (!tenantId || _catalogItems.length === 0) return;
@@ -3391,6 +3680,14 @@
     global.bulkPublishDraft       = bulkPublishDraft;
     global.catalogSearch          = catalogSearch;
     global.catalogSearchReset     = catalogSearchReset;
+    // Image management wizard
+    global.openImageManagement       = openImageManagement;
+    global.batchCacheImagesFiltered  = batchCacheImagesFiltered;
+    global.batchScrapeImagesFiltered = batchScrapeImagesFiltered;
+    global.scrapeWizardAccept        = scrapeWizardAccept;
+    global.scrapeWizardSkip          = scrapeWizardSkip;
+    global.scrapeWizardSkipAll       = scrapeWizardSkipAll;
+    global.scrapeWizardPreviewManual = scrapeWizardPreviewManual;
     // PR 2: Advanced filters + preview actions
     global.filterCatalogServiceType = filterCatalogServiceType;
     global.filterCatalogPriority   = filterCatalogPriority;

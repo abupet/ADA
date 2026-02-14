@@ -154,8 +154,9 @@
         var container = document.getElementById(containerId);
         if (!container) return;
 
-        // Only show for proprietario
-        if (_fnExists('getActiveRole') && global.getActiveRole() !== 'proprietario') {
+        // Only show for proprietario (unless debug force multi-service is ON)
+        var forceShow = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+        if (!forceShow && _fnExists('getActiveRole') && global.getActiveRole() !== 'proprietario') {
             container.innerHTML = '';
             return;
         }
