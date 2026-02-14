@@ -21,6 +21,7 @@ var _commAiSending = false;
 var _commReplyTo = null; // { message_id, content, sender_name }
 var _commContainerId = null;
 var _commSelectedFile = null; // File object for attachment upload
+var _commNewFormSelectedFile = null; // File object for new conversation form
 
 // Offline queue state
 var _commOfflineDb = null;
@@ -456,6 +457,13 @@ async function _commShowNewForm(containerId) {
         referralFormHtml +
         '<label for="comm-new-first-message">Primo messaggio</label>' +
         '<textarea id="comm-new-first-message" placeholder="Scrivi il primo messaggio della conversazione..." rows="3" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>' +
+        '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">' +
+        '<label style="cursor:pointer;font-size:18px;color:#64748b;" title="Allega file">' +
+        '📎<input type="file" id="comm-new-file-input" style="display:none" accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleNewFormFileSelect(this)">' +
+        '</label>' +
+        '<span id="comm-new-file-preview" style="font-size:12px;color:#64748b;"></span>' +
+        '<span id="comm-new-file-clear" style="display:none;cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearNewFormFile()">×</span>' +
+        '</div>' +
         '<div style="margin-top:14px;display:flex;gap:8px;align-items:center;">' +
         '<button class="comm-btn comm-btn-primary" data-testid="comm-create-btn" onclick="_commCreateConversation()">Crea</button>' +
         '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
@@ -524,8 +532,8 @@ async function _commCreateConversation() {
 
     // Validate first message (required for human conversations)
     var firstMessage = (document.getElementById('comm-new-first-message') || {}).value || '';
-    if (destType !== 'ai' && !firstMessage.trim()) {
-        if (typeof showToast === 'function') showToast('Inserisci il primo messaggio', 'warning');
+    if (destType !== 'ai' && !firstMessage.trim() && !_commNewFormSelectedFile) {
+        if (typeof showToast === 'function') showToast('Inserisci il primo messaggio o allega un file', 'warning');
         return;
     }
 
@@ -608,6 +616,21 @@ async function _commCreateConversation() {
         if (fa) fa.innerHTML = '';
         // Open the new conversation directly
         var convId = data.conversation_id || (data.conversation && data.conversation.conversation_id);
+        // After successful conversation creation, send attachment if present
+        if (_commNewFormSelectedFile && convId) {
+            try {
+                var formData = new FormData();
+                formData.append('file', _commNewFormSelectedFile);
+                await fetch(_commApiBase() + '/api/communication/conversations/' + convId + '/messages/upload', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + getAuthToken() },
+                    body: formData
+                });
+                _commClearNewFormFile();
+            } catch(e) {
+                console.error('[Communication] Failed to upload attachment for new conversation:', e);
+            }
+        }
         if (convId) {
             openConversation(convId);
         } else {
@@ -1354,6 +1377,32 @@ function _commFormatFileSize(bytes) {
     if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ── New conversation form file attachment helpers ──
+function _commHandleNewFormFileSelect(input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (file.size > 10 * 1024 * 1024) {
+        if (typeof showToast === 'function') showToast('File troppo grande (max 10 MB)', 'warning');
+        input.value = '';
+        return;
+    }
+    _commNewFormSelectedFile = file;
+    var previewEl = document.getElementById('comm-new-file-preview');
+    var clearEl = document.getElementById('comm-new-file-clear');
+    if (previewEl) previewEl.textContent = '\uD83D\uDCCE ' + file.name + ' (' + _commFormatFileSize(file.size) + ')';
+    if (clearEl) clearEl.style.display = 'inline';
+}
+
+function _commClearNewFormFile() {
+    _commNewFormSelectedFile = null;
+    var previewEl = document.getElementById('comm-new-file-preview');
+    var clearEl = document.getElementById('comm-new-file-clear');
+    var fileInput = document.getElementById('comm-new-file-input');
+    if (previewEl) previewEl.textContent = '';
+    if (clearEl) clearEl.style.display = 'none';
+    if (fileInput) fileInput.value = '';
 }
 
 // =========================================================================
