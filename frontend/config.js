@@ -73,8 +73,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.17.5';
-const ADA_RELEASE_NOTES = 'Fix: allegati visibili nei messaggi (auth token per img/audio/video), referto download funzionante.';
+const ADA_VERSION = '8.18.0';
+const ADA_RELEASE_NOTES = 'Nightly/weekly test infrastructure, seed engine dropdowns, messaging improvements, vet role cleanup.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

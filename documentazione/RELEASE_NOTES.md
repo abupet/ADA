@@ -1,5 +1,33 @@
 # Release Notes (cumulative)
 
+## v8.18.0
+
+### CI: Nightly/Weekly test infrastructure upgrade
+- CI: **Nightly deep tests** (`nightly-deep.yml`) — esegue ogni notte i test `@smoke` + `@nightly` + `@stress` su main e dev con server locale, notifica Telegram e gestione issue automatica
+- CI: **Weekly full tests** (`weekly-full.yml`) — ogni domenica esegue TUTTI i test (`@deep`, `@stress`, `@long`) su main e dev, con tracking promozione automatica dei test stabili
+- CI: **Auto-fix con Claude Code** (`nightly-autofix.yml`) — se il nightly deep fallisce su dev, Claude Code analizza i fallimenti e crea una PR di fix automatica con notifica Telegram
+- CI: **Test promotion tracking** — sistema automatico che traccia la stabilita dei test `@deep` e propone la promozione a `@nightly` dopo 4 pass consecutivi settimanali
+- CI: `run-tests.js` evoluto con flag `--nightly` e `--weekly`; nuovi script npm `test:ci:nightly` e `test:ci:weekly`
+- Test: 10 test file `@deep` stabili taggati con `@nightly` (77 test aggiuntivi nel nightly)
+
+### Feat: Seed Engine — dropdown Proprietario e Vet Esterno
+- Feat: **Dropdown Owner/Vet Ext opzionali nel Seed Engine** — permettono di forzare l'assegnazione dei pet generati a un proprietario e/o vet esterno specifico; se "Casuale", assegnazione random
+- Backend: `seed.service.js` accetta `targetOwnerUserId` e `targetVetExtUserId` con fallback random
+
+### Feat/Fix: Messaggistica
+- Feat: **Allegato nel primo messaggio di una nuova conversazione** — aggiunto input file con anteprima nella form "Nuova conversazione"
+- Fix: **Pulsante Test nascosto per non-vet_ext** — il pulsante Test nella nuova conversazione appare solo per vet_ext che hanno il form referral
+- Fix: **Allegato visibile al mittente dopo upload** — il bubble ottimistico viene re-renderizzato con i dati server (media_url) dopo l'upload
+- Feat: **Placeholder dinamico** — dopo selezione allegato il placeholder cambia in "Allegato pronto per l'invio"
+
+### Fix: Pet management
+- Fix: **Dropdown Proprietario e Vet Esterno in sola lettura nella pagina Dati Pet** per tutti i ruoli; modificabili solo dalla finestra Modifica Pet per vet_int e super_admin
+- Fix: Owner non forza piu `referring_vet_user_id` a null in creazione/modifica pet
+
+### Refactor: rimozione ruolo deprecato "vet"
+- Refactor: tutte le occorrenze di `"vet"` come ruolo sostituite con `"vet_int"` in backend e frontend (pets, nutrition, promo, communication, seed, config)
+- Il middleware RBAC mantiene il fallback legacy `"vet"` → `"vet_int"` per token esistenti
+
 ## v8.17.5
 
 ### Fix: allegati non visibili nei messaggi
