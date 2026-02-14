@@ -244,8 +244,8 @@ function makeFilterableSelect(selectId) {
         dropdown.innerHTML = html || '<div style="padding:8px 12px;color:#999;">Nessun risultato</div>';
         dropdown.style.display = '';
     }
-    input.addEventListener('focus', updateDropdown);
-    input.addEventListener('input', updateDropdown);
+    input.addEventListener('focus', function() { if (!select.disabled) updateDropdown(); });
+    input.addEventListener('input', function() { if (!select.disabled) updateDropdown(); });
     dropdown.addEventListener('click', function(e) {
         var target = e.target.closest ? e.target.closest('[data-value]') : e.target;
         while (target && !target.dataset.value) target = target.parentElement;
@@ -260,6 +260,19 @@ function makeFilterableSelect(selectId) {
         if (!wrapper.contains(e.target)) dropdown.style.display = 'none';
     });
     if (select.selectedIndex > 0) input.value = select.options[select.selectedIndex].text;
+
+    // Sync disabled state from <select> to the filterable input wrapper
+    function _syncDisabledState() {
+        var isDisabled = select.disabled;
+        input.disabled = isDisabled;
+        input.style.backgroundColor = isDisabled ? '#f5f5f5' : '#fff';
+        input.style.color = isDisabled ? '#999' : '#333';
+        input.style.cursor = isDisabled ? 'not-allowed' : 'text';
+        if (isDisabled) dropdown.style.display = 'none';
+    }
+    _syncDisabledState();
+    var observer = new MutationObserver(function() { _syncDisabledState(); });
+    observer.observe(select, { attributes: true, attributeFilter: ['disabled'] });
 }
 
 function formatUserNameWithRole(displayName, role) {
