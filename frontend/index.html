@@ -1273,6 +1273,15 @@
                         <button class="btn btn-secondary" onclick="clearLog(); showToast('Log cancellato', 'success');" data-testid="clear-log-button">Cancella ADA.log</button>
                     </div>
                 </div>
+                <div class="card" style="margin-bottom:15px;">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                        <input type="checkbox" id="debugForceMultiService" onchange="toggleDebugForceMultiService(this.checked)">
+                        <span style="font-weight:600;">Visualizza sempre multi-servizio</span>
+                    </label>
+                    <p style="font-size:11px;color:#888;margin-top:6px;">
+                        Se attivo, mostra sempre i blocchi Nutrizione e Assicurazione nelle pagine in cui si possono attivare, indipendentemente da ruolo, policy o configurazione prodotto.
+                    </p>
+                </div>
                 <div id="debugTestTools" class="card" style="display:none;">
                     <p style="margin: 0 0 10px; color: #666; font-size: 12px;">🧪 Strumenti di test (debug)</p>
                     <div class="button-row">

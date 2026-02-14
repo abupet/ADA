@@ -406,7 +406,8 @@ async function navigateToPage(page) {
             renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
             // Insurance slot (multi-service)
-            if (typeof renderInsuranceSlot === 'function' && promoRole === 'proprietario') {
+            var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+            if (typeof renderInsuranceSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
                 if (page === 'patient') renderInsuranceSlot('patient-insurance-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
             }
         if (typeof renderVetFlagButton === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
@@ -1357,6 +1358,25 @@ function initDebugLogSetting() {
     debugLogEnabled = saved !== 'false';
     const checkbox = document.getElementById('debugLogEnabled');
     if (checkbox) checkbox.checked = debugLogEnabled;
+
+    // Multi-service debug flag
+    try { _debugForceMultiService = localStorage.getItem('ada_debug_force_multi_service') === 'true'; } catch(e) {}
+    var fmsEl = document.getElementById('debugForceMultiService');
+    if (fmsEl) fmsEl.checked = _debugForceMultiService;
+}
+
+var _debugForceMultiService = false;
+
+function toggleDebugForceMultiService(enabled) {
+    _debugForceMultiService = !!enabled;
+    try { localStorage.setItem('ada_debug_force_multi_service', enabled ? 'true' : 'false'); } catch(e) {}
+    showToast(enabled ? 'Multi-servizio forzato ON' : 'Multi-servizio forzato OFF', 'success');
+    var currentPage = document.querySelector('.page.active');
+    if (currentPage) navigateToPage(currentPage.id.replace('page-', ''));
+}
+
+function isDebugForceMultiService() {
+    return _debugForceMultiService;
 }
 
 function toggleDebugLog(enabled) {
