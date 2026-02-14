@@ -1,5 +1,41 @@
 # Release Notes (cumulative)
 
+## v8.20.0
+
+### Bug Fix Rapidi (PR 1)
+- Filtro catalogo: nuove opzioni "In cache" e "Solo online" per filtrare prodotti per stato immagine
+- Promo refresh: al cambio pet nella pagina Dati Pet la card promo si aggiorna automaticamente
+- Pulsante "Analisi raccomandazione" in modalita debug per verificare dati pet usati nel matching promo
+
+### Pet Owner/Vet Fix (PR 2)
+- Il proprietario puo ora modificare il Vet Esterno (referral) dal form modifica pet
+- I dropdown Proprietario e Vet Esterno si aggiornano correttamente dopo il salvataggio
+- Il generatore dati test usa polling con retry per attendere il caricamento asincrono dei dropdown
+
+### Global Spinner (PR 3)
+- Banner animato "Il server sta rispondendo..." dopo 5 secondi di attesa API
+- Auto-abort dopo 30 secondi con banner di errore "Il server non risponde"
+- Banner errore di connessione per problemi di rete
+- Skip automatico per chiamate che gestiscono il proprio timeout
+
+### ADA Chatbot Contesto Completo (PR 4)
+- Backend: cronologia conversazione estesa a 50 messaggi (da 10) per contesto AI piu ricco
+- Backend: oggetto della conversazione incluso nel system prompt OpenAI
+- Backend: dati stile di vita del pet (ambiente, attivita, dieta, patologie, farmaci) inclusi nel contesto AI
+- Frontend: hint visivo "ADA analizzerà questo documento" / "ADA potrebbe non riuscire..." per allegati in chat AI
+
+### Emoji Picker (PR 5)
+- Pulsante emoji nella barra di input messaggi
+- Popover nativo con 6 categorie: Animali, Faccine, Gesti, Salute, Cibo, Altro
+- Inserimento emoji alla posizione del cursore nella textarea
+- Chiusura automatica al click esterno
+
+### Messaggi Vocali e Chiamate (PR 6)
+- Pulsante microfono per registrazione messaggi vocali (webm/opus, max 3 minuti)
+- Timer visivo durante la registrazione con feedback nella textarea
+- Invio automatico del messaggio vocale al termine della registrazione
+- Pulsanti chiamata audio e videochiamata nell'header delle conversazioni umane
+
 ## v8.19.0
 
 ### Gestione Immagini Catalogo (FEATURE 1)

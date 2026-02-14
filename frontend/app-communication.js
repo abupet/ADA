@@ -718,6 +718,12 @@ function _commRenderChat(container, convId, messages, meta) {
 
     if (isAi) {
         html += '<span style="font-size:11px;color:#22c55e;">\u25CF Online</span>';
+    } else {
+        // PR6: Call buttons for human conversations
+        html += '<div id="comm-call-controls" style="display:flex;gap:8px;margin-left:auto;">';
+        html += '<button type="button" class="comm-btn-icon" onclick="if(typeof initCallUI===\'function\')initCallUI(\'comm-call-overlay\',\'' + convId + '\')" title="Chiamata audio" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83D\uDCDE</button>';
+        html += '<button type="button" class="comm-btn-icon" onclick="if(typeof startVideoCall===\'function\')startVideoCall(\'' + convId + '\')" title="Videochiamata" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83C\uDFA5</button>';
+        html += '</div>';
     }
     html += '</div>';
 
@@ -810,8 +816,10 @@ function _commRenderChat(container, convId, messages, meta) {
             '<label style="cursor:pointer;font-size:20px;padding:8px;color:#64748b;flex-shrink:0;" title="Allega file">' +
             '\uD83D\uDCCE<input type="file" id="comm-file-input" style="display:none" multiple ' +
             'accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleFileSelect(this)"></label>' +
+            '<button type="button" class="comm-btn-icon" id="comm-emoji-btn" title="Emoji" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;">\uD83D\uDE0A</button>' +
             '<textarea id="comm-msg-input" data-testid="comm-msg-input" placeholder="Scrivi un messaggio..." rows="1" ' +
             'onkeydown="_commKeydown(event,\'' + convId + '\')" oninput="_commEmitTyping(\'' + convId + '\')"></textarea>' +
+            '<button type="button" class="comm-btn-icon" id="comm-voice-btn" title="Messaggio vocale" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;">\uD83C\uDFA4</button>' +
             '<button class="comm-btn comm-btn-primary" data-testid="comm-send-btn" onclick="_commSend(\'' + convId + '\')">Invia</button></div>';
     } else {
         html += '<div class="comm-input-row" data-testid="comm-input-row">' +
@@ -822,6 +830,18 @@ function _commRenderChat(container, convId, messages, meta) {
     container.innerHTML = html;
     var mc = document.getElementById('comm-chat-messages');
     if (mc) mc.scrollTop = mc.scrollHeight;
+
+    // PR5: Bind emoji button
+    var emojiBtn = document.getElementById('comm-emoji-btn');
+    if (emojiBtn) emojiBtn.addEventListener('click', _commToggleEmojiPicker);
+
+    // PR6: Bind voice button
+    var voiceBtn = document.getElementById('comm-voice-btn');
+    if (voiceBtn) {
+        voiceBtn.addEventListener('click', function() {
+            if (_commVoiceRecording) { _commStopVoiceRecord(); } else { _commStartVoiceRecord(); }
+        });
+    }
 }
 
 function _commRenderBubble(msg, isOwn) {
@@ -1394,6 +1414,40 @@ function _commHandleFileSelect(input) {
     var msgInput = document.getElementById('comm-msg-input');
     if (msgInput && _commSelectedFiles.length > 0)
         msgInput.placeholder = _commSelectedFiles.length + ' allegat' + (_commSelectedFiles.length === 1 ? 'o' : 'i') + ' pront' + (_commSelectedFiles.length === 1 ? 'o' : 'i') + '. Scrivi un messaggio...';
+
+    // PR4: AI attachment hint — show whether ADA can analyze the file
+    _commUpdateAiAttachmentHint();
+}
+
+function _commUpdateAiAttachmentHint() {
+    var hint = document.getElementById('comm-ai-attachment-hint');
+    if (_commCurrentConversationType !== 'ai' || _commSelectedFiles.length === 0) {
+        if (hint) hint.style.display = 'none';
+        return;
+    }
+    if (!hint) {
+        hint = document.createElement('div');
+        hint.id = 'comm-ai-attachment-hint';
+        hint.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:4px;margin-top:4px;';
+        var filePreview = document.getElementById('comm-file-preview');
+        if (filePreview && filePreview.parentNode) {
+            filePreview.parentNode.insertBefore(hint, filePreview.nextSibling);
+        }
+    }
+    var lastFile = _commSelectedFiles[_commSelectedFiles.length - 1];
+    var mimeType = lastFile ? (lastFile.type || '') : '';
+    var supportedPrefixes = ['image/', 'audio/', 'text/', 'application/pdf'];
+    var isSupported = supportedPrefixes.some(function(p) { return mimeType.startsWith(p); });
+    if (isSupported) {
+        hint.style.background = '#eff6ff';
+        hint.style.color = '#1e40af';
+        hint.textContent = '\uD83E\uDD16 ADA analizzer\u00e0 questo documento';
+    } else {
+        hint.style.background = '#fef2f2';
+        hint.style.color = '#991b1b';
+        hint.textContent = '\u26A0\uFE0F ADA potrebbe non riuscire ad analizzare questo tipo di file';
+    }
+    hint.style.display = 'block';
 }
 
 function _commRenderFilePreview() {
@@ -1435,6 +1489,9 @@ function _commClearFile() {
     if (fileInput) fileInput.value = '';
     var msgInput = document.getElementById('comm-msg-input');
     if (msgInput) msgInput.placeholder = 'Scrivi un messaggio...';
+    // PR4: Hide AI hint
+    var hint = document.getElementById('comm-ai-attachment-hint');
+    if (hint) hint.style.display = 'none';
 }
 
 function _commFormatFileSize(bytes) {
@@ -1742,6 +1799,168 @@ function _commPrepareOpenAnswer(question) {
         input.setSelectionRange(input.value.length, input.value.length);
         if (typeof showToast === 'function') showToast('Completa la risposta e premi Invio', 'info');
     }
+}
+
+// =========================================================================
+// Section 12: Emoji Picker (PR5)
+// =========================================================================
+var _emojiCategories = {
+    '\uD83D\uDC3E Animali': ['\uD83D\uDC36','\uD83D\uDC31','\uD83D\uDC30','\uD83D\uDC39','\uD83D\uDC26','\uD83D\uDC22','\uD83D\uDC0D','\uD83D\uDC20','\uD83E\uDD8E','\uD83D\uDC34','\uD83D\uDC3E','\uD83E\uDDB4','\uD83D\uDC15','\uD83D\uDC08','\uD83D\uDC07','\uD83E\uDD9C','\uD83D\uDC3F\uFE0F','\uD83E\uDD8A','\uD83D\uDC3B','\uD83E\uDD81'],
+    '\uD83D\uDE00 Faccine': ['\uD83D\uDE00','\uD83D\uDE02','\uD83E\uDD23','\uD83D\uDE0A','\uD83D\uDE0D','\uD83E\uDD70','\uD83D\uDE18','\uD83D\uDE0E','\uD83E\uDD14','\uD83D\uDE22','\uD83D\uDE2D','\uD83D\uDE21','\uD83E\uDD7A','\uD83D\uDE31','\uD83E\uDD17','\uD83D\uDE34','\uD83E\uDD12','\uD83E\uDD15','\u2764\uFE0F','\uD83D\uDC95'],
+    '\uD83D\uDC4D Gesti': ['\uD83D\uDC4D','\uD83D\uDC4E','\uD83D\uDC4F','\uD83D\uDE4F','\uD83D\uDCAA','\uD83E\uDD1D','\uD83D\uDC4B','\u270C\uFE0F','\uD83E\uDD1E','\uD83E\uDEF6'],
+    '\u2695\uFE0F Salute': ['\uD83D\uDC8A','\uD83D\uDC89','\uD83E\uDE7A','\uD83C\uDFE5','\uD83C\uDF21\uFE0F','\uD83E\uDE79','\u2764\uFE0F\u200D\uD83E\uDE79','\u2695\uFE0F','\uD83E\uDDEC','\uD83D\uDD2C'],
+    '\uD83C\uDF56 Cibo': ['\uD83C\uDF56','\uD83E\uDD69','\uD83D\uDC1F','\uD83E\uDD55','\uD83C\uDF57','\uD83E\uDD5B','\uD83E\uDDB4','\uD83E\uDDC0','\uD83E\uDD5A','\uD83C\uDF4E'],
+    '\u2705 Altro': ['\u2705','\u274C','\u26A0\uFE0F','\u2753','\uD83D\uDCAC','\uD83D\uDCCE','\uD83D\uDCF7','\uD83C\uDF89','\u2B50','\uD83D\uDD14']
+};
+
+function _commToggleEmojiPicker() {
+    var existing = document.getElementById('comm-emoji-popover');
+    if (existing) { existing.remove(); return; }
+
+    var btn = document.getElementById('comm-emoji-btn');
+    if (!btn) return;
+
+    var popover = document.createElement('div');
+    popover.id = 'comm-emoji-popover';
+    popover.style.cssText = 'position:absolute;bottom:100%;left:0;background:#fff;border:1px solid #e2e8f0;' +
+        'border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.15);padding:8px;width:280px;max-height:300px;' +
+        'overflow-y:auto;z-index:1000;';
+
+    var html = '';
+    Object.keys(_emojiCategories).forEach(function(cat) {
+        html += '<div style="font-size:11px;font-weight:600;color:#64748b;padding:4px 4px 2px;margin-top:4px;">' + cat + '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:2px;">';
+        _emojiCategories[cat].forEach(function(e) {
+            html += '<button type="button" style="font-size:22px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:6px;' +
+                'transition:background 0.1s;" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'none\'" ' +
+                'data-emoji="' + e + '">' + e + '</button>';
+        });
+        html += '</div>';
+    });
+    popover.innerHTML = html;
+
+    popover.addEventListener('click', function(ev) {
+        var emoji = ev.target.getAttribute('data-emoji');
+        if (emoji) {
+            var textarea = document.getElementById('comm-msg-input');
+            if (textarea) {
+                var start = textarea.selectionStart || textarea.value.length;
+                textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(textarea.selectionEnd || start);
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
+            }
+            popover.remove();
+        }
+    });
+
+    var inputRow = btn.closest('.comm-input-row') || btn.parentElement;
+    if (inputRow) inputRow.style.position = 'relative';
+    (inputRow || btn.parentElement).appendChild(popover);
+
+    setTimeout(function() {
+        document.addEventListener('click', function _closeEmoji(ev) {
+            if (!popover.contains(ev.target) && ev.target !== btn) {
+                popover.remove();
+                document.removeEventListener('click', _closeEmoji);
+            }
+        });
+    }, 10);
+}
+
+// =========================================================================
+// Section 13: Voice Messages (PR6)
+// =========================================================================
+var _commVoiceRecorder = null;
+var _commVoiceChunks = [];
+var _commVoiceRecording = false;
+var _commVoiceTimer = null;
+var _commVoiceSeconds = 0;
+
+function _commStartVoiceRecord() {
+    if (_commVoiceRecording) return;
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+        _commVoiceRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+        _commVoiceChunks = [];
+        _commVoiceRecording = true;
+        _commVoiceSeconds = 0;
+
+        _commVoiceRecorder.ondataavailable = function(e) { if (e.data.size > 0) _commVoiceChunks.push(e.data); };
+        _commVoiceRecorder.onstop = function() {
+            stream.getTracks().forEach(function(t) { t.stop(); });
+            var blob = new Blob(_commVoiceChunks, { type: mimeType });
+            _commSendVoiceMessage(blob);
+            _commVoiceRecording = false;
+            clearInterval(_commVoiceTimer);
+            _commUpdateVoiceUI(false);
+        };
+        _commVoiceRecorder.start(250);
+
+        _commVoiceTimer = setInterval(function() {
+            _commVoiceSeconds++;
+            _commUpdateVoiceUI(true);
+            if (_commVoiceSeconds >= 180) _commStopVoiceRecord();
+        }, 1000);
+        _commUpdateVoiceUI(true);
+    }).catch(function(err) {
+        if (typeof showToast === 'function') showToast('Microfono non disponibile: ' + err.message, 'error');
+    });
+}
+
+function _commStopVoiceRecord() {
+    if (_commVoiceRecorder && _commVoiceRecorder.state === 'recording') {
+        _commVoiceRecorder.stop();
+    }
+}
+
+function _commCancelVoiceRecord() {
+    if (_commVoiceRecorder && _commVoiceRecorder.state === 'recording') {
+        _commVoiceRecorder.ondataavailable = null;
+        _commVoiceRecorder.onstop = function() {
+            _commVoiceRecording = false;
+            clearInterval(_commVoiceTimer);
+            _commUpdateVoiceUI(false);
+        };
+        _commVoiceRecorder.stop();
+    }
+}
+
+function _commUpdateVoiceUI(isRecording) {
+    var voiceBtn = document.getElementById('comm-voice-btn');
+    var inputArea = document.getElementById('comm-msg-input');
+    if (isRecording) {
+        if (voiceBtn) { voiceBtn.textContent = '\u23F9\uFE0F'; voiceBtn.title = 'Stop registrazione'; }
+        if (inputArea) inputArea.placeholder = '\uD83D\uDD34 Registrazione\u2026 ' + _commVoiceSeconds + 's';
+    } else {
+        if (voiceBtn) { voiceBtn.textContent = '\uD83C\uDFA4'; voiceBtn.title = 'Messaggio vocale'; }
+        if (inputArea) inputArea.placeholder = 'Scrivi un messaggio\u2026';
+    }
+}
+
+async function _commSendVoiceMessage(blob) {
+    if (!_commCurrentConversationId) return;
+    var formData = new FormData();
+    var filename = 'voice_' + Date.now() + '.webm';
+    formData.append('file', blob, filename);
+    formData.append('type', 'audio');
+    try {
+        var res = await fetchApi('/api/communication/conversations/' + _commCurrentConversationId + '/messages/upload', {
+            method: 'POST',
+            body: formData
+        });
+        if (res.ok) {
+            _commLoadMessages(_commCurrentConversationId);
+        } else {
+            if (typeof showToast === 'function') showToast('Errore invio messaggio vocale', 'error');
+        }
+    } catch(err) {
+        if (typeof showToast === 'function') showToast('Errore invio: ' + err.message, 'error');
+    }
+}
+
+// Reload messages for voice message display
+function _commLoadMessages(conversationId) {
+    if (conversationId) openConversation(conversationId);
 }
 
 // Handle push notification navigation
