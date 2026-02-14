@@ -348,7 +348,7 @@ function _commBuildConvListHtml(conversations) {
                 otherName = c.owner_display_name || 'Proprietario';
                 otherRole = c.owner_role || 'owner';
             }
-            var roleLabels = { 'owner': 'Proprietario', 'vet': 'Veterinario', 'vet_int': 'Veterinario', 'vet_ext': 'Vet. Referente', 'admin_brand': 'Admin', 'super_admin': 'Super Admin' };
+            var roleLabels = { 'owner': 'Proprietario', 'vet_int': 'Veterinario', 'vet_ext': 'Vet. Referente', 'admin_brand': 'Admin', 'super_admin': 'Super Admin' };
             var roleLabel = roleLabels[otherRole] || otherRole;
             name = _commEscape(otherName + ' (' + roleLabel + ')');
             avatarCls = 'comm-conv-avatar comm-conv-avatar-human';
@@ -424,11 +424,11 @@ async function _commShowNewForm(containerId) {
     var recipientOpts = '<option value="ai">\uD83E\uDD16 ADA - Assistente</option>';
     if (isVetExtUser) {
         // vet_ext can only message vet_int
-        recipientOpts = '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
+        recipientOpts = '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
     } else if (role === 'proprietario') {
-        recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
+        recipientOpts += '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
     } else {
-        recipientOpts += '<option value="vet">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario</option>';
+        recipientOpts += '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>';
         recipientOpts += '<option value="vet_ext">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Esterno</option>';
         recipientOpts += '<option value="owner">\uD83E\uDDD1 Proprietario</option>';
     }
@@ -584,7 +584,7 @@ async function _commCreateConversation() {
 
         if (destType === 'ai') {
             body.vet_user_id = 'ada-assistant';
-        } else if (destType === 'vet' || destType === 'vet_ext') {
+        } else if (destType === 'vet_int' || destType === 'vet_ext') {
             body.vet_user_id = recipientId;
         } else if (destType === 'owner') {
             body.owner_override_id = recipientId;

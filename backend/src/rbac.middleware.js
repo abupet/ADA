@@ -5,7 +5,7 @@
  * RBAC middleware for the promo system.
  *
  * Logic:
- * - req.user.sub === "ada-user" (legacy JWT) -> role "owner" or "vet" from X-Ada-Role header
+ * - req.user.sub === "ada-user" (legacy JWT) -> role "owner" or "vet_int" from X-Ada-Role header (note: "vet" is accepted as legacy alias for "vet_int")
  * - req.user.role present (JWT v2) -> verify against allowedRoles
  * - If route has :tenantId -> verify admin_brand.tenantId matches
  * - Super admin: cross-tenant access (logged)

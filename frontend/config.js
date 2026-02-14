@@ -531,7 +531,7 @@ function decodeJwtPayload(token) {
 
 /**
  * Get the role from the current JWT token.
- * Returns 'owner', 'vet', 'admin_brand', 'super_admin', or null for legacy tokens.
+ * Returns 'owner', 'vet_int', 'vet_ext', 'admin_brand', 'super_admin', or null for legacy tokens.
  */
 function getJwtRole() {
     var token = getAuthToken();

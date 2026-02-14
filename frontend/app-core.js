@@ -598,7 +598,7 @@ function initRoleSystem() {
 
     if (jwtRole && !storedRole) {
         // First login: set default role based on JWT role
-        if (jwtRole === 'vet') {
+        if (jwtRole === 'vet_int') {
             setActiveRole(ROLE_VETERINARIO);
         } else if (jwtRole === 'owner') {
             setActiveRole(ROLE_PROPRIETARIO);
@@ -1026,7 +1026,8 @@ function renderAccountInfo() {
     }
 
     var roleLabels = {
-        'vet': 'Veterinario',
+        'vet_int': 'Veterinario',
+        'vet_ext': 'Veterinario Esterno',
         'owner': 'Proprietario',
         'admin_brand': 'Admin Brand',
         'super_admin': 'Super Admin'

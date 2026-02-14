@@ -451,8 +451,8 @@ function promoRouter({ requireAuth }) {
       // Inline role check for vet
       const user = req.user;
       const isVet =
-        (user?.sub === "ada-user" && req.headers["x-ada-role"] === "vet") ||
-        user?.role === "vet";
+        (user?.sub === "ada-user" && req.headers["x-ada-role"] === "vet_int") ||
+        user?.role === "vet_int";
       if (!isVet) return res.status(403).json({ error: "forbidden_vet_only" });
     }
 
@@ -490,8 +490,8 @@ function promoRouter({ requireAuth }) {
     if (requireRole) {
       const user = req.user;
       const isVet =
-        (user?.sub === "ada-user" && req.headers["x-ada-role"] === "vet") ||
-        user?.role === "vet";
+        (user?.sub === "ada-user" && req.headers["x-ada-role"] === "vet_int") ||
+        user?.role === "vet_int";
       if (!isVet) return res.status(403).json({ error: "forbidden_vet_only" });
     }
 

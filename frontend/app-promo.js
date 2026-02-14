@@ -842,7 +842,7 @@
 
                 fetchApi('/api/promo/vet-flag', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-Ada-Role': 'vet' },
+                    headers: { 'Content-Type': 'application/json', 'X-Ada-Role': 'vet_int' },
                     body: JSON.stringify({ pet_id: String(petId), promo_item_id: promoItemId, reason: reason || null })
                 }).then(function (r) {
                     if (r.ok) {

@@ -26,7 +26,7 @@ const USERS = [
     user_id: "test-vet-001",
     email: "vet_test@adiuvet.it",
     display_name: "VetTestName",
-    base_role: "vet",
+    base_role: "vet_int",
   },
   {
     user_id: "test-owner-001",
