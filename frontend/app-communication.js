@@ -1474,6 +1474,7 @@ function _commRenderFilePreview() {
 function _commRemoveFile(index) {
     _commSelectedFiles.splice(index, 1);
     _commRenderFilePreview();
+    _commUpdateAiAttachmentHint();
     if (_commSelectedFiles.length === 0) {
         var fileInput = document.getElementById('comm-file-input');
         if (fileInput) fileInput.value = '';
@@ -1844,8 +1845,9 @@ function _commToggleEmojiPicker() {
         if (emoji) {
             var textarea = document.getElementById('comm-msg-input');
             if (textarea) {
-                var start = textarea.selectionStart || textarea.value.length;
-                textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(textarea.selectionEnd || start);
+                var start = textarea.selectionStart != null ? textarea.selectionStart : textarea.value.length;
+                var end = textarea.selectionEnd != null ? textarea.selectionEnd : start;
+                textarea.value = textarea.value.slice(0, start) + emoji + textarea.value.slice(end);
                 textarea.focus();
                 textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
             }
@@ -1875,10 +1877,12 @@ var _commVoiceChunks = [];
 var _commVoiceRecording = false;
 var _commVoiceTimer = null;
 var _commVoiceSeconds = 0;
+var _commVoiceStream = null;
 
 function _commStartVoiceRecord() {
     if (_commVoiceRecording) return;
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+        _commVoiceStream = stream;
         var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
         _commVoiceRecorder = new MediaRecorder(stream, { mimeType: mimeType });
         _commVoiceChunks = [];
@@ -1920,6 +1924,7 @@ function _commCancelVoiceRecord() {
             _commVoiceRecording = false;
             clearInterval(_commVoiceTimer);
             _commUpdateVoiceUI(false);
+            if (_commVoiceStream) { _commVoiceStream.getTracks().forEach(function(t) { t.stop(); }); _commVoiceStream = null; }
         };
         _commVoiceRecorder.stop();
     }
@@ -1944,10 +1949,10 @@ async function _commSendVoiceMessage(blob) {
     formData.append('file', blob, filename);
     formData.append('type', 'audio');
     try {
-        var res = await fetchApi('/api/communication/conversations/' + _commCurrentConversationId + '/messages/upload', {
-            method: 'POST',
-            body: formData
-        });
+        var res = await fetch(
+            _commApiBase() + '/api/communication/conversations/' + _commCurrentConversationId + '/messages/upload',
+            { method: 'POST', headers: { 'Authorization': 'Bearer ' + getAuthToken() }, body: formData }
+        );
         if (res.ok) {
             _commLoadMessages(_commCurrentConversationId);
         } else {

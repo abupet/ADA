@@ -142,8 +142,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.20.0';
-const ADA_RELEASE_NOTES = 'Image management wizard, multi-file attachments, debug multi-service toggle, filterable select fix, pet UI improvements.';
+const ADA_VERSION = '8.20.1';
+const ADA_RELEASE_NOTES = 'Chatbot contesto completo, emoji picker, messaggi vocali, chiamate, global spinner, bugfix voice/emoji/hint.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
