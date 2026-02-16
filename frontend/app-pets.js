@@ -344,11 +344,17 @@ async function onPetSelectorChange(selectElement) {
         await updateSelectedPetHeaders();
     }
 
-    // PR1: Refresh promo quando si cambia pet
+    // PR1: Refresh promo + insurance + nutrition quando si cambia pet
     try {
         var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
         if (typeof renderPromoSlot === 'function' && promoRole === 'proprietario') {
             renderPromoSlot('patient-promo-container', 'pet_profile');
+        }
+        if (typeof renderInsuranceSlot === 'function') {
+            renderInsuranceSlot('patient-insurance-container', value || null);
+        }
+        if (typeof renderNutritionSlot === 'function') {
+            renderNutritionSlot('patient-nutrition-container', value || null);
         }
     } catch(_promoErr) {}
 
@@ -437,8 +443,9 @@ async function saveCurrentPet() {
             return;
         }
         var updated = await resp.json();
-        _updatePetInCache(updated);
+        var norm = _updatePetInCache(updated);
         await rebuildPetSelector(petId);
+        _loadOwnerAndVetDropdowns('ownerName', 'ownerReferringVet', norm.owner_user_id, norm.referring_vet_user_id);
         showToast('✅ Dati salvati!', 'success');
     } catch (e) {
         showToast('Errore di rete: impossibile salvare', 'error');

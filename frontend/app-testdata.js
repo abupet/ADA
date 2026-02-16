@@ -218,6 +218,8 @@
             if (sel && sel.options.length > 1) {
                 var idx = 1 + Math.floor(Math.random() * (sel.options.length - 1));
                 sel.selectedIndex = idx;
+                sel.value = sel.options[idx].value;
+                sel.dispatchEvent(new Event('change'));
                 return true;
             }
             return false;

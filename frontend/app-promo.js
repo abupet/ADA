@@ -323,6 +323,7 @@
         var container = document.getElementById(containerId);
         if (!container) return;
 
+        _lastRenderedPromoItemId = null;
         _injectPromoStyles();
 
         var petId = null;
@@ -423,6 +424,13 @@
 
         // Nothing to show
         if (!rec || !rec.name) {
+            cardEl.classList.add('promo-card--hidden');
+            cardEl.innerHTML = '';
+            return;
+        }
+
+        // Guard: skip if serviceType doesn't match the promo slot (e.g. insurance/nutrition leaked)
+        if (rec.serviceType && rec.serviceType !== 'promo') {
             cardEl.classList.add('promo-card--hidden');
             cardEl.innerHTML = '';
             return;
