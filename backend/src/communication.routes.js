@@ -646,16 +646,39 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           if (conversation.subject) systemContent += `\n\nOggetto della conversazione: ${conversation.subject}`;
           if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
           const historyResult = await pool.query(
-            "SELECT ai_role AS role, content FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
+            "SELECT ai_role AS role, content, file_url, file_name, file_type FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
             [id, MAX_HISTORY_MESSAGES]
           );
-          const historyMessages = historyResult.rows.reverse().map(m => ({ role: m.role || "user", content: m.content }));
+          let hasImageAttachment = false;
+          const historyMessages = historyResult.rows.reverse().map(m => {
+            const role = m.role || "user";
+            let msgContent = m.content || "";
+            if (m.file_url) {
+              const ft = (m.file_type || "").toLowerCase();
+              if (ft.startsWith("image/")) {
+                hasImageAttachment = true;
+                // Return multimodal content for vision
+                return {
+                  role,
+                  content: [
+                    { type: "text", text: msgContent || "(immagine allegata)" },
+                    { type: "image_url", image_url: { url: m.file_url } }
+                  ]
+                };
+              } else if (ft === "application/pdf") {
+                msgContent += "\n[Allegato PDF: " + (m.file_name || "documento.pdf") + " — contenuto non disponibile per analisi]";
+              } else {
+                msgContent += "\n[Allegato: " + (m.file_name || "file") + " — tipo non supportato per analisi]";
+              }
+            }
+            return { role, content: msgContent };
+          });
           const openaiMessages = [{ role: "system", content: systemContent }, ...historyMessages];
 
           const apiKey = typeof getOpenAiKey === "function" ? getOpenAiKey() : null;
           if (!apiKey) return res.status(500).json({ error: "openai_key_not_configured" });
 
-          let model = "gpt-4o-mini";
+          let model = hasImageAttachment ? "gpt-4o" : "gpt-4o-mini";
           let aiResponse = await _callOpenAi(apiKey, model, openaiMessages);
           if (!aiResponse.ok) return res.status(502).json({ error: "ai_request_failed" });
 
