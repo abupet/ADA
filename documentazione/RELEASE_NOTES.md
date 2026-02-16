@@ -1,5 +1,18 @@
 # Release Notes (cumulative)
 
+## v8.22.2
+
+### Bug Fix & UI Improvements (9 issues)
+- Fix: pagina "Descrizione Pet per AI" bloccata per ruolo — aggiunto `ai-petdesc` ai permessi di veterinario, proprietario, vet_int e super_admin
+- Fix: dopo salvataggio pet, i dropdown Proprietario e Vet Esterno non si aggiornavano — aggiunto refresh dropdown post-save
+- Fix: tasto "Test" in Aggiungi Pet non compilava Proprietario e Vet Esterno — dispatch evento `change` dopo selezione nel filterable select
+- Fix: vet_ext vedeva il tasto "Aggiungi" pet — aggiunto `id="addPetBtn"` al bottone in index.html per il guard CSS
+- Fix: slot "Consigliato per il tuo amico pet" non si aggiornava al cambio pet — refresh di tutti gli slot (promo + insurance + nutrition) e reset stale promo ID
+- Fix: messaggi ad ADA non consideravano allegati — query AI context include `file_url/file_name/file_type`, immagini inviate con vision (gpt-4o), PDF/file con nota testuale
+- Fix: slot promo mostrava suggerimenti assicurazione — aggiunto filtro `serviceType` frontend e `effectiveServiceType` nel backend response
+- Fix: finestra messaggi più larga dello schermo su mobile — aggiunto CSS responsive con `max-width:100%`, `flex-wrap`, `overflow-x:hidden`
+- Miglioramento: icone messaggi (emoji, allegato, foto, mic) riposizionate sopra il campo testo per layout più pulito e textarea più ampio
+
 ## v8.22.1
 
 ### Fix WebRTC Call Answering Flow

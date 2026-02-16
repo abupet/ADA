@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.1';
-const ADA_RELEASE_NOTES = 'Fix WebRTC call answering flow: auto-join conv room, user-room routing, incoming call dedup, ring/no-answer timeouts, push notification for calls.';
+const ADA_VERSION = '8.22.2';
+const ADA_RELEASE_NOTES = 'Bug fix: pet AI page roles, data refresh, test button, vet_ext guard, promo refresh, ADA context attachments, promo filtering, mobile layout + icons repositioning.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -174,11 +174,11 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication'],
+        pages: ['patient', 'addpet', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'ai-petdesc'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync', 'communicate', 'use_chatbot']
     },
     admin_brand: {
@@ -186,7 +186,7 @@ const ROLE_PERMISSIONS = {
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports', 'run_wizard']
     },
     vet_int: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate']
     },
     vet_ext: {
@@ -197,7 +197,7 @@ const ROLE_PERMISSIONS = {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
                 'superadmin-gestione', 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
                 'superadmin-users', 'superadmin-sources', 'settings', 'debug',
-                'patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication'],
+                'patient', 'addpet', 'recording', 'soap', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
                   'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
                   'manage_users', 'manage_sources', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']

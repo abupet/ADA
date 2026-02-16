@@ -249,6 +249,11 @@ function promoRouter({ requireAuth }) {
           const confidence = explResult.explanation?.confidence || "low";
           const ctaEnabled = confidence === "high" || confidence === "medium";
 
+          // Use effective service type from context rules, not the item's raw service_type array
+          const effectiveServiceType = Array.isArray(_item.service_type) && _item.service_type.includes("promo") && context !== "insurance_review" && context !== "nutrition_review"
+            ? "promo"
+            : (Array.isArray(_item.service_type) ? _item.service_type[0] : (_item.service_type || "promo"));
+
           const recommendation = {
             promoItemId: promoResult.promoItemId,
             tenantId: promoResult.tenantId,
@@ -261,6 +266,7 @@ function promoRouter({ requireAuth }) {
             ctaUrl: promoResult.ctaUrl,
             context,
             source: explResult.source,
+            serviceType: effectiveServiceType,
           };
 
           return res.json({ pet_id: petId, recommendation });

@@ -198,7 +198,14 @@ function _commInjectStyles() {
         '.comm-switch-slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}' +
         '.comm-switch input:checked+.comm-switch-slider{background:#2563eb}' +
         '.comm-switch input:checked+.comm-switch-slider:before{transform:translateX(20px)}' +
-        '.comm-pet-hint{font-size:12px;color:#64748b;margin-top:4px;display:none}';
+        '.comm-pet-hint{font-size:12px;color:#64748b;margin-top:4px;display:none}' +
+        '.comm-input-icons{display:flex;gap:6px;margin-top:12px;align-items:center}' +
+        '@media (max-width:600px){' +
+        '.comm-container{max-width:100%;padding:0 4px;box-sizing:border-box;overflow-x:hidden}' +
+        '.comm-input-row{flex-wrap:wrap;gap:4px}' +
+        '.comm-input-row textarea{min-width:0;width:100%}' +
+        '.comm-msg{max-width:88%}' +
+        '}';
     var style = document.createElement('style');
     style.setAttribute('data-comm-styles', '1');
     style.textContent = css;
@@ -880,21 +887,23 @@ function _commRenderChat(container, convId, messages, meta) {
         '<span id="comm-reply-text"></span>' +
         '<span class="comm-reply-preview-close" onclick="_commCancelReply()">\u00D7</span></div>';
 
-    // Input row
+    // Input area: icons row + file preview + text row
     var isClosed = meta && meta.status === 'closed';
     if (!isClosed) {
-        html += '<div id="comm-file-preview" style="display:none;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px;font-size:12px;color:#1e3a5f;display:none;align-items:center;gap:8px;">' +
-            '<span id="comm-file-preview-name"></span>' +
-            '<span style="cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearFile()" title="Rimuovi">\u00D7</span></div>';
-        html += '<div class="comm-input-row" data-testid="comm-input-row">' +
+        html += '<div class="comm-input-icons" data-testid="comm-input-icons">' +
             '<button type="button" class="comm-btn-icon" id="comm-emoji-btn" title="Emoji" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;">\uD83D\uDE0A</button>' +
-            '<textarea id="comm-msg-input" data-testid="comm-msg-input" placeholder="Scrivi un messaggio..." rows="1" ' +
-            'onkeydown="_commKeydown(event,\'' + convId + '\')" oninput="_commEmitTyping(\'' + convId + '\')"></textarea>' +
             '<label style="cursor:pointer;font-size:20px;padding:4px 6px;color:#64748b;flex-shrink:0;" title="Allega file">' +
             '\uD83D\uDCCE<input type="file" id="comm-file-input" style="display:none" multiple ' +
             'accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleFileSelect(this)"></label>' +
             '<button type="button" class="comm-btn-icon" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;color:#64748b;" title="Scatta foto" onclick="_commCaptureCameraPhoto(\'conv\')">\uD83D\uDCF7</button>' +
             '<button type="button" class="comm-btn-icon" id="comm-voice-btn" title="Messaggio vocale" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;">\uD83C\uDFA4</button>' +
+            '</div>';
+        html += '<div id="comm-file-preview" style="display:none;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:8px;font-size:12px;color:#1e3a5f;align-items:center;gap:8px;">' +
+            '<span id="comm-file-preview-name"></span>' +
+            '<span style="cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearFile()" title="Rimuovi">\u00D7</span></div>';
+        html += '<div class="comm-input-row" data-testid="comm-input-row">' +
+            '<textarea id="comm-msg-input" data-testid="comm-msg-input" placeholder="Scrivi un messaggio..." rows="1" ' +
+            'onkeydown="_commKeydown(event,\'' + convId + '\')" oninput="_commEmitTyping(\'' + convId + '\')"></textarea>' +
             '<button class="comm-btn comm-btn-primary" data-testid="comm-send-btn" onclick="_commSend(\'' + convId + '\')">Invia</button></div>';
     } else {
         html += '<div class="comm-input-row" data-testid="comm-input-row">' +
