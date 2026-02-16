@@ -128,7 +128,7 @@ function pushRouter({ requireAuth }) {
  * Send push notification to a user (all their subscriptions).
  * Requires web-push to be configured. Silently skips if not available.
  */
-async function sendPushToUser(userId, payload) {
+async function sendPushToUser(userId, payload, notificationType) {
   try {
     const webpush = require("web-push");
     const { getPool } = require("./db");
@@ -143,7 +143,7 @@ async function sendPushToUser(userId, payload) {
     );
 
     // Check preferences
-    let prefs = { push_new_message: true, show_message_preview: true, quiet_hours_start: null, quiet_hours_end: null };
+    let prefs = { push_new_message: true, push_incoming_call: true, show_message_preview: true, quiet_hours_start: null, quiet_hours_end: null };
     try {
       const prefResult = await pool.query(
         "SELECT * FROM notification_preferences WHERE user_id = $1 LIMIT 1",
@@ -152,7 +152,8 @@ async function sendPushToUser(userId, payload) {
       if (prefResult.rows[0]) prefs = prefResult.rows[0];
     } catch (_) {}
 
-    if (!prefs.push_new_message) return;
+    var prefKey = notificationType || 'push_new_message';
+    if (prefs[prefKey] === false) return;
 
     // Check quiet hours
     if (prefs.quiet_hours_start && prefs.quiet_hours_end) {

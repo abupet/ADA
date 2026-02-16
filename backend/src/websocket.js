@@ -3,6 +3,7 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const { getPool } = require("./db");
+const { sendPushToUser } = require("./push.routes");
 
 const onlineUsers = new Map(); // userId → Set<socketId>
 
@@ -59,6 +60,33 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             console.error("[WS] isConversationParticipant error:", e.message);
             return false;
         }
+    }
+
+    // Get the other participant in a conversation (for targeted call signaling)
+    async function getConversationRecipient(userId, conversationId) {
+        try {
+            const pool = getPool();
+            const { rows } = await pool.query(
+                "SELECT owner_user_id, vet_user_id FROM conversations WHERE conversation_id = $1 LIMIT 1",
+                [conversationId]
+            );
+            if (!rows[0]) return null;
+            return rows[0].owner_user_id === userId ? rows[0].vet_user_id : rows[0].owner_user_id;
+        } catch (e) {
+            console.error("[WS] getConversationRecipient error:", e.message);
+            return null;
+        }
+    }
+
+    // Auto-join socket to conv room after verifying participant (for call signaling)
+    async function autoJoinConvRoom(socket, conversationId) {
+        if (socket.rooms.has(`conv:${conversationId}`)) return true;
+        const allowed = await isConversationParticipant(socket.userId, conversationId);
+        if (allowed) {
+            socket.join(`conv:${conversationId}`);
+            return true;
+        }
+        return false;
     }
 
     commNs.on("connection", (socket) => {
@@ -144,37 +172,65 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             } catch (e) { console.error("[WS] message_read error:", e.message); }
         });
 
-        // Call signaling (WebRTC)
-        socket.on("initiate_call", ({ conversationId, callType, callId }) => {
-            if (!conversationId || !callId || !socket.rooms.has(`conv:${conversationId}`)) return;
-            socket.to(`conv:${conversationId}`).emit("incoming_call", {
+        // Call signaling (WebRTC) — auto-join conv room + emit to user room for reachability
+        socket.on("initiate_call", async ({ conversationId, callType, callId }) => {
+            if (!conversationId || !callId) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
+            const recipientId = await getConversationRecipient(userId, conversationId);
+            const payload = {
                 conversationId, callType: callType || "voice_call", callId,
                 callerId: userId, callerName: socket.displayName || socket.userEmail || userId
-            });
+            };
+            // Emit to conv room (for participants already viewing the conversation)
+            socket.to(`conv:${conversationId}`).emit("incoming_call", payload);
+            // Emit to recipient's user room (so they receive it even if not in the conv room)
+            if (recipientId) {
+                commNs.to(`user:${recipientId}`).emit("incoming_call", payload);
+                // Send push notification if recipient is offline
+                if (!isUserOnline(recipientId)) {
+                    sendPushToUser(recipientId, {
+                        title: "Chiamata in arrivo",
+                        body: (socket.displayName || socket.userEmail || "Utente") + " ti sta chiamando",
+                        tag: "incoming-call-" + callId,
+                        data: { conversationId, callId, callType: callType || "voice_call", type: "incoming_call" }
+                    }, "push_incoming_call").catch(() => {});
+                }
+            }
         });
-        socket.on("accept_call", ({ conversationId, callId }) => {
-            if (!conversationId || !callId || !socket.rooms.has(`conv:${conversationId}`)) return;
+        socket.on("accept_call", async ({ conversationId, callId }) => {
+            if (!conversationId || !callId) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
             socket.to(`conv:${conversationId}`).emit("call_accepted", { conversationId, callId, acceptedBy: userId });
         });
-        socket.on("reject_call", ({ conversationId, callId, reason }) => {
-            if (!conversationId || !callId || !socket.rooms.has(`conv:${conversationId}`)) return;
+        socket.on("reject_call", async ({ conversationId, callId, reason }) => {
+            if (!conversationId || !callId) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
             socket.to(`conv:${conversationId}`).emit("call_rejected", { conversationId, callId, reason: reason || "declined" });
         });
-        socket.on("webrtc_offer", ({ conversationId, callId, offer }) => {
-            if (!conversationId || !callId || !offer || !socket.rooms.has(`conv:${conversationId}`)) return;
+        socket.on("webrtc_offer", async ({ conversationId, callId, offer }) => {
+            if (!conversationId || !callId || !offer) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
             socket.to(`conv:${conversationId}`).emit("webrtc_offer", { conversationId, callId, offer });
         });
-        socket.on("webrtc_answer", ({ conversationId, callId, answer }) => {
-            if (!conversationId || !callId || !answer || !socket.rooms.has(`conv:${conversationId}`)) return;
+        socket.on("webrtc_answer", async ({ conversationId, callId, answer }) => {
+            if (!conversationId || !callId || !answer) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
             socket.to(`conv:${conversationId}`).emit("webrtc_answer", { conversationId, callId, answer });
         });
-        socket.on("webrtc_ice", ({ conversationId, callId, candidate }) => {
-            if (!conversationId || !callId || !candidate || !socket.rooms.has(`conv:${conversationId}`)) return;
+        socket.on("webrtc_ice", async ({ conversationId, callId, candidate }) => {
+            if (!conversationId || !callId || !candidate) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
             socket.to(`conv:${conversationId}`).emit("webrtc_ice", { conversationId, callId, candidate });
         });
-        socket.on("end_call", ({ conversationId, callId }) => {
-            if (!conversationId || !socket.rooms.has(`conv:${conversationId}`)) return;
+        socket.on("end_call", async ({ conversationId, callId }) => {
+            if (!conversationId) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
             socket.to(`conv:${conversationId}`).emit("call_ended", { conversationId, callId, endedBy: userId });
+            // Also emit to recipient's user room to dismiss pending incoming notification
+            const recipientId = await getConversationRecipient(userId, conversationId);
+            if (recipientId) {
+                commNs.to(`user:${recipientId}`).emit("call_ended", { conversationId, callId, endedBy: userId });
+            }
         });
         socket.on("request_partner_status", ({ conversationId }) => {
             if (!conversationId || !socket.rooms.has(`conv:${conversationId}`)) return;

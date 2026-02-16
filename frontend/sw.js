@@ -1,4 +1,4 @@
-const ADA_SW_VERSION = '8.22.0';
+const ADA_SW_VERSION = '8.22.1';
 const CACHE_NAME = 'ada-cache-' + ADA_SW_VERSION;
 const STATIC_ASSETS = [
     './',
@@ -145,6 +145,7 @@ self.addEventListener('push', function(event) {
     var payload;
     try { payload = event.data.json(); } catch (e) { payload = { title: 'ADA', body: event.data.text() }; }
 
+    var isCall = payload.data && payload.data.type === 'incoming_call';
     event.waitUntil(
         self.registration.showNotification(payload.title || 'ADA', {
             body: payload.body || '',
@@ -152,12 +153,12 @@ self.addEventListener('push', function(event) {
             badge: payload.badge || './logo-abupet.png',
             tag: payload.tag || 'ada-default',
             renotify: true,
+            requireInteraction: isCall,
             data: payload.data || {},
-            actions: [
-                { action: 'open', title: 'Apri' },
-                { action: 'dismiss', title: 'Ignora' }
-            ],
-            vibrate: [200, 100, 200]
+            actions: isCall
+                ? [{ action: 'answer', title: 'Rispondi' }, { action: 'dismiss', title: 'Rifiuta' }]
+                : [{ action: 'open', title: 'Apri' }, { action: 'dismiss', title: 'Ignora' }],
+            vibrate: isCall ? [300, 200, 300, 200, 300, 200, 300] : [200, 100, 200]
         })
     );
 });
@@ -167,15 +168,25 @@ self.addEventListener('notificationclick', function(event) {
     if (event.action === 'dismiss') return;
 
     var data = event.notification.data || {};
+    var isCall = data.type === 'incoming_call';
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
             for (var i = 0; i < windowClients.length; i++) {
                 if ('focus' in windowClients[i]) {
                     windowClients[i].focus();
-                    windowClients[i].postMessage({
-                        type: 'navigate_to_conversation',
-                        conversationId: data.conversationId
-                    });
+                    if (isCall) {
+                        windowClients[i].postMessage({
+                            type: 'incoming_call',
+                            conversationId: data.conversationId,
+                            callId: data.callId,
+                            callType: data.callType
+                        });
+                    } else {
+                        windowClients[i].postMessage({
+                            type: 'navigate_to_conversation',
+                            conversationId: data.conversationId
+                        });
+                    }
                     return;
                 }
             }

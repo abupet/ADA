@@ -1,5 +1,20 @@
 # Release Notes (cumulative)
 
+## v8.22.1
+
+### Fix WebRTC Call Answering Flow
+- Fix critico: le chiamate vocali/video non arrivavano al destinatario — l'evento `incoming_call` veniva emesso solo nella conv room a cui nessuno era ancora joinato
+- Backend: i 7 handler di signaling WebRTC ora auto-joinano il socket alla conv room (con verifica partecipante) prima di emettere eventi
+- Backend: `incoming_call` emesso sia nella conv room che nella `user:${recipientId}` room per raggiungere il destinatario anche se non ha la conversazione aperta
+- Backend: `end_call` emesso anche nella user room del destinatario per dimettere la notifica se il chiamante annulla
+- Backend: push notification "Chiamata in arrivo" inviata al destinatario offline (nuovo parametro `notificationType` in `sendPushToUser`)
+- Frontend: deduplicazione `incoming_call` per `callId` (l'evento arriva da entrambe le room)
+- Frontend: timeout 60s "Nessuna risposta" lato chiamante se nessuno risponde
+- Frontend: auto-dismiss notifica incoming dopo 60s lato ricevente
+- Frontend: `_webrtcAccept` joina la conv room prima di emettere `accept_call`
+- Frontend: `call_ended` dismette correttamente la notifica incoming pendente
+- Service Worker: push notification per chiamate con `requireInteraction: true`, vibrazione prolungata, e routing `notificationclick` dedicato
+
 ## v8.22.0
 
 ### Bug Fix Critici
