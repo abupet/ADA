@@ -219,8 +219,9 @@ app.post("/auth/login/v2", async (req, res) => {
       return res.status(401).json({ error: "invalid_credentials" });
     }
 
-    // Success — record and clear lockout
+    // Success — record and clear previous failed attempts
     await recordLoginAttempt(pool, normalizedEmail, clientIp, true);
+    pool.query("DELETE FROM login_attempts WHERE email = $1 AND success = false", [normalizedEmail]).catch(() => {});
 
     // Determine role and tenantId
     let role = user.base_role;
@@ -265,6 +266,21 @@ function requireJwt(req, res, next) {
   const qToken = req.query && req.query.token;
   const effectiveToken = (scheme === "Bearer" && token) ? token : (qToken || null);
   if (!effectiveToken) {
+    // v8.21.0: Fall through to signed URL verification for media download paths
+    const { uid, exp, sig } = req.query || {};
+    if (uid && exp && sig && mediaSignSecret) {
+      const now = Math.floor(Date.now() / 1000);
+      if (Number(exp) < now) {
+        return res.status(401).json({ error: "expired" });
+      }
+      const payload = `${req.path}:${uid}:${exp}`;
+      const expected = crypto.createHmac("sha256", mediaSignSecret)
+        .update(payload).digest("hex").substring(0, 32);
+      if (sig === expected) {
+        req.user = { sub: uid };
+        return next();
+      }
+    }
     return res.status(401).json({ error: "Unauthorized" });
   }
 
