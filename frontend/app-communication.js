@@ -2152,15 +2152,13 @@ async function _commLoadCallRecipients() {
     if (!select) return;
 
     try {
-        var resp = await fetchApi('/api/communication/recipients?type=vet');
+        var resp = await fetchApi('/api/communication/users?role=vet');
         if (resp && resp.ok) {
             var data = await resp.json();
-            var recipients = data.recipients || data || [];
+            var users = data.users || [];
             var html = '<option value="">-- Seleziona destinatario --</option>';
-            recipients.forEach(function(r) {
-                // Exclude ADA assistant
-                if (r.display_name && r.display_name.toLowerCase().indexOf('ada') === 0) return;
-                html += '<option value="' + (r.user_id || '') + '">' + (r.display_name || r.email || 'Utente') + '</option>';
+            users.forEach(function(u) {
+                html += '<option value="' + (u.user_id || '') + '">' + (u.display_name || u.email || 'Utente') + '</option>';
             });
             select.innerHTML = html;
         }
@@ -2186,14 +2184,16 @@ async function _commInitiateDirectCall(callType) {
 
     try {
         // Create a conversation of type voice_call or video_call
+        var callSubject = callType === 'video_call' ? 'Videotelefonata' : 'Telefonata';
         var resp = await fetchApi('/api/communication/conversations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 pet_id: petId,
-                recipient_id: recipientId,
-                type: callType,
-                subject: callType === 'video_call' ? 'Videotelefonata' : 'Telefonata'
+                vet_user_id: recipientId,
+                subject: callSubject,
+                recipient_type: 'human',
+                initial_message: callSubject + ' avviata'
             })
         });
 

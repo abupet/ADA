@@ -227,13 +227,18 @@ function _webrtcStartLiveTranscription(conversationId) {
 
 function _webrtcSendTranscription(conversationId, text) {
     if (!text || !text.trim()) return;
-    // Send via WebSocket as a transcription message
-    if (window._commSocket) {
-        window._commSocket.emit('send_message', {
-            conversationId: conversationId,
-            type: 'transcription',
-            content: text.trim(),
-            sender_name: (typeof getUserDisplayName === 'function') ? getUserDisplayName() : 'Utente'
+    // Send transcription via REST API (POST message to conversation)
+    if (typeof fetchApi === 'function') {
+        fetchApi('/api/communication/conversations/' + conversationId + '/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: text.trim(),
+                type: 'transcription'
+            }),
+            _skipGlobalSpinner: true
+        }).catch(function(e) {
+            console.warn('[WebRTC] Transcription send error:', e.message);
         });
     }
 }

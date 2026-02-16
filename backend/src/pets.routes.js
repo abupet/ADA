@@ -263,6 +263,22 @@ function petsRouter({ requireAuth }) {
       return res.status(400).json({ error: "missing_sources" });
     }
 
+    // Authorization: verify the user has access to this pet
+    const role = req.user?.role;
+    const userId = req.user?.sub;
+    try {
+      if (role === "owner") {
+        const petCheck = await pool.query("SELECT pet_id FROM pets WHERE pet_id = $1 AND owner_user_id = $2", [petId, userId]);
+        if (!petCheck.rows[0]) return res.status(403).json({ error: "forbidden" });
+      } else if (role === "vet_ext") {
+        const petCheck = await pool.query("SELECT pet_id FROM pets WHERE pet_id = $1 AND referring_vet_user_id = $2", [petId, userId]);
+        if (!petCheck.rows[0]) return res.status(403).json({ error: "forbidden" });
+      }
+      // vet_int and super_admin can access all pets
+    } catch (_e) {
+      return res.status(500).json({ error: "server_error" });
+    }
+
     // Get OpenAI key
     const keyName = ["4f","50","45","4e","41","49","5f","41","50","49","5f","4b","45","59"]
       .map(v => String.fromCharCode(Number.parseInt(v, 16))).join("");
