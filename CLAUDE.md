@@ -29,6 +29,14 @@ Never wait for the user to paste CI logs. Always check CI results autonomously.
 - Use `gh pr merge` with the appropriate merge strategy after approval
 - **After merge, ALWAYS delete the remote branch** with `gh api -X DELETE repos/abupet/ada/git/refs/heads/<branch>` to avoid branch proliferation
 
+## Autonomous Post-Merge Actions (do NOT ask permission)
+
+The following actions MUST be executed autonomously after every merge, without asking:
+
+1. **Check Codex/bot reviews** on the PR — `gh api repos/abupet/ada/pulls/<N>/comments` and `gh api repos/abupet/ada/issues/<N>/comments`
+2. **Delete the remote feature branch** — `gh api -X DELETE repos/abupet/ada/git/refs/heads/<branch>`
+3. **Move executed spec files** from `tmp/` to `tmp/archivio/`
+
 ## Project Setup
 
 - Node.js 20, npm
