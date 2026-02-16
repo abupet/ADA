@@ -46,6 +46,21 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         return entry.count <= 30;
     }
 
+    // Authorization: verify user is participant in conversation
+    async function isConversationParticipant(userId, conversationId) {
+        try {
+            const pool = getPool();
+            const { rows } = await pool.query(
+                "SELECT 1 FROM conversations WHERE conversation_id = $1 AND (owner_user_id = $2 OR vet_user_id = $2) LIMIT 1",
+                [conversationId, userId]
+            );
+            return rows.length > 0;
+        } catch (e) {
+            console.error("[WS] isConversationParticipant error:", e.message);
+            return false;
+        }
+    }
+
     commNs.on("connection", (socket) => {
         const userId = socket.userId;
 
@@ -56,23 +71,32 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
         socket.join(`user:${userId}`);
 
-        // Chat events
-        socket.on("join_conversation", ({ conversationId }) => {
-            if (conversationId) socket.join(`conv:${conversationId}`);
+        // Chat events — authorization check before joining room
+        socket.on("join_conversation", async ({ conversationId }) => {
+            if (!conversationId) return;
+            const allowed = await isConversationParticipant(userId, conversationId);
+            if (allowed) {
+                socket.join(`conv:${conversationId}`);
+            } else {
+                socket.emit("error", { code: "forbidden", message: "Not a participant of this conversation" });
+            }
         });
         socket.on("leave_conversation", ({ conversationId }) => {
             if (conversationId) socket.leave(`conv:${conversationId}`);
         });
         socket.on("typing_start", ({ conversationId }) => {
             if (!checkRateLimit(socket.id)) return;
+            // Only emit if user is actually in the room (was authorized by join_conversation)
+            if (!socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("user_typing", { userId, typing: true });
         });
         socket.on("typing_stop", ({ conversationId }) => {
+            if (!socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("user_typing", { userId, typing: false });
         });
         // Delivery status: message_delivered — persist to DB then broadcast
         socket.on("message_delivered", async ({ messageId, conversationId }) => {
-            if (!messageId) return;
+            if (!messageId || !socket.rooms.has(`conv:${conversationId}`)) return;
             try {
                 const pool = getPool();
                 await pool.query(
@@ -86,7 +110,7 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
         // Delivery status: conversation_seen — mark all unread messages as read
         socket.on("conversation_seen", async ({ conversationId }) => {
-            if (!conversationId) return;
+            if (!conversationId || !socket.rooms.has(`conv:${conversationId}`)) return;
             try {
                 const pool = getPool();
                 // Upsert conversation_seen
@@ -108,7 +132,7 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
         // Delivery status: message_read — persist single message read to DB
         socket.on("message_read", async ({ messageId, conversationId }) => {
-            if (!messageId) return;
+            if (!messageId || !socket.rooms.has(`conv:${conversationId}`)) return;
             try {
                 const pool = getPool();
                 await pool.query(
@@ -122,38 +146,38 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
         // Call signaling (WebRTC)
         socket.on("initiate_call", ({ conversationId, callType, callId }) => {
-            if (!conversationId || !callId) return;
+            if (!conversationId || !callId || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("incoming_call", {
                 conversationId, callType: callType || "voice_call", callId,
                 callerId: userId, callerName: socket.displayName || socket.userEmail || userId
             });
         });
         socket.on("accept_call", ({ conversationId, callId }) => {
-            if (!conversationId || !callId) return;
+            if (!conversationId || !callId || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("call_accepted", { conversationId, callId, acceptedBy: userId });
         });
         socket.on("reject_call", ({ conversationId, callId, reason }) => {
-            if (!conversationId || !callId) return;
+            if (!conversationId || !callId || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("call_rejected", { conversationId, callId, reason: reason || "declined" });
         });
         socket.on("webrtc_offer", ({ conversationId, callId, offer }) => {
-            if (!conversationId || !callId || !offer) return;
+            if (!conversationId || !callId || !offer || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("webrtc_offer", { conversationId, callId, offer });
         });
         socket.on("webrtc_answer", ({ conversationId, callId, answer }) => {
-            if (!conversationId || !callId || !answer) return;
+            if (!conversationId || !callId || !answer || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("webrtc_answer", { conversationId, callId, answer });
         });
         socket.on("webrtc_ice", ({ conversationId, callId, candidate }) => {
-            if (!conversationId || !callId || !candidate) return;
+            if (!conversationId || !callId || !candidate || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("webrtc_ice", { conversationId, callId, candidate });
         });
         socket.on("end_call", ({ conversationId, callId }) => {
-            if (!conversationId) return;
+            if (!conversationId || !socket.rooms.has(`conv:${conversationId}`)) return;
             socket.to(`conv:${conversationId}`).emit("call_ended", { conversationId, callId, endedBy: userId });
         });
         socket.on("request_partner_status", ({ conversationId }) => {
-            if (!conversationId) return;
+            if (!conversationId || !socket.rooms.has(`conv:${conversationId}`)) return;
             const room = commNs.adapter.rooms.get(`conv:${conversationId}`);
             if (!room) return;
             for (const sid of room) {

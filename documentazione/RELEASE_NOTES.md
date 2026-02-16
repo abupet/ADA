@@ -1,5 +1,26 @@
 # Release Notes (cumulative)
 
+## v8.21.0
+
+### Security Critical
+- WebSocket authorization: `join_conversation` ora verifica che l'utente sia partecipante alla conversazione (owner o vet). Tutti gli eventi WS (typing, delivery, call signaling) protetti da room membership check
+- Content-Security-Policy header aggiunto a tutte le risposte backend (default-src 'self', script/style inline permessi, CDN cloudflare, OpenAI API, WebSocket)
+- Protezione brute-force login: max 5 tentativi falliti in 15 minuti, lockout 30 minuti (HTTP 429). Nuova tabella `login_attempts` (migrazione `sql/019_login_security.sql`)
+- Password policy rafforzata: lunghezza minima 10 caratteri (da 6), blocco password comuni e contenenti "ada"
+
+### Backend Security & Robustness
+- Graceful shutdown: gestione SIGTERM/SIGINT con chiusura ordinata HTTP server e pool DB (timeout forzato 10s)
+- Database SSL: supporto certificato CA via env `PG_CA_CERT` per verifica server certificate in produzione. Pool default aumentato a 10, monitoring eventi error/connect
+- Signed media URLs: endpoint `/api/media/sign` genera URL HMAC firmati con scadenza 5 minuti per accesso media senza esporre JWT in query string. Fallback `?token=` mantenuto per retrocompatibilita
+- Referrer-Policy `no-referrer` e `Cache-Control: private, no-store` per download allegati comunicazione
+- Permissions-Policy header: camera e microfono solo self, geolocation disabilitato
+
+### Frontend Robustness
+- Global error handlers: `window.onerror` e `window.onunhandledrejection` loggano errori non gestiti via ADALog
+- WebSocket reconnection UI: banner giallo fisso in basso "Connessione persa" / "Errore di connessione" con auto-hide al riconnessione. Auto-rejoin conversation room dopo reconnect
+- Service Worker cache versioning: cache name include versione app (`ada-cache-8.21.0`), strategia Stale-While-Revalidate per JS/CSS/HTML, endpoint `GET_VERSION` per notifica aggiornamenti
+- Signed media URL cache nel frontend con pre-sign asincrono e fallback token
+
 ## v8.20.1
 
 ### Bugfix da code review
