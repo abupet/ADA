@@ -219,6 +219,8 @@ function commUploadRouter({ requireAuth, upload }) {
 
       const row = rows[0];
       res.set("Content-Type", row.mime_type || "application/octet-stream");
+      res.set("Referrer-Policy", "no-referrer");
+      res.set("Cache-Control", "private, no-store");
       const safeName = (row.original_filename || "file").replace(/["\r\n]/g, "");
       res.set("Content-Disposition", 'inline; filename="' + safeName + '"');
       res.send(row.file_data);

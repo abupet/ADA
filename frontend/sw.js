@@ -1,4 +1,5 @@
-const CACHE_NAME = 'ada-cache-v1';
+const ADA_SW_VERSION = '8.21.0';
+const CACHE_NAME = 'ada-cache-' + ADA_SW_VERSION;
 const STATIC_ASSETS = [
     './',
     './index.html',
@@ -88,7 +89,28 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // Static assets & CDN: Cache First
+    // Static JS/CSS/HTML: Stale-While-Revalidate
+    // Serve from cache immediately, but fetch fresh version in background
+    var isStaticAsset = url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname.endsWith('.html');
+
+    if (isStaticAsset && url.origin === self.location.origin) {
+        event.respondWith(
+            caches.open(CACHE_NAME).then(function(cache) {
+                return cache.match(event.request).then(function(cached) {
+                    var fetchPromise = fetch(event.request).then(function(response) {
+                        if (response.ok) {
+                            cache.put(event.request, response.clone());
+                        }
+                        return response;
+                    }).catch(function() { return cached; });
+                    return cached || fetchPromise;
+                });
+            })
+        );
+        return;
+    }
+
+    // Other assets (images, CDN): Cache First with network fallback
     event.respondWith(
         caches.match(event.request).then(function(cached) {
             if (cached) return cached;
@@ -107,6 +129,13 @@ self.addEventListener('fetch', function(event) {
             }
         })
     );
+});
+
+// Notify clients when a new version is available
+self.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'GET_VERSION') {
+        event.source.postMessage({ type: 'SW_VERSION', version: ADA_SW_VERSION });
+    }
 });
 
 // === Web Push notification handlers ===

@@ -1,3 +1,22 @@
+// v8.21.0: Global error handlers — catch uncaught exceptions and unhandled promise rejections
+window.onerror = function(msg, url, line, col, error) {
+    try {
+        if (typeof ADALog !== 'undefined') {
+            ADALog.err('GLOBAL', 'Uncaught: ' + msg, { url: url, line: line, col: col, stack: error && error.stack ? error.stack.substring(0, 500) : '' });
+        }
+    } catch (_) {}
+    return false; // Don't suppress console error
+};
+window.onunhandledrejection = function(event) {
+    try {
+        var reason = event.reason || {};
+        var msg = reason.message || reason.toString ? reason.toString() : 'Unknown rejection';
+        if (typeof ADALog !== 'undefined') {
+            ADALog.err('PROMISE', msg, { stack: reason.stack ? reason.stack.substring(0, 500) : '' });
+        }
+    } catch (_) {}
+};
+
 // ADA v8.10.1 - Configuration
 const ADA_AUTH_TOKEN_KEY = 'ada_auth_token';
 const API_BASE_URL = (window && window.ADA_API_BASE_URL) ? window.ADA_API_BASE_URL : 'http://127.0.0.1:3000';
@@ -142,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.20.1';
-const ADA_RELEASE_NOTES = 'Chatbot contesto completo, emoji picker, messaggi vocali, chiamate, global spinner, bugfix voice/emoji/hint.';
+const ADA_VERSION = '8.21.0';
+const ADA_RELEASE_NOTES = 'Security hardening: WS auth, CSP, brute-force protection, signed media URLs, graceful shutdown, password policy, global error handlers, SW versioning.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

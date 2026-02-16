@@ -12,6 +12,37 @@
 // Internal state
 // =========================================================================
 var _commSocket = null;
+
+// v8.21.0: Signed media URL cache (avoids JWT in query strings)
+var _commSignedUrlCache = {};
+
+async function _commPreSignUrl(path) {
+    try {
+        var res = await fetchApi('/api/media/sign?path=' + encodeURIComponent(path));
+        if (res.ok) {
+            var data = await res.json();
+            // Extract query string from signed_url
+            var qIdx = (data.signed_url || '').indexOf('?');
+            if (qIdx !== -1) {
+                var suffix = data.signed_url.substring(qIdx);
+                _commSignedUrlCache[path] = { suffix: suffix, expiresAt: Date.now() + 240000 }; // cache 4 min (URL valid 5 min)
+                return suffix;
+            }
+        }
+    } catch (_) {}
+    return null;
+}
+
+function _commGetSignedSuffix(url) {
+    // Extract path from full URL
+    var path = url;
+    try { path = new URL(url).pathname; } catch (_) {}
+    var cached = _commSignedUrlCache[path];
+    if (cached && cached.expiresAt > Date.now()) return cached.suffix;
+    // Pre-sign asynchronously for next render
+    _commPreSignUrl(path);
+    return null;
+}
 var _commCurrentConversationId = null;
 var _commCurrentConversationType = null; // 'human' | 'ai'
 var _commTypingTimer = null;
@@ -189,15 +220,29 @@ function initCommSocket() {
             transports: ['websocket', 'polling'],
             reconnection: true, reconnectionDelay: 2000, reconnectionAttempts: 10
         });
-        _commSocket.on('connect', function () { console.log('[Communication] Socket connected'); _commFlushOfflineQueue(); });
+        _commSocket.on('connect', function () {
+            console.log('[Communication] Socket connected');
+            _commFlushOfflineQueue();
+            _commHideConnectionBanner();
+            // Re-join current conversation room after reconnect
+            if (_commCurrentConversationId) {
+                _commSocket.emit('join_conversation', { conversationId: _commCurrentConversationId });
+            }
+        });
         _commSocket.on('new_message', function (d) { _commHandleNewMessage(d); });
         _commSocket.on('user_typing', function (d) { _commHandleTyping(d); });
         _commSocket.on('messages_read', function (d) { _commHandleMessagesRead(d); });
         _commSocket.on('delivery_update', function (d) { _commHandleDeliveryUpdate(d); });
         _commSocket.on('user_online', function (d) { _commHandleUserOnline(d, true); });
         _commSocket.on('user_offline', function (d) { _commHandleUserOnline(d, false); });
-        _commSocket.on('disconnect', function (r) { console.warn('[Communication] Socket disconnected:', r); });
-        _commSocket.on('connect_error', function (e) { console.warn('[Communication] Socket error:', e.message); });
+        _commSocket.on('disconnect', function (r) {
+            console.warn('[Communication] Socket disconnected:', r);
+            _commShowConnectionBanner('Connessione persa. Riconnessione in corso\u2026');
+        });
+        _commSocket.on('connect_error', function (e) {
+            console.warn('[Communication] Socket error:', e.message);
+            _commShowConnectionBanner('Errore di connessione. Tentativo di riconnessione\u2026');
+        });
         // Real-time badge: receive notification when a message arrives in ANY conversation
         _commSocket.on('conversation_status_changed', function (d) {
             if (_commCurrentConversationId && d && d.conversation_id === _commCurrentConversationId) {
@@ -226,6 +271,27 @@ function disconnectCommSocket() {
     }
     _commCurrentConversationId = null;
     _commCurrentConversationType = null;
+}
+
+// v8.21.0: Connection status banner
+function _commShowConnectionBanner(msg) {
+    var existing = document.getElementById('comm-connection-banner');
+    if (!existing) {
+        existing = document.createElement('div');
+        existing.id = 'comm-connection-banner';
+        existing.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99998;' +
+            'background:#fef3c7;color:#92400e;border-top:2px solid #f59e0b;' +
+            'padding:8px 16px;font-size:13px;font-weight:600;text-align:center;' +
+            'display:flex;align-items:center;justify-content:center;gap:8px;';
+        document.body.appendChild(existing);
+    }
+    existing.innerHTML = '<span style="animation:ada-pulse 1.2s infinite;">\u26A0</span> ' + _commEscape(msg);
+    existing.style.display = 'flex';
+}
+
+function _commHideConnectionBanner() {
+    var el = document.getElementById('comm-connection-banner');
+    if (el) el.style.display = 'none';
 }
 
 // =========================================================================
@@ -894,9 +960,21 @@ function _commRenderBubble(msg, isOwn) {
         var allUuids = (msg.media_url || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
         if (allUuids.length >= 2) dlUrl = _commApiBase() + '/api/communication/attachments/' + allUuids[1] + '/download';
         else if (allUuids.length === 1) dlUrl = _commApiBase() + '/api/communication/attachments/' + allUuids[0] + '/download';
-        // Append auth token as query param (img/audio/video tags can't send Authorization header)
-        var _dlToken = typeof getAuthToken === 'function' ? getAuthToken() : '';
-        if (_dlToken) dlUrl += '?token=' + encodeURIComponent(_dlToken);
+        // Use signed URL instead of exposing JWT in query string (v8.21.0)
+        // Synchronously append a cached signed suffix; if not available, fall back to token
+        if (typeof _commGetSignedSuffix === 'function') {
+            var _signedSuffix = _commGetSignedSuffix(dlUrl);
+            if (_signedSuffix) {
+                dlUrl += _signedSuffix;
+            } else {
+                // Fallback: still use token while signed URL is being fetched
+                var _dlToken = typeof getAuthToken === 'function' ? getAuthToken() : '';
+                if (_dlToken) dlUrl += '?token=' + encodeURIComponent(_dlToken);
+            }
+        } else {
+            var _dlToken = typeof getAuthToken === 'function' ? getAuthToken() : '';
+            if (_dlToken) dlUrl += '?token=' + encodeURIComponent(_dlToken);
+        }
         // Extract filename from media_url path (after attachmentId_ prefix)
         var _urlParts = (msg.media_url || '').split('/');
         var _lastPart = _urlParts[_urlParts.length - 1] || '';

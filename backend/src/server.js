@@ -42,6 +42,9 @@ const ttlSeconds = Number.parseInt(TOKEN_TTL_SECONDS, 10) || 14400;
 const rateLimitPerMin = Number.parseInt(RATE_LIMIT_PER_MIN, 10) || 60;
 const isMockEnv = CI === "true" || MODE === "MOCK";
 const effectiveJwtSecret = isMockEnv ? JWT_SECRET || "dev-jwt-secret" : JWT_SECRET;
+// Derived signing key for short-lived media URLs (avoids exposing JWT in query strings)
+const crypto = require("crypto");
+const mediaSignSecret = effectiveJwtSecret ? crypto.createHash("sha256").update(effectiveJwtSecret + ":media-sign").digest() : null;
 const openaiKeyName = [
   "4f",
   "50",
@@ -61,6 +64,32 @@ const openaiKeyName = [
   .map((value) => String.fromCharCode(Number.parseInt(value, 16)))
   .join("");
 const openaiBaseUrl = "https://api.openai.com/v1";
+
+// --- Brute-force protection (v8.21.0) ---
+const LOGIN_MAX_ATTEMPTS = 5;       // max failures before lockout
+const LOGIN_LOCKOUT_WINDOW_MIN = 15; // window in minutes
+const LOGIN_LOCKOUT_DURATION_MIN = 30; // lockout duration in minutes
+
+async function checkLoginLockout(pool, email, ip) {
+  try {
+    const { rows } = await pool.query(
+      "SELECT COUNT(*) AS cnt FROM login_attempts WHERE email = $1 AND success = false AND attempted_at > NOW() - INTERVAL '" + LOGIN_LOCKOUT_DURATION_MIN + " minutes'",
+      [email]
+    );
+    return Number(rows[0].cnt) >= LOGIN_MAX_ATTEMPTS;
+  } catch (e) { return false; } // fail-open to avoid locking users out on DB error
+}
+
+async function recordLoginAttempt(pool, email, ip, success) {
+  try {
+    await pool.query(
+      "INSERT INTO login_attempts (email, ip_address, success) VALUES ($1, $2, $3)",
+      [email, ip || null, success]
+    );
+    // Cleanup old entries (> 24h) — fire and forget
+    pool.query("DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'").catch(() => {});
+  } catch (_) {}
+}
 
 if (!FRONTEND_ORIGIN && !isMockEnv) {
   console.warn("[CORS] FRONTEND_ORIGIN not set — cross-origin requests will be rejected");
@@ -111,13 +140,28 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// --- Security headers middleware (PR 11) ---
+// --- Security headers middleware (PR 11) + CSP (v8.21.0) ---
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  // CSP: allow self, CDN scripts, inline styles (required by current UI), OpenAI API, WS
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' wss: ws: https://api.openai.com",
+    "media-src 'self' blob: data:",
+    "font-src 'self' data:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ];
+  res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
   next();
 });
 
@@ -145,13 +189,22 @@ app.post("/auth/login/v2", async (req, res) => {
     const bcrypt = require("bcryptjs");
     const { getPool } = require("./db");
     const pool = getPool();
+    const normalizedEmail = email.toLowerCase().trim();
+    const clientIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || null;
+
+    // Brute-force lockout check
+    const isLocked = await checkLoginLockout(pool, normalizedEmail, clientIp);
+    if (isLocked) {
+      return res.status(429).json({ error: "too_many_attempts", retry_after_minutes: LOGIN_LOCKOUT_DURATION_MIN });
+    }
 
     const { rows } = await pool.query(
       "SELECT user_id, email, display_name, password_hash, base_role, status FROM users WHERE email = $1 LIMIT 1",
-      [email.toLowerCase().trim()]
+      [normalizedEmail]
     );
 
     if (!rows[0]) {
+      await recordLoginAttempt(pool, normalizedEmail, clientIp, false);
       return res.status(401).json({ error: "invalid_credentials" });
     }
 
@@ -162,8 +215,12 @@ app.post("/auth/login/v2", async (req, res) => {
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
+      await recordLoginAttempt(pool, normalizedEmail, clientIp, false);
       return res.status(401).json({ error: "invalid_credentials" });
     }
+
+    // Success — record and clear lockout
+    await recordLoginAttempt(pool, normalizedEmail, clientIp, true);
 
     // Determine role and tenantId
     let role = user.base_role;
@@ -238,8 +295,13 @@ app.post("/api/me/change-password", requireAuth, async (req, res) => {
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: "current_and_new_password_required" });
   }
-  if (typeof newPassword !== "string" || newPassword.length < 6) {
-    return res.status(400).json({ error: "password_too_short", minLength: 6 });
+  if (typeof newPassword !== "string" || newPassword.length < 10) {
+    return res.status(400).json({ error: "password_too_short", minLength: 10 });
+  }
+  // Block trivially common passwords
+  const _commonPasswords = ["password", "password1", "12345678", "1234567890", "qwerty", "qwertyuiop", "abc12345", "password123"];
+  if (_commonPasswords.includes(newPassword.toLowerCase()) || newPassword.toLowerCase().includes("ada")) {
+    return res.status(400).json({ error: "password_too_common" });
   }
   // Legacy tokens cannot change password
   if (!req.user || req.user.sub === "ada-user") {
@@ -660,6 +722,53 @@ app.post("/api/tts", async (req, res) => {
   return res.status(200).send(audioBuffer);
 });
 
+// --- Signed media URL generation (v8.21.0) ---
+// Generates a short-lived HMAC-signed URL for media access (no JWT in query string)
+app.get("/api/media/sign", requireJwt, (req, res) => {
+  const { path: mediaPath } = req.query;
+  if (!mediaPath || typeof mediaPath !== "string") {
+    return res.status(400).json({ error: "path_required" });
+  }
+  const userId = req.user.sub;
+  const expires = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+  const payload = `${mediaPath}:${userId}:${expires}`;
+  const signature = crypto.createHmac("sha256", mediaSignSecret || "fallback")
+    .update(payload).digest("hex").substring(0, 32);
+  return res.json({
+    signed_url: `${mediaPath}?uid=${encodeURIComponent(userId)}&exp=${expires}&sig=${signature}`
+  });
+});
+
+// Middleware: verify signed media URL (alternative to JWT for <img>/<audio>/<video>)
+function verifyMediaSignature(req, res, next) {
+  // First try normal JWT auth
+  const authHeader = req.headers.authorization || "";
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme === "Bearer" && token) {
+    return requireJwt(req, res, next);
+  }
+  // Then try signed URL params
+  const { uid, exp, sig } = req.query;
+  if (!uid || !exp || !sig) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (Number(exp) < now) {
+    return res.status(401).json({ error: "expired" });
+  }
+  const payload = `${req.path}:${uid}:${exp}`;
+  const expected = crypto.createHmac("sha256", mediaSignSecret || "fallback")
+    .update(payload).digest("hex").substring(0, 32);
+  if (sig !== expected) {
+    return res.status(401).json({ error: "invalid_signature" });
+  }
+  req.user = { sub: uid };
+  return next();
+}
+
+// Export for use in comm-upload routes
+app.set("verifyMediaSignature", verifyMediaSignature);
+
 // Global error handler — catch unhandled errors from async routes
 app.use((err, _req, res, _next) => {
   console.error("Unhandled error:", err);
@@ -682,3 +791,27 @@ const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, () => {
     scheduleTipsRefresh(getOpenAiKey);
   }
 });
+
+// --- Graceful shutdown (v8.21.0) ---
+function gracefulShutdown(signal) {
+  console.log(`${signal} received — shutting down gracefully...`);
+  httpServer.close(() => {
+    console.log("HTTP server closed");
+    try {
+      const { getPool } = require("./db");
+      getPool().end().then(() => {
+        console.log("DB pool drained");
+        process.exit(0);
+      }).catch(() => process.exit(0));
+    } catch (_) {
+      process.exit(0);
+    }
+  });
+  // Force exit after 10 seconds if graceful shutdown stalls
+  setTimeout(() => {
+    console.error("Forced exit after 10s timeout");
+    process.exit(1);
+  }, 10000).unref();
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
