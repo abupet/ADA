@@ -331,7 +331,16 @@ function initNavigation() {
     window.addEventListener('blur', saveCurrentPageState);
     window.addEventListener('pagehide', saveCurrentPageState);
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') saveCurrentPageState();
+        if (document.visibilityState === 'hidden') {
+            saveCurrentPageState();
+        } else if (document.visibilityState === 'visible') {
+            // v8.22.0: Refresh pets cache when user returns to the app
+            if (typeof fetchPetsFromServer === 'function') {
+                fetchPetsFromServer().then(function() {
+                    if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+                });
+            }
+        }
     });
 
     document.addEventListener('keydown', (event) => {
@@ -1698,10 +1707,12 @@ function updateDebugToolsVisibility() {
     if (nav) nav.style.display = dbg ? '' : 'none';
     if (page) page.style.display = dbg ? '' : 'none';
     if (!dbg && runtime) runtime.style.display = 'none';
+    var aiPetDescNav = document.getElementById('nav-ai-petdesc');
+    if (aiPetDescNav) aiPetDescNav.style.display = dbg ? '' : 'none';
 
     if (!dbg) {
         const activePage = document.querySelector('.page.active');
-        if (activePage && activePage.id === 'page-debug') {
+        if (activePage && (activePage.id === 'page-debug' || activePage.id === 'page-ai-petdesc')) {
             navigateToPage('recording');
         }
     }

@@ -308,6 +308,11 @@
         html.push('  <button type="button" class="nutrition-btn nutrition-btn--secondary" data-nutrition-action="details">Dettagli</button>');
         html.push('  <button type="button" class="nutrition-btn nutrition-btn--outline" data-nutrition-action="ask-vet">Ne parlo col vet</button>');
         html.push('</div>');
+        if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
+            html.push('<div style="margin-top:8px;text-align:center;">');
+            html.push('  <button type="button" class="nutrition-btn nutrition-btn--secondary" style="font-size:11px;padding:4px 12px;" onclick="if(typeof _showPromoAnalysis===\'function\')_showPromoAnalysis(null,\'' + _escapeHtml(petId) + '\')">🔍 Analisi raccomandazione</button>');
+            html.push('</div>');
+        }
 
         cardEl.innerHTML = html.join('\n');
         cardEl.classList.remove('nutrition-card--hidden');

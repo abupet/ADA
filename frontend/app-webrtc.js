@@ -189,10 +189,70 @@ function _webrtcStartTimer() {
         if (el) el.textContent = _webrtcFmtDur(Math.floor((Date.now() - _webrtcStartTime) / 1000));
     }, 1000);
     var st = document.querySelector('[data-testid="webrtc-call-status"]'); if (st) st.textContent = 'In chiamata';
+    // Start live transcription
+    _webrtcStartLiveTranscription(_webrtcConvId);
+}
+
+// Live transcription using Web Speech API
+var _webrtcSpeechRecognition = null;
+
+function _webrtcStartLiveTranscription(conversationId) {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    _webrtcSpeechRecognition = new SpeechRecognition();
+    _webrtcSpeechRecognition.continuous = true;
+    _webrtcSpeechRecognition.interimResults = true;
+    _webrtcSpeechRecognition.lang = 'it-IT';
+
+    _webrtcSpeechRecognition.onresult = function(event) {
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+                var transcript = event.results[i][0].transcript;
+                _webrtcSendTranscription(conversationId, transcript);
+            }
+        }
+    };
+
+    _webrtcSpeechRecognition.onend = function() {
+        // Restart if the call is still active
+        if (_webrtcPC && _webrtcSpeechRecognition) {
+            try { _webrtcSpeechRecognition.start(); } catch(e) {}
+        }
+    };
+
+    try { _webrtcSpeechRecognition.start(); } catch(e) {
+        console.warn('[WebRTC] Speech recognition not available:', e.message);
+    }
+}
+
+function _webrtcSendTranscription(conversationId, text) {
+    if (!text || !text.trim()) return;
+    // Send transcription via REST API (POST message to conversation)
+    if (typeof fetchApi === 'function') {
+        fetchApi('/api/communication/conversations/' + conversationId + '/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: text.trim(),
+                type: 'transcription'
+            }),
+            _skipGlobalSpinner: true
+        }).catch(function(e) {
+            console.warn('[WebRTC] Transcription send error:', e.message);
+        });
+    }
+}
+
+function _webrtcStopLiveTranscription() {
+    if (_webrtcSpeechRecognition) {
+        try { _webrtcSpeechRecognition.stop(); } catch(e) {}
+        _webrtcSpeechRecognition = null;
+    }
 }
 
 // ---- Section 7: End call & cleanup ----
 function endCall() {
+    _webrtcStopLiveTranscription();
     if (window._commSocket && _webrtcConvId) window._commSocket.emit('end_call', { conversationId: _webrtcConvId, callId: _webrtcCallId });
     if (_webrtcLocalStream) { _webrtcLocalStream.getTracks().forEach(function(t) { t.stop(); }); _webrtcLocalStream = null; }
     if (_webrtcPC) { _webrtcPC.close(); _webrtcPC = null; }
@@ -265,7 +325,16 @@ function _webrtcInitSignaling() {
 // ---- Section 9: Auto-init signaling ----
 function _webrtcCheckAndInitSignaling() {
     if (window._commSocket) { _webrtcInitSignaling(); return; }
-    setTimeout(function() { if (window._commSocket) _webrtcInitSignaling(); }, 2000);
+    // Retry multiple times with increasing delay
+    var attempts = [500, 1000, 2000, 5000];
+    attempts.forEach(function(delay) {
+        setTimeout(function() {
+            if (window._commSocket && !window._webrtcSignalingReady) {
+                _webrtcInitSignaling();
+                window._webrtcSignalingReady = true;
+            }
+        }, delay);
+    });
 }
 
 if (typeof window !== 'undefined') {

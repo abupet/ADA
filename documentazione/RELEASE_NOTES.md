@@ -1,5 +1,35 @@
 # Release Notes (cumulative)
 
+## v8.22.0
+
+### Bug Fix Critici
+- Fix: pulsanti chiamata vocale e videochiamata non funzionavano — corretti da `initCallUI`/`startVideoCall` a `startCall(convId, type)` con retry signaling migliorato
+- Fix: pet selector si svuotava dopo disconnect backend — aggiunto retry con backoff esponenziale (3 tentativi), refresh automatico su `visibilitychange` e refresh periodico ogni 60s
+
+### Nuove Feature AI
+- **Descrizione Pet per AI**: nuova pagina (visibile in debug) che genera automaticamente una descrizione strutturata del pet da tutte le fonti dati (anagrafica, documenti, vitali, farmaci, conversazioni) tramite OpenAI GPT-4o-mini. Usata per AI matching con prodotti
+- **AI matching servizi**: nuovo endpoint `/api/promo/ai-match` che confronta la descrizione AI del pet con le descrizioni prodotto per ranking intelligente
+- **Analisi raccomandazione**: pulsante debug su card promo/assicurazione/nutrizione che mostra le corrispondenze AI tra pet e prodotto tramite `/api/promo/analyze-match`
+
+### Trascrizione Vocale
+- Trascrizione messaggi vocali via OpenAI Whisper: dopo l'invio di un messaggio vocale, viene automaticamente trascritto e la trascrizione appare sotto il player audio per entrambi gli interlocutori
+- Trascrizione in tempo reale durante chiamate WebRTC via Web Speech API (browser), con invio automatico dei segmenti trascritti nella conversazione
+- Notifica WebSocket `transcription_ready` per aggiornamento real-time della UI
+
+### Comunicazione & UI
+- Pulsanti 📞 e 🎥 per chiamata diretta dalla pagina principale Messaggi con selezione destinatario
+- Riordinamento input chat: `[😊] [textarea] [📎] [📷] [🎤] [Invia]` — aggiunto pulsante 📷 per scatto foto (usa `capture=environment` per fotocamera mobile)
+- Pulsanti 📎 e 📷 spostati sulla riga "Primo messaggio" nella nuova conversazione
+- Label "Descrizione estesa (per AI matching)" rinominata in "Descrizione Prodotto (per AI matching)" nell'admin
+- Testo "paziente" → "pet" in Archivio Sanitario e conversazioni
+- Trascrizioni (video)telefonate visibili nell'Archivio Sanitario con icone tipo conversazione
+
+### Backend
+- Disclaimer insurance differenziato: le proposte assicurative non suggeriscono più di "consultare il veterinario" ma usano un disclaimer specifico sulle condizioni del piano
+- Endpoint `/api/pets/:petId/ai-description` per generazione descrizione AI pet con cache in DB
+- Endpoint `/api/communication/messages/:messageId/transcribe` per trascrizione vocale via Whisper
+- Migrazione SQL `020_ai_pet_description.sql`: colonne `ai_description`, `ai_description_sources_hash`, `ai_description_generated_at` su tabella `pets`; colonna `transcription` su `comm_messages`
+
 ## v8.21.0
 
 ### Security Critical

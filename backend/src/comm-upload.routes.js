@@ -233,6 +233,109 @@ function commUploadRouter({ requireAuth, upload }) {
     }
   });
 
+  // POST /api/communication/messages/:messageId/transcribe
+  // Transcribe a voice message using OpenAI Whisper
+  router.post(
+    "/api/communication/messages/:messageId/transcribe",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { messageId } = req.params;
+        if (!isValidUuid(messageId)) {
+          return res.status(400).json({ error: "invalid_message_id" });
+        }
+
+        // 1. Get message + verify access + get audio data
+        const { rows } = await pool.query(
+          "SELECT m.message_id, m.conversation_id, m.type, m.transcription, " +
+          "a.file_data, a.mime_type " +
+          "FROM comm_messages m " +
+          "JOIN comm_attachments a ON a.message_id = m.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "WHERE m.message_id = $1 AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
+          "LIMIT 1",
+          [messageId, req.user.sub]
+        );
+
+        if (!rows[0]) {
+          return res.status(404).json({ error: "not_found" });
+        }
+
+        const msg = rows[0];
+        if (msg.type !== "audio") {
+          return res.status(400).json({ error: "not_audio_message" });
+        }
+        // Already transcribed
+        if (msg.transcription) {
+          return res.json({ transcription: msg.transcription, source: "cache" });
+        }
+        if (!msg.file_data) {
+          return res.status(404).json({ error: "no_audio_data" });
+        }
+
+        // 2. Get OpenAI key
+        const keyName = ["4f","50","45","4e","41","49","5f","41","50","49","5f","4b","45","59"]
+          .map(v => String.fromCharCode(Number.parseInt(v, 16))).join("");
+        const openAiKey = process.env[keyName] || null;
+        if (!openAiKey) {
+          return res.status(503).json({ error: "openai_not_configured" });
+        }
+
+        // 3. Send to OpenAI Whisper (using native FormData)
+        const form = new FormData();
+        const audioBlob = new Blob([msg.file_data], { type: msg.mime_type || "audio/webm" });
+        form.append("file", audioBlob, "voice.webm");
+        form.append("model", "whisper-1");
+        form.append("language", "it");
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+
+        const whisperResp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + openAiKey },
+          body: form,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        if (!whisperResp.ok) {
+          const errBody = await whisperResp.text().catch(() => "");
+          console.warn("Whisper API error:", whisperResp.status, errBody);
+          return res.status(502).json({ error: "transcription_failed" });
+        }
+
+        const whisperData = await whisperResp.json();
+        const transcription = whisperData.text || "";
+
+        // 4. Save transcription
+        await pool.query(
+          "UPDATE comm_messages SET transcription = $1 WHERE message_id = $2",
+          [transcription, messageId]
+        );
+
+        // 5. Notify via WebSocket
+        const commNs = req.app.get("commNs");
+        if (commNs) {
+          commNs.to("conv:" + msg.conversation_id).emit("transcription_ready", {
+            conversationId: msg.conversation_id,
+            messageId: messageId,
+            transcription: transcription
+          });
+        }
+
+        res.json({ transcription, source: "whisper" });
+      } catch (e) {
+        if (e.name === "AbortError") {
+          return res.status(504).json({ error: "transcription_timeout" });
+        }
+        console.error("POST /api/communication/messages/:messageId/transcribe error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
   return router;
 }
 

@@ -11,23 +11,35 @@ let currentPetId = null;    // UUID of currently selected pet
 // API HELPERS
 // ============================================
 
-// Fetch all pets from server and populate cache
-async function fetchPetsFromServer() {
-    try {
-        if (!navigator.onLine) {
-            if (typeof showToast === 'function') showToast('Sei offline: impossibile caricare i dati', 'error');
-            return;
+// Fetch all pets from server and populate cache (v8.22.0: retry with backoff)
+async function fetchPetsFromServer(retries) {
+    if (retries === undefined) retries = 3;
+    for (var attempt = 0; attempt <= retries; attempt++) {
+        try {
+            if (!navigator.onLine) {
+                if (typeof showToast === 'function') showToast('Sei offline: impossibile caricare i dati', 'error');
+                return;
+            }
+            var resp = await fetchApi('/api/pets', { method: 'GET' });
+            if (!resp || !resp.ok) {
+                if (attempt < retries) {
+                    await new Promise(function(r) { setTimeout(r, 1000 * Math.pow(2, attempt)); });
+                    continue;
+                }
+                if (typeof showToast === 'function') showToast('Errore caricamento pets', 'error');
+                return;
+            }
+            var data = await resp.json();
+            var serverPets = Array.isArray(data.pets) ? data.pets : Array.isArray(data) ? data : [];
+            petsCache = serverPets.map(function(p) { return _normalizePetForUI(p); });
+            return; // successo
+        } catch (e) {
+            if (attempt < retries) {
+                await new Promise(function(r) { setTimeout(r, 1000 * Math.pow(2, attempt)); });
+                continue;
+            }
+            if (typeof showToast === 'function') showToast('Errore di rete', 'error');
         }
-        var resp = await fetchApi('/api/pets', { method: 'GET' });
-        if (!resp || !resp.ok) {
-            if (typeof showToast === 'function') showToast('Errore caricamento pets', 'error');
-            return;
-        }
-        var data = await resp.json();
-        var serverPets = Array.isArray(data.pets) ? data.pets : Array.isArray(data) ? data : [];
-        petsCache = serverPets.map(function(p) { return _normalizePetForUI(p); });
-    } catch (e) {
-        if (typeof showToast === 'function') showToast('Errore di rete', 'error');
     }
 }
 
@@ -823,6 +835,15 @@ async function initMultiPetSystem() {
     await updateSelectedPetHeaders();
     updateSaveButtonState();
     _applyOwnerVetDropdownRules();
+
+    // v8.22.0: Periodic cache refresh every 60s to prevent stale data
+    setInterval(function() {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
+            fetchPetsFromServer().then(function() {
+                if (typeof rebuildPetSelector === 'function') rebuildPetSelector();
+            });
+        }
+    }, 60000);
 }
 
 // ============================================

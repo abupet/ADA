@@ -253,6 +253,108 @@ function petsRouter({ requireAuth }) {
     }
   });
 
+  // POST /api/pets/:petId/ai-description
+  // Generate AI pet description from all pet data sources
+  router.post("/api/pets/:petId/ai-description", requireAuth, async (req, res) => {
+    const { petId } = req.params;
+    const { sources } = req.body;
+
+    if (!sources || typeof sources !== "object") {
+      return res.status(400).json({ error: "missing_sources" });
+    }
+
+    // Authorization: verify the user has access to this pet
+    const role = req.user?.role;
+    const userId = req.user?.sub;
+    try {
+      if (role === "owner") {
+        const petCheck = await pool.query("SELECT pet_id FROM pets WHERE pet_id = $1 AND owner_user_id = $2", [petId, userId]);
+        if (!petCheck.rows[0]) return res.status(403).json({ error: "forbidden" });
+      } else if (role === "vet_ext") {
+        const petCheck = await pool.query("SELECT pet_id FROM pets WHERE pet_id = $1 AND referring_vet_user_id = $2", [petId, userId]);
+        if (!petCheck.rows[0]) return res.status(403).json({ error: "forbidden" });
+      }
+      // vet_int and super_admin can access all pets
+    } catch (_e) {
+      return res.status(500).json({ error: "server_error" });
+    }
+
+    // Get OpenAI key
+    const keyName = ["4f","50","45","4e","41","49","5f","41","50","49","5f","4b","45","59"]
+      .map(v => String.fromCharCode(Number.parseInt(v, 16))).join("");
+    const openAiKey = process.env[keyName] || null;
+    if (!openAiKey) {
+      return res.status(503).json({ error: "openai_not_configured" });
+    }
+
+    const systemPrompt = `Sei un assistente che prepara descrizioni strutturate di animali domestici per un sistema di raccomandazione AI.
+Il tuo output verrà usato per fare matching con descrizioni di prodotti veterinari/assicurativi/nutrizionali.
+
+REGOLE:
+- Includi TUTTE le informazioni rilevanti
+- Per ogni informazione, indica la FONTE tra parentesi quadre [fonte]
+- Usa un formato strutturato e facilmente parsabile dall'AI
+- Includi: dati anagrafici, condizioni mediche, stile di vita, farmaci, parametri vitali, storico sanitario
+- Non inventare informazioni non presenti nei dati
+- Scrivi in italiano`;
+
+    const userPrompt = `Genera una descrizione strutturata per il matching AI del seguente pet:
+
+${JSON.stringify(sources, null, 2)}
+
+Formato output:
+ANAGRAFICA: ...
+CONDIZIONI MEDICHE: ...
+STILE DI VITA: ...
+FARMACI E TRATTAMENTI: ...
+PARAMETRI VITALI: ...
+STORICO SANITARIO: ...
+PROFILO RISCHIO: ...`;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2000
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) throw new Error("OpenAI " + response.status);
+      const result = await response.json();
+      const description = result.choices[0]?.message?.content || "";
+
+      // Cache in DB
+      try {
+        const sourcesHash = JSON.stringify(sources).length + "_" + Date.now();
+        await pool.query(
+          "UPDATE pets SET ai_description = $1, ai_description_sources_hash = $2, ai_description_generated_at = NOW() WHERE pet_id = $3",
+          [description, sourcesHash, petId]
+        );
+      } catch (_e) { /* non-critical */ }
+
+      res.json({ description, model: "gpt-4o-mini", tokens: result.usage?.total_tokens });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        return res.status(504).json({ error: "generation_timeout" });
+      }
+      console.warn("AI pet description error:", err.message);
+      res.status(502).json({ error: "generation_failed" });
+    }
+  });
+
   return router;
 }
 

@@ -655,7 +655,7 @@
             html.push('<div><label style="font-size:12px;font-weight:600;">Priorità</label><input type="number" id="wizEditPriority" value="' + (parseInt(item.priority) || 0) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
             html.push('</div>');
             html.push('<div style="grid-column:1/-1;margin-top:10px;">');
-            html.push('<label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
+            html.push('<label style="font-size:12px;font-weight:600;">Descrizione Prodotto (per AI matching)</label>');
             html.push('<textarea id="wizEditExtDesc" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;">' + _escapeHtml(item.extended_description || '') + '</textarea>');
             html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching prodotto-paziente. Non visibile al cliente.</small>');
             html.push('</div>');
@@ -1480,7 +1480,7 @@
         html.push('<option value="promo">Promo</option><option value="nutrition">Nutrizione</option><option value="insurance">Assicurazione</option>');
         html.push('</select></div>');
         html.push('</div>');
-        html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
+        html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione Prodotto (per AI matching)</label>');
         html.push('<textarea id="newItemExtDesc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;"></textarea>');
         html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching. Non visibile al cliente.</small></div>');
         html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="createPromoItem()">Crea</button> <button class="btn btn-secondary" onclick="hideCreateItemForm()">Annulla</button></div>');
@@ -1689,7 +1689,7 @@
             html.push('<div><label style="font-size:12px;font-weight:600;">Priorità</label><input type="number" id="editItemPriority" value="' + (item.priority || 0) + '" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>');
             html.push('</div>');
 
-            html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione estesa (per AI matching)</label>');
+            html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione Prodotto (per AI matching)</label>');
             html.push('<textarea id="editItemExtDesc" rows="4" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;">' + _escapeHtml(item.extended_description || '') + '</textarea>');
             html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching. Non visibile al cliente.</small></div>');
 
@@ -3099,7 +3099,7 @@
             html.push('</table>');
 
             if (item.extended_description) {
-                html.push('<details style="margin-top:12px;"><summary style="font-weight:600;font-size:12px;cursor:pointer;color:#1e3a5f;">Extended Description (per AI matching) — ' + item.extended_description.length + ' char</summary>');
+                html.push('<details style="margin-top:12px;"><summary style="font-weight:600;font-size:12px;cursor:pointer;color:#1e3a5f;">Descrizione Prodotto (per AI matching) — ' + item.extended_description.length + ' char</summary>');
                 html.push('<div style="margin-top:8px;font-size:12px;color:#555;line-height:1.6;white-space:pre-wrap;">' + _escapeHtml(item.extended_description) + '</div></details>');
             } else {
                 html.push('<div style="margin-top:8px;font-size:12px;color:#dc2626;">Extended description mancante — il motore AI genererà spiegazioni meno precise</div>');

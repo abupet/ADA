@@ -94,6 +94,7 @@
                 <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;">🔧 Gestione</div>
                 <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;">🛠 Debug</div>
+                <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;">🤖 Descrizione Pet per AI</div>
                 <div class="nav-item" onclick="logout()">🚪 Esci</div>
             </nav>
         </aside>
@@ -871,7 +872,7 @@
                     <p class="history-note">Nota: tieni premuto un referto per mostrare la "x" e cancellarlo.</p>
                 </div>
                 <div id="pet-conversations-section" style="margin-top: 24px;">
-                    <h3 style="font-size: 16px; color: #1e3a5f; margin-bottom: 12px;">💬 Conversazioni relative a questo paziente</h3>
+                    <h3 style="font-size: 16px; color: #1e3a5f; margin-bottom: 12px;">💬 Conversazioni relative a questo pet</h3>
                     <div id="pet-conversations-list"></div>
                 </div>
             </div>
@@ -1302,6 +1303,35 @@
                 </div>
             </div>
 
+            <!-- Page: AI Pet Description -->
+            <div id="page-ai-petdesc" class="page" style="display:none;">
+                <div class="card" style="margin-bottom:16px;">
+                    <h2 style="font-size:18px;color:#1e3a5f;margin-bottom:12px;">🤖 Descrizione Pet per AI</h2>
+                    <p style="font-size:13px;color:#64748b;margin-bottom:16px;">
+                        Questa descrizione viene generata automaticamente dall'AI a partire da tutti i dati del pet,
+                        e viene usata per trovare il miglior match con i prodotti del catalogo.
+                    </p>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:12px;font-weight:600;color:#1e3a5f;display:block;margin-bottom:4px;">
+                            Descrizione Pet (per AI matching)
+                        </label>
+                        <textarea id="aiPetDescriptionField" readonly
+                            style="width:100%;min-height:300px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;
+                                   font-size:13px;line-height:1.6;resize:vertical;background:#f1f5f9;color:#334155;
+                                   font-family:inherit;box-sizing:border-box;"
+                            placeholder="Seleziona un pet per visualizzare la descrizione AI..."></textarea>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button type="button" class="btn btn-secondary" id="btnRegenerateAiDesc"
+                            onclick="regenerateAiPetDescription()" style="font-size:13px;">
+                            🔄 Rigenera descrizione
+                        </button>
+                        <span id="aiDescStatus" style="font-size:12px;color:#94a3b8;"></span>
+                    </div>
+                    <div id="aiDescSources" style="margin-top:12px;font-size:11px;color:#94a3b8;"></div>
+                </div>
+            </div>
+
             <!-- Page: Seed Engine (PR 14) -->
             <div id="page-seed" class="page">
                 <div class="page-header">
@@ -1718,6 +1748,7 @@
     <script src="app-insurance.js"></script>
     <script src="app-communication.js"></script>
     <script src="app-webrtc.js"></script>
+    <script src="app-ai-petdesc.js"></script>
     <script src="app-admin.js"></script>
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
