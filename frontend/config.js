@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.21.0';
-const ADA_RELEASE_NOTES = 'Security hardening: WS auth, CSP, brute-force protection, signed media URLs, graceful shutdown, password policy, global error handlers, SW versioning.';
+const ADA_VERSION = '8.22.0';
+const ADA_RELEASE_NOTES = 'AI pet description, voice transcription, camera photo, call buttons fix, pet selector retry, insurance disclaimer, AI matching, direct calls.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

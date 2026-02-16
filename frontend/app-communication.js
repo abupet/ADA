@@ -259,6 +259,9 @@ function initCommSocket() {
                 initCommunication(_commContainerId || 'communication-container');
             }
         });
+        _commSocket.on('transcription_ready', function (d) {
+            _commUpdateMessageTranscription(d.messageId, d.transcription);
+        });
     } catch (_) { /* socket init failure is non-critical */ }
     window.addEventListener('online', _commFlushOfflineQueue);
 }
@@ -355,7 +358,10 @@ async function initCommunication(containerId) {
 
     container.innerHTML = '<div class="comm-container" data-testid="comm-container">' +
         '<div class="comm-header"><h3>Messaggi</h3>' +
-        '<button class="comm-btn comm-btn-primary" data-testid="comm-new-btn">Nuova conversazione</button></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+        '<button class="comm-btn-icon" onclick="_commStartDirectCall(\'voice_call\')" title="Chiamata vocale" style="font-size:20px;background:none;border:none;cursor:pointer;">\uD83D\uDCDE</button>' +
+        '<button class="comm-btn-icon" onclick="_commStartDirectCall(\'video_call\')" title="Videochiamata" style="font-size:20px;background:none;border:none;cursor:pointer;">\uD83C\uDFA5</button>' +
+        '<button class="comm-btn comm-btn-primary" data-testid="comm-new-btn">Nuova conversazione</button></div></div>' +
         '<div style="display:flex;gap:8px;margin-bottom:12px;">' +
         '<input type="text" class="comm-search" data-testid="comm-search" placeholder="Cerca conversazione..." oninput="_commFilterList()" style="flex:1;margin-bottom:0;" />' +
         '<select id="comm-status-filter" data-testid="comm-status-filter" onchange="_commFilterList()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;width:auto;min-width:100px;">' +
@@ -521,12 +527,14 @@ async function _commShowNewForm(containerId) {
         '<select id="comm-new-recipient" disabled><option value="">Caricamento...</option></select></div>' +
         subjectHtml +
         referralFormHtml +
-        '<label for="comm-new-first-message">Primo messaggio</label>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+        '<label for="comm-new-first-message" style="flex:1;">Primo messaggio</label>' +
+        '<label style="cursor:pointer;font-size:18px;color:#64748b;flex-shrink:0;" title="Allega file">' +
+        '📎<input type="file" id="comm-new-file-input" style="display:none" multiple accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleNewFormFileSelect(this)"></label>' +
+        '<button type="button" style="font-size:18px;background:none;border:none;cursor:pointer;color:#64748b;padding:0;" title="Scatta foto" onclick="_commCaptureCameraPhoto(\'new\')">📷</button>' +
+        '</div>' +
         '<textarea id="comm-new-first-message" placeholder="Scrivi il primo messaggio della conversazione..." rows="3" style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit;"></textarea>' +
         '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;">' +
-        '<label style="cursor:pointer;font-size:18px;color:#64748b;" title="Allega file">' +
-        '📎<input type="file" id="comm-new-file-input" style="display:none" multiple accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleNewFormFileSelect(this)">' +
-        '</label>' +
         '<span id="comm-new-file-preview" style="font-size:12px;color:#64748b;"></span>' +
         '<span id="comm-new-file-clear" style="display:none;cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearNewFormFile()">×</span>' +
         '</div>' +
@@ -787,8 +795,8 @@ function _commRenderChat(container, convId, messages, meta) {
     } else {
         // PR6: Call buttons for human conversations
         html += '<div id="comm-call-controls" style="display:flex;gap:8px;margin-left:auto;">';
-        html += '<button type="button" class="comm-btn-icon" onclick="if(typeof initCallUI===\'function\')initCallUI(\'comm-call-overlay\',\'' + convId + '\')" title="Chiamata audio" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83D\uDCDE</button>';
-        html += '<button type="button" class="comm-btn-icon" onclick="if(typeof startVideoCall===\'function\')startVideoCall(\'' + convId + '\')" title="Videochiamata" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83C\uDFA5</button>';
+        html += '<button type="button" class="comm-btn-icon" onclick="if(typeof startCall===\'function\')startCall(\'' + convId + '\',\'voice_call\')" title="Chiamata audio" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83D\uDCDE</button>';
+        html += '<button type="button" class="comm-btn-icon" onclick="if(typeof startCall===\'function\')startCall(\'' + convId + '\',\'video_call\')" title="Videochiamata" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83C\uDFA5</button>';
         html += '</div>';
     }
     html += '</div>';
@@ -879,12 +887,13 @@ function _commRenderChat(container, convId, messages, meta) {
             '<span id="comm-file-preview-name"></span>' +
             '<span style="cursor:pointer;font-size:16px;color:#94a3b8;" onclick="_commClearFile()" title="Rimuovi">\u00D7</span></div>';
         html += '<div class="comm-input-row" data-testid="comm-input-row">' +
-            '<label style="cursor:pointer;font-size:20px;padding:8px;color:#64748b;flex-shrink:0;" title="Allega file">' +
-            '\uD83D\uDCCE<input type="file" id="comm-file-input" style="display:none" multiple ' +
-            'accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleFileSelect(this)"></label>' +
             '<button type="button" class="comm-btn-icon" id="comm-emoji-btn" title="Emoji" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;">\uD83D\uDE0A</button>' +
             '<textarea id="comm-msg-input" data-testid="comm-msg-input" placeholder="Scrivi un messaggio..." rows="1" ' +
             'onkeydown="_commKeydown(event,\'' + convId + '\')" oninput="_commEmitTyping(\'' + convId + '\')"></textarea>' +
+            '<label style="cursor:pointer;font-size:20px;padding:4px 6px;color:#64748b;flex-shrink:0;" title="Allega file">' +
+            '\uD83D\uDCCE<input type="file" id="comm-file-input" style="display:none" multiple ' +
+            'accept="image/*,application/pdf,audio/*,video/*" onchange="_commHandleFileSelect(this)"></label>' +
+            '<button type="button" class="comm-btn-icon" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;color:#64748b;" title="Scatta foto" onclick="_commCaptureCameraPhoto(\'conv\')">\uD83D\uDCF7</button>' +
             '<button type="button" class="comm-btn-icon" id="comm-voice-btn" title="Messaggio vocale" style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px 6px;">\uD83C\uDFA4</button>' +
             '<button class="comm-btn comm-btn-primary" data-testid="comm-send-btn" onclick="_commSend(\'' + convId + '\')">Invia</button></div>';
     } else {
@@ -991,6 +1000,10 @@ function _commRenderBubble(msg, isOwn) {
                 'onclick="window.open(this.src,\'_blank\')" onerror="this.style.display=\'none\'" loading="lazy" /></div>';
         } else if (msgType === 'audio') {
             html += '<div><audio controls preload="none" style="max-width:260px;"><source src="' + dlUrl + '" type="' + _commEscape(msg.media_type || 'audio/mpeg') + '"></audio></div>';
+            if (msg.transcription) {
+                html += '<div style="font-size:12px;color:#64748b;margin-top:6px;padding:6px 10px;background:#f8fafc;border-radius:6px;font-style:italic;">' +
+                    '\uD83D\uDCDD ' + _commEscape(msg.transcription) + '</div>';
+            }
         } else if (msgType === 'video') {
             html += '<div><video controls preload="none" style="max-width:280px;border-radius:8px;"><source src="' + dlUrl + '" type="' + _commEscape(msg.media_type || 'video/mp4') + '"></video></div>';
         } else {
@@ -1445,23 +1458,39 @@ async function loadPetConversations(petId) {
         var data = await resp.json();
         var convs = data.conversations || data || [];
         if (convs.length === 0) {
-            listEl.innerHTML = '<p style="color:#94a3b8;font-size:13px;">Nessuna conversazione per questo paziente.</p>';
+            listEl.innerHTML = '<p style="color:#94a3b8;font-size:13px;">Nessuna conversazione per questo pet.</p>';
             return;
         }
         var html = '';
         for (var i = 0; i < convs.length; i++) {
             var c = convs[i];
             var isAi = c.recipient_type === 'ai';
-            var icon = isAi ? '\uD83E\uDD16' : '\uD83D\uDCAC';
+            var isVoiceCall = c.type === 'voice_call';
+            var isVideoCall = c.type === 'video_call';
+            var icon = isAi ? '\uD83E\uDD16' : (isVoiceCall ? '\uD83D\uDCDE' : (isVideoCall ? '\uD83C\uDFA5' : '\uD83D\uDCAC'));
+            var typeLabel = isVoiceCall ? 'Telefonata' : (isVideoCall ? 'Videotelefonata' : '');
             var name = isAi ? 'ADA' : _commEscape(c.vet_display_name || c.owner_display_name || 'Chat');
             var time = _commFormatTime(c.updated_at || c.created_at);
             var triageHtml = isAi && c.triage_level ? _commTriageBadgeHtml(c.triage_level) : '';
-            html += '<div style="display:flex;align-items:center;padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;cursor:pointer;background:#fff;" ' +
+            html += '<div style="padding:10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;cursor:pointer;background:#fff;" ' +
                 'onclick="navigateToPage(\'communication\');setTimeout(function(){openConversation(\'' + c.conversation_id + '\')},300);">' +
+                '<div style="display:flex;align-items:center;">' +
                 '<span style="font-size:20px;margin-right:10px;">' + icon + '</span>' +
-                '<div style="flex:1;"><div style="font-weight:600;font-size:13px;color:#1e3a5f;">' + triageHtml + name + '</div>' +
+                '<div style="flex:1;"><div style="font-weight:600;font-size:13px;color:#1e3a5f;">' + triageHtml + (typeLabel ? typeLabel + ' — ' : '') + name + '</div>' +
                 (c.subject ? '<div style="font-size:12px;color:#94a3b8;">' + _commEscape(c.subject) + '</div>' : '') +
                 '</div><div style="font-size:11px;color:#94a3b8;">' + time + '</div></div>';
+            // Show transcription messages for voice/video calls
+            if ((isVoiceCall || isVideoCall) && c.transcription_messages && c.transcription_messages.length > 0) {
+                html += '<div style="margin-top:8px;padding:8px;background:#f8fafc;border-radius:6px;font-size:12px;">';
+                html += '<div style="font-weight:600;color:#1e3a5f;margin-bottom:4px;">Trascrizione:</div>';
+                for (var j = 0; j < c.transcription_messages.length; j++) {
+                    var tm = c.transcription_messages[j];
+                    html += '<div style="margin:2px 0;"><span style="font-weight:600;color:#2563eb;">' +
+                        _commEscape(tm.sender_name || 'Utente') + ':</span> ' + _commEscape(tm.content) + '</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
         }
         listEl.innerHTML = html;
     } catch (e) {
@@ -1580,6 +1609,23 @@ function _commFormatFileSize(bytes) {
 }
 
 // ── New conversation form file attachment helpers ──
+function _commCaptureCameraPhoto(context) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = function() {
+        if (input.files && input.files.length > 0) {
+            if (context === 'new') {
+                _commHandleNewFormFileSelect(input);
+            } else {
+                _commHandleFileSelect(input);
+            }
+        }
+    };
+    input.click();
+}
+
 function _commHandleNewFormFileSelect(input) {
     if (!input || !input.files || input.files.length === 0) return;
     var MAX_SIZE = 10 * 1024 * 1024;
@@ -2032,7 +2078,13 @@ async function _commSendVoiceMessage(blob) {
             { method: 'POST', headers: { 'Authorization': 'Bearer ' + getAuthToken() }, body: formData }
         );
         if (res.ok) {
+            var msgData = await res.json();
             _commLoadMessages(_commCurrentConversationId);
+            // Trigger transcription in background (non-blocking)
+            var mid = (msgData.message && msgData.message.message_id) || msgData.message_id;
+            if (mid) {
+                _commTranscribeVoiceMessage(mid);
+            }
         } else {
             if (typeof showToast === 'function') showToast('Errore invio messaggio vocale', 'error');
         }
@@ -2041,9 +2093,122 @@ async function _commSendVoiceMessage(blob) {
     }
 }
 
+async function _commTranscribeVoiceMessage(messageId) {
+    try {
+        var resp = await fetchApi('/api/communication/messages/' + messageId + '/transcribe', {
+            method: 'POST', _skipGlobalSpinner: true
+        });
+        if (resp && resp.ok) {
+            // Transcription will be received via WebSocket and update the UI
+        }
+    } catch(e) {
+        console.warn('[Communication] Transcription error:', e.message);
+    }
+}
+
+function _commUpdateMessageTranscription(messageId, transcription) {
+    // Update the transcription inline if the message bubble is visible
+    var msgEl = document.querySelector('[data-msg-id="' + messageId + '"]');
+    if (msgEl) {
+        var audioEl = msgEl.querySelector('audio');
+        if (audioEl && !msgEl.querySelector('.comm-transcription')) {
+            var div = document.createElement('div');
+            div.className = 'comm-transcription';
+            div.style.cssText = 'font-size:12px;color:#64748b;margin-top:6px;padding:6px 10px;background:#f8fafc;border-radius:6px;font-style:italic;';
+            div.textContent = '\uD83D\uDCDD ' + transcription;
+            audioEl.parentElement.parentElement.insertBefore(div, audioEl.parentElement.nextSibling);
+        }
+    } else if (_commCurrentConversationId) {
+        // Message not visible, reload conversation
+        _commLoadMessages(_commCurrentConversationId);
+    }
+}
+
 // Reload messages for voice message display
 function _commLoadMessages(conversationId) {
     if (conversationId) openConversation(conversationId);
+}
+
+// Direct call from messages page (MOD 11)
+function _commStartDirectCall(callType) {
+    var area = document.getElementById('comm-new-form-area');
+    if (!area) return;
+
+    area.innerHTML = '<div class="comm-new-form" data-testid="comm-call-form">' +
+        '<label>Destinatario</label>' +
+        '<select id="comm-call-recipient" onchange="_commOnCallRecipientChange()">' +
+        '<option value="">-- Seleziona destinatario --</option></select>' +
+        '<div id="comm-call-start-row" style="display:none;margin-top:12px;">' +
+        '<button class="comm-btn comm-btn-primary" onclick="_commInitiateDirectCall(\'' + callType + '\')">Iniziare</button>' +
+        '</div>' +
+        '<button class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
+        '</div>';
+
+    _commLoadCallRecipients();
+}
+
+async function _commLoadCallRecipients() {
+    var select = document.getElementById('comm-call-recipient');
+    if (!select) return;
+
+    try {
+        var resp = await fetchApi('/api/communication/recipients?type=vet');
+        if (resp && resp.ok) {
+            var data = await resp.json();
+            var recipients = data.recipients || data || [];
+            var html = '<option value="">-- Seleziona destinatario --</option>';
+            recipients.forEach(function(r) {
+                // Exclude ADA assistant
+                if (r.display_name && r.display_name.toLowerCase().indexOf('ada') === 0) return;
+                html += '<option value="' + (r.user_id || '') + '">' + (r.display_name || r.email || 'Utente') + '</option>';
+            });
+            select.innerHTML = html;
+        }
+    } catch(e) {
+        console.warn('[Communication] Load call recipients error:', e.message);
+    }
+}
+
+function _commOnCallRecipientChange() {
+    var sel = document.getElementById('comm-call-recipient');
+    var row = document.getElementById('comm-call-start-row');
+    if (row) row.style.display = sel && sel.value ? '' : 'none';
+}
+
+async function _commInitiateDirectCall(callType) {
+    var recipientId = (document.getElementById('comm-call-recipient') || {}).value;
+    if (!recipientId) return;
+    var petId = (typeof getCurrentPetId === 'function') ? getCurrentPetId() : null;
+    if (!petId) {
+        if (typeof showToast === 'function') showToast('Seleziona un pet', 'warning');
+        return;
+    }
+
+    try {
+        // Create a conversation of type voice_call or video_call
+        var resp = await fetchApi('/api/communication/conversations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pet_id: petId,
+                recipient_id: recipientId,
+                type: callType,
+                subject: callType === 'video_call' ? 'Videotelefonata' : 'Telefonata'
+            })
+        });
+
+        if (resp && resp.ok) {
+            var conv = await resp.json();
+            var convId = conv.conversation_id || (conv.conversation && conv.conversation.conversation_id);
+            if (convId && typeof startCall === 'function') {
+                startCall(convId, callType);
+            }
+        } else {
+            if (typeof showToast === 'function') showToast('Errore creazione chiamata', 'error');
+        }
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+    }
 }
 
 // Handle push notification navigation

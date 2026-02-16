@@ -236,12 +236,14 @@ function promoRouter({ requireAuth }) {
           }
 
           // Generate explanation
+          const _item = promoResult._item || promoResult;
           const explResult = await generateExplanation(pool, {
             pet,
-            promoItem: promoResult._item || promoResult,
+            promoItem: _item,
             context,
             matchedTags: promoResult.matchedTags || [],
             getOpenAiKey: _getOpenAiKey,
+            serviceType: Array.isArray(_item.service_type) ? _item.service_type[0] : (_item.service_type || null),
           });
 
           const confidence = explResult.explanation?.confidence || "low";
@@ -708,6 +710,152 @@ function promoRouter({ requireAuth }) {
     } catch (e) {
       console.error("GET /api/promo/consent/services error", e);
       res.json({ services: [] });
+    }
+  });
+
+  // =======================================================
+  // POST /api/promo/ai-match
+  // AI-powered matching between pet description and product descriptions
+  // =======================================================
+  router.post("/api/promo/ai-match", requireAuth, async (req, res) => {
+    try {
+      const { petId, petDescription, candidateItems } = req.body;
+      if (!petDescription || !candidateItems || !Array.isArray(candidateItems) || candidateItems.length === 0) {
+        return res.status(400).json({ error: "missing_data" });
+      }
+
+      const openAiKey = _getOpenAiKey();
+      if (!openAiKey) {
+        return res.status(503).json({ error: "openai_not_configured" });
+      }
+
+      const candidateList = candidateItems.map(function(item, idx) {
+        return (idx + 1) + ". [ID: " + item.promo_item_id + "] " + (item.extended_description || item.name || "N/A");
+      }).join("\n");
+
+      const systemPrompt = `Sei un sistema di ranking per raccomandazioni di prodotti veterinari/assicurativi/nutrizionali.
+Devi valutare quanto ogni prodotto candidato è adatto a un pet specifico.
+Rispondi SOLO con JSON valido.`;
+
+      const userPrompt = `Descrizione pet:\n${petDescription}\n\nProdotti candidati:\n${candidateList}\n\nPer ogni prodotto, assegna uno score da 0 a 100 e una breve motivazione.
+Rispondi con questo JSON:
+{ "matches": [{ "promo_item_id": "...", "score": 85, "reasoning": "..." }] }
+Ordina per score discendente.`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 1000
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        return res.status(502).json({ error: "openai_error" });
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || "";
+
+      // Parse JSON response
+      try {
+        const jsonStart = content.indexOf("{");
+        const jsonEnd = content.lastIndexOf("}");
+        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+          const parsed = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
+          return res.json(parsed);
+        }
+      } catch (_) {}
+
+      res.json({ matches: [] });
+    } catch (e) {
+      if (e.name === "AbortError") {
+        return res.status(504).json({ error: "timeout" });
+      }
+      console.error("POST /api/promo/ai-match error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // =======================================================
+  // POST /api/promo/analyze-match
+  // Analyze match between pet description and product description (debug)
+  // =======================================================
+  router.post("/api/promo/analyze-match", requireAuth, async (req, res) => {
+    try {
+      const { petDescription, productDescription } = req.body;
+      if (!petDescription || !productDescription) {
+        return res.status(400).json({ error: "missing_data" });
+      }
+
+      const openAiKey = _getOpenAiKey();
+      if (!openAiKey) {
+        return res.status(503).json({ error: "openai_not_configured" });
+      }
+
+      const systemPrompt = `Analizza le corrispondenze tra la descrizione di un pet e la descrizione di un prodotto.
+Identifica SOLO le corrispondenze (aspetti in comune), NON le informazioni senza match.
+Rispondi SOLO con JSON valido.`;
+
+      const userPrompt = `Descrizione pet:\n${petDescription}\n\nDescrizione prodotto:\n${productDescription}\n\nRispondi con questo JSON:
+{ "matches": [{ "aspect": "Nome aspetto", "pet_detail": "Dettaglio dal pet", "product_detail": "Dettaglio dal prodotto", "relevance": "high|medium|low" }] }
+Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.2,
+          max_tokens: 1000
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        return res.status(502).json({ error: "openai_error" });
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || "";
+
+      try {
+        const jsonStart = content.indexOf("{");
+        const jsonEnd = content.lastIndexOf("}");
+        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+          const parsed = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
+          return res.json(parsed);
+        }
+      } catch (_) {}
+
+      res.json({ matches: [] });
+    } catch (e) {
+      if (e.name === "AbortError") {
+        return res.status(504).json({ error: "timeout" });
+      }
+      console.error("POST /api/promo/analyze-match error", e);
+      res.status(500).json({ error: "server_error" });
     }
   });
 

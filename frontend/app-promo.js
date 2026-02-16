@@ -1079,57 +1079,81 @@
     global.renderVetFlagButton     = renderVetFlagButton;
 
 // PR1: Debug analysis for promo recommendation
-function _showPromoAnalysis(productId, petId) {
+async function _showPromoAnalysis(productId, petId) {
     if (!petId && typeof getCurrentPetId === 'function') petId = getCurrentPetId();
     if (!petId) {
         if (typeof showToast === 'function') showToast('Nessun pet selezionato', 'warning');
         return;
     }
 
-    (typeof getPetById === 'function' ? getPetById(petId) : Promise.resolve(null)).then(function(pet) {
-        if (!pet) {
-            alert('Pet non trovato nella cache');
-            return;
-        }
-        var p = pet.patient || {};
-        var ls = pet.lifestyle || {};
-        var age = '';
-        if (typeof _computeAgeFromBirthdate === 'function' && p.petBirthdate) {
-            age = _computeAgeFromBirthdate(p.petBirthdate);
-        } else {
-            age = p.petBirthdate || 'N/D';
-        }
+    // Get pet AI description
+    var petDesc = null;
+    if (typeof _aiPetDescCache !== 'undefined' && _aiPetDescCache[petId]) {
+        petDesc = _aiPetDescCache[petId].description;
+    }
+    if (!petDesc && typeof generateAiPetDescription === 'function') {
+        var result = await generateAiPetDescription(petId);
+        petDesc = result ? result.description : null;
+    }
 
-        var lines = [
-            '═══ ANALISI RACCOMANDAZIONE ═══',
-            '',
-            '📋 DATI PET UTILIZZATI:',
-            '  Nome: ' + (p.petName || pet.name || 'N/D'),
-            '  Specie: ' + (p.petSpecies || pet.species || 'N/D'),
-            '  Razza: ' + (p.petBreed || pet.breed || 'N/D'),
-            '  Età: ' + age,
-            '  Peso: ' + (pet.weight_kg || p.petWeightKg || 'N/D') + ' kg',
-            '  Sesso: ' + (p.petSex || pet.sex || 'N/D'),
-            '',
-            '🏠 STILE DI VITA:',
-            '  Ambiente: ' + (ls.lifestyle || 'N/D'),
-            '  Attività: ' + (ls.activityLevel || 'N/D'),
-            '  Dieta: ' + (ls.dietType || 'N/D'),
-            '  Preferenze: ' + (ls.dietPreferences || 'N/D'),
-            '  Patologie: ' + (ls.knownConditions || 'nessuna'),
-            '  Farmaci: ' + (ls.currentMeds || 'nessuno'),
-            '  Comportamento: ' + (ls.behaviorNotes || 'N/D'),
-            '  Località: ' + (ls.location || 'N/D'),
-            '',
-            '🏷️ TAG MATCHING:',
-            '  I tag vengono calcolati dal backend basandosi su',
-            '  specie, razza, età, peso, e condizioni note del',
-            '  pet per trovare il prodotto più pertinente.',
-            '',
-            '📦 Product ID: ' + (productId || 'N/D')
-        ];
-        alert(lines.join('\n'));
-    });
+    if (!petDesc) {
+        if (typeof showToast === 'function') showToast('Descrizione pet non disponibile', 'warning');
+        return;
+    }
+
+    // Get product description from the card
+    var cardEl = document.querySelector('[data-promo-item-id="' + productId + '"]');
+    var productDesc = '';
+    if (cardEl) {
+        var descEl = cardEl.querySelector('.promo-description');
+        if (descEl) productDesc = descEl.textContent || '';
+    }
+    if (!productDesc) productDesc = 'Prodotto ID: ' + productId;
+
+    // Call backend for AI analysis
+    try {
+        var resp = await fetchApi('/api/promo/analyze-match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ petDescription: petDesc, productDescription: productDesc })
+        });
+        if (resp && resp.ok) {
+            var analysis = await resp.json();
+            _showAnalysisModal(analysis);
+        } else {
+            if (typeof showToast === 'function') showToast('Errore analisi', 'error');
+        }
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+    }
+}
+
+function _showAnalysisModal(analysis) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;';
+
+    var html = '<h3 style="color:#1e3a5f;margin-bottom:16px;">🔍 Analisi Raccomandazione</h3>';
+
+    if (analysis.matches && analysis.matches.length > 0) {
+        analysis.matches.forEach(function(match, idx) {
+            var borderColor = idx === 0 ? '#16a34a' : idx < 3 ? '#f59e0b' : '#94a3b8';
+            html += '<div style="padding:10px;margin:8px 0;background:#f8fafc;border-radius:8px;border-left:3px solid ' + borderColor + ';">' +
+                '<div style="font-weight:600;font-size:13px;color:#1e3a5f;">' + (idx+1) + '. ' + _escapeHtml(match.aspect) + '</div>' +
+                '<div style="font-size:12px;color:#64748b;margin-top:4px;">Pet: ' + _escapeHtml(match.pet_detail) + '</div>' +
+                '<div style="font-size:12px;color:#64748b;">Prodotto: ' + _escapeHtml(match.product_detail) + '</div>' +
+                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">Rilevanza: ' + _escapeHtml(match.relevance) + '</div></div>';
+        });
+    } else {
+        html += '<p style="color:#94a3b8;">Nessuna corrispondenza trovata.</p>';
+    }
+
+    html += '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="margin-top:16px;padding:8px 20px;background:#1e3a5f;color:#fff;border:none;border-radius:8px;cursor:pointer;">Chiudi</button>';
+    modal.innerHTML = html;
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
 })(typeof window !== 'undefined' ? window : this);

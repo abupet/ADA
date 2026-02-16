@@ -1,4 +1,4 @@
-const ADA_SW_VERSION = '8.21.0';
+const ADA_SW_VERSION = '8.22.0';
 const CACHE_NAME = 'ada-cache-' + ADA_SW_VERSION;
 const STATIC_ASSETS = [
     './',
@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
     './app-insurance.js',
     './app-communication.js',
     './app-webrtc.js',
+    './app-ai-petdesc.js',
     './app-admin.js',
     './app-observability.js',
     './app-testdata.js',

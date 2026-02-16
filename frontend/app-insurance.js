@@ -266,6 +266,10 @@
             '<button class="insurance-btn insurance-btn--secondary" data-insurance-action="details" data-pet-id="' + _escapeHtml(petId) + '">Dettagli</button>' +
             '<button class="insurance-btn insurance-btn--ghost" data-insurance-action="dismiss" data-pet-id="' + _escapeHtml(petId) + '">No grazie</button>' +
             '</div>' +
+            (typeof debugLogEnabled !== 'undefined' && debugLogEnabled ?
+                '<div style="margin-top:8px;text-align:center;">' +
+                '<button type="button" class="insurance-btn insurance-btn--secondary" style="font-size:11px;padding:4px 12px;" onclick="if(typeof _showPromoAnalysis===\'function\')_showPromoAnalysis(null,\'' + _escapeHtml(petId) + '\')">🔍 Analisi raccomandazione</button>' +
+                '</div>' : '') +
             '</div></div>';
 
         container.innerHTML = html;

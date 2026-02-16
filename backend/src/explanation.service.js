@@ -25,7 +25,7 @@ function serverLog(level, domain, message, data, req) {
  */
 async function generateExplanation(
   pool,
-  { pet, promoItem, context, matchedTags, getOpenAiKey }
+  { pet, promoItem, context, matchedTags, getOpenAiKey, serviceType }
 ) {
   const startMs = Date.now();
   const petName = pet?.name || "il tuo pet";
@@ -80,7 +80,7 @@ async function generateExplanation(
         if (b.current_usage >= b.monthly_limit) {
           serverLog('INFO', 'EXPLAIN', 'budget exceeded', {tenantId, usage: b.current_usage, limit: b.monthly_limit});
           return {
-            explanation: _fallbackExplanation(petName),
+            explanation: _fallbackExplanation(petName, serviceType),
             source: "fallback",
             tokensCost: 0,
             latencyMs: Date.now() - startMs,
@@ -96,7 +96,7 @@ async function generateExplanation(
   const openAiKey = typeof getOpenAiKey === "function" ? getOpenAiKey() : null;
   if (!openAiKey) {
     return {
-      explanation: _fallbackExplanation(petName),
+      explanation: _fallbackExplanation(petName, serviceType),
       source: "fallback",
       tokensCost: 0,
       latencyMs: Date.now() - startMs,
@@ -108,6 +108,11 @@ async function generateExplanation(
 Il tuo compito: spiegare al proprietario perché vede questo suggerimento di prodotto per il suo animale.
 Sii professionale, empatico e conciso. Non dare consigli medici specifici.`;
 
+    const isInsurance = (serviceType === 'insurance');
+    const disclaimerText = isInsurance
+      ? "Suggerimento informativo. Le condizioni effettive possono variare in base al piano scelto."
+      : "Suggerimento informativo. Consulta il tuo veterinario prima di modificare la dieta o il regime di cura del tuo animale.";
+
     const userPrompt = `Pet: ${JSON.stringify(petSummary)}
 Prodotto: ${promoItem?.name || "Prodotto"} (${promoItem?.category || "generico"})
 Descrizione prodotto: ${promoItem?.extended_description || promoItem?.description || "N/A"}
@@ -118,7 +123,7 @@ Rispondi con questo JSON:
   "why_you_see_this": "Breve spiegazione (max 2 frasi) del perché il proprietario vede questo suggerimento",
   "benefit_for_pet": "Beneficio specifico per questo animale (max 2 frasi) o null",
   "clinical_fit": "Correlazione clinica (max 1 frase) o null se non applicabile",
-  "disclaimer": "Suggerimento informativo. Consulta il tuo veterinario prima di modificare la dieta o il regime di cura del tuo animale.",
+  "disclaimer": "${disclaimerText}",
   "confidence": "high|medium|low"
 }`;
 
@@ -147,7 +152,7 @@ Rispondi con questo JSON:
 
     if (!response.ok) {
       return {
-        explanation: _fallbackExplanation(petName),
+        explanation: _fallbackExplanation(petName, serviceType),
         source: "fallback",
         tokensCost: 0,
         latencyMs: Date.now() - startMs,
@@ -183,7 +188,7 @@ Rispondi con questo JSON:
       }
     } catch (_parseErr) {
       serverLog('ERR', 'EXPLAIN', 'parse fail', {itemId, error: _parseErr.message});
-      explanation = _fallbackExplanation(petName);
+      explanation = _fallbackExplanation(petName, serviceType);
       // Still save in cache to avoid repeated bad calls
     }
 
@@ -225,7 +230,7 @@ Rispondi con questo JSON:
     // Timeout or network error
     serverLog('ERR', 'EXPLAIN', 'timeout', {error: e.message, isAbort: e.name === 'AbortError', latencyMs: Date.now() - startMs});
     return {
-      explanation: _fallbackExplanation(petName),
+      explanation: _fallbackExplanation(petName, serviceType),
       source: "fallback",
       tokensCost: 0,
       latencyMs: Date.now() - startMs,
@@ -233,13 +238,15 @@ Rispondi con questo JSON:
   }
 }
 
-function _fallbackExplanation(petName) {
+function _fallbackExplanation(petName, serviceType) {
+  var isInsurance = (serviceType === 'insurance');
   return {
     why_you_see_this: `Selezionato in base al profilo di ${petName}.`,
     benefit_for_pet: null,
     clinical_fit: null,
-    disclaimer:
-      "Suggerimento informativo. Consulta il tuo veterinario prima di modificare la dieta o il regime di cura del tuo animale.",
+    disclaimer: isInsurance
+      ? "Suggerimento informativo. Le condizioni effettive possono variare in base al piano scelto."
+      : "Suggerimento informativo. Consulta il tuo veterinario prima di modificare la dieta o il regime di cura del tuo animale.",
     confidence: "low",
   };
 }

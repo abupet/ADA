@@ -1715,7 +1715,8 @@ function dashboardRouter({ requireAuth }) {
           return process.env[keyName] || null;
         };
         const result = await generateExplanation(pool, {
-          pet, promoItem, context: "post_visit", matchedTags, getOpenAiKey: _getOpenAiKey
+          pet, promoItem, context: "post_visit", matchedTags, getOpenAiKey: _getOpenAiKey,
+          serviceType: Array.isArray(promoItem.service_type) ? promoItem.service_type[0] : (promoItem.service_type || null)
         });
         res.json({ explanation: result.explanation, source: result.source,
           latencyMs: result.latencyMs, test_pet: pet, product_name: promoItem.name });
