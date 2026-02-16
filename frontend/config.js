@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.0';
-const ADA_RELEASE_NOTES = 'AI pet description, voice transcription, camera photo, call buttons fix, pet selector retry, insurance disclaimer, AI matching, direct calls.';
+const ADA_VERSION = '8.22.1';
+const ADA_RELEASE_NOTES = 'Fix WebRTC call answering flow: auto-join conv room, user-room routing, incoming call dedup, ring/no-answer timeouts, push notification for calls.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

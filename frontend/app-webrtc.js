@@ -7,6 +7,7 @@
 var _webrtcPC = null, _webrtcLocalStream = null, _webrtcRemoteStream = null;
 var _webrtcCallId = null, _webrtcConvId = null, _webrtcCallType = null;
 var _webrtcTimerInterval = null, _webrtcStartTime = null, _webrtcIceQueue = [];
+var _webrtcIncomingCallData = null, _webrtcRingTimeout = null, _webrtcIncomingTimeout = null;
 
 function _webrtcApiBase() { return window.ADA_API_BASE_URL || ''; }
 function _webrtcAuth() { return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }; }
@@ -85,6 +86,13 @@ async function startCall(conversationId, callType) {
     _webrtcCallId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
     socket.emit('initiate_call', { conversationId: conversationId, callType: callType, callId: _webrtcCallId });
     _webrtcShowOverlay(callType, true);
+    // 60s no-answer timeout
+    _webrtcRingTimeout = setTimeout(function() {
+        if (_webrtcPC && !_webrtcStartTime) {
+            if (typeof showToast === 'function') showToast('Nessuna risposta', 'warning');
+            endCall();
+        }
+    }, 60000);
 }
 
 // ---- Section 3: RTCPeerConnection ----
@@ -112,10 +120,13 @@ function _webrtcCreatePC() {
 function handleIncomingCall(data) {
     _webrtcInjectStyles();
     if (!data || !data.conversationId || !data.callId) return;
+    // Deduplicate: event arrives via both conv room and user room
+    if (_webrtcIncomingCallData && _webrtcIncomingCallData.callId === data.callId) return;
     if (_webrtcPC) {
         if (window._commSocket) window._commSocket.emit('reject_call', { conversationId: data.conversationId, callId: data.callId, reason: 'busy' });
         return;
     }
+    _webrtcIncomingCallData = { conversationId: data.conversationId, callId: data.callId, callType: data.callType };
     var typeLabel = data.callType === 'video_call' ? 'Videochiamata' : 'Chiamata vocale';
     var caller = data.callerName || 'Utente';
     var notif = document.createElement('div');
@@ -127,10 +138,19 @@ function handleIncomingCall(data) {
         '<button class="webrtc-incoming-accept" data-testid="webrtc-accept-btn" onclick="_webrtcAccept(\'' + data.conversationId + '\',\'' + data.callId + '\',\'' + (data.callType||'voice_call') + '\')">Accetta</button>' +
         '<button class="webrtc-incoming-reject" data-testid="webrtc-reject-btn" onclick="_webrtcReject(\'' + data.conversationId + '\',\'' + data.callId + '\')">Rifiuta</button></div>';
     document.body.appendChild(notif);
+    // Auto-dismiss after 60s
+    _webrtcIncomingTimeout = setTimeout(function() {
+        if (_webrtcIncomingCallData && _webrtcIncomingCallData.callId === data.callId) {
+            _webrtcReject(data.conversationId, data.callId);
+        }
+    }, 60000);
 }
 
 async function _webrtcAccept(convId, callId, callType) {
-    _webrtcRemoveNotif(); _webrtcConvId = convId; _webrtcCallId = callId; _webrtcCallType = callType;
+    _webrtcRemoveNotif();
+    _webrtcIncomingCallData = null;
+    if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
+    _webrtcConvId = convId; _webrtcCallId = callId; _webrtcCallType = callType;
     try {
         _webrtcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callType === 'video_call' });
     } catch(e) {
@@ -139,12 +159,18 @@ async function _webrtcAccept(convId, callId, callType) {
     }
     _webrtcCreatePC();
     _webrtcLocalStream.getTracks().forEach(function(t) { _webrtcPC.addTrack(t, _webrtcLocalStream); });
-    if (window._commSocket) window._commSocket.emit('accept_call', { conversationId: convId, callId: callId });
+    // Join conv room before accepting (so signaling messages reach us)
+    if (window._commSocket) {
+        window._commSocket.emit('join_conversation', { conversationId: convId });
+        window._commSocket.emit('accept_call', { conversationId: convId, callId: callId });
+    }
     _webrtcShowOverlay(callType, false);
 }
 
 function _webrtcReject(convId, callId) {
     _webrtcRemoveNotif();
+    _webrtcIncomingCallData = null;
+    if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
     if (window._commSocket) window._commSocket.emit('reject_call', { conversationId: convId, callId: callId, reason: 'declined' });
 }
 
@@ -258,6 +284,9 @@ function endCall() {
     if (_webrtcPC) { _webrtcPC.close(); _webrtcPC = null; }
     _webrtcRemoteStream = null;
     if (_webrtcTimerInterval) { clearInterval(_webrtcTimerInterval); _webrtcTimerInterval = null; }
+    if (_webrtcRingTimeout) { clearTimeout(_webrtcRingTimeout); _webrtcRingTimeout = null; }
+    if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
+    _webrtcIncomingCallData = null;
     var ov = document.getElementById('webrtc-call-overlay'); if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     _webrtcRemoveNotif();
     var dur = _webrtcStartTime ? Math.floor((Date.now() - _webrtcStartTime) / 1000) : 0;
@@ -273,6 +302,7 @@ function _webrtcInitSignaling() {
 
     socket.on('call_accepted', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        if (_webrtcRingTimeout) { clearTimeout(_webrtcRingTimeout); _webrtcRingTimeout = null; }
         try {
             var offer = await _webrtcPC.createOffer();
             await _webrtcPC.setLocalDescription(offer);
@@ -316,7 +346,16 @@ function _webrtcInitSignaling() {
     });
 
     socket.on('call_ended', function(d) {
-        if (!d || d.callId !== _webrtcCallId) return;
+        if (!d) return;
+        // Dismiss pending incoming notification if caller hung up before we answered
+        if (_webrtcIncomingCallData && _webrtcIncomingCallData.callId === d.callId) {
+            _webrtcRemoveNotif();
+            _webrtcIncomingCallData = null;
+            if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
+            if (typeof showToast === 'function') showToast('Chiamata annullata', 'info');
+            return;
+        }
+        if (d.callId !== _webrtcCallId) return;
         if (typeof showToast === 'function') showToast('Chiamata terminata dall\'altro utente', 'info');
         endCall();
     });
