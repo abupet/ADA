@@ -1,4 +1,4 @@
-const ADA_SW_VERSION = '8.22.1';
+const ADA_SW_VERSION = '8.22.2';
 const CACHE_NAME = 'ada-cache-' + ADA_SW_VERSION;
 const STATIC_ASSETS = [
     './',
