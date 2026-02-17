@@ -1229,116 +1229,155 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
   // =======================================================
   // POST /api/admin/:tenant_id/bulk-ai-analysis
   // Bulk AI analysis for all pets (super_admin / admin_brand only)
+  // SSE stream: sends progress/pet_done/done events for real-time feedback
   // =======================================================
   router.post("/api/admin/:tenant_id/bulk-ai-analysis", requireAuth, async (req, res) => {
-    try {
-      // Role check: super_admin or admin_brand only
-      const userRole = req.user?.role || req.headers["x-ada-role"];
-      if (userRole !== "super_admin" && userRole !== "admin_brand") {
-        return res.status(403).json({ error: "forbidden_admin_only" });
-      }
-
-      if (!pool) {
-        return res.status(503).json({ error: "db_not_available" });
-      }
-
-      const openAiKey = _getOpenAiKey();
-      if (!openAiKey) {
-        return res.status(503).json({ error: "openai_not_configured" });
-      }
-
-      // Extend request timeout to 5 minutes
-      req.setTimeout(300000);
-
-      // Get all pets
-      let allPets = [];
-      try {
-        const petsResult = await pool.query(
-          "SELECT pet_id, name, ai_description FROM pets ORDER BY name"
-        );
-        allPets = petsResult.rows;
-      } catch (e) {
-        return res.status(500).json({ error: "db_error", message: e.message });
-      }
-
-      const results = {
-        total: allPets.length,
-        descriptionsGenerated: 0,
-        analysesRun: 0,
-        analysesCached: 0,
-        errors: [],
-      };
-
-      // Process each pet serially to avoid OpenAI rate limits
-      for (const pet of allPets) {
-        try {
-          // Step A: Generate AI description if missing
-          if (!pet.ai_description) {
-            try {
-              const sources = await _collectPetSourcesFromDB(pool, pet.pet_id);
-              const sourcesText = JSON.stringify(sources);
-
-              const descController = new AbortController();
-              const descTimeout = setTimeout(() => descController.abort(), 25000);
-
-              const descResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  model: "gpt-4o-mini",
-                  messages: [
-                    { role: "system", content: "Sei un assistente veterinario. Genera una descrizione completa del pet basata sui dati forniti. La descrizione deve includere specie, razza, età, peso, condizioni di salute note, stile di vita e qualsiasi informazione rilevante per raccomandazioni di prodotti. Scrivi in italiano, in modo chiaro e conciso (max 500 parole)." },
-                    { role: "user", content: "Dati del pet:\n" + sourcesText }
-                  ],
-                  temperature: 0.3,
-                  max_tokens: 800
-                }),
-                signal: descController.signal
-              });
-
-              clearTimeout(descTimeout);
-
-              if (descResponse.ok) {
-                const descData = await descResponse.json();
-                const description = descData.choices?.[0]?.message?.content || "";
-                if (description) {
-                  await pool.query(
-                    "UPDATE pets SET ai_description = $1, ai_description_generated_at = NOW() WHERE pet_id = $2",
-                    [description, pet.pet_id]
-                  );
-                  results.descriptionsGenerated++;
-                }
-              }
-            } catch (descErr) {
-              results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: descErr.message });
-            }
-          }
-
-          // Step B: Run analysis
-          try {
-            const analysisResult = await _runAnalysisForPet(pool, pet.pet_id, openAiKey);
-            if (analysisResult.error) {
-              results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisResult.error });
-            } else {
-              results.analysesRun++;
-              if (analysisResult.fromCache) results.analysesCached++;
-            }
-          } catch (analysisErr) {
-            results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisErr.message });
-          }
-
-        } catch (petErr) {
-          results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "general", error: petErr.message });
-        }
-      }
-
-      console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} analyses=${results.analysesRun} cached=${results.analysesCached} errors=${results.errors.length}`);
-      return res.json(results);
-
-    } catch (e) {
-      console.error("POST /api/admin/:tenant_id/bulk-ai-analysis error", e);
-      res.status(500).json({ error: "server_error" });
+    // Role check: super_admin or admin_brand only
+    const userRole = req.user?.role || req.headers["x-ada-role"];
+    if (userRole !== "super_admin" && userRole !== "admin_brand") {
+      return res.status(403).json({ error: "forbidden_admin_only" });
     }
+
+    if (!pool) {
+      return res.status(503).json({ error: "db_not_available" });
+    }
+
+    const openAiKey = _getOpenAiKey();
+    if (!openAiKey) {
+      return res.status(503).json({ error: "openai_not_configured" });
+    }
+
+    // Extend request timeout to 10 minutes
+    req.setTimeout(600000);
+    if (res.socket) res.socket.setTimeout(600000);
+
+    // Get all pets before switching to SSE
+    let allPets = [];
+    try {
+      const petsResult = await pool.query(
+        "SELECT pet_id, name, ai_description FROM pets ORDER BY name"
+      );
+      allPets = petsResult.rows;
+    } catch (e) {
+      return res.status(500).json({ error: "db_error", message: e.message });
+    }
+
+    // Switch to SSE stream
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    function sendEvent(data) {
+      res.write("data: " + JSON.stringify(data) + "\n\n");
+    }
+
+    const results = {
+      total: allPets.length,
+      descriptionsGenerated: 0,
+      analysesRun: 0,
+      analysesCached: 0,
+      errors: [],
+    };
+
+    sendEvent({ type: "start", total: allPets.length });
+
+    // Process each pet serially to avoid OpenAI rate limits
+    for (let i = 0; i < allPets.length; i++) {
+      const pet = allPets[i];
+      sendEvent({ type: "progress", current: i + 1, total: allPets.length, petName: pet.name });
+
+      let descGenerated = false;
+      let analysisRun = false;
+      let cached = false;
+      let petError = null;
+
+      try {
+        // Step A: Generate AI description if missing
+        if (!pet.ai_description) {
+          try {
+            const sources = await _collectPetSourcesFromDB(pool, pet.pet_id);
+            const sourcesText = JSON.stringify(sources);
+
+            const descController = new AbortController();
+            const descTimeout = setTimeout(() => descController.abort(), 25000);
+
+            const descResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                  { role: "system", content: "Sei un assistente veterinario. Genera una descrizione completa del pet basata sui dati forniti. La descrizione deve includere specie, razza, età, peso, condizioni di salute note, stile di vita e qualsiasi informazione rilevante per raccomandazioni di prodotti. Scrivi in italiano, in modo chiaro e conciso (max 500 parole)." },
+                  { role: "user", content: "Dati del pet:\n" + sourcesText }
+                ],
+                temperature: 0.3,
+                max_tokens: 800
+              }),
+              signal: descController.signal
+            });
+
+            clearTimeout(descTimeout);
+
+            if (descResponse.ok) {
+              const descData = await descResponse.json();
+              const description = descData.choices?.[0]?.message?.content || "";
+              if (description) {
+                await pool.query(
+                  "UPDATE pets SET ai_description = $1, ai_description_generated_at = NOW() WHERE pet_id = $2",
+                  [description, pet.pet_id]
+                );
+                results.descriptionsGenerated++;
+                descGenerated = true;
+              }
+            }
+          } catch (descErr) {
+            results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: descErr.message });
+            petError = descErr.message;
+          }
+        }
+
+        // Step B: Run analysis
+        try {
+          const analysisResult = await _runAnalysisForPet(pool, pet.pet_id, openAiKey);
+          if (analysisResult.error) {
+            results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisResult.error });
+            petError = analysisResult.error;
+          } else {
+            results.analysesRun++;
+            analysisRun = true;
+            if (analysisResult.fromCache) {
+              results.analysesCached++;
+              cached = true;
+            }
+          }
+        } catch (analysisErr) {
+          results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisErr.message });
+          petError = analysisErr.message;
+        }
+
+      } catch (petErr) {
+        results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "general", error: petErr.message });
+        petError = petErr.message;
+      }
+
+      sendEvent({
+        type: "pet_done",
+        current: i + 1,
+        total: allPets.length,
+        petName: pet.name,
+        descGenerated: descGenerated,
+        analysisRun: analysisRun,
+        cached: cached,
+        error: petError,
+      });
+    }
+
+    console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} analyses=${results.analysesRun} cached=${results.analysesCached} errors=${results.errors.length}`);
+    sendEvent({ type: "done", ...results });
+    res.end();
   });
 
   return router;
