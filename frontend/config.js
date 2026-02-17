@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.21';
-const ADA_RELEASE_NOTES = 'Fix: chatbot AI conversation — second message 500 error.';
+const ADA_VERSION = '8.22.22';
+const ADA_RELEASE_NOTES = 'Feat: analisi raccomandazione potenziata — pre-filtering + ranking AI top 5 con cache 24h.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
