@@ -237,6 +237,7 @@ function initCommSocket() {
             }
         });
         _commSocket.on('new_message', function (d) { _commHandleNewMessage(d); });
+        _commSocket.on('message_updated', function (d) { _commHandleMessageUpdated(d); });
         _commSocket.on('user_typing', function (d) { _commHandleTyping(d); });
         _commSocket.on('messages_read', function (d) { _commHandleMessagesRead(d); });
         _commSocket.on('delivery_update', function (d) { _commHandleDeliveryUpdate(d); });
@@ -323,6 +324,14 @@ function _commHandleNewMessage(data) {
             }
         }
     }
+}
+
+function _commHandleMessageUpdated(data) {
+    if (!data || data.conversation_id !== _commCurrentConversationId) return;
+    var msgEl = document.querySelector('[data-msg-id="' + (data.message_id || '') + '"]');
+    if (!msgEl) return;
+    var contentEl = msgEl.querySelector('[data-content]');
+    if (contentEl) contentEl.textContent = data.content || '';
 }
 
 function _commHandleTyping(data) {
@@ -1019,7 +1028,7 @@ function _commRenderBubble(msg, isOwn) {
             html += '<div><a href="' + dlUrl + '" target="_blank" style="color:inherit;text-decoration:underline;">\uD83D\uDCC4 ' + _commEscape(fname) + fsize + '</a></div>';
         }
     } else {
-        html += '<div>' + _commEscape(msg.content || '') + '</div>';
+        html += '<div data-content>' + _commEscape(msg.content || '') + '</div>';
     }
 
     // Follow-up chips for AI messages — intelligent yes/no vs open question

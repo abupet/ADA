@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.7
+
+### Fix: Trascrizione chiamate non funzionante (FormData incompatibile)
+- Fix critico: la funzione `transcribeAudioChunk` in `websocket.js` usava il pacchetto npm `form-data` con il `fetch` nativo di Node.js 20, che sono incompatibili — ogni chiamata a OpenAI Whisper falliva silenziosamente. Corretto usando il `FormData` nativo + `Blob`, allineandosi al pattern usato con successo in `comm-upload.routes.js` e `server.js`
+- Fix: rimossa la cattura audio remota (solo `local`) — ogni partecipante ora trascrive solo la propria voce, eliminando le trascrizioni duplicate (prima entrambi i lati catturavano sia audio locale che remoto, creando fino a 4 trascrizioni per ogni 15 secondi)
+- Fix: aggiunto listener `message_updated` in `app-communication.js` per aggiornare in tempo reale i messaggi di trascrizione quando il backend appende testo a un messaggio esistente (merge chunk <30s)
+- Fix: aggiunto attributo `data-content` al div del contenuto nel rendering dei messaggi per facilitare aggiornamenti DOM mirati
+- Miglioramento: log di errore più dettagliati nella trascrizione Whisper (body errore incluso)
+
 ## v8.22.6
 
 ### Integrazione TURN server Metered.ca per chiamate WebRTC

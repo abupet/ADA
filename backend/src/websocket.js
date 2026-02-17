@@ -9,6 +9,7 @@ const { sendPushToUser } = require("./push.routes");
 const onlineUsers = new Map(); // userId → Set<socketId>
 
 // Helper: transcribe audio chunk via OpenAI Whisper
+// Uses native FormData + Blob (Node.js 20) — same pattern as comm-upload.routes.js
 async function transcribeAudioChunk(base64Audio, mimeType) {
     const isMock = (process.env.MODE || "").toUpperCase() === "MOCK";
     const keyName = ["4f","50","45","4e","41","49","5f","41","50","49","5f","4b","45","59"]
@@ -16,6 +17,7 @@ async function transcribeAudioChunk(base64Audio, mimeType) {
     const openAiKey = process.env[keyName] || null;
     if (!openAiKey) {
         if (isMock) return "Trascrizione mock del chunk audio.";
+        console.warn("[Whisper] OPENAI_API_KEY not configured, skipping call transcription");
         return null;
     }
 
@@ -23,21 +25,22 @@ async function transcribeAudioChunk(base64Audio, mimeType) {
     if (buffer.length < 100) return null; // too small, skip
 
     const ext = mimeType && mimeType.includes("webm") ? "webm" : (mimeType && mimeType.includes("ogg") ? "ogg" : "wav");
-    const FormData = require("form-data");
     const form = new FormData();
-    form.append("file", buffer, { filename: "chunk." + ext, contentType: mimeType || "audio/webm" });
+    const blob = new Blob([buffer], { type: mimeType || "audio/webm" });
+    form.append("file", blob, "chunk." + ext);
     form.append("model", "whisper-1");
     form.append("language", "it");
     form.append("response_format", "text");
 
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + openAiKey, ...form.getHeaders() },
+        headers: { "Authorization": "Bearer " + openAiKey },
         body: form
     });
 
     if (!response.ok) {
-        console.warn("[Whisper] Error:", response.status);
+        const errBody = await response.text().catch(() => "");
+        console.warn("[Whisper] Error:", response.status, errBody);
         return null;
     }
 
