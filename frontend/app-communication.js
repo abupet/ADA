@@ -2172,10 +2172,15 @@ function _commStartDirectCall(callType) {
         '<button class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
         '</div>';
 
+    // Scroll to form so it's visible (v8.22.15)
+    area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
     var searchInput = document.getElementById('comm-call-recipient-search');
     if (searchInput) {
         searchInput.addEventListener('input', _commFilterCallRecipients);
         searchInput.addEventListener('focus', _commShowCallRecipientDropdown);
+        // Auto-focus after scroll completes (v8.22.15)
+        setTimeout(function() { searchInput.focus(); }, 350);
     }
     // Close dropdown on outside click
     document.addEventListener('click', function _commCloseDropdown(e) {

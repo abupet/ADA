@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.15
+
+### Fix: Pulsante chiamata dalla pagina Messaggi sembra non funzionare
+- Fix UX: il form di selezione destinatario (chiamata dalla pagina principale Messaggi) appariva senza feedback visivo — se fuori vista, l'utente pensava che il pulsante non funzionasse
+- Aggiunto scroll automatico (`scrollIntoView`) verso il form dopo la sua creazione
+- Aggiunto auto-focus sull'input di ricerca destinatario dopo un breve delay (350ms) per garantire che lo scroll sia completato
+
 ## v8.22.14
 
 ### Fix: AudioContext suspended — trascrizione cattura silenzio
