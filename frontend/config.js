@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.24';
-const ADA_RELEASE_NOTES = 'Feat: analisi raccomandazione potenziata — pre-filtering + ranking AI top 5 con cache 24h.';
+const ADA_VERSION = '8.22.25';
+const ADA_RELEASE_NOTES = 'Fix: bulk AI analysis SSE — CORS headers preservati, null-check resp.body.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

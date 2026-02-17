@@ -3797,6 +3797,13 @@
                 return;
             }
 
+            // Guard: if browser blocked the body (e.g. CORS), give a clear error
+            if (!resp.body) {
+                if (typeof _closeModal === 'function') _closeModal();
+                if (typeof showToast === 'function') showToast('Errore: risposta streaming non disponibile', 'error');
+                return;
+            }
+
             // Start elapsed timer
             timerInterval = setInterval(function() {
                 if (state.total > 0 && state.current < state.total) renderProgress();
