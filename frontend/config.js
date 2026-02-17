@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.3';
-const ADA_RELEASE_NOTES = 'Bug fix & features: AI pet desc page, conversation type, recommendation analysis, filterable call dropdown, live call transcription via Whisper.';
+const ADA_VERSION = '8.22.4';
+const ADA_RELEASE_NOTES = 'Fix: live call transcription race condition — remote audio capture now starts when tracks arrive via ontrack.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
