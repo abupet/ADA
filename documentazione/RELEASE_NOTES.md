@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.14
+
+### Fix: AudioContext suspended — trascrizione cattura silenzio
+- Fix: l'`AudioContext` creato nel callback ICE (non un gesto utente) partiva in stato `suspended` — nessun audio fluiva nel pipeline Web Audio API, il `MediaRecorder` registrava silenzio e Whisper produceva allucinazioni per ogni chunk
+- Fix: aggiunto `audioCtx.resume()` immediato con log dello stato (`suspended` → `running`)
+- Miglioramento: il log del livello audio ora include anche lo stato dell'AudioContext per diagnosi rapida
+
 ## v8.22.13
 
 ### Fix: MediaRecorder cattura silenzio su mobile — Web Audio API
