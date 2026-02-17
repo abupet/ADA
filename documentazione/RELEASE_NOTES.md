@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.20
+
+### Fix: Attachment 401, AI description timeout, promo analysis
+- **BUG 1 — Attachment 401**: Fix path mismatch nella verifica signed URL — `req.path` (strippato del prefisso `/api` dal middleware mount) sostituito con `req.originalUrl.split('?')[0]` sia in `requireJwt` che in `verifyMediaSignature`. Le signed URL ora verificano correttamente dopo navigazione tra pagine
+- **BUG 1 — Download endpoint role-based**: Gli endpoint attachment metadata e download (`comm-upload.routes.js`) ora supportano accesso role-based come `getConversationIfAllowed` in `communication.routes.js` — utenti con accesso al pet possono scaricare attachment anche se non partecipanti diretti alla conversazione
+- **BUG 2 — AI Description 504**: Timeout OpenAI per `POST /api/pets/:id/ai-description` aumentato da 15s a 25s — evita `504 generation_timeout` con 5s di margine prima del frontend timeout (30s)
+- **BUG 3 — Analisi raccomandazione vuota**: Risolto automaticamente dal fix BUG 2 — la descrizione pet ora viene generata con successo e l'analisi promo non viene più saltata
+
 ## v8.22.19
 
 ### Fix: Conversazioni vet_ext non visibili nell'archivio pet
