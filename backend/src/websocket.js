@@ -17,7 +17,7 @@ async function transcribeAudioChunk(base64Audio, mimeType) {
     const openAiKey = process.env[keyName] || null;
     if (!openAiKey) {
         if (isMock) return "Trascrizione mock del chunk audio.";
-        console.warn("[Whisper] OPENAI_API_KEY not configured, skipping call transcription");
+        console.warn("[Whisper] API key not configured, skipping call transcription");
         return null;
     }
 
