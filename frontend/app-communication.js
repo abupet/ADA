@@ -315,8 +315,11 @@ function _commHandleNewMessage(data) {
         if (container) {
             var isOwn = data.sender_id === _commGetCurrentUserId();
             // Skip own messages — already rendered optimistically
-            if (isOwn) return;
-            container.innerHTML += _commRenderBubble(data, false);
+            // Exception: transcription messages are server-generated, never rendered optimistically
+            if (isOwn && data.type !== 'transcription') return;
+            // Dedup: skip if this message is already in the DOM
+            if (data.message_id && document.querySelector('[data-msg-id="' + data.message_id + '"]')) return;
+            container.innerHTML += _commRenderBubble(data, isOwn);
             container.scrollTop = container.scrollHeight;
             _commMarkAsRead(_commCurrentConversationId);
             if (_commCurrentConversationType === 'human' && _commSocket) {
