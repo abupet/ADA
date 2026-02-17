@@ -660,15 +660,8 @@ async function _commCreateConversation() {
 
     try {
         var body = { recipient_type: destType === 'ai' ? 'ai' : 'human' };
-        // For vet_ext, only include pet_id if the pet is in their visible list
-        if (petId && jwtRole === 'vet_ext') {
-            var _vetExtPets = typeof getAllPets === 'function' ? (getAllPets() || []) : [];
-            var _petInList = false;
-            for (var _pi = 0; _pi < _vetExtPets.length; _pi++) {
-                if ((_vetExtPets[_pi].pet_id || _vetExtPets[_pi].petId) === petId) { _petInList = true; break; }
-            }
-            if (_petInList) body.pet_id = petId;
-        } else if (petId) {
+        // Always include pet_id — backend validates vet_ext access via referring_vet_user_id
+        if (petId) {
             body.pet_id = petId;
         }
         if (subject) body.subject = subject;

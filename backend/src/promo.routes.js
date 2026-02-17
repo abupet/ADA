@@ -198,6 +198,301 @@ function promoRouter({ requireAuth }) {
   }
 
   // =======================================================
+  // Helper: collect pet data sources from DB (server-side equivalent of frontend _collectPetDataForAI)
+  // =======================================================
+  async function _collectPetSourcesFromDB(dbPool, petId) {
+    const sources = {};
+
+    // 1. Pet data
+    try {
+      const petRes = await dbPool.query(
+        "SELECT name, species, breed, sex, birthdate, weight_kg, neutered, lifestyle FROM pets WHERE pet_id = $1 LIMIT 1",
+        [petId]
+      );
+      if (petRes.rows[0]) {
+        const p = petRes.rows[0];
+        sources.dati_pet = {
+          nome: p.name || null,
+          specie: p.species || null,
+          razza: p.breed || null,
+          sesso: p.sex || null,
+          data_nascita: p.birthdate || null,
+          peso_kg: p.weight_kg || null,
+          sterilizzato: p.neutered || null,
+          stile_di_vita: p.lifestyle || null,
+        };
+      }
+    } catch (_e) {}
+
+    // 2. Documents
+    try {
+      const docsRes = await dbPool.query(
+        "SELECT doc_type, original_filename, ai_extracted_text, created_at FROM documents WHERE pet_id = $1 ORDER BY created_at DESC LIMIT 20",
+        [petId]
+      );
+      if (docsRes.rows.length > 0) {
+        sources.documenti = docsRes.rows.map(d => ({
+          tipo: d.doc_type, nome: d.original_filename,
+          ai_text: d.ai_extracted_text || null, data: d.created_at,
+        }));
+      }
+    } catch (_e) {}
+
+    // 3. Conversations
+    try {
+      const convRes = await dbPool.query(
+        "SELECT type, subject, created_at FROM conversations WHERE pet_id = $1 ORDER BY created_at DESC LIMIT 20",
+        [petId]
+      );
+      if (convRes.rows.length > 0) {
+        sources.conversazioni = convRes.rows.map(c => ({
+          tipo: c.type, oggetto: c.subject, data: c.created_at,
+        }));
+      }
+    } catch (_e) {}
+
+    return sources;
+  }
+
+  // =======================================================
+  // Helper: run analysis for a single pet (extracted from analyze-match-all)
+  // =======================================================
+  async function _runAnalysisForPet(dbPool, petId, openAiKey) {
+    // 1. Get pet data + ai_description
+    let pet = null;
+    let petAiDesc = null;
+    try {
+      const petResult = await dbPool.query(
+        "SELECT pet_id, name, species, breed, birthdate, weight_kg, ai_description FROM pets WHERE pet_id = $1 LIMIT 1",
+        [petId]
+      );
+      if (petResult.rows[0]) {
+        pet = petResult.rows[0];
+        petAiDesc = pet.ai_description;
+      }
+    } catch (e) {
+      console.error("_runAnalysisForPet: pet query error", e.message);
+    }
+
+    if (!petAiDesc) {
+      return { error: "pet_ai_description_missing", petName: pet ? pet.name : null };
+    }
+
+    // 2. Get pet tags for pre-filtering
+    let petTags = [];
+    try {
+      const tagsResult = await dbPool.query(
+        "SELECT tag, value, confidence FROM pet_tags WHERE pet_id = $1",
+        [petId]
+      );
+      petTags = tagsResult.rows;
+    } catch (_e) {}
+
+    const petTagNames = petTags.map(t => t.tag);
+
+    // 3. Species + lifecycle
+    const { normalizeSpecies } = require("./tag.service");
+    const petSpecies = pet.species ? normalizeSpecies(pet.species) : null;
+
+    let petLifecycle = null;
+    try {
+      const lcResult = await dbPool.query(
+        "SELECT tag FROM pet_tags WHERE pet_id = $1 AND tag LIKE 'lifecycle:%' ORDER BY computed_at DESC LIMIT 1",
+        [petId]
+      );
+      if (lcResult.rows[0]) {
+        petLifecycle = lcResult.rows[0].tag.replace('lifecycle:', '');
+      }
+    } catch (_e) {}
+
+    // 4. Fetch ALL published promo items
+    let allItems = [];
+    try {
+      const itemsResult = await dbPool.query(
+        `SELECT promo_item_id, tenant_id, name, category, species, lifecycle_target,
+                description, extended_description, image_url, product_url,
+                tags_include, tags_exclude, priority, service_type
+         FROM promo_items
+         WHERE status = 'published'`
+      );
+      allItems = itemsResult.rows;
+    } catch (e) {
+      console.error("_runAnalysisForPet: items query error", e.message);
+      return { error: "db_error", petName: pet.name };
+    }
+
+    // 5. Pre-filter candidates
+    const candidates = [];
+    for (const item of allItems) {
+      if (
+        petSpecies && item.species &&
+        Array.isArray(item.species) && item.species.length > 0 &&
+        !item.species.includes("all") &&
+        !item.species.includes(petSpecies)
+      ) continue;
+
+      if (
+        petLifecycle && item.lifecycle_target &&
+        Array.isArray(item.lifecycle_target) && item.lifecycle_target.length > 0 &&
+        !item.lifecycle_target.includes("all") &&
+        !item.lifecycle_target.includes(petLifecycle)
+      ) continue;
+
+      if (item.tags_exclude && item.tags_exclude.length > 0) {
+        const excluded = item.tags_exclude.some(t => petTagNames.includes(t));
+        if (excluded) continue;
+      }
+
+      if (!item.extended_description && !item.description) continue;
+
+      candidates.push(item);
+    }
+
+    if (candidates.length === 0) {
+      return { petId, petName: pet.name, matches: [], fromCache: false, candidatesCount: 0 };
+    }
+
+    // 6. Check cache
+    const { createHash } = require("crypto");
+    const candidateIds = candidates.map(c => c.promo_item_id).sort().join(",");
+    const cacheInput = petAiDesc + "|" + candidateIds;
+    const cacheKey = "aml_" + createHash("sha256").update(cacheInput).digest("hex");
+
+    try {
+      const cacheResult = await dbPool.query(
+        "SELECT explanation FROM explanation_cache WHERE cache_key = $1 AND expires_at > NOW() LIMIT 1",
+        [cacheKey]
+      );
+      if (cacheResult.rows[0]) {
+        const cached = cacheResult.rows[0].explanation;
+        return {
+          petId, petName: pet.name,
+          matches: cached.matches || [],
+          fromCache: true, candidatesCount: candidates.length
+        };
+      }
+    } catch (_e) {}
+
+    // 7. Build candidate list for prompt (max 30)
+    const topCandidates = candidates.slice(0, 30);
+    const candidateList = topCandidates.map((item, idx) => {
+      const desc = item.extended_description || item.description || "N/A";
+      return `${idx + 1}. [ID:${item.promo_item_id}] "${item.name}" — ${desc}`;
+    }).join("\n");
+
+    // 8. Call OpenAI
+    const systemPrompt = `Sei un esperto veterinario e consulente per prodotti per animali domestici.
+Analizza la descrizione di un pet e confrontala con i prodotti candidati.
+Per ogni prodotto, valuta quanto è adatto a QUESTO SPECIFICO pet.
+Seleziona i TOP 5 prodotti più adatti e spiega PERCHÉ sono adatti a questo pet.
+La spiegazione deve essere utile per il proprietario del pet: usa un linguaggio chiaro e amichevole.
+Rispondi SOLO con JSON valido, senza markdown o testo aggiuntivo.`;
+
+    const userPrompt = `DESCRIZIONE PET:
+${petAiDesc}
+
+PRODOTTI CANDIDATI (${topCandidates.length} su ${candidates.length} pre-filtrati):
+${candidateList}
+
+Rispondi con questo JSON:
+{
+  "matches": [
+    {
+      "promo_item_id": "...",
+      "product_name": "Nome prodotto",
+      "score": 92,
+      "reasoning": "Spiegazione dettagliata di perché questo prodotto è adatto a questo pet (2-3 frasi)",
+      "key_matches": ["aspetto1", "aspetto2", "aspetto3"],
+      "relevance": "high"
+    }
+  ]
+}
+
+REGOLE:
+- Ritorna esattamente i TOP 5 prodotti più adatti (o meno se non ce ne sono 5 adatti)
+- score: 0-100 (100 = perfettamente adatto)
+- relevance: "high" (score>=70), "medium" (score 40-69), "low" (score<40)
+- key_matches: lista di 2-4 aspetti specifici che corrispondono
+- reasoning: spiega al proprietario PERCHÉ questo prodotto fa bene al SUO pet specifico
+- Ordina per score discendente`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+
+    const startMs = Date.now();
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1500
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+    const latencyMs = Date.now() - startMs;
+
+    if (!response.ok) {
+      console.error(`[_runAnalysisForPet] OpenAI error: ${response.status}`);
+      return { error: "openai_error", petName: pet.name };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    const tokensUsed = data.usage?.total_tokens || 0;
+
+    // 9. Parse response
+    let parsed = { matches: [] };
+    try {
+      const jsonStart = content.indexOf("{");
+      const jsonEnd = content.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        parsed = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
+      }
+    } catch (parseErr) {
+      console.warn("[_runAnalysisForPet] JSON parse error:", parseErr.message);
+    }
+
+    // Enrich matches with image_url and product_url
+    if (parsed.matches && Array.isArray(parsed.matches)) {
+      parsed.matches = parsed.matches.map(m => {
+        const dbItem = candidates.find(c => c.promo_item_id === m.promo_item_id);
+        return {
+          ...m,
+          image_url: dbItem?.image_url || null,
+          product_url: dbItem?.product_url || null,
+          category: dbItem?.category || null
+        };
+      });
+    }
+
+    // 10. Save to cache (TTL 24h)
+    try {
+      await dbPool.query(
+        `INSERT INTO explanation_cache (cache_key, explanation, model, tokens_used, latency_ms, expires_at)
+         VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '24 hours')
+         ON CONFLICT (cache_key) DO UPDATE SET explanation = $2, tokens_used = $4, latency_ms = $5, expires_at = NOW() + INTERVAL '24 hours'`,
+        [cacheKey, JSON.stringify(parsed), "gpt-4o-mini", tokensUsed, latencyMs]
+      );
+    } catch (cacheErr) {
+      console.warn("[_runAnalysisForPet] cache write error:", cacheErr.message);
+    }
+
+    return {
+      petId, petName: pet.name,
+      matches: parsed.matches || [],
+      fromCache: false, candidatesCount: candidates.length,
+      latencyMs, tokensUsed
+    };
+  }
+
+  // =======================================================
   // GET /api/promo/recommendation?petId=X&context=home_feed
   // =======================================================
   router.get("/api/promo/recommendation", requireAuth, async (req, res) => {
@@ -211,12 +506,14 @@ function promoRouter({ requireAuth }) {
       }
 
       // --- Full pipeline (when DB + services available) ---
+      const force = req.query.force === '1';
       if (pool && selectPromo && generateExplanation) {
         try {
           const promoResult = await selectPromo(pool, {
             petId,
             ownerUserId,
             context,
+            force,
           });
 
           if (!promoResult) {
@@ -821,7 +1118,6 @@ Ordina per score discendente.`;
   router.post("/api/promo/analyze-match-all", requireAuth, async (req, res) => {
     try {
       const { petId } = req.body;
-      const ownerUserId = req.user?.sub;
 
       if (!petId || !isValidUuid(petId)) {
         return res.status(400).json({ error: "invalid_pet_id" });
@@ -836,267 +1132,17 @@ Ordina per score discendente.`;
         return res.status(503).json({ error: "db_not_available" });
       }
 
-      // 1. Get pet data + ai_description
-      let pet = null;
-      let petAiDesc = null;
-      try {
-        const petResult = await pool.query(
-          "SELECT pet_id, name, species, breed, birthdate, weight_kg, ai_description FROM pets WHERE pet_id = $1 LIMIT 1",
-          [petId]
-        );
-        if (petResult.rows[0]) {
-          pet = petResult.rows[0];
-          petAiDesc = pet.ai_description;
-        }
-      } catch (e) {
-        console.error("analyze-match-all: pet query error", e.message);
-      }
+      const result = await _runAnalysisForPet(pool, petId, openAiKey);
 
-      if (!petAiDesc) {
+      if (result.error === "pet_ai_description_missing") {
         return res.status(400).json({ error: "pet_ai_description_missing", message: "Generare prima la descrizione AI del pet" });
       }
-
-      // 2. Get pet tags for pre-filtering
-      let petTags = [];
-      try {
-        const tagsResult = await pool.query(
-          "SELECT tag, value, confidence FROM pet_tags WHERE pet_id = $1",
-          [petId]
-        );
-        petTags = tagsResult.rows;
-      } catch (_e) {}
-
-      const petTagNames = petTags.map(t => t.tag);
-
-      // 3. Get pet species + lifecycle
-      const { normalizeSpecies } = require("./tag.service");
-      const petSpecies = pet.species ? normalizeSpecies(pet.species) : null;
-
-      let petLifecycle = null;
-      try {
-        const lcResult = await pool.query(
-          "SELECT tag FROM pet_tags WHERE pet_id = $1 AND tag LIKE 'lifecycle:%' ORDER BY computed_at DESC LIMIT 1",
-          [petId]
-        );
-        if (lcResult.rows[0]) {
-          petLifecycle = lcResult.rows[0].tag.replace('lifecycle:', '');
-        }
-      } catch (_e) {}
-
-      // 4. Consent check
-      let consent = null;
-      if (getEffectiveConsent) {
-        consent = await getEffectiveConsent(pool, ownerUserId);
-        const { isMarketingAllowed } = require("./consent.service");
-        if (!isMarketingAllowed(consent, null)) {
-          return res.status(403).json({ error: "marketing_not_allowed" });
-        }
+      if (result.error) {
+        return res.status(500).json({ error: result.error });
       }
 
-      // 5. Fetch ALL published promo items
-      let allItems = [];
-      try {
-        const itemsResult = await pool.query(
-          `SELECT promo_item_id, tenant_id, name, category, species, lifecycle_target,
-                  description, extended_description, image_url, product_url,
-                  tags_include, tags_exclude, priority, service_type
-           FROM promo_items
-           WHERE status = 'published'`
-        );
-        allItems = itemsResult.rows;
-      } catch (e) {
-        console.error("analyze-match-all: items query error", e.message);
-        return res.status(500).json({ error: "db_error" });
-      }
-
-      // 6. Pre-filter candidates (same logic as eligibility.service.js)
-      const { isMarketingAllowed } = require("./consent.service");
-      const candidates = [];
-
-      for (const item of allItems) {
-        // Brand consent
-        if (consent && !isMarketingAllowed(consent, item.tenant_id)) continue;
-
-        // Species filter
-        if (
-          petSpecies && item.species &&
-          Array.isArray(item.species) && item.species.length > 0 &&
-          !item.species.includes("all") &&
-          !item.species.includes(petSpecies)
-        ) continue;
-
-        // Lifecycle filter
-        if (
-          petLifecycle && item.lifecycle_target &&
-          Array.isArray(item.lifecycle_target) && item.lifecycle_target.length > 0 &&
-          !item.lifecycle_target.includes("all") &&
-          !item.lifecycle_target.includes(petLifecycle)
-        ) continue;
-
-        // Tags exclude
-        if (item.tags_exclude && item.tags_exclude.length > 0) {
-          const excluded = item.tags_exclude.some(t => petTagNames.includes(t));
-          if (excluded) continue;
-        }
-
-        // Must have extended_description for meaningful AI analysis
-        if (!item.extended_description && !item.description) continue;
-
-        candidates.push(item);
-      }
-
-      console.log(`[analyze-match-all] pet=${petId} total=${allItems.length} filtered=${candidates.length}`);
-
-      if (candidates.length === 0) {
-        return res.json({ petId, petName: pet.name, matches: [], fromCache: false, candidatesCount: 0 });
-      }
-
-      // 7. Check cache
-      const { createHash } = require("crypto");
-      const candidateIds = candidates.map(c => c.promo_item_id).sort().join(",");
-      const cacheInput = petAiDesc + "|" + candidateIds;
-      const cacheKey = "aml_" + createHash("sha256").update(cacheInput).digest("hex");
-
-      try {
-        const cacheResult = await pool.query(
-          "SELECT explanation FROM explanation_cache WHERE cache_key = $1 AND expires_at > NOW() LIMIT 1",
-          [cacheKey]
-        );
-        if (cacheResult.rows[0]) {
-          console.log(`[analyze-match-all] cache HIT key=${cacheKey.slice(0, 16)}`);
-          const cached = cacheResult.rows[0].explanation;
-          return res.json({
-            petId,
-            petName: pet.name,
-            matches: cached.matches || [],
-            fromCache: true,
-            candidatesCount: candidates.length
-          });
-        }
-      } catch (_e) {}
-
-      // 8. Build candidate list for prompt (max 30 to keep tokens manageable)
-      const topCandidates = candidates.slice(0, 30);
-      const candidateList = topCandidates.map((item, idx) => {
-        const desc = item.extended_description || item.description || "N/A";
-        return `${idx + 1}. [ID:${item.promo_item_id}] "${item.name}" — ${desc}`;
-      }).join("\n");
-
-      // 9. Call OpenAI
-      const systemPrompt = `Sei un esperto veterinario e consulente per prodotti per animali domestici.
-Analizza la descrizione di un pet e confrontala con i prodotti candidati.
-Per ogni prodotto, valuta quanto è adatto a QUESTO SPECIFICO pet.
-Seleziona i TOP 5 prodotti più adatti e spiega PERCHÉ sono adatti a questo pet.
-La spiegazione deve essere utile per il proprietario del pet: usa un linguaggio chiaro e amichevole.
-Rispondi SOLO con JSON valido, senza markdown o testo aggiuntivo.`;
-
-      const userPrompt = `DESCRIZIONE PET:
-${petAiDesc}
-
-PRODOTTI CANDIDATI (${topCandidates.length} su ${candidates.length} pre-filtrati):
-${candidateList}
-
-Rispondi con questo JSON:
-{
-  "matches": [
-    {
-      "promo_item_id": "...",
-      "product_name": "Nome prodotto",
-      "score": 92,
-      "reasoning": "Spiegazione dettagliata di perché questo prodotto è adatto a questo pet (2-3 frasi)",
-      "key_matches": ["aspetto1", "aspetto2", "aspetto3"],
-      "relevance": "high"
-    }
-  ]
-}
-
-REGOLE:
-- Ritorna esattamente i TOP 5 prodotti più adatti (o meno se non ce ne sono 5 adatti)
-- score: 0-100 (100 = perfettamente adatto)
-- relevance: "high" (score>=70), "medium" (score 40-69), "low" (score<40)
-- key_matches: lista di 2-4 aspetti specifici che corrispondono
-- reasoning: spiega al proprietario PERCHÉ questo prodotto fa bene al SUO pet specifico
-- Ordina per score discendente`;
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000);
-
-      const startMs = Date.now();
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 1500
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeout);
-      const latencyMs = Date.now() - startMs;
-
-      if (!response.ok) {
-        console.error(`[analyze-match-all] OpenAI error: ${response.status}`);
-        return res.status(502).json({ error: "openai_error" });
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || "";
-      const tokensUsed = data.usage?.total_tokens || 0;
-
-      // 10. Parse response
-      let parsed = { matches: [] };
-      try {
-        const jsonStart = content.indexOf("{");
-        const jsonEnd = content.lastIndexOf("}");
-        if (jsonStart !== -1 && jsonEnd > jsonStart) {
-          parsed = JSON.parse(content.slice(jsonStart, jsonEnd + 1));
-        }
-      } catch (parseErr) {
-        console.warn("[analyze-match-all] JSON parse error:", parseErr.message);
-      }
-
-      // Enrich matches with image_url and product_url from DB data
-      if (parsed.matches && Array.isArray(parsed.matches)) {
-        parsed.matches = parsed.matches.map(m => {
-          const dbItem = candidates.find(c => c.promo_item_id === m.promo_item_id);
-          return {
-            ...m,
-            image_url: dbItem?.image_url || null,
-            product_url: dbItem?.product_url || null,
-            category: dbItem?.category || null
-          };
-        });
-      }
-
-      // 11. Save to cache (TTL 24h)
-      try {
-        await pool.query(
-          `INSERT INTO explanation_cache (cache_key, explanation, model, tokens_used, latency_ms, expires_at)
-           VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '24 hours')
-           ON CONFLICT (cache_key) DO UPDATE SET explanation = $2, tokens_used = $4, latency_ms = $5, expires_at = NOW() + INTERVAL '24 hours'`,
-          [cacheKey, JSON.stringify(parsed), "gpt-4o-mini", tokensUsed, latencyMs]
-        );
-      } catch (cacheErr) {
-        console.warn("[analyze-match-all] cache write error:", cacheErr.message);
-      }
-
-      console.log(`[analyze-match-all] done pet=${petId} candidates=${topCandidates.length} top=${parsed.matches?.length || 0} tokens=${tokensUsed} latency=${latencyMs}ms`);
-
-      return res.json({
-        petId,
-        petName: pet.name,
-        matches: parsed.matches || [],
-        fromCache: false,
-        candidatesCount: candidates.length,
-        latencyMs,
-        tokensUsed
-      });
+      console.log(`[analyze-match-all] done pet=${petId} candidates=${result.candidatesCount} top=${result.matches?.length || 0} cached=${result.fromCache}`);
+      return res.json(result);
 
     } catch (e) {
       if (e.name === "AbortError") {
@@ -1176,6 +1222,121 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
         return res.status(504).json({ error: "timeout" });
       }
       console.error("POST /api/promo/analyze-match error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // =======================================================
+  // POST /api/admin/:tenant_id/bulk-ai-analysis
+  // Bulk AI analysis for all pets (super_admin / admin_brand only)
+  // =======================================================
+  router.post("/api/admin/:tenant_id/bulk-ai-analysis", requireAuth, async (req, res) => {
+    try {
+      // Role check: super_admin or admin_brand only
+      const userRole = req.user?.role || req.headers["x-ada-role"];
+      if (userRole !== "super_admin" && userRole !== "admin_brand") {
+        return res.status(403).json({ error: "forbidden_admin_only" });
+      }
+
+      if (!pool) {
+        return res.status(503).json({ error: "db_not_available" });
+      }
+
+      const openAiKey = _getOpenAiKey();
+      if (!openAiKey) {
+        return res.status(503).json({ error: "openai_not_configured" });
+      }
+
+      // Extend request timeout to 5 minutes
+      req.setTimeout(300000);
+
+      // Get all pets
+      let allPets = [];
+      try {
+        const petsResult = await pool.query(
+          "SELECT pet_id, name, ai_description FROM pets ORDER BY name"
+        );
+        allPets = petsResult.rows;
+      } catch (e) {
+        return res.status(500).json({ error: "db_error", message: e.message });
+      }
+
+      const results = {
+        total: allPets.length,
+        descriptionsGenerated: 0,
+        analysesRun: 0,
+        analysesCached: 0,
+        errors: [],
+      };
+
+      // Process each pet serially to avoid OpenAI rate limits
+      for (const pet of allPets) {
+        try {
+          // Step A: Generate AI description if missing
+          if (!pet.ai_description) {
+            try {
+              const sources = await _collectPetSourcesFromDB(pool, pet.pet_id);
+              const sourcesText = JSON.stringify(sources);
+
+              const descController = new AbortController();
+              const descTimeout = setTimeout(() => descController.abort(), 25000);
+
+              const descResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + openAiKey, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "gpt-4o-mini",
+                  messages: [
+                    { role: "system", content: "Sei un assistente veterinario. Genera una descrizione completa del pet basata sui dati forniti. La descrizione deve includere specie, razza, età, peso, condizioni di salute note, stile di vita e qualsiasi informazione rilevante per raccomandazioni di prodotti. Scrivi in italiano, in modo chiaro e conciso (max 500 parole)." },
+                    { role: "user", content: "Dati del pet:\n" + sourcesText }
+                  ],
+                  temperature: 0.3,
+                  max_tokens: 800
+                }),
+                signal: descController.signal
+              });
+
+              clearTimeout(descTimeout);
+
+              if (descResponse.ok) {
+                const descData = await descResponse.json();
+                const description = descData.choices?.[0]?.message?.content || "";
+                if (description) {
+                  await pool.query(
+                    "UPDATE pets SET ai_description = $1, ai_description_generated_at = NOW() WHERE pet_id = $2",
+                    [description, pet.pet_id]
+                  );
+                  results.descriptionsGenerated++;
+                }
+              }
+            } catch (descErr) {
+              results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: descErr.message });
+            }
+          }
+
+          // Step B: Run analysis
+          try {
+            const analysisResult = await _runAnalysisForPet(pool, pet.pet_id, openAiKey);
+            if (analysisResult.error) {
+              results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisResult.error });
+            } else {
+              results.analysesRun++;
+              if (analysisResult.fromCache) results.analysesCached++;
+            }
+          } catch (analysisErr) {
+            results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisErr.message });
+          }
+
+        } catch (petErr) {
+          results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "general", error: petErr.message });
+        }
+      }
+
+      console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} analyses=${results.analysesRun} cached=${results.analysesCached} errors=${results.errors.length}`);
+      return res.json(results);
+
+    } catch (e) {
+      console.error("POST /api/admin/:tenant_id/bulk-ai-analysis error", e);
       res.status(500).json({ error: "server_error" });
     }
   });

@@ -1402,6 +1402,7 @@
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="previewPromoItem()" title="Anteprima sequenziale prodotti filtrati">👁️ Anteprima</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="openImageManagement()" title="Gestione immagini prodotti filtrati">🖼️ Gestione Immagini</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="bulkAiAnalysis()">&#129302; Bulk AI Analysis</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
         html.push('</div>');
 
@@ -3662,6 +3663,86 @@
     }
 
     // =========================================================================
+    // Bulk AI Analysis
+    // =========================================================================
+
+    async function bulkAiAnalysis() {
+        if (!confirm('Avviare l\'analisi AI per tutti i pet?\n\nQuesto processo:\n- Genera la descrizione AI per i pet che ne sono privi\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti')) return;
+
+        var tenantId = _currentTenantId || '';
+        if (!tenantId) {
+            if (typeof showToast === 'function') showToast('Selezionare un tenant', 'warning');
+            return;
+        }
+
+        // Show modal spinner
+        if (typeof _showModal === 'function') {
+            _showModal('Bulk AI Analysis', function(container) {
+                container.innerHTML = '<div style="text-align:center;padding:40px;">' +
+                    '<div style="font-size:32px;margin-bottom:16px;">&#129302;</div>' +
+                    '<h3 style="color:#1e3a5f;margin-bottom:8px;">Analisi in corso...</h3>' +
+                    '<p style="color:#64748b;font-size:13px;">Elaborazione di tutti i pet. Attendere...</p>' +
+                    '<div style="margin-top:16px;width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:#1e3a5f;border-radius:50%;animation:spin 1s linear infinite;margin:16px auto;"></div>' +
+                    '<style>@keyframes spin{to{transform:rotate(360deg)}}</style></div>';
+            });
+        }
+
+        try {
+            var resp = await fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/bulk-ai-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            if (!resp || !resp.ok) {
+                if (typeof _closeModal === 'function') _closeModal();
+                var errData = null;
+                try { errData = await resp.json(); } catch(_) {}
+                if (typeof showToast === 'function') showToast('Errore: ' + ((errData && errData.error) || 'sconosciuto'), 'error');
+                return;
+            }
+
+            var result = await resp.json();
+
+            // Show results in modal
+            if (typeof _showModal === 'function') {
+                _showModal('Bulk AI Analysis — Risultati', function(container) {
+                    var h = [];
+                    h.push('<div style="padding:20px;">');
+                    h.push('<h3 style="color:#1e3a5f;margin-bottom:16px;">&#129302; Bulk AI Analysis completata</h3>');
+                    h.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">');
+                    h.push('<div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#16a34a;">' + result.total + '</div><div style="font-size:12px;color:#666;">Pet totali</div></div>');
+                    h.push('<div style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#2563eb;">' + result.descriptionsGenerated + '</div><div style="font-size:12px;color:#666;">Descrizioni generate</div></div>');
+                    h.push('<div style="background:#fefce8;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#ca8a04;">' + result.analysesRun + '</div><div style="font-size:12px;color:#666;">Analisi eseguite</div></div>');
+                    h.push('<div style="background:#f0f9ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#0369a1;">' + result.analysesCached + '</div><div style="font-size:12px;color:#666;">Analisi da cache</div></div>');
+                    h.push('</div>');
+
+                    if (result.errors && result.errors.length > 0) {
+                        h.push('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:16px;">');
+                        h.push('<div style="font-weight:600;color:#dc2626;margin-bottom:8px;">' + result.errors.length + ' errori:</div>');
+                        result.errors.slice(0, 10).forEach(function(err) {
+                            h.push('<div style="font-size:12px;color:#991b1b;margin:4px 0;">' + _escapeHtml((err.petName || err.petId) + ' (' + err.phase + '): ' + err.error) + '</div>');
+                        });
+                        if (result.errors.length > 10) {
+                            h.push('<div style="font-size:11px;color:#888;margin-top:4px;">...e altri ' + (result.errors.length - 10) + ' errori</div>');
+                        }
+                        h.push('</div>');
+                    }
+
+                    h.push('<button class="btn btn-primary" onclick="_closeModal()">Chiudi</button>');
+                    h.push('</div>');
+                    container.innerHTML = h.join('');
+                });
+            } else {
+                if (typeof showToast === 'function') showToast('Bulk AI Analysis completata: ' + result.analysesRun + ' analisi, ' + result.descriptionsGenerated + ' descrizioni', 'success');
+            }
+        } catch(e) {
+            if (typeof _closeModal === 'function') _closeModal();
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        }
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -3794,5 +3875,7 @@
     global.saveSource             = saveSource;
     global._sourcesFilterChange   = _sourcesFilterChange;
     global._sourcesSearchChange   = _sourcesSearchChange;
+    // Bulk AI Analysis
+    global.bulkAiAnalysis         = bulkAiAnalysis;
 
 })(typeof window !== 'undefined' ? window : this);
