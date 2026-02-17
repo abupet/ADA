@@ -50,11 +50,22 @@ async function transcribeAudioChunk(base64Audio, mimeType) {
     form.append("language", "it");
     form.append("response_format", "text");
 
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + openAiKey },
-        body: form
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+        response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + openAiKey },
+            body: form,
+            signal: controller.signal
+        });
+    } catch (fetchErr) {
+        clearTimeout(timeout);
+        console.warn("[Whisper] Fetch error:", fetchErr.message);
+        return null;
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
         const errBody = await response.text().catch(() => "");
@@ -311,6 +322,9 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
 
             try {
+                const chunkSize = audioData ? Buffer.from(audioData.substring(0, 100), "base64").length > 0 ? audioData.length : 0 : 0;
+                console.log("[WS] call_audio_chunk: conv=" + conversationId + " source=" + source + " size=" + chunkSize + "chars");
+
                 const pool = getPool();
                 // Determine speaker: 'local' = sender, 'remote' = other participant
                 let speakerId = userId;
@@ -325,8 +339,15 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                 }
 
                 const transcription = await transcribeAudioChunk(audioData, mimeType);
-                if (!transcription || !transcription.trim()) return;
-                if (isWhisperHallucination(transcription)) return;
+                if (!transcription || !transcription.trim()) {
+                    console.log("[WS] Transcription empty, skipping");
+                    return;
+                }
+                if (isWhisperHallucination(transcription)) {
+                    console.log("[WS] Hallucination filtered: " + transcription.trim().substring(0, 60));
+                    return;
+                }
+                console.log("[WS] Transcription OK (" + transcription.trim().length + " chars): " + transcription.trim().substring(0, 80));
 
                 // Merge logic: append to last transcription if same speaker is still talking.
                 // Only create a new message when the speaker changes.
@@ -369,7 +390,7 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                     });
                 }
             } catch (e) {
-                console.warn("[WS] call_audio_chunk transcription error:", e.message);
+                console.error("[WS] call_audio_chunk error:", e.message, e.stack ? e.stack.split("\n")[1] : "");
             }
         });
 

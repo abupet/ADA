@@ -1,4 +1,4 @@
-// app-webrtc.js v1.5
+// app-webrtc.js v1.6
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -296,9 +296,8 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
     var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus' : 'audio/webm';
     var chunkCount = 0;
+    var failCount = 0;
 
-    // Create a fresh MediaRecorder for each chunk window (restarting the same
-    // instance after stop() is unreliable across browsers).
     function createAndStart() {
         var recorder;
         try {
@@ -309,36 +308,57 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
         }
         var parts = [];
         recorder.ondataavailable = function(e) {
-            if (e.data && e.data.size > 0) parts.push(e.data);
+            if (e.data && e.data.size > 0) {
+                parts.push(e.data);
+            } else {
+                console.warn('[WebRTC] ondataavailable: empty data blob');
+            }
         };
         recorder.onstop = function() {
             if (parts.length > 0) {
                 var blob = new Blob(parts, { type: mimeType });
+                console.log('[WebRTC] Chunk ready: ' + parts.length + ' parts, ' + blob.size + 'B');
                 _webrtcSendAudioChunk(blob, source, conversationId);
+            } else {
+                console.warn('[WebRTC] Recorder stopped but no data captured');
             }
         };
-        recorder.start();
+        recorder.onerror = function(ev) {
+            console.error('[WebRTC] MediaRecorder error:', ev.error ? ev.error.message : ev);
+        };
+        try {
+            recorder.start();
+        } catch(e) {
+            console.error('[WebRTC] MediaRecorder.start() failed:', e.message);
+            return null;
+        }
         return recorder;
     }
 
-    // Start first recording window
     _webrtcLocalRecorder = createAndStart();
     if (!_webrtcLocalRecorder) return;
-    console.log('[WebRTC] Audio capture started (chunk every ' + (_webrtcChunkIntervalMs/1000) + 's)');
+    console.log('[WebRTC] Audio capture started (mimeType=' + mimeType + ', chunk every ' + (_webrtcChunkIntervalMs/1000) + 's)');
 
-    // Every N seconds: start new recorder FIRST, then stop old one.
-    // Starting before stopping ensures zero audio gap between chunks.
     _webrtcChunkTimer = setInterval(function() {
-        chunkCount++;
-        var oldRecorder = _webrtcLocalRecorder;
-        // Start new recorder FIRST (both record briefly in parallel — no gap)
-        _webrtcLocalRecorder = createAndStart();
-        // Then stop old recorder → async onstop → sends chunk
-        if (oldRecorder && oldRecorder.state === 'recording') {
-            try { oldRecorder.stop(); } catch(e) {}
-        }
-        if (_webrtcLocalRecorder) {
-            console.log('[WebRTC] Chunk #' + chunkCount + ' finalized, new recorder started');
+        try {
+            chunkCount++;
+            var oldRecorder = _webrtcLocalRecorder;
+            _webrtcLocalRecorder = createAndStart();
+            // Always try to stop the old recorder (even if new one failed)
+            if (oldRecorder && oldRecorder.state === 'recording') {
+                try { oldRecorder.stop(); } catch(e) {
+                    console.warn('[WebRTC] Error stopping old recorder:', e.message);
+                }
+            }
+            if (_webrtcLocalRecorder) {
+                failCount = 0;
+                console.log('[WebRTC] Chunk #' + chunkCount + ' finalized, new recorder active');
+            } else {
+                failCount++;
+                console.error('[WebRTC] Chunk #' + chunkCount + ' — new recorder FAILED (fail #' + failCount + ')');
+            }
+        } catch(e) {
+            console.error('[WebRTC] setInterval error:', e.message);
         }
     }, _webrtcChunkIntervalMs);
 }

@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.10
+
+### Fix: Robustezza chunking trascrizione chiamate + logging diagnostico
+- Fix critico: `MediaRecorder.start()` era fuori dal try/catch in `createAndStart()` — se falliva (comune su browser mobile), il callback di `setInterval` lanciava un'eccezione non catturata, il vecchio recorder non veniva mai stoppato, e la trascrizione si fermava silenziosamente dopo il primo/secondo chunk
+- Fix: aggiunto `onerror` handler su `MediaRecorder` per catturare errori del media pipeline (prima venivano ignorati silenziosamente)
+- Fix: nel callback `setInterval`, il vecchio recorder viene ora stoppato SEMPRE, anche se la creazione del nuovo recorder fallisce (prima veniva lasciato a registrare indefinitamente)
+- Fix: aggiunto `AbortController` con timeout 30s alla chiamata API OpenAI Whisper — se l'API non risponde, il chunk viene scartato anziché bloccare la pipeline
+- Miglioramento: logging diagnostico completo su frontend e backend — dimensione chunk, parti accumulate, errori di start/stop, transcription OK/empty/hallucination — per diagnosi rapida in caso di ulteriori problemi
+
 ## v8.22.9
 
 ### Miglioramento qualità trascrizione chiamate
