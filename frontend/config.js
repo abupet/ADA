@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.4';
-const ADA_RELEASE_NOTES = 'Fix: live call transcription race condition — remote audio capture now starts when tracks arrive via ontrack.';
+const ADA_VERSION = '8.22.5';
+const ADA_RELEASE_NOTES = 'Fix: WebRTC calls not connecting — TURN server support, ICE timeout, signaling diagnostics.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
