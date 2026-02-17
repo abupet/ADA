@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.22.5
+
+### Fix: Chiamate WebRTC non funzionanti (timer bloccato 00:00, nessun audio)
+- Fix critico: le chiamate tra owner e vet_int (e qualsiasi coppia) restavano bloccate su "Connesso 00:00" senza audio — la connessione ICE non si stabiliva mai perché mancava il supporto TURN server per NAT traversal
+- Backend: nuovo endpoint `GET /api/rtc-config` che restituisce la configurazione ICE servers (STUN + TURN opzionale via env vars `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`, `TURN_URL_TLS`)
+- Frontend: `_webrtcCreatePC()` ora carica la configurazione ICE dal backend prima di creare la PeerConnection, con fallback ai soli STUN servers di Google
+- Frontend: aggiunto ICE connection timeout (20s) — se la connessione non si stabilisce, la chiamata viene terminata con messaggio utente "Impossibile stabilire la connessione"
+- Frontend: aggiunto logging diagnostico completo per tutto il flusso signaling (offer/answer/ICE state) e connection state
+- Frontend: gestione esplicita dello stato ICE `failed` con messaggio utente "Connessione fallita. Verificare la rete."
+
 ## v8.22.4
 
 ### Fix: Trascrizione chiamate non funzionante

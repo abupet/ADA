@@ -1,4 +1,4 @@
-// app-webrtc.js v1.1
+// app-webrtc.js v1.2
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -8,6 +8,7 @@ var _webrtcPC = null, _webrtcLocalStream = null, _webrtcRemoteStream = null;
 var _webrtcCallId = null, _webrtcConvId = null, _webrtcCallType = null;
 var _webrtcTimerInterval = null, _webrtcStartTime = null, _webrtcIceQueue = [];
 var _webrtcIncomingCallData = null, _webrtcRingTimeout = null, _webrtcIncomingTimeout = null;
+var _webrtcIceServersCache = null, _webrtcIceTimeout = null;
 
 function _webrtcApiBase() { return window.ADA_API_BASE_URL || ''; }
 function _webrtcAuth() { return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }; }
@@ -17,6 +18,25 @@ function _webrtcUserId() {
 }
 function _webrtcFmtDur(s) { var m = Math.floor(s/60), ss = s%60; return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss; }
 function _webrtcEsc(s) { return typeof s !== 'string' ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+
+// ---- ICE server config (STUN + TURN) ----
+async function _webrtcFetchIceServers() {
+    if (_webrtcIceServersCache) return _webrtcIceServersCache;
+    try {
+        var resp = await fetchApi('/api/rtc-config');
+        if (resp.ok) {
+            var data = await resp.json();
+            if (data.iceServers && data.iceServers.length > 0) {
+                _webrtcIceServersCache = data.iceServers;
+                console.log('[WebRTC] ICE servers loaded:', data.iceServers.length, 'servers');
+                return _webrtcIceServersCache;
+            }
+        }
+    } catch(e) {
+        console.warn('[WebRTC] Failed to fetch ICE config, using STUN fallback:', e.message);
+    }
+    return null;
+}
 
 // ---- CSS injection ----
 function _webrtcInjectStyles() {
@@ -81,7 +101,8 @@ async function startCall(conversationId, callType) {
         console.warn('[WebRTC] Impossibile accedere ai dispositivi media:', e.message);
         if (typeof showToast === 'function') showToast('Impossibile accedere al microfono/videocamera','error'); return;
     }
-    _webrtcCreatePC();
+    var iceServers = await _webrtcFetchIceServers();
+    _webrtcCreatePC(iceServers);
     _webrtcLocalStream.getTracks().forEach(function(t) { _webrtcPC.addTrack(t, _webrtcLocalStream); });
     _webrtcCallId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
     socket.emit('initiate_call', { conversationId: conversationId, callType: callType, callId: _webrtcCallId });
@@ -96,13 +117,20 @@ async function startCall(conversationId, callType) {
 }
 
 // ---- Section 3: RTCPeerConnection ----
-function _webrtcCreatePC() {
-    _webrtcPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
+var _webrtcDefaultIceServers = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+
+function _webrtcCreatePC(iceServers) {
+    var config = { iceServers: iceServers || _webrtcDefaultIceServers };
+    console.log('[WebRTC] Creating PeerConnection with', config.iceServers.length, 'ICE servers');
+    _webrtcPC = new RTCPeerConnection(config);
     _webrtcRemoteStream = new MediaStream();
     _webrtcPC.onicecandidate = function(ev) {
-        if (ev.candidate && window._commSocket) window._commSocket.emit('webrtc_ice', { conversationId: _webrtcConvId, callId: _webrtcCallId, candidate: ev.candidate });
+        if (ev.candidate && window._commSocket) {
+            window._commSocket.emit('webrtc_ice', { conversationId: _webrtcConvId, callId: _webrtcCallId, candidate: ev.candidate });
+        }
     };
     _webrtcPC.ontrack = function(ev) {
+        console.log('[WebRTC] ontrack: received remote track kind=' + (ev.track ? ev.track.kind : '?'));
         ev.streams[0].getTracks().forEach(function(t) { _webrtcRemoteStream.addTrack(t); });
         var rv = document.getElementById('webrtc-remote-video'); if (rv) rv.srcObject = _webrtcRemoteStream;
         // Fix: if transcription already started but remote stream was empty, start remote capture now
@@ -114,12 +142,36 @@ function _webrtcCreatePC() {
     };
     _webrtcPC.onconnectionstatechange = function() {
         var s = _webrtcPC ? _webrtcPC.connectionState : 'unknown';
-        if (s === 'disconnected' || s === 'failed' || s === 'closed') endCall();
+        console.log('[WebRTC] connectionState:', s);
+        if (s === 'failed') {
+            console.error('[WebRTC] Connection failed');
+            if (typeof showToast === 'function') showToast('Connessione fallita. Verificare la rete.', 'error');
+            endCall();
+        } else if (s === 'disconnected' || s === 'closed') {
+            endCall();
+        }
     };
     _webrtcPC.oniceconnectionstatechange = function() {
         var s = _webrtcPC ? _webrtcPC.iceConnectionState : 'unknown';
-        if (s === 'connected' || s === 'completed') _webrtcStartTimer();
+        console.log('[WebRTC] iceConnectionState:', s);
+        if (s === 'connected' || s === 'completed') {
+            if (_webrtcIceTimeout) { clearTimeout(_webrtcIceTimeout); _webrtcIceTimeout = null; }
+            _webrtcStartTimer();
+        } else if (s === 'failed') {
+            if (_webrtcIceTimeout) { clearTimeout(_webrtcIceTimeout); _webrtcIceTimeout = null; }
+            console.error('[WebRTC] ICE connection failed — no viable network path');
+            if (typeof showToast === 'function') showToast('Connessione non riuscita. Verificare la rete.', 'error');
+            endCall();
+        }
     };
+    // ICE connection timeout: if not connected within 20s, give up
+    _webrtcIceTimeout = setTimeout(function() {
+        if (_webrtcPC && _webrtcPC.iceConnectionState !== 'connected' && _webrtcPC.iceConnectionState !== 'completed') {
+            console.error('[WebRTC] ICE timeout — state:', _webrtcPC.iceConnectionState);
+            if (typeof showToast === 'function') showToast('Impossibile stabilire la connessione. Riprovare.', 'error');
+            endCall();
+        }
+    }, 20000);
 }
 
 // ---- Section 4: Handle incoming call ----
@@ -163,7 +215,8 @@ async function _webrtcAccept(convId, callId, callType) {
         console.warn('[WebRTC] Impossibile accedere ai dispositivi media:', e.message);
         if (typeof showToast === 'function') showToast('Impossibile accedere al microfono/videocamera','error'); return;
     }
-    _webrtcCreatePC();
+    var iceServers = await _webrtcFetchIceServers();
+    _webrtcCreatePC(iceServers);
     _webrtcLocalStream.getTracks().forEach(function(t) { _webrtcPC.addTrack(t, _webrtcLocalStream); });
     // Join conv room before accepting (so signaling messages reach us)
     if (window._commSocket) {
@@ -337,6 +390,7 @@ function endCall() {
     if (_webrtcTimerInterval) { clearInterval(_webrtcTimerInterval); _webrtcTimerInterval = null; }
     if (_webrtcRingTimeout) { clearTimeout(_webrtcRingTimeout); _webrtcRingTimeout = null; }
     if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
+    if (_webrtcIceTimeout) { clearTimeout(_webrtcIceTimeout); _webrtcIceTimeout = null; }
     _webrtcIncomingCallData = null;
     var ov = document.getElementById('webrtc-call-overlay'); if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     _webrtcRemoveNotif();
@@ -353,10 +407,12 @@ function _webrtcInitSignaling() {
 
     socket.on('call_accepted', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        console.log('[WebRTC] Call accepted, creating offer');
         if (_webrtcRingTimeout) { clearTimeout(_webrtcRingTimeout); _webrtcRingTimeout = null; }
         try {
             var offer = await _webrtcPC.createOffer();
             await _webrtcPC.setLocalDescription(offer);
+            console.log('[WebRTC] Offer created and sent');
             socket.emit('webrtc_offer', { conversationId: _webrtcConvId, callId: _webrtcCallId, offer: offer });
         } catch(e) { console.warn('[WebRTC] Errore creazione offerta:', e.message); endCall(); }
     });
@@ -369,20 +425,25 @@ function _webrtcInitSignaling() {
 
     socket.on('webrtc_offer', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        console.log('[WebRTC] Offer received, creating answer');
         try {
             await _webrtcPC.setRemoteDescription(new RTCSessionDescription(d.offer));
+            console.log('[WebRTC] Remote description set, draining', _webrtcIceQueue.length, 'queued ICE candidates');
             for (var i = 0; i < _webrtcIceQueue.length; i++) await _webrtcPC.addIceCandidate(new RTCIceCandidate(_webrtcIceQueue[i]));
             _webrtcIceQueue = [];
             var answer = await _webrtcPC.createAnswer();
             await _webrtcPC.setLocalDescription(answer);
+            console.log('[WebRTC] Answer created and sent');
             socket.emit('webrtc_answer', { conversationId: _webrtcConvId, callId: _webrtcCallId, answer: answer });
         } catch(e) { console.warn('[WebRTC] Errore gestione offerta:', e.message); endCall(); }
     });
 
     socket.on('webrtc_answer', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        console.log('[WebRTC] Answer received');
         try {
             await _webrtcPC.setRemoteDescription(new RTCSessionDescription(d.answer));
+            console.log('[WebRTC] Remote description set, draining', _webrtcIceQueue.length, 'queued ICE candidates');
             for (var i = 0; i < _webrtcIceQueue.length; i++) await _webrtcPC.addIceCandidate(new RTCIceCandidate(_webrtcIceQueue[i]));
             _webrtcIceQueue = [];
         } catch(e) { console.warn('[WebRTC] Errore gestione risposta:', e.message); endCall(); }
