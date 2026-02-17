@@ -302,29 +302,67 @@ app.use("/api", requireJwt);
 
 const requireAuth = requireJwt;
 
-// --- WebRTC ICE server configuration (STUN + optional TURN) ---
-app.get("/api/rtc-config", requireAuth, (_req, res) => {
-  const iceServers = [
+// --- WebRTC ICE server configuration (STUN + TURN via Metered.ca API) ---
+let _rtcConfigCache = null;
+let _rtcConfigCacheTime = 0;
+const RTC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+app.get("/api/rtc-config", requireAuth, async (_req, res) => {
+  // Return cached config if fresh
+  if (_rtcConfigCache && (Date.now() - _rtcConfigCacheTime) < RTC_CACHE_TTL) {
+    return res.json(_rtcConfigCache);
+  }
+
+  const fallbackIceServers = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" }
   ];
+
+  // Option 1: Metered.ca REST API (preferred — auto geo-routing, dynamic credentials)
+  const meteredApiKey = process.env.METERED_API_KEY;
+  const meteredAppName = process.env.METERED_APP_NAME;
+  if (meteredApiKey && meteredAppName) {
+    try {
+      const url = `https://${meteredAppName}.metered.live/api/v1/turn/credentials?apiKey=${meteredApiKey}`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const iceServers = await resp.json();
+        if (Array.isArray(iceServers) && iceServers.length > 0) {
+          _rtcConfigCache = { iceServers };
+          _rtcConfigCacheTime = Date.now();
+          return res.json(_rtcConfigCache);
+        }
+      } else {
+        console.warn("[RTC] Metered API error:", resp.status);
+      }
+    } catch (e) {
+      console.warn("[RTC] Metered API fetch failed:", e.message);
+    }
+  }
+
+  // Option 2: Static TURN config via env vars
   const turnUrl = process.env.TURN_URL;
   if (turnUrl) {
+    const iceServers = [...fallbackIceServers];
     iceServers.push({
       urls: turnUrl,
       username: process.env.TURN_USERNAME || "",
       credential: process.env.TURN_CREDENTIAL || ""
     });
-    // Add TLS variant if main URL is turn: (not turns:)
-    if (turnUrl.startsWith("turn:") && process.env.TURN_URL_TLS) {
+    if (process.env.TURN_URL_TLS) {
       iceServers.push({
         urls: process.env.TURN_URL_TLS,
         username: process.env.TURN_USERNAME || "",
         credential: process.env.TURN_CREDENTIAL || ""
       });
     }
+    _rtcConfigCache = { iceServers };
+    _rtcConfigCacheTime = Date.now();
+    return res.json(_rtcConfigCache);
   }
-  res.json({ iceServers });
+
+  // Fallback: STUN only
+  res.json({ iceServers: fallbackIceServers });
 });
 
 // --- Self-service password change ---
