@@ -694,15 +694,15 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           if (conversation.subject) systemContent += `\n\nOggetto della conversazione: ${conversation.subject}`;
           if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
           const historyResult = await pool.query(
-            "SELECT ai_role AS role, content, file_url, file_name, file_type FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
+            "SELECT ai_role AS role, content, media_url, media_type FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
             [id, MAX_HISTORY_MESSAGES]
           );
           let hasImageAttachment = false;
           const historyMessages = historyResult.rows.reverse().map(m => {
             const role = m.role || "user";
             let msgContent = m.content || "";
-            if (m.file_url) {
-              const ft = (m.file_type || "").toLowerCase();
+            if (m.media_url) {
+              const ft = (m.media_type || "").toLowerCase();
               if (ft.startsWith("image/")) {
                 hasImageAttachment = true;
                 // Return multimodal content for vision
@@ -710,13 +710,13 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
                   role,
                   content: [
                     { type: "text", text: msgContent || "(immagine allegata)" },
-                    { type: "image_url", image_url: { url: m.file_url } }
+                    { type: "image_url", image_url: { url: m.media_url } }
                   ]
                 };
               } else if (ft === "application/pdf") {
-                msgContent += "\n[Allegato PDF: " + (m.file_name || "documento.pdf") + " — contenuto non disponibile per analisi]";
+                msgContent += "\n[Allegato PDF — contenuto non disponibile per analisi]";
               } else {
-                msgContent += "\n[Allegato: " + (m.file_name || "file") + " — tipo non supportato per analisi]";
+                msgContent += "\n[Allegato — tipo non supportato per analisi]";
               }
             }
             return { role, content: msgContent };
