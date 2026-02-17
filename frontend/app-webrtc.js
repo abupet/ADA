@@ -1,4 +1,4 @@
-// app-webrtc.js v1.3
+// app-webrtc.js v1.4
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -295,39 +295,48 @@ function _webrtcStartServerTranscription(conversationId) {
 function _webrtcStartAudioCapture(source, stream, conversationId) {
     var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus' : 'audio/webm';
+    var chunkCount = 0;
 
-    var recorder;
-    try {
-        recorder = new MediaRecorder(stream, { mimeType: mimeType });
-    } catch(e) {
-        console.warn('[WebRTC] MediaRecorder not available:', e.message);
-        return;
+    // Create a fresh MediaRecorder for each chunk window (restarting the same
+    // instance after stop() is unreliable across browsers).
+    function createAndStart() {
+        var recorder;
+        try {
+            recorder = new MediaRecorder(stream, { mimeType: mimeType });
+        } catch(e) {
+            console.warn('[WebRTC] Cannot create MediaRecorder:', e.message);
+            return null;
+        }
+        var parts = [];
+        recorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) parts.push(e.data);
+        };
+        recorder.onstop = function() {
+            if (parts.length > 0) {
+                var blob = new Blob(parts, { type: mimeType });
+                _webrtcSendAudioChunk(blob, source, conversationId);
+            }
+        };
+        recorder.start();
+        return recorder;
     }
-    var parts = [];
 
-    recorder.ondataavailable = function(e) {
-        if (e.data && e.data.size > 0) parts.push(e.data);
-    };
+    // Start first recording window
+    _webrtcLocalRecorder = createAndStart();
+    if (!_webrtcLocalRecorder) return;
+    console.log('[WebRTC] Audio capture started (chunk every ' + (_webrtcChunkIntervalMs/1000) + 's)');
 
-    recorder.onstop = function() {
-        if (parts.length > 0) {
-            var blob = new Blob(parts, { type: mimeType });
-            _webrtcSendAudioChunk(blob, source, conversationId);
-        }
-        parts = [];
-        // Restart if the call is still active
-        if (_webrtcPC && _webrtcChunkTimer !== null) {
-            try { recorder.start(); } catch(e) {}
-        }
-    };
-
-    recorder.start();
-    _webrtcLocalRecorder = recorder;
-
-    // Every N seconds, stop + restart to create a chunk
+    // Every N seconds: stop current recorder (sends chunk) + start new one
     _webrtcChunkTimer = setInterval(function() {
-        if (recorder.state === 'recording') {
-            try { recorder.stop(); } catch(e) {}
+        chunkCount++;
+        // Stop current → triggers async onstop → sends chunk
+        if (_webrtcLocalRecorder && _webrtcLocalRecorder.state === 'recording') {
+            try { _webrtcLocalRecorder.stop(); } catch(e) {}
+        }
+        // Start new recorder immediately (minimizes audio gap)
+        _webrtcLocalRecorder = createAndStart();
+        if (_webrtcLocalRecorder) {
+            console.log('[WebRTC] Chunk #' + chunkCount + ' finalized, new recorder started');
         }
     }, _webrtcChunkIntervalMs);
 }
@@ -354,7 +363,9 @@ function _webrtcSendAudioChunk(blob, source, conversationId) {
 
 function _webrtcStopServerTranscription() {
     if (_webrtcChunkTimer) { clearInterval(_webrtcChunkTimer); _webrtcChunkTimer = null; }
+    // Flush final chunk (stop triggers async onstop → sends remaining audio)
     if (_webrtcLocalRecorder && _webrtcLocalRecorder.state !== 'inactive') {
+        console.log('[WebRTC] Flushing final audio chunk');
         try { _webrtcLocalRecorder.stop(); } catch(e) {}
     }
     _webrtcLocalRecorder = null;
