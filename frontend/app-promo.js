@@ -1105,7 +1105,8 @@ async function _showPromoAnalysis(productId, petId, productDescOverride) {
     }
 
     if (!petDesc) {
-        if (typeof showToast === 'function') showToast('Descrizione pet non disponibile', 'warning');
+        console.warn('[Promo] Analysis skipped: pet description unavailable');
+        if (typeof showToast === 'function') showToast('Descrizione pet non disponibile — generare prima la descrizione AI', 'warning');
         return;
     }
 
