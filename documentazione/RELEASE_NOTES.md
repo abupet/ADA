@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.13
+
+### Fix: MediaRecorder cattura silenzio su mobile — Web Audio API
+- Fix critico: su Chrome mobile, quando un `getUserMedia` stream viene usato contemporaneamente da `RTCPeerConnection` e `MediaRecorder`, quest'ultimo cattura silenzio anziché l'audio del microfono. L'interlocutore sente la voce (via WebRTC), ma la trascrizione riceve audio vuoto → Whisper produce allucinazioni ("Sottotitoli creati dalla comunità Amara.org") per ogni chunk
+- Fix: l'audio per il `MediaRecorder` viene ora instradato attraverso la **Web Audio API** (`AudioContext → MediaStreamSource → MediaStreamDestination`), creando uno stream audio indipendente che bypassa il conflitto con il PeerConnection
+- Aggiunta diagnostica: log del livello audio 3 secondi dopo l'inizio della cattura (`Audio level check: avg=X`) per verificare se il microfono produce effettivamente segnale
+- Aggiunta diagnostica: log delle proprietà dell'audio track (enabled, muted, readyState, label)
+- Cleanup: l'AudioContext viene chiuso correttamente quando la trascrizione termina
+
 ## v8.22.12
 
 ### Fix: Trascrizione chiamate — socket disconnect e rendering
