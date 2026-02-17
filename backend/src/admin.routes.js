@@ -344,6 +344,62 @@ function adminRouter({ requireAuth, upload }) {
     }
   );
 
+  // Bulk update service_type for multiple promo items
+  router.patch(
+    "/api/admin/:tenantId/promo-items/bulk/service-type",
+    requireAuth,
+    requireRole(adminRoles),
+    async (req, res) => {
+      try {
+        const { tenantId } = req.params;
+        const { item_ids, add, remove } = req.body || {};
+
+        if (!Array.isArray(item_ids) || !item_ids.length) {
+          return res.status(400).json({ error: "item_ids required" });
+        }
+        const addArr = Array.isArray(add) ? add : [];
+        const removeArr = Array.isArray(remove) ? remove : [];
+        if (!addArr.length && !removeArr.length) {
+          return res.status(400).json({ error: "add or remove required" });
+        }
+
+        // Build SET clause using array operations
+        let setExpr = "service_type";
+        const params = [tenantId, item_ids];
+        let idx = 3;
+
+        // Remove first, then add (to avoid duplicates when both are specified)
+        for (const val of removeArr) {
+          setExpr = `array_remove(${setExpr}, $${idx})`;
+          params.push(val);
+          idx++;
+        }
+        for (const val of addArr) {
+          // Use array_cat + array_remove to avoid duplicates
+          setExpr = `array_cat(array_remove(${setExpr}, $${idx}), ARRAY[$${idx}]::TEXT[])`;
+          params.push(val);
+          idx++;
+        }
+
+        const { rows } = await pool.query(
+          `UPDATE promo_items SET service_type = ${setExpr}, version = version + 1, updated_at = NOW()
+           WHERE tenant_id = $1 AND promo_item_id = ANY($2)
+           RETURNING promo_item_id`,
+          params
+        );
+
+        await _auditLog(pool, req.promoAuth, "promo_items.bulk_service_type", tenantId, "promo_items", {
+          count: rows.length, add: addArr, remove: removeArr,
+        });
+
+        res.json({ success: true, updated: rows.length });
+      } catch (e) {
+        console.error("PATCH bulk/service-type error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
   // ==============================
   // CAMPAIGNS CRUD
   // ==============================
