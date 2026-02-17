@@ -1,4 +1,4 @@
-// app-webrtc.js v1.2
+// app-webrtc.js v1.3
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -133,12 +133,6 @@ function _webrtcCreatePC(iceServers) {
         console.log('[WebRTC] ontrack: received remote track kind=' + (ev.track ? ev.track.kind : '?'));
         ev.streams[0].getTracks().forEach(function(t) { _webrtcRemoteStream.addTrack(t); });
         var rv = document.getElementById('webrtc-remote-video'); if (rv) rv.srcObject = _webrtcRemoteStream;
-        // Fix: if transcription already started but remote stream was empty, start remote capture now
-        if (_webrtcChunkTimers.local !== null && _webrtcRemoteRecorder === null
-            && _webrtcRemoteStream.getAudioTracks().length > 0) {
-            console.log('[WebRTC] ontrack: remote audio tracks now available, starting remote capture');
-            _webrtcStartAudioCapture('remote', _webrtcRemoteStream, _webrtcConvId);
-        }
     };
     _webrtcPC.onconnectionstatechange = function() {
         var s = _webrtcPC ? _webrtcPC.connectionState : 'unknown';
@@ -278,30 +272,23 @@ function _webrtcStartTimer() {
     _webrtcStartServerTranscription(_webrtcConvId);
 }
 
-// Server-side transcription via OpenAI Whisper (replaces Web Speech API)
+// Server-side transcription via OpenAI Whisper
+// Each participant only transcribes their OWN audio (local stream).
+// This avoids duplicates (both sides capturing remote) and is more reliable.
 var _webrtcLocalRecorder = null;
-var _webrtcRemoteRecorder = null;
 var _webrtcChunkIntervalMs = 15000; // 15 seconds per chunk
-var _webrtcChunkTimers = { local: null, remote: null };
+var _webrtcChunkTimer = null;
 
 function _webrtcStartServerTranscription(conversationId) {
     var socket = window._commSocket;
     if (!socket) { console.warn('[WebRTC] Transcription skipped: no socket'); return; }
 
-    // Capture local audio (MY audio)
+    // Capture local audio only (MY voice) — the other participant captures theirs
     if (_webrtcLocalStream && _webrtcLocalStream.getAudioTracks().length > 0) {
-        console.log('[WebRTC] Starting audio capture for local');
+        console.log('[WebRTC] Starting local audio capture for transcription');
         _webrtcStartAudioCapture('local', _webrtcLocalStream, conversationId);
     } else {
         console.warn('[WebRTC] Transcription: local stream has no audio tracks');
-    }
-
-    // Capture remote audio (OTHER participant's audio)
-    if (_webrtcRemoteStream && _webrtcRemoteStream.getAudioTracks().length > 0) {
-        console.log('[WebRTC] Starting audio capture for remote');
-        _webrtcStartAudioCapture('remote', _webrtcRemoteStream, conversationId);
-    } else {
-        console.log('[WebRTC] Remote stream not ready yet, will start capture on ontrack');
     }
 }
 
@@ -313,7 +300,7 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
     try {
         recorder = new MediaRecorder(stream, { mimeType: mimeType });
     } catch(e) {
-        console.warn('[WebRTC] MediaRecorder not available for ' + source + ':', e.message);
+        console.warn('[WebRTC] MediaRecorder not available:', e.message);
         return;
     }
     var parts = [];
@@ -329,18 +316,16 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
         }
         parts = [];
         // Restart if the call is still active
-        if (_webrtcPC && _webrtcChunkTimers[source] !== null) {
+        if (_webrtcPC && _webrtcChunkTimer !== null) {
             try { recorder.start(); } catch(e) {}
         }
     };
 
     recorder.start();
-
-    if (source === 'local') _webrtcLocalRecorder = recorder;
-    else _webrtcRemoteRecorder = recorder;
+    _webrtcLocalRecorder = recorder;
 
     // Every N seconds, stop + restart to create a chunk
-    _webrtcChunkTimers[source] = setInterval(function() {
+    _webrtcChunkTimer = setInterval(function() {
         if (recorder.state === 'recording') {
             try { recorder.stop(); } catch(e) {}
         }
@@ -368,16 +353,11 @@ function _webrtcSendAudioChunk(blob, source, conversationId) {
 }
 
 function _webrtcStopServerTranscription() {
-    if (_webrtcChunkTimers.local) { clearInterval(_webrtcChunkTimers.local); _webrtcChunkTimers.local = null; }
-    if (_webrtcChunkTimers.remote) { clearInterval(_webrtcChunkTimers.remote); _webrtcChunkTimers.remote = null; }
+    if (_webrtcChunkTimer) { clearInterval(_webrtcChunkTimer); _webrtcChunkTimer = null; }
     if (_webrtcLocalRecorder && _webrtcLocalRecorder.state !== 'inactive') {
         try { _webrtcLocalRecorder.stop(); } catch(e) {}
     }
-    if (_webrtcRemoteRecorder && _webrtcRemoteRecorder.state !== 'inactive') {
-        try { _webrtcRemoteRecorder.stop(); } catch(e) {}
-    }
     _webrtcLocalRecorder = null;
-    _webrtcRemoteRecorder = null;
 }
 
 // ---- Section 7: End call & cleanup ----
