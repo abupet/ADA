@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.22.11
+
+### Diagnostica backend trascrizione chiamate
+- Il backend ora invia feedback in tempo reale al frontend per ogni chunk audio: `received`, `empty`, `hallucination`, `ok`, `error` — visibile nella console browser come `[WebRTC] Backend: status=...`
+- Permette di diagnosticare esattamente dove la pipeline di trascrizione si blocca senza bisogno di accesso ai log del server Render
+
 ## v8.22.10
 
 ### Fix: Robustezza chunking trascrizione chiamate + logging diagnostico

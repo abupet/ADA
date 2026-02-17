@@ -1,4 +1,4 @@
-// app-webrtc.js v1.6
+// app-webrtc.js v1.7
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -282,6 +282,22 @@ var _webrtcChunkTimer = null;
 function _webrtcStartServerTranscription(conversationId) {
     var socket = window._commSocket;
     if (!socket) { console.warn('[WebRTC] Transcription skipped: no socket'); return; }
+
+    // Listen for backend transcription feedback (diagnostic)
+    if (!socket._webrtcStatusListener) {
+        socket.on('transcription_status', function(d) {
+            var msg = '[WebRTC] Backend: status=' + (d.status || '?');
+            if (d.reason) msg += ' reason=' + d.reason;
+            if (d.base64len) msg += ' received=' + d.base64len + 'chars';
+            if (d.chars) msg += ' transcribed=' + d.chars + 'chars';
+            if (d.preview) msg += ' "' + d.preview + '"';
+            if (d.text) msg += ' "' + d.text + '"';
+            if (d.status === 'ok') { console.log(msg); }
+            else if (d.status === 'received') { console.log(msg); }
+            else { console.warn(msg); }
+        });
+        socket._webrtcStatusListener = true;
+    }
 
     // Capture local audio only (MY voice) — the other participant captures theirs
     if (_webrtcLocalStream && _webrtcLocalStream.getAudioTracks().length > 0) {
