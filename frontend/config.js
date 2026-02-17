@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.20';
-const ADA_RELEASE_NOTES = 'Fix: attachment 401, AI description timeout, promo analysis.';
+const ADA_VERSION = '8.22.21';
+const ADA_RELEASE_NOTES = 'Fix: chatbot AI conversation — second message 500 error.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

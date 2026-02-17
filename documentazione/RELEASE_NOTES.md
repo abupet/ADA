@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.21
+
+### Fix: Chatbot AI — invio secondo messaggio fallisce con 500
+- **Root cause**: la query di recupero storico messaggi in `POST /api/communication/conversations/:id/messages` (ramo AI) referenziava colonne inesistenti `file_url`, `file_name`, `file_type` — i nomi corretti nella tabella `comm_messages` sono `media_url` e `media_type`
+- Il primo messaggio funzionava perché la creazione della conversazione costruisce lo storico manualmente senza query DB
+- Fix: corretti i nomi colonna nella SELECT e nei riferimenti nel codice di processing
+
 ## v8.22.20
 
 ### Fix: Attachment 401, AI description timeout, promo analysis
