@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.9
+
+### Miglioramento qualità trascrizione chiamate
+- Fix: messaggi multipli per lo stesso speaker — il merge ora è basato su "stesso speaker" anziché una finestra temporale di 30s; finché lo speaker non cambia, tutto il testo viene appeso allo stesso messaggio
+- Fix: parole perse tra chunk — il nuovo `MediaRecorder` viene avviato PRIMA di stoppare il precedente, garantendo zero gap audio tra un chunk e l'altro (i due recorder registrano in parallelo per un istante)
+- Fix: filtro allucinazioni Whisper — audio silenzioso/ambientale produceva testi fantasma ("Sottotitoli creati dalla comunità Amara.org", "Grazie per la visione", ecc.); aggiunto filtro regex nel backend che scarta questi output noti
+
 ## v8.22.8
 
 ### Fix: Trascrizione chiamate si interrompe dopo il primo chunk
