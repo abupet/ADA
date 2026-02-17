@@ -1452,6 +1452,16 @@
         }
         html.push('</div>');
 
+        // Bulk service type actions
+        html.push('<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;">');
+        html.push('<span style="font-size:12px;font-weight:600;color:#0369a1;">Bulk Tipo Servizio:</span>');
+        [{v:'promo',l:'Promo'},{v:'nutrition',l:'Nutrizione'},{v:'insurance',l:'Assicurazione'}].forEach(function(st) {
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="bulkServiceType" value="' + st.v + '">' + st.l + '</label>');
+        });
+        html.push('<button class="btn btn-success" style="font-size:11px;padding:4px 10px;" onclick="bulkAddServiceType()">+ Aggiungi ai filtrati</button>');
+        html.push('<button class="btn btn-danger" style="font-size:11px;padding:4px 10px;" onclick="bulkRemoveServiceType()">− Rimuovi dai filtrati</button>');
+        html.push('</div>');
+
         // Create item form (hidden)
         html.push('<div id="create-item-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
         html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuovo Prodotto</h4>');
@@ -1476,9 +1486,11 @@
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="newItemUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="newItemImageUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Priorita</label><input type="number" id="newItemPriority" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" value="0"></div>');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><select id="newItemServiceType" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
-        html.push('<option value="promo">Promo</option><option value="nutrition">Nutrizione</option><option value="insurance">Assicurazione</option>');
-        html.push('</select></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">');
+        [{v:'promo',l:'Promo'},{v:'nutrition',l:'Nutrizione'},{v:'insurance',l:'Assicurazione'}].forEach(function(st) {
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemServiceType" value="' + st.v + '"' + (st.v === 'promo' ? ' checked' : '') + '>' + st.l + '</label>');
+        });
+        html.push('</div></div>');
         html.push('</div>');
         html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione Prodotto (per AI matching)</label>');
         html.push('<textarea id="newItemExtDesc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;"></textarea>');
@@ -1627,7 +1639,7 @@
                 product_url: (document.getElementById('newItemUrl') || {}).value || null,
                 image_url: (document.getElementById('newItemImageUrl') || {}).value || null,
                 priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0,
-                service_type: [(document.getElementById('newItemServiceType') || {}).value || 'promo']
+                service_type: (function() { var st = []; var stBoxes = document.querySelectorAll('.newItemServiceType:checked'); for (var sti = 0; sti < stBoxes.length; sti++) st.push(stBoxes[sti].value); return st.length ? st : ['promo']; })()
             })
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1711,6 +1723,16 @@
             });
             html.push('</div></div>');
 
+            // Service type checkboxes
+            var itemServiceType = Array.isArray(item.service_type) ? item.service_type : [item.service_type || 'promo'];
+            var serviceTypeOptions = [{v:'promo',l:'Promo'},{v:'nutrition',l:'Nutrizione'},{v:'insurance',l:'Assicurazione'}];
+            html.push('<div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
+            serviceTypeOptions.forEach(function (st) {
+                var checked = itemServiceType.indexOf(st.v) !== -1 ? ' checked' : '';
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemServiceType" value="' + st.v + '"' + checked + '>' + st.l + '</label>');
+            });
+            html.push('</div></div>');
+
             html.push('<div style="margin-top:16px;"><button class="btn btn-success" onclick="_savePromoItemEdit(\'' + _escapeHtml(itemId) + '\')">Salva</button> <button class="btn btn-secondary" onclick="_closeModal()">Annulla</button></div>');
             container.innerHTML = html.join('');
         });
@@ -1729,6 +1751,10 @@
         var lcCheckboxes = document.querySelectorAll('.editItemLifecycle:checked');
         for (var j = 0; j < lcCheckboxes.length; j++) lifecycle.push(lcCheckboxes[j].value);
 
+        var serviceType = [];
+        var stCheckboxes = document.querySelectorAll('.editItemServiceType:checked');
+        for (var k = 0; k < stCheckboxes.length; k++) serviceType.push(stCheckboxes[k].value);
+
         var patch = {
             name: (document.getElementById('editItemName') || {}).value || '',
             category: (document.getElementById('editItemCategory') || {}).value || '',
@@ -1738,7 +1764,8 @@
             image_url: (document.getElementById('editItemImageUrl') || {}).value || null,
             priority: parseInt((document.getElementById('editItemPriority') || {}).value) || 0,
             species: species,
-            lifecycle_target: lifecycle
+            lifecycle_target: lifecycle,
+            service_type: serviceType.length ? serviceType : ['promo']
         };
 
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
@@ -2592,6 +2619,55 @@
             if (typeof showToast === 'function') showToast('' + (data.updated || 0) + ' prodotti pubblicati!', 'success');
             loadAdminCatalog();
         }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        });
+    }
+
+    function bulkAddServiceType() {
+        _bulkServiceTypeAction('add');
+    }
+
+    function bulkRemoveServiceType() {
+        _bulkServiceTypeAction('remove');
+    }
+
+    function _bulkServiceTypeAction(action) {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+
+        var selected = [];
+        var boxes = document.querySelectorAll('.bulkServiceType:checked');
+        for (var i = 0; i < boxes.length; i++) selected.push(boxes[i].value);
+        if (!selected.length) {
+            if (typeof showToast === 'function') showToast('Seleziona almeno un tipo servizio.', 'error');
+            return;
+        }
+
+        var filtered = _getFilteredCatalogItems();
+        if (!filtered.length) {
+            if (typeof showToast === 'function') showToast('Nessun prodotto filtrato.', 'error');
+            return;
+        }
+
+        var actionLabel = action === 'add' ? 'AGGIUNGERE' : 'RIMUOVERE';
+        if (!confirm(actionLabel + ' servizio [' + selected.join(', ') + '] a ' + filtered.length + ' prodotti filtrati?')) return;
+
+        var itemIds = filtered.map(function(item) { return item.promo_item_id; });
+        var payload = { item_ids: itemIds, add: [], remove: [] };
+        if (action === 'add') payload.add = selected;
+        else payload.remove = selected;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/bulk/service-type', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            if (typeof showToast === 'function') showToast((data.updated || 0) + ' prodotti aggiornati.', 'success');
+            loadAdminCatalog();
+        }).catch(function(e) {
             if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
         });
     }
@@ -3682,6 +3758,8 @@
     global.validateAllCatalogUrls = validateAllCatalogUrls;
     global.previewExplanation     = previewExplanation;
     global.bulkPublishDraft       = bulkPublishDraft;
+    global.bulkAddServiceType     = bulkAddServiceType;
+    global.bulkRemoveServiceType  = bulkRemoveServiceType;
     global.catalogSearch          = catalogSearch;
     global.catalogSearchReset     = catalogSearchReset;
     // Image management wizard

@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.16
+
+### Feature: Multi-select Tipo Servizio + Azione bulk su catalogo
+- **Nuovo Prodotto**: il campo "Tipo Servizio" ora usa checkboxes multi-select (Promo / Nutrizione / Assicurazione) invece di un singolo `<select>`, permettendo di assegnare più servizi contemporaneamente
+- **Modifica Prodotto**: aggiunto campo "Tipo Servizio" con checkboxes pre-selezionati in base ai valori correnti del prodotto — era impossibile modificare il tipo servizio dopo la creazione
+- **Bulk Tipo Servizio**: aggiunta barra azioni bulk nella vista catalogo con checkboxes servizio + bottoni "Aggiungi ai filtrati" / "Rimuovi dai filtrati" — opera su tutti i prodotti visibili dopo i filtri
+- **Backend**: nuovo endpoint `PATCH /api/admin/:tenantId/promo-items/bulk/service-type` con supporto add/remove array, tenant isolation e audit log
+
 ## v8.22.15
 
 ### Fix: Pulsante chiamata dalla pagina Messaggi sembra non funzionare
