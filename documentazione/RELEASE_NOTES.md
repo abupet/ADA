@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.8
+
+### Fix: Trascrizione chiamate si interrompe dopo il primo chunk
+- Fix critico: il `MediaRecorder` non si riavviava dopo il primo `stop()` — chiamare `start()` sulla stessa istanza dopo `stop()` è inaffidabile su molti browser. Ora viene creato un **nuovo MediaRecorder** per ogni finestra di 15 secondi, garantendo che ogni chunk sia un file audio indipendente e il recording continui per tutta la durata della chiamata
+- Fix: aggiunto flush esplicito dell'ultimo chunk audio quando la chiamata viene terminata (log `Flushing final audio chunk`)
+- Miglioramento: logging dettagliato del ciclo di chunking (`Audio capture started`, `Chunk #N finalized`, `Flushing final audio chunk`) per facilitare il debug
+
 ## v8.22.7
 
 ### Fix: Trascrizione chiamate non funzionante (FormData incompatibile)
