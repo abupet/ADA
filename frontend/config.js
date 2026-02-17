@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.5';
-const ADA_RELEASE_NOTES = 'Fix: WebRTC calls not connecting — TURN server support, ICE timeout, signaling diagnostics.';
+const ADA_VERSION = '8.22.6';
+const ADA_RELEASE_NOTES = 'Fix: TURN server Metered.ca integration for WebRTC calls behind NAT.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

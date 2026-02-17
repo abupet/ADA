@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.6
+
+### Integrazione TURN server Metered.ca per chiamate WebRTC
+- Backend: endpoint `GET /api/rtc-config` ora supporta Metered.ca REST API (env vars `METERED_API_KEY` + `METERED_APP_NAME`) con auto geo-routing e credenziali dinamiche
+- Backend: cache 5 minuti delle credenziali TURN per ridurre chiamate API
+- Backend: fallback a config statica (`TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL`) o STUN-only se Metered non configurato
+
 ## v8.22.5
 
 ### Fix: Chiamate WebRTC non funzionanti (timer bloccato 00:00, nessun audio)
