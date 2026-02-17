@@ -1087,6 +1087,7 @@
     global.renderVetFlagButton     = renderVetFlagButton;
 
 // PR1: Debug analysis for promo recommendation
+// PR1: Enhanced analysis - pet vs ALL eligible products
 async function _showPromoAnalysis(productId, petId, productDescOverride) {
     if (!petId && typeof getCurrentPetId === 'function') petId = getCurrentPetId();
     if (!petId) {
@@ -1094,7 +1095,7 @@ async function _showPromoAnalysis(productId, petId, productDescOverride) {
         return;
     }
 
-    // Get pet AI description
+    // Check pet AI description exists
     var petDesc = null;
     if (typeof _aiPetDescCache !== 'undefined' && _aiPetDescCache[petId]) {
         petDesc = _aiPetDescCache[petId].description;
@@ -1103,49 +1104,129 @@ async function _showPromoAnalysis(productId, petId, productDescOverride) {
         var result = await generateAiPetDescription(petId);
         petDesc = result ? result.description : null;
     }
-
     if (!petDesc) {
-        console.warn('[Promo] Analysis skipped: pet description unavailable');
         if (typeof showToast === 'function') showToast('Descrizione pet non disponibile — generare prima la descrizione AI', 'warning');
         return;
     }
 
-    // Get product description: use override, fetch from backend, or fallback to DOM
-    var productDesc = productDescOverride || '';
-    if (!productDesc && productId) {
-        try {
-            var prodResp = await fetchApi('/api/promo/items/' + productId);
-            if (prodResp && prodResp.ok) {
-                var prodData = await prodResp.json();
-                productDesc = prodData.extended_description || prodData.description || '';
-            }
-        } catch(e) {}
-    }
-    if (!productDesc && productId) {
-        var cardEl = document.querySelector('[data-promo-item-id="' + productId + '"]');
-        if (cardEl) {
-            var descEl = cardEl.querySelector('.promo-description');
-            if (descEl) productDesc = descEl.textContent || '';
-        }
-    }
-    if (!productDesc) productDesc = 'Prodotto generico';
+    // Show loading modal
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:650px;width:90%;max-height:85vh;overflow-y:auto;';
+    modal.innerHTML = '<div style="text-align:center;padding:40px;">' +
+        '<div style="font-size:32px;margin-bottom:16px;">&#128269;</div>' +
+        '<h3 style="color:#1e3a5f;margin-bottom:8px;">Analisi in corso...</h3>' +
+        '<p style="color:#64748b;font-size:13px;">Confronto del profilo del pet con tutti i prodotti compatibili</p>' +
+        '<div style="margin-top:16px;width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:#1e3a5f;border-radius:50%;animation:spin 1s linear infinite;margin:16px auto;"></div>' +
+        '<style>@keyframes spin{to{transform:rotate(360deg)}}</style></div>';
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 
-    // Call backend for AI analysis
     try {
-        var resp = await fetchApi('/api/promo/analyze-match', {
+        var resp = await fetchApi('/api/promo/analyze-match-all', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ petDescription: petDesc, productDescription: productDesc })
+            body: JSON.stringify({ petId: petId })
         });
-        if (resp && resp.ok) {
-            var analysis = await resp.json();
-            _showAnalysisModal(analysis);
-        } else {
-            if (typeof showToast === 'function') showToast('Errore analisi', 'error');
+
+        if (!resp || !resp.ok) {
+            overlay.remove();
+            var errData = null;
+            try { errData = await resp.json(); } catch(_e) {}
+            if (errData && errData.error === 'pet_ai_description_missing') {
+                if (typeof showToast === 'function') showToast('Descrizione AI del pet non disponibile — generarla prima', 'warning');
+            } else {
+                if (typeof showToast === 'function') showToast('Errore analisi: ' + ((errData && errData.error) || 'sconosciuto'), 'error');
+            }
+            return;
         }
+
+        var analysis = await resp.json();
+        _showEnhancedAnalysisModal(modal, analysis, productId);
+
     } catch(e) {
+        overlay.remove();
         if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
     }
+}
+
+function _showEnhancedAnalysisModal(modal, analysis, currentProductId) {
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<h3 style="color:#1e3a5f;margin:0;">&#128269; Analisi Raccomandazione</h3>';
+
+    if (analysis.fromCache) {
+        html += '<span style="font-size:10px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:10px;">&#9889; cached</span>';
+    }
+    html += '</div>';
+
+    if (analysis.petName) {
+        html += '<p style="color:#64748b;font-size:12px;margin-bottom:16px;">Analisi per <strong>' + _escapeHtml(analysis.petName) + '</strong> — ' +
+            analysis.candidatesCount + ' prodotti compatibili valutati</p>';
+    }
+
+    if (analysis.matches && analysis.matches.length > 0) {
+        analysis.matches.forEach(function(match, idx) {
+            var isCurrentProduct = currentProductId && match.promo_item_id === currentProductId;
+            var borderColor = match.score >= 70 ? '#16a34a' : match.score >= 40 ? '#f59e0b' : '#94a3b8';
+            var bgColor = isCurrentProduct ? '#f0fdf4' : '#f8fafc';
+            var badge = match.score >= 70 ? '&#x1f7e2;' : match.score >= 40 ? '&#x1f7e1;' : '&#x26aa;';
+
+            html += '<div style="padding:12px;margin:8px 0;background:' + bgColor + ';border-radius:10px;border-left:4px solid ' + borderColor + ';' +
+                (isCurrentProduct ? 'box-shadow:0 0 0 2px #16a34a33;' : '') + '">';
+
+            // Header: rank + name + score
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                '<div style="font-weight:700;font-size:14px;color:#1e3a5f;">' + badge + ' #' + (idx+1) + ' ' + _escapeHtml(match.product_name || '') + '</div>' +
+                '<div style="background:' + borderColor + ';color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;">' + match.score + '/100</div></div>';
+
+            // Current product indicator
+            if (isCurrentProduct) {
+                html += '<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:4px;">&#8592; Prodotto attualmente raccomandato</div>';
+            }
+
+            // Category
+            if (match.category) {
+                html += '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">Categoria: ' + _escapeHtml(match.category) + '</div>';
+            }
+
+            // Key matches as chips
+            if (match.key_matches && match.key_matches.length > 0) {
+                html += '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">';
+                match.key_matches.forEach(function(km) {
+                    html += '<span style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:2px 8px;border-radius:10px;">' + _escapeHtml(km) + '</span>';
+                });
+                html += '</div>';
+            }
+
+            // Reasoning
+            if (match.reasoning) {
+                html += '<p style="font-size:12px;color:#475569;margin:8px 0 0;line-height:1.5;">' + _escapeHtml(match.reasoning) + '</p>';
+            }
+
+            // CTA link
+            if (match.product_url) {
+                html += '<a href="' + _escapeHtml(match.product_url) + '" target="_blank" rel="noopener" ' +
+                    'style="display:inline-block;margin-top:8px;font-size:11px;color:#1e3a5f;text-decoration:underline;">Scopri di pi&#249; &#8594;</a>';
+            }
+
+            html += '</div>';
+        });
+    } else {
+        html += '<p style="color:#94a3b8;text-align:center;padding:20px;">Nessun prodotto sufficientemente compatibile trovato.</p>';
+    }
+
+    // Footer with metadata
+    html += '<div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;">';
+    html += '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:8px 20px;background:#1e3a5f;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Chiudi</button>';
+
+    if (analysis.latencyMs) {
+        html += '<span style="font-size:10px;color:#cbd5e1;">' + (analysis.latencyMs / 1000).toFixed(1) + 's</span>';
+    }
+    html += '</div>';
+
+    modal.innerHTML = html;
 }
 
 function _showAnalysisModal(analysis) {

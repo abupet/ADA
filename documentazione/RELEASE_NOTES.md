@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.22.22
+
+### Feature: Analisi Raccomandazione Potenziata
+- **Nuovo endpoint** `POST /api/promo/analyze-match-all`: analizza il profilo del pet contro TUTTI i prodotti eligibili con pre-filtering (specie, lifecycle, consent, tags) e ranking AI top 5
+- **Pre-filtering server-side**: i ~133 prodotti vengono filtrati a ~10-25 candidati usando la stessa logica di eligibility esistente prima dell'invio a OpenAI
+- **Ranking AI dettagliato**: ogni prodotto riceve score (0-100), reasoning personalizzato per il pet, key_matches e relevance level
+- **Cache 24h**: risultati salvati in `explanation_cache` con chiave basata su SHA256(ai_description + candidateIds) — secondo click istantaneo
+- **UI rinnovata**: modal con loading spinner, badge score colorati (verde/giallo/grigio), chip key_matches, link "Scopri di più", indicatore cache
+- **Backward compatibility**: il vecchio endpoint `analyze-match` e la vecchia modal rimangono intatti
+
 ## v8.22.21
 
 ### Fix: Chatbot AI — invio secondo messaggio fallisce con 500
