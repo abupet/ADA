@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.2';
-const ADA_RELEASE_NOTES = 'Bug fix: pet AI page roles, data refresh, test button, vet_ext guard, promo refresh, ADA context attachments, promo filtering, mobile layout + icons repositioning.';
+const ADA_VERSION = '8.22.3';
+const ADA_RELEASE_NOTES = 'Bug fix & features: AI pet desc page, conversation type, recommendation analysis, filterable call dropdown, live call transcription via Whisper.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

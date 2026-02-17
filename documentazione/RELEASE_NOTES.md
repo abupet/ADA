@@ -1,5 +1,17 @@
 # Release Notes (cumulative)
 
+## v8.22.3
+
+### Bug Fix & Live Call Transcription + UI Improvements
+- Fix: pagina "Descrizione Pet per AI" bianca — inline `style="display:none"` sovrastava `.page.active`; aggiunto gestione display nel toggle debug + chiamata `updateAiPetDescriptionUI()` in `navigateToPage`
+- Fix: tipo conversazione (voice_call/video_call) non salvato — frontend ora invia campo `type` nella POST, backend lo valida e lo inserisce nella tabella conversations
+- Fix: "Analisi Raccomandazione" restituiva sempre "Nessuna corrispondenza" — frontend ora recupera `extended_description` dal backend via nuovo endpoint GET `/api/promo/items/:id`, insurance/nutrition passano descrizione servizio; prompt backend migliorato per garantire almeno corrispondenze generiche
+- Fix: testo pulsante "Iniziare" → "Inizia" nella dialog chiamata diretta
+- Feature: dropdown destinatario filtrable nella dialog chiamata — sostituito `<select>` con input text + dropdown custom con ricerca per sottostringa
+- Feature: trascrizione live chiamate via OpenAI Whisper (server-side) — audio locale/remoto catturato in chunk da 15s via `MediaRecorder`, inviato al backend via WebSocket `call_audio_chunk`, trascritto con Whisper e salvato come messaggio `transcription` nella conversazione con attribuzione speaker; merge automatico chunk consecutivi stesso speaker (<30s)
+- Miglioramento: pagina "Descrizione Pet per AI" carica prima dal DB (cache persistente), poi rigenera solo se necessario
+- Icone conversazione in Archivio Sanitario (📞/🎥/💬) funzionanti automaticamente grazie al fix del tipo conversazione
+
 ## v8.22.2
 
 ### Bug Fix & UI Improvements (9 issues)

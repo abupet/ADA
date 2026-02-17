@@ -1087,7 +1087,7 @@
     global.renderVetFlagButton     = renderVetFlagButton;
 
 // PR1: Debug analysis for promo recommendation
-async function _showPromoAnalysis(productId, petId) {
+async function _showPromoAnalysis(productId, petId, productDescOverride) {
     if (!petId && typeof getCurrentPetId === 'function') petId = getCurrentPetId();
     if (!petId) {
         if (typeof showToast === 'function') showToast('Nessun pet selezionato', 'warning');
@@ -1109,14 +1109,25 @@ async function _showPromoAnalysis(productId, petId) {
         return;
     }
 
-    // Get product description from the card
-    var cardEl = document.querySelector('[data-promo-item-id="' + productId + '"]');
-    var productDesc = '';
-    if (cardEl) {
-        var descEl = cardEl.querySelector('.promo-description');
-        if (descEl) productDesc = descEl.textContent || '';
+    // Get product description: use override, fetch from backend, or fallback to DOM
+    var productDesc = productDescOverride || '';
+    if (!productDesc && productId) {
+        try {
+            var prodResp = await fetchApi('/api/promo/items/' + productId);
+            if (prodResp && prodResp.ok) {
+                var prodData = await prodResp.json();
+                productDesc = prodData.extended_description || prodData.description || '';
+            }
+        } catch(e) {}
     }
-    if (!productDesc) productDesc = 'Prodotto ID: ' + productId;
+    if (!productDesc && productId) {
+        var cardEl = document.querySelector('[data-promo-item-id="' + productId + '"]');
+        if (cardEl) {
+            var descEl = cardEl.querySelector('.promo-description');
+            if (descEl) productDesc = descEl.textContent || '';
+        }
+    }
+    if (!productDesc) productDesc = 'Prodotto generico';
 
     // Call backend for AI analysis
     try {

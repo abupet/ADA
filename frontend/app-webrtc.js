@@ -215,70 +215,108 @@ function _webrtcStartTimer() {
         if (el) el.textContent = _webrtcFmtDur(Math.floor((Date.now() - _webrtcStartTime) / 1000));
     }, 1000);
     var st = document.querySelector('[data-testid="webrtc-call-status"]'); if (st) st.textContent = 'In chiamata';
-    // Start live transcription
-    _webrtcStartLiveTranscription(_webrtcConvId);
+    // Start server-side transcription
+    _webrtcStartServerTranscription(_webrtcConvId);
 }
 
-// Live transcription using Web Speech API
-var _webrtcSpeechRecognition = null;
+// Server-side transcription via OpenAI Whisper (replaces Web Speech API)
+var _webrtcLocalRecorder = null;
+var _webrtcRemoteRecorder = null;
+var _webrtcChunkIntervalMs = 15000; // 15 seconds per chunk
+var _webrtcChunkTimers = { local: null, remote: null };
 
-function _webrtcStartLiveTranscription(conversationId) {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
-    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    _webrtcSpeechRecognition = new SpeechRecognition();
-    _webrtcSpeechRecognition.continuous = true;
-    _webrtcSpeechRecognition.interimResults = true;
-    _webrtcSpeechRecognition.lang = 'it-IT';
+function _webrtcStartServerTranscription(conversationId) {
+    var socket = window._commSocket;
+    if (!socket) return;
 
-    _webrtcSpeechRecognition.onresult = function(event) {
-        for (var i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-                var transcript = event.results[i][0].transcript;
-                _webrtcSendTranscription(conversationId, transcript);
-            }
-        }
+    // Capture local audio (MY audio)
+    if (_webrtcLocalStream) {
+        _webrtcStartAudioCapture('local', _webrtcLocalStream, conversationId);
+    }
+
+    // Capture remote audio (OTHER participant's audio)
+    if (_webrtcRemoteStream && _webrtcRemoteStream.getAudioTracks().length > 0) {
+        _webrtcStartAudioCapture('remote', _webrtcRemoteStream, conversationId);
+    }
+}
+
+function _webrtcStartAudioCapture(source, stream, conversationId) {
+    var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+
+    var recorder;
+    try {
+        recorder = new MediaRecorder(stream, { mimeType: mimeType });
+    } catch(e) {
+        console.warn('[WebRTC] MediaRecorder not available for ' + source + ':', e.message);
+        return;
+    }
+    var parts = [];
+
+    recorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0) parts.push(e.data);
     };
 
-    _webrtcSpeechRecognition.onend = function() {
+    recorder.onstop = function() {
+        if (parts.length > 0) {
+            var blob = new Blob(parts, { type: mimeType });
+            _webrtcSendAudioChunk(blob, source, conversationId);
+        }
+        parts = [];
         // Restart if the call is still active
-        if (_webrtcPC && _webrtcSpeechRecognition) {
-            try { _webrtcSpeechRecognition.start(); } catch(e) {}
+        if (_webrtcPC && _webrtcChunkTimers[source] !== null) {
+            try { recorder.start(); } catch(e) {}
         }
     };
 
-    try { _webrtcSpeechRecognition.start(); } catch(e) {
-        console.warn('[WebRTC] Speech recognition not available:', e.message);
-    }
+    recorder.start();
+
+    if (source === 'local') _webrtcLocalRecorder = recorder;
+    else _webrtcRemoteRecorder = recorder;
+
+    // Every N seconds, stop + restart to create a chunk
+    _webrtcChunkTimers[source] = setInterval(function() {
+        if (recorder.state === 'recording') {
+            try { recorder.stop(); } catch(e) {}
+        }
+    }, _webrtcChunkIntervalMs);
 }
 
-function _webrtcSendTranscription(conversationId, text) {
-    if (!text || !text.trim()) return;
-    // Send transcription via REST API (POST message to conversation)
-    if (typeof fetchApi === 'function') {
-        fetchApi('/api/communication/conversations/' + conversationId + '/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                content: text.trim(),
-                type: 'transcription'
-            }),
-            _skipGlobalSpinner: true
-        }).catch(function(e) {
-            console.warn('[WebRTC] Transcription send error:', e.message);
-        });
-    }
+function _webrtcSendAudioChunk(blob, source, conversationId) {
+    var reader = new FileReader();
+    reader.onload = function() {
+        var base64 = reader.result.split(',')[1];
+        var socket = window._commSocket;
+        if (socket) {
+            socket.emit('call_audio_chunk', {
+                conversationId: conversationId,
+                callId: _webrtcCallId,
+                source: source,
+                audioData: base64,
+                mimeType: blob.type,
+                timestamp: Date.now()
+            });
+        }
+    };
+    reader.readAsDataURL(blob);
 }
 
-function _webrtcStopLiveTranscription() {
-    if (_webrtcSpeechRecognition) {
-        try { _webrtcSpeechRecognition.stop(); } catch(e) {}
-        _webrtcSpeechRecognition = null;
+function _webrtcStopServerTranscription() {
+    if (_webrtcChunkTimers.local) { clearInterval(_webrtcChunkTimers.local); _webrtcChunkTimers.local = null; }
+    if (_webrtcChunkTimers.remote) { clearInterval(_webrtcChunkTimers.remote); _webrtcChunkTimers.remote = null; }
+    if (_webrtcLocalRecorder && _webrtcLocalRecorder.state !== 'inactive') {
+        try { _webrtcLocalRecorder.stop(); } catch(e) {}
     }
+    if (_webrtcRemoteRecorder && _webrtcRemoteRecorder.state !== 'inactive') {
+        try { _webrtcRemoteRecorder.stop(); } catch(e) {}
+    }
+    _webrtcLocalRecorder = null;
+    _webrtcRemoteRecorder = null;
 }
 
 // ---- Section 7: End call & cleanup ----
 function endCall() {
-    _webrtcStopLiveTranscription();
+    _webrtcStopServerTranscription();
     if (window._commSocket && _webrtcConvId) window._commSocket.emit('end_call', { conversationId: _webrtcConvId, callId: _webrtcCallId });
     if (_webrtcLocalStream) { _webrtcLocalStream.getTracks().forEach(function(t) { t.stop(); }); _webrtcLocalStream = null; }
     if (_webrtcPC) { _webrtcPC.close(); _webrtcPC = null; }
