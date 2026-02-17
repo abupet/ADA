@@ -84,7 +84,9 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             credentials: true
         },
         path: "/ws",
-        transports: ["websocket", "polling"]
+        transports: ["websocket", "polling"],
+        pingTimeout: 60000,
+        pingInterval: 25000
     });
 
     const commNs = io.of("/communication");

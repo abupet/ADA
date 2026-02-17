@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.12
+
+### Fix: Trascrizione chiamate — socket disconnect e rendering
+- Fix critico: lo speaker non vedeva MAI la propria trascrizione — `_commHandleNewMessage` saltava tutti i messaggi "propri" (`isOwn`) inclusi quelli di tipo `transcription` che sono generati dal server e mai renderizzati in anticipo dal client. Ora i messaggi `transcription` vengono sempre renderizzati
+- Fix: aggiunto deduplica messaggi per `message_id` in `_commHandleNewMessage` — previene duplicati se lo stesso evento arriva sia dalla conv room che dal user room
+- Fix: aumentato `pingTimeout` Socket.io da 20s (default) a 60s — i chunk audio da ~320KB congestionavano il WebSocket causando timeout del ping a ~45s dalla connessione, provocando un `transport close` che faceva perdere i chunk in elaborazione
+
 ## v8.22.11
 
 ### Diagnostica backend trascrizione chiamate
