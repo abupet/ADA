@@ -248,6 +248,9 @@
         if (context) {
             params.push('context=' + encodeURIComponent(context));
         }
+        if (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService()) {
+            params.push('force=1');
+        }
         if (params.length > 0) path += '?' + params.join('&');
 
         if (typeof ADALog !== 'undefined') {
@@ -338,11 +341,14 @@
 
         var ctx = context || 'home_feed';
 
-        // Anti-flicker: check session impression count
-        var sessionKey = ctx + ':' + (petId || 'none');
-        var count = _sessionImpressions[sessionKey] || 0;
-        var maxPerSession = { home_feed: 2, pet_profile: 1, post_visit: 1, faq_view: 1 };
-        if (maxPerSession[ctx] && count >= maxPerSession[ctx]) return;
+        // Anti-flicker: check session impression count (skip when forceMultiService is ON)
+        var forceMulti = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+        if (!forceMulti) {
+            var sessionKey = ctx + ':' + (petId || 'none');
+            var count = _sessionImpressions[sessionKey] || 0;
+            var maxPerSession = { home_feed: 2, pet_profile: 1, post_visit: 1, faq_view: 1 };
+            if (maxPerSession[ctx] && count >= maxPerSession[ctx]) return;
+        }
 
         var slotId = containerId + '-promo-slot';
         var loaderId = containerId + '-promo-loader';

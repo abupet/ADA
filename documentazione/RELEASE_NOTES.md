@@ -1,5 +1,29 @@
 # Release Notes (cumulative)
 
+## v8.22.23
+
+### Feature: Bulk AI Analysis in Catalogo
+- **Nuovo pulsante** "Bulk AI Analysis" nella pagina admin Catalogo (solo super_admin / admin_brand)
+- Per ogni pet nel database: genera la "Descrizione Pet per AI" se assente, poi esegue "Analisi raccomandazione"
+- Pre-calcola e cacha i risultati in `explanation_cache` (TTL 24h) per presentazione promo istantanea
+- **Nuovo endpoint** `POST /api/admin/:tenant_id/bulk-ai-analysis` con timeout 5 minuti
+- **Helper server-side** `_collectPetSourcesFromDB()`: raccoglie dati pet, documenti e conversazioni dal DB
+- **Refactor** `_runAnalysisForPet()`: logica core estratta dall'endpoint `analyze-match-all` per riuso
+- Modal UI con spinner durante l'elaborazione e report finale con conteggi (pet totali, descrizioni generate, analisi eseguite, analisi da cache, errori)
+
+### Feature: forceMultiService bypass totale
+- Quando "Visualizza sempre multi-servizio" è ON, tutti i gate vengono bypassati:
+  - **Frontend**: skip session impression limit in `renderPromoSlot()` — nessun cap per sessione
+  - **Frontend**: `loadPromoRecommendation()` aggiunge `force=1` alla query string
+  - **Backend**: `GET /api/promo/recommendation` passa il flag `force` a `selectPromo()`
+  - **Backend**: `selectPromo()` in `eligibility.service.js` quando `force=true` salta: consent check globale, brand consent per item, vet flag check, frequency capping intero
+- Risultato: navigando tra pagine con forceMultiService ON, Promo + Nutrizione + Assicurazione sono sempre visibili
+
+### Bug Fix: vet_ext conversazione senza pet_id
+- **Root cause**: il check `getAllPets()` per vet_ext in `app-communication.js` falliva se il cache era vuoto (navigazione diretta a Messaggi)
+- **Fix**: rimosso il check ridondante — il backend (`communication.routes.js`) già verifica `referring_vet_user_id`
+- Le conversazioni create da vet_ext ora includono sempre il `pet_id` e sono visibili in Archivio Sanitario
+
 ## v8.22.22
 
 ### Feature: Analisi Raccomandazione Potenziata

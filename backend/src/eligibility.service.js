@@ -85,7 +85,7 @@ const HIGH_SENSITIVITY_CONTEXTS = ["post_visit", "post_vaccination"];
  * 6. Ranking: priority DESC -> match_score DESC -> updated_at DESC. LIMIT 1.
  * 7. Tie-break rotation: hash(petId + CURRENT_DATE) % count.
  */
-async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
+async function selectPromo(pool, { petId, ownerUserId, context, serviceType, force }) {
   try {
     const ctx = context || "home_feed";
     const rules = CONTEXT_RULES[ctx] || CONTEXT_RULES.home_feed;
@@ -144,10 +144,13 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
       // skip
     }
 
-    // 2. Consent
-    const consent = await getEffectiveConsent(pool, ownerUserId);
-    if (!isMarketingAllowed(consent, null)) {
-      return null; // marketing globally off
+    // 2. Consent (skip when force=true for debug forceMultiService)
+    let consent = null;
+    if (!force) {
+      consent = await getEffectiveConsent(pool, ownerUserId);
+      if (!isMarketingAllowed(consent, null)) {
+        return null; // marketing globally off
+      }
     }
 
     const clinicalAllowed = isClinicalTagsAllowed(consent);
@@ -191,8 +194,8 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
     // 4. Filter candidates
     const filtered = [];
     for (const item of candidates) {
-      // Brand consent check
-      if (!isMarketingAllowed(consent, item.tenant_id)) continue;
+      // Brand consent check (skip when force=true)
+      if (!force && !isMarketingAllowed(consent, item.tenant_id)) continue;
 
       // Species filter
       if (
@@ -231,15 +234,17 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
         continue;
       }
 
-      // Vet flag check
-      try {
-        const flagResult = await pool.query(
-          "SELECT 1 FROM vet_flags WHERE pet_id = $1 AND promo_item_id = $2 AND status = 'active' LIMIT 1",
-          [petId, item.promo_item_id]
-        );
-        if (flagResult.rows.length > 0) continue;
-      } catch (_e) {
-        // skip
+      // Vet flag check (skip when force=true)
+      if (!force) {
+        try {
+          const flagResult = await pool.query(
+            "SELECT 1 FROM vet_flags WHERE pet_id = $1 AND promo_item_id = $2 AND status = 'active' LIMIT 1",
+            [petId, item.promo_item_id]
+          );
+          if (flagResult.rows.length > 0) continue;
+        } catch (_e) {
+          // skip
+        }
       }
 
       // Tags exclude check (AND NOT)
@@ -271,58 +276,63 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType }) {
 
     if (filtered.length === 0) return null;
 
-    // 5. Frequency capping
-    const afterCapping = [];
-    for (const item of filtered) {
-      const freqCap = item.frequency_cap || rules.freq || {};
-      let capped = false;
+    // 5. Frequency capping (skip entirely when force=true)
+    let afterCapping;
+    if (force) {
+      afterCapping = filtered;
+    } else {
+      afterCapping = [];
+      for (const item of filtered) {
+        const freqCap = item.frequency_cap || rules.freq || {};
+        let capped = false;
 
-      try {
-        // Check per_session (today's impressions)
-        if (freqCap.per_session) {
-          const sessionResult = await pool.query(
-            `SELECT COUNT(*) as cnt FROM promo_events
-             WHERE owner_user_id = $1 AND pet_id = $2 AND context = $3
-             AND event_type = 'impression' AND created_at >= CURRENT_DATE`,
-            [ownerUserId, petId, ctx]
-          );
-          if (Number(sessionResult.rows[0].cnt) >= freqCap.per_session) {
-            capped = true;
+        try {
+          // Check per_session (today's impressions)
+          if (freqCap.per_session) {
+            const sessionResult = await pool.query(
+              `SELECT COUNT(*) as cnt FROM promo_events
+               WHERE owner_user_id = $1 AND pet_id = $2 AND context = $3
+               AND event_type = 'impression' AND created_at >= CURRENT_DATE`,
+              [ownerUserId, petId, ctx]
+            );
+            if (Number(sessionResult.rows[0].cnt) >= freqCap.per_session) {
+              capped = true;
+            }
           }
+
+          // Check per_week
+          if (!capped && freqCap.per_week) {
+            const weekResult = await pool.query(
+              `SELECT COUNT(*) as cnt FROM promo_events
+               WHERE owner_user_id = $1 AND pet_id = $2
+               AND event_type = 'impression'
+               AND created_at >= NOW() - INTERVAL '7 days'`,
+              [ownerUserId, petId]
+            );
+            if (Number(weekResult.rows[0].cnt) >= freqCap.per_week) {
+              capped = true;
+            }
+          }
+
+          // Check per_event (only 1 per unique event)
+          if (!capped && freqCap.per_event) {
+            const eventResult = await pool.query(
+              `SELECT COUNT(*) as cnt FROM promo_events
+               WHERE owner_user_id = $1 AND pet_id = $2 AND promo_item_id = $3
+               AND context = $4 AND event_type = 'impression'
+               AND created_at >= CURRENT_DATE`,
+              [ownerUserId, petId, item.promo_item_id, ctx]
+            );
+            if (Number(eventResult.rows[0].cnt) >= freqCap.per_event) {
+              capped = true;
+            }
+          }
+        } catch (_e) {
+          // On error, don't cap (graceful degradation)
         }
 
-        // Check per_week
-        if (!capped && freqCap.per_week) {
-          const weekResult = await pool.query(
-            `SELECT COUNT(*) as cnt FROM promo_events
-             WHERE owner_user_id = $1 AND pet_id = $2
-             AND event_type = 'impression'
-             AND created_at >= NOW() - INTERVAL '7 days'`,
-            [ownerUserId, petId]
-          );
-          if (Number(weekResult.rows[0].cnt) >= freqCap.per_week) {
-            capped = true;
-          }
-        }
-
-        // Check per_event (only 1 per unique event)
-        if (!capped && freqCap.per_event) {
-          const eventResult = await pool.query(
-            `SELECT COUNT(*) as cnt FROM promo_events
-             WHERE owner_user_id = $1 AND pet_id = $2 AND promo_item_id = $3
-             AND context = $4 AND event_type = 'impression'
-             AND created_at >= CURRENT_DATE`,
-            [ownerUserId, petId, item.promo_item_id, ctx]
-          );
-          if (Number(eventResult.rows[0].cnt) >= freqCap.per_event) {
-            capped = true;
-          }
-        }
-      } catch (_e) {
-        // On error, don't cap (graceful degradation)
+        if (!capped) afterCapping.push(item);
       }
-
-      if (!capped) afterCapping.push(item);
     }
 
     if (afterCapping.length === 0) return null;
