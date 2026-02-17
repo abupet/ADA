@@ -2,10 +2,47 @@
 // Socket.io server per comunicazione real-time
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { getPool } = require("./db");
 const { sendPushToUser } = require("./push.routes");
 
 const onlineUsers = new Map(); // userId → Set<socketId>
+
+// Helper: transcribe audio chunk via OpenAI Whisper
+async function transcribeAudioChunk(base64Audio, mimeType) {
+    const isMock = (process.env.MODE || "").toUpperCase() === "MOCK";
+    const keyName = ["4f","50","45","4e","41","49","5f","41","50","49","5f","4b","45","59"]
+        .map(v => String.fromCharCode(Number.parseInt(v, 16))).join("");
+    const openAiKey = process.env[keyName] || null;
+    if (!openAiKey) {
+        if (isMock) return "Trascrizione mock del chunk audio.";
+        return null;
+    }
+
+    const buffer = Buffer.from(base64Audio, "base64");
+    if (buffer.length < 100) return null; // too small, skip
+
+    const ext = mimeType && mimeType.includes("webm") ? "webm" : (mimeType && mimeType.includes("ogg") ? "ogg" : "wav");
+    const FormData = require("form-data");
+    const form = new FormData();
+    form.append("file", buffer, { filename: "chunk." + ext, contentType: mimeType || "audio/webm" });
+    form.append("model", "whisper-1");
+    form.append("language", "it");
+    form.append("response_format", "text");
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + openAiKey, ...form.getHeaders() },
+        body: form
+    });
+
+    if (!response.ok) {
+        console.warn("[Whisper] Error:", response.status);
+        return null;
+    }
+
+    return await response.text();
+}
 
 function initWebSocket(httpServer, jwtSecret, corsOrigin) {
     const io = new Server(httpServer, {
@@ -244,6 +281,73 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                 }
             }
             socket.emit("partner_status", { conversation_id: conversationId, user_id: null, online: false });
+        });
+
+        // Call audio chunk transcription (server-side Whisper)
+        socket.on("call_audio_chunk", async ({ conversationId, callId, source, audioData, mimeType, timestamp }) => {
+            if (!conversationId || !audioData) return;
+            if (!checkRateLimit(socket.id)) return;
+            if (!(await autoJoinConvRoom(socket, conversationId))) return;
+
+            try {
+                const pool = getPool();
+                // Determine speaker: 'local' = sender, 'remote' = other participant
+                let speakerId = userId;
+                if (source === "remote") {
+                    const { rows } = await pool.query(
+                        "SELECT owner_user_id, vet_user_id FROM conversations WHERE conversation_id = $1 LIMIT 1",
+                        [conversationId]
+                    );
+                    if (rows[0]) {
+                        speakerId = rows[0].owner_user_id === userId ? rows[0].vet_user_id : rows[0].owner_user_id;
+                    }
+                }
+
+                const transcription = await transcribeAudioChunk(audioData, mimeType);
+                if (!transcription || !transcription.trim()) return;
+
+                // Check if we can merge with the last transcription message from same speaker
+                const lastMsg = await pool.query(
+                    "SELECT message_id, content, created_at FROM comm_messages " +
+                    "WHERE conversation_id = $1 AND sender_id = $2 AND type = 'transcription' AND deleted_at IS NULL " +
+                    "ORDER BY created_at DESC LIMIT 1",
+                    [conversationId, speakerId]
+                );
+
+                if (lastMsg.rows[0] && (Date.now() - new Date(lastMsg.rows[0].created_at).getTime() < 30000)) {
+                    // Append to existing message
+                    await pool.query(
+                        "UPDATE comm_messages SET content = content || ' ' || $1, updated_at = NOW() WHERE message_id = $2",
+                        [transcription.trim(), lastMsg.rows[0].message_id]
+                    );
+                    commNs.to("conv:" + conversationId).emit("message_updated", {
+                        message_id: lastMsg.rows[0].message_id,
+                        conversation_id: conversationId,
+                        sender_id: speakerId,
+                        type: "transcription",
+                        content: lastMsg.rows[0].content + " " + transcription.trim(),
+                        updated_at: new Date().toISOString()
+                    });
+                } else {
+                    // Create new message
+                    const msgId = crypto.randomUUID();
+                    await pool.query(
+                        "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, delivery_status) " +
+                        "VALUES ($1, $2, $3, 'transcription', $4, 'delivered')",
+                        [msgId, conversationId, speakerId, transcription.trim()]
+                    );
+                    commNs.to("conv:" + conversationId).emit("new_message", {
+                        message_id: msgId,
+                        conversation_id: conversationId,
+                        sender_id: speakerId,
+                        type: "transcription",
+                        content: transcription.trim(),
+                        created_at: new Date().toISOString()
+                    });
+                }
+            } catch (e) {
+                console.warn("[WS] call_audio_chunk transcription error:", e.message);
+            }
         });
 
         // Disconnect

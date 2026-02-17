@@ -408,6 +408,9 @@ async function navigateToPage(page) {
         try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch(e) {}
         try { if (typeof loadPetConversations === 'function') loadPetConversations(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
     }
+    if (page === 'ai-petdesc') {
+        try { if (typeof updateAiPetDescriptionUI === 'function') updateAiPetDescriptionUI(); } catch(e) {}
+    }
     syncLangSelectorsForCurrentDoc();
 
     // Update document AI buttons based on role
@@ -1709,6 +1712,8 @@ function updateDebugToolsVisibility() {
     if (!dbg && runtime) runtime.style.display = 'none';
     var aiPetDescNav = document.getElementById('nav-ai-petdesc');
     if (aiPetDescNav) aiPetDescNav.style.display = dbg ? '' : 'none';
+    var aiPetDescPage = document.getElementById('page-ai-petdesc');
+    if (aiPetDescPage) aiPetDescPage.style.display = dbg ? '' : 'none';
 
     if (!dbg) {
         const activePage = document.querySelector('.page.active');

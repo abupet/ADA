@@ -2145,41 +2145,95 @@ function _commStartDirectCall(callType) {
 
     area.innerHTML = '<div class="comm-new-form" data-testid="comm-call-form">' +
         '<label>Destinatario</label>' +
-        '<select id="comm-call-recipient" onchange="_commOnCallRecipientChange()">' +
-        '<option value="">-- Seleziona destinatario --</option></select>' +
+        '<div style="position:relative;">' +
+        '<input type="text" id="comm-call-recipient-search" placeholder="Cerca destinatario..." ' +
+        '  autocomplete="off" ' +
+        '  style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;box-sizing:border-box;" />' +
+        '<input type="hidden" id="comm-call-recipient" />' +
+        '<div id="comm-call-recipient-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;' +
+        '  max-height:200px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;' +
+        '  box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:10;"></div>' +
+        '</div>' +
         '<div id="comm-call-start-row" style="display:none;margin-top:12px;">' +
-        '<button class="comm-btn comm-btn-primary" onclick="_commInitiateDirectCall(\'' + callType + '\')">Iniziare</button>' +
+        '<button class="comm-btn comm-btn-primary" onclick="_commInitiateDirectCall(\'' + callType + '\')">Inizia</button>' +
         '</div>' +
         '<button class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
         '</div>';
 
+    var searchInput = document.getElementById('comm-call-recipient-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', _commFilterCallRecipients);
+        searchInput.addEventListener('focus', _commShowCallRecipientDropdown);
+    }
+    // Close dropdown on outside click
+    document.addEventListener('click', function _commCloseDropdown(e) {
+        var dd = document.getElementById('comm-call-recipient-dropdown');
+        var si = document.getElementById('comm-call-recipient-search');
+        if (dd && si && !dd.contains(e.target) && e.target !== si) {
+            dd.style.display = 'none';
+        }
+        if (!document.getElementById('comm-call-recipient-search')) {
+            document.removeEventListener('click', _commCloseDropdown);
+        }
+    });
+
     _commLoadCallRecipients();
 }
 
-async function _commLoadCallRecipients() {
-    var select = document.getElementById('comm-call-recipient');
-    if (!select) return;
+var _commCallRecipientsList = [];
 
+async function _commLoadCallRecipients() {
     try {
         var resp = await fetchApi('/api/communication/users?role=vet');
         if (resp && resp.ok) {
             var data = await resp.json();
-            var users = data.users || [];
-            var html = '<option value="">-- Seleziona destinatario --</option>';
-            users.forEach(function(u) {
-                html += '<option value="' + (u.user_id || '') + '">' + (u.display_name || u.email || 'Utente') + '</option>';
+            _commCallRecipientsList = (data.users || []).map(function(u) {
+                return { id: u.user_id || '', name: u.display_name || u.email || 'Utente' };
             });
-            select.innerHTML = html;
         }
     } catch(e) {
         console.warn('[Communication] Load call recipients error:', e.message);
     }
 }
 
-function _commOnCallRecipientChange() {
-    var sel = document.getElementById('comm-call-recipient');
+function _commShowCallRecipientDropdown() {
+    _commFilterCallRecipients();
+}
+
+function _commFilterCallRecipients() {
+    var dd = document.getElementById('comm-call-recipient-dropdown');
+    var searchInput = document.getElementById('comm-call-recipient-search');
+    if (!dd || !searchInput) return;
+
+    var query = (searchInput.value || '').toLowerCase();
+    var filtered = _commCallRecipientsList.filter(function(u) {
+        return !query || u.name.toLowerCase().indexOf(query) !== -1;
+    });
+
+    if (filtered.length === 0) {
+        dd.innerHTML = '<div style="padding:10px 12px;color:#94a3b8;font-size:13px;">Nessun risultato</div>';
+    } else {
+        dd.innerHTML = filtered.map(function(u) {
+            return '<div class="comm-call-recipient-option" data-user-id="' + u.id + '" ' +
+                'style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid #f1f5f9;transition:background 0.15s;" ' +
+                'onmouseenter="this.style.background=\'#f1f5f9\'" onmouseleave="this.style.background=\'\'" ' +
+                'onclick="_commSelectCallRecipient(\'' + u.id + '\',\'' + u.name.replace(/'/g, "\\'") + '\')">' +
+                u.name + '</div>';
+        }).join('');
+    }
+    dd.style.display = '';
+}
+
+function _commSelectCallRecipient(userId, displayName) {
+    var hidden = document.getElementById('comm-call-recipient');
+    var searchInput = document.getElementById('comm-call-recipient-search');
+    var dd = document.getElementById('comm-call-recipient-dropdown');
     var row = document.getElementById('comm-call-start-row');
-    if (row) row.style.display = sel && sel.value ? '' : 'none';
+
+    if (hidden) hidden.value = userId;
+    if (searchInput) searchInput.value = displayName;
+    if (dd) dd.style.display = 'none';
+    if (row) row.style.display = userId ? '' : 'none';
 }
 
 async function _commInitiateDirectCall(callType) {
@@ -2202,6 +2256,7 @@ async function _commInitiateDirectCall(callType) {
                 vet_user_id: recipientId,
                 subject: callSubject,
                 recipient_type: 'human',
+                type: callType,
                 initial_message: callSubject + ' avviata'
             })
         });

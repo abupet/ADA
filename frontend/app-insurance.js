@@ -268,7 +268,7 @@
             '</div>' +
             (typeof debugLogEnabled !== 'undefined' && debugLogEnabled ?
                 '<div style="margin-top:8px;text-align:center;">' +
-                '<button type="button" class="insurance-btn insurance-btn--secondary" style="font-size:11px;padding:4px 12px;" onclick="if(typeof _showPromoAnalysis===\'function\')_showPromoAnalysis(null,\'' + _escapeHtml(petId) + '\')">🔍 Analisi raccomandazione</button>' +
+                '<button type="button" class="insurance-btn insurance-btn--secondary" style="font-size:11px;padding:4px 12px;" onclick="if(typeof _showPromoAnalysis===\'function\')_showPromoAnalysis(null,\'' + _escapeHtml(petId) + '\',\'Assicurazione Pet - Servizio assicurativo per animali domestici. Livello rischio: ' + _escapeHtml(level) + ', score: ' + pct + '%. Copertura veterinaria, emergenze, interventi chirurgici.\')">🔍 Analisi raccomandazione</button>' +
                 '</div>' : '') +
             '</div></div>';
 

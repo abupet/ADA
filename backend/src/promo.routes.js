@@ -522,6 +522,25 @@ function promoRouter({ requireAuth }) {
   });
 
   // =======================================================
+  // GET /api/promo/items/:id — single promo item details
+  // =======================================================
+  router.get("/api/promo/items/:id", requireAuth, async (req, res) => {
+    try {
+      const itemId = req.params.id;
+      if (!itemId || !isValidUuid(itemId)) return res.status(400).json({ error: "invalid_item_id" });
+      if (!pool) return res.status(503).json({ error: "db_not_available" });
+      const { rows } = await pool.query(
+        "SELECT promo_item_id, name, description, extended_description, service_type, brand_id FROM promo_items WHERE promo_item_id = $1 LIMIT 1",
+        [itemId]
+      );
+      if (!rows[0]) return res.status(404).json({ error: "not_found" });
+      res.json(rows[0]);
+    } catch (e) {
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // =======================================================
   // CONSENT
   // =======================================================
 
@@ -811,8 +830,11 @@ Ordina per score discendente.`;
         return res.status(503).json({ error: "openai_not_configured" });
       }
 
-      const systemPrompt = `Analizza le corrispondenze tra la descrizione di un pet e la descrizione di un prodotto.
-Identifica SOLO le corrispondenze (aspetti in comune), NON le informazioni senza match.
+      const systemPrompt = `Analizza le corrispondenze tra la descrizione di un pet e la descrizione di un prodotto/servizio.
+Identifica le corrispondenze (aspetti in comune) e ordinale per rilevanza.
+IMPORTANTE: Trova SEMPRE almeno una corrispondenza, anche generica. Ad esempio: corrispondenza per specie dell'animale, fascia d'età, taglia, o categoria generica del prodotto.
+Se non ci sono corrispondenze specifiche, elenca quelle generiche disponibili.
+NON mostrare informazioni senza corrispondenza.
 Rispondi SOLO con JSON valido.`;
 
       const userPrompt = `Descrizione pet:\n${petDescription}\n\nDescrizione prodotto:\n${productDescription}\n\nRispondi con questo JSON:

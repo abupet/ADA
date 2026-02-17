@@ -265,7 +265,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   router.post("/api/communication/conversations", requireAuth, async (req, res) => {
     try {
       const userId = req.user.sub;
-      const { pet_id, vet_user_id, owner_override_id, subject, recipient_type, referral_form, initial_message } = req.body;
+      const { pet_id, vet_user_id, owner_override_id, subject, recipient_type, referral_form, initial_message, type: convType } = req.body;
       const recipientType = recipient_type || "human";
       const callerRole = req.user.role;
 
@@ -310,10 +310,13 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         }
       }
 
+      const validConvTypes = ['chat', 'voice_call', 'video_call'];
+      const validatedType = validConvTypes.indexOf(convType) !== -1 ? convType : 'chat';
+
       const { rows } = await pool.query(
-        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, subject, status, recipient_type, referral_form) " +
-        "VALUES ($1, $2, $3, $4, $5, 'active', $6, $7) RETURNING *",
-        [conversationId, pet_id || null, ownerUserId, vetUserId, subject || null, recipientType, referral_form ? JSON.stringify(referral_form) : null]
+        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, subject, status, recipient_type, referral_form, type) " +
+        "VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8) RETURNING *",
+        [conversationId, pet_id || null, ownerUserId, vetUserId, subject || null, recipientType, referral_form ? JSON.stringify(referral_form) : null, validatedType]
       );
 
       const conversation = rows[0];

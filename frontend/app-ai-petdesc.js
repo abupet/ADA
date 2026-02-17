@@ -98,7 +98,7 @@ async function generateAiPetDescription(petId, force) {
     return null;
 }
 
-// Update the UI
+// Update the UI — loads from DB cache first, then regenerates if needed
 async function updateAiPetDescriptionUI() {
     var field = document.getElementById('aiPetDescriptionField');
     var status = document.getElementById('aiDescStatus');
@@ -113,6 +113,39 @@ async function updateAiPetDescriptionUI() {
         return;
     }
 
+    // Check in-memory cache first
+    if (_aiPetDescCache[petId] && _aiPetDescCache[petId].description) {
+        field.value = _aiPetDescCache[petId].description;
+        if (status) status.textContent = 'Generato il ' + new Date(_aiPetDescCache[petId].generatedAt).toLocaleString('it-IT');
+        if (sourcesDiv) sourcesDiv.textContent = 'Fonti: ' + (_aiPetDescCache[petId].sourcesUsed || []).join(', ');
+        return;
+    }
+
+    // Try loading from DB via pet data
+    if (status) status.textContent = 'Caricamento...';
+    try {
+        var petResp = await fetchApi('/api/pets/' + petId);
+        if (petResp && petResp.ok) {
+            var petData = await petResp.json();
+            if (petData.ai_description) {
+                field.value = petData.ai_description;
+                if (status) status.textContent = petData.ai_description_generated_at
+                    ? 'Generato il ' + new Date(petData.ai_description_generated_at).toLocaleString('it-IT')
+                    : 'Caricato dal database';
+                if (sourcesDiv) sourcesDiv.textContent = '';
+                // Populate in-memory cache
+                _aiPetDescCache[petId] = {
+                    description: petData.ai_description,
+                    sourcesHash: petData.ai_description_sources_hash || '',
+                    generatedAt: petData.ai_description_generated_at || new Date().toISOString(),
+                    sourcesUsed: []
+                };
+                return;
+            }
+        }
+    } catch(e) {}
+
+    // No cached description — generate new
     if (status) status.textContent = 'Generazione in corso...';
     try {
         var result = await generateAiPetDescription(petId);
