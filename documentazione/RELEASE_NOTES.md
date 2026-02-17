@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.4
+
+### Fix: Trascrizione chiamate non funzionante
+- Fix critico: race condition nella cattura audio remoto durante le chiamate WebRTC — `_webrtcRemoteStream` era vuoto al momento dell'avvio della trascrizione perché le tracce audio remote arrivano via `ontrack` dopo l'evento ICE `connected`
+- Fix: aggiunto avvio cattura audio remota nel callback `ontrack` quando la trascrizione è già attiva ma lo stream remoto non era ancora disponibile
+- Fix: aggiunta validazione tracce audio locali prima di avviare la cattura (`getAudioTracks().length > 0`)
+- Miglioramento: log diagnostici in `_webrtcStartServerTranscription` e `_webrtcSendAudioChunk` per facilitare il debug della trascrizione live
+
 ## v8.22.3
 
 ### Bug Fix & Live Call Transcription + UI Improvements

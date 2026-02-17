@@ -1,4 +1,4 @@
-// app-webrtc.js v1.0
+// app-webrtc.js v1.1
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -105,6 +105,12 @@ function _webrtcCreatePC() {
     _webrtcPC.ontrack = function(ev) {
         ev.streams[0].getTracks().forEach(function(t) { _webrtcRemoteStream.addTrack(t); });
         var rv = document.getElementById('webrtc-remote-video'); if (rv) rv.srcObject = _webrtcRemoteStream;
+        // Fix: if transcription already started but remote stream was empty, start remote capture now
+        if (_webrtcChunkTimers.local !== null && _webrtcRemoteRecorder === null
+            && _webrtcRemoteStream.getAudioTracks().length > 0) {
+            console.log('[WebRTC] ontrack: remote audio tracks now available, starting remote capture');
+            _webrtcStartAudioCapture('remote', _webrtcRemoteStream, _webrtcConvId);
+        }
     };
     _webrtcPC.onconnectionstatechange = function() {
         var s = _webrtcPC ? _webrtcPC.connectionState : 'unknown';
@@ -227,16 +233,22 @@ var _webrtcChunkTimers = { local: null, remote: null };
 
 function _webrtcStartServerTranscription(conversationId) {
     var socket = window._commSocket;
-    if (!socket) return;
+    if (!socket) { console.warn('[WebRTC] Transcription skipped: no socket'); return; }
 
     // Capture local audio (MY audio)
-    if (_webrtcLocalStream) {
+    if (_webrtcLocalStream && _webrtcLocalStream.getAudioTracks().length > 0) {
+        console.log('[WebRTC] Starting audio capture for local');
         _webrtcStartAudioCapture('local', _webrtcLocalStream, conversationId);
+    } else {
+        console.warn('[WebRTC] Transcription: local stream has no audio tracks');
     }
 
     // Capture remote audio (OTHER participant's audio)
     if (_webrtcRemoteStream && _webrtcRemoteStream.getAudioTracks().length > 0) {
+        console.log('[WebRTC] Starting audio capture for remote');
         _webrtcStartAudioCapture('remote', _webrtcRemoteStream, conversationId);
+    } else {
+        console.log('[WebRTC] Remote stream not ready yet, will start capture on ontrack');
     }
 }
 
@@ -288,6 +300,7 @@ function _webrtcSendAudioChunk(blob, source, conversationId) {
         var base64 = reader.result.split(',')[1];
         var socket = window._commSocket;
         if (socket) {
+            console.log('[WebRTC] Sending audio chunk: source=' + source + ', size=' + blob.size + 'B');
             socket.emit('call_audio_chunk', {
                 conversationId: conversationId,
                 callId: _webrtcCallId,
