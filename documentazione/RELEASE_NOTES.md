@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.25
+
+### Fix: Bulk AI Analysis SSE — CORS headers mancanti
+- **Root cause**: `res.writeHead(200, {...})` nel backend sovrascriveva gli header CORS impostati dal middleware `cors()` di Express — il browser bloccava il body della risposta SSE, `resp.body` era `null`, `.getReader()` lanciava TypeError e il catch chiudeva la modal silenziosamente
+- **Backend fix**: sostituito `res.writeHead()` con `res.setHeader()` individuali + `res.flushHeaders()` per preservare gli header CORS già impostati dal middleware
+- **Frontend fix**: aggiunto null-check su `resp.body` prima di `.getReader()` con messaggio di errore chiaro via toast
+
 ## v8.22.24
 
 ### Fix: Bulk AI Analysis — feedback progresso real-time (SSE)
