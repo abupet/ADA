@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.17';
-const ADA_RELEASE_NOTES = 'Fix: TURN server Metered.ca integration for WebRTC calls behind NAT.';
+const ADA_VERSION = '8.22.18';
+const ADA_RELEASE_NOTES = 'Fix: AI description and promo analysis error handling and diagnostics.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

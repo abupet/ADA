@@ -112,6 +112,13 @@ async function generateAiPetDescription(petId, force) {
         return _aiPetDescCache[petId];
     }
 
+    // Log error details for debugging
+    if (resp && !resp.ok) {
+        var errBody = null;
+        try { errBody = await resp.json(); } catch(_){}
+        console.warn('[AI PetDesc] Generation failed: HTTP ' + resp.status, errBody);
+    }
+
     return null;
 }
 
@@ -173,7 +180,7 @@ async function updateAiPetDescriptionUI() {
                 sourcesDiv.textContent = 'Fonti: ' + result.sourcesUsed.join(', ');
             }
         } else {
-            field.value = 'Errore nella generazione della descrizione.';
+            field.value = 'Errore nella generazione della descrizione. Verificare la configurazione OpenAI nel backend.';
             if (status) status.textContent = '';
         }
     } catch(e) {

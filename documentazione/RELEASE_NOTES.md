@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.18
+
+### Fix: Diagnostica errori AI Description e Analisi Raccomandazione
+- Fix: `generateAiPetDescription` ora logga in console lo status HTTP e il body dell'errore backend (503/502/504) — prima tornava `null` silenziosamente senza alcuna indicazione della causa
+- Fix: messaggio errore UI per "Descrizione Pet per AI" ora mostra "Verificare la configurazione OpenAI nel backend" invece del generico "Errore nella generazione della descrizione"
+- Fix: toast "Analisi raccomandazione" migliorato — ora dice "Descrizione pet non disponibile — generare prima la descrizione AI" con log `console.warn` per debugging
+
 ## v8.22.17
 
 ### Bug Fix: "Descrizione Pet per AI" genera dati vuoti (BUG-1)
