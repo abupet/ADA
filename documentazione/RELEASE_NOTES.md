@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.22.19
+
+### Fix: Conversazioni vet_ext non visibili nell'archivio pet
+- Fix: la query `GET /api/communication/conversations?pet_id=X` ora mostra TUTTE le conversazioni associate al pet quando l'utente ha accesso al pet, non solo quelle in cui è partecipante diretto
+- Fix: `getConversationIfAllowed` estesa con logica role-based — utenti con accesso al pet possono ora aprire e leggere conversazioni visibili nell'archivio (prima ricevevano 404)
+- **Ruoli con accesso globale** (`vet_int`, `vet`, `super_admin`): vedono tutte le conversazioni di ogni pet
+- **`vet_ext`**: vede le conversazioni dei pet a cui è assegnato come `referring_vet_user_id`
+- **`owner`**: vede le conversazioni dei propri pet (`owner_user_id`)
+- Fix copre anche telefonate (`voice_call`) e videochiamate (`video_call`) che usano la stessa tabella `conversations`
+
 ## v8.22.18
 
 ### Fix: Diagnostica errori AI Description e Analisi Raccomandazione
