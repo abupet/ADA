@@ -416,10 +416,11 @@ async function navigateToPage(page) {
     // Update document AI buttons based on role
     try { updateDocumentButtonsByRole(); } catch(e) {}
 
-    // Render promo slots per page context (PR 3) - only for proprietario role
+    // Render promo slots per page context (PR 3) - only for proprietario role (or forceMultiService)
     try {
         var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
-        if (typeof renderPromoSlot === 'function' && promoRole === 'proprietario') {
+        var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+        if (typeof renderPromoSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
             if (page === 'patient') renderPromoSlot('patient-promo-container', 'pet_profile');
             if (page === 'soap') renderPromoSlot('soap-promo-container', 'post_visit');
             if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
@@ -433,7 +434,6 @@ async function navigateToPage(page) {
             renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
             // Insurance slot (multi-service)
-            var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
             if (typeof renderInsuranceSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
                 if (page === 'patient') renderInsuranceSlot('patient-insurance-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
             }

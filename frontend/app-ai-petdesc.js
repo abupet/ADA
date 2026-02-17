@@ -7,14 +7,19 @@ async function _collectPetDataForAI(petId) {
     var sources = {};
 
     // 1. Pet data (from cache or API)
-    var pet = (typeof getPetById === 'function') ? getPetById(petId) : null;
+    var pet = (typeof getPetById === 'function') ? await getPetById(petId) : null;
     if (pet) {
         sources['dati_pet'] = {
-            nome: pet.name, specie: pet.species, razza: pet.breed,
-            sesso: pet.sex, data_nascita: pet.birthdate,
-            peso_kg: pet.weight_kg, microchip: pet.microchip,
-            sterilizzato: pet.neutered,
-            stile_di_vita: pet.lifestyle || (pet.extra_data && pet.extra_data.lifestyle) || null
+            nome: pet.name || pet.patient?.petName || null,
+            specie: pet.species || pet.patient?.petSpecies || null,
+            razza: pet.breed || pet.patient?.petBreed || null,
+            sesso: pet.sex || pet.patient?.petSex || null,
+            data_nascita: pet.birthdate || pet.patient?.petBirthdate || null,
+            peso_kg: pet.weight_kg || pet.patient?.petWeightKg || null,
+            microchip: pet.patient?.petMicrochip || null,
+            sterilizzato: pet.neutered || null,
+            stile_di_vita: (typeof pet.lifestyle === 'object' && Object.keys(pet.lifestyle).length > 0)
+                ? pet.lifestyle : null
         };
     }
 
@@ -29,19 +34,31 @@ async function _collectPetDataForAI(petId) {
         }
     } catch(e) {}
 
-    // 3. Vital parameters
-    try {
-        var vitalsResp = await fetchApi('/api/pets/' + petId + '/vitals');
-        if (vitalsResp && vitalsResp.ok) sources['parametri_vitali'] = await vitalsResp.json();
-    } catch(e) {}
+    // 3. Vital parameters (from pet extra_data, not separate API)
+    if (pet) {
+        var vitals = pet.vitalsData || [];
+        if (vitals.length > 0) {
+            sources['parametri_vitali'] = vitals;
+        }
+    }
 
-    // 4. Medications
-    try {
-        var medsResp = await fetchApi('/api/pets/' + petId + '/medications');
-        if (medsResp && medsResp.ok) sources['farmaci'] = await medsResp.json();
-    } catch(e) {}
+    // 4. Medications (from pet extra_data, not separate API)
+    if (pet) {
+        var meds = pet.medications || [];
+        if (meds.length > 0) {
+            sources['farmaci'] = meds;
+        }
+    }
 
-    // 5. Pet conversations
+    // 5. Health history (from pet extra_data)
+    if (pet) {
+        var history = pet.historyData || [];
+        if (history.length > 0) {
+            sources['storico_sanitario'] = history;
+        }
+    }
+
+    // 6. Pet conversations
     try {
         var convResp = await fetchApi('/api/communication/conversations?pet_id=' + petId);
         if (convResp && convResp.ok) {

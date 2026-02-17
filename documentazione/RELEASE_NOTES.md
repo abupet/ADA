@@ -1,5 +1,29 @@
 # Release Notes (cumulative)
 
+## v8.22.17
+
+### Bug Fix: "Descrizione Pet per AI" genera dati vuoti (BUG-1)
+- Fix critico: aggiunto `await` mancante alla chiamata `getPetById()` — restituiva una Promise invece dell'oggetto pet, causando tutti i campi "Nessuna informazione disponibile"
+- Fix: rimossi i fetch a endpoint API inesistenti (`/api/pets/{id}/vitals`, `/api/pets/{id}/medications`) — vitali e farmaci vengono ora letti direttamente da `pet.vitalsData` e `pet.medications` (già normalizzati da `extra_data`)
+- Fix: corretto campo microchip (`pet.patient?.petMicrochip`) e aggiunti fallback per tutti i campi anagrafici via `pet.patient`
+- Fix: aggiunto recupero dello storico sanitario (`pet.historyData`) come fonte dati per la descrizione AI
+
+### Bug Fix: "Analisi Raccomandazione" risultato generico (BUG-2)
+- Risolto automaticamente dal fix BUG-1 — i dati pet ora arrivano correttamente al matching AI
+
+### Bug Fix: Promo non visibile con "Visualizza sempre multi-servizio" ON (BUG-3)
+- Fix: il toggle `forceMultiService` ora influenza anche la visibilità del promo slot, non solo dell'assicurazione — dichiarazione spostata prima di entrambi i blocchi di rendering
+
+### Feature: Selezione destinatario role-based per chiamate (FEAT-1)
+- Refactor del form di chiamata diretta dalla pagina Messaggi con selezione destinatario role-based:
+  - `vet_int`: dropdown tipo destinatario (Veterinario Interno / Esterno / Proprietario) + select destinatario dinamico
+  - `vet_ext` / `owner`: mostra direttamente solo i destinatari `vet_int`
+- I destinatari si caricano dinamicamente al cambio tipo via `GET /api/communication/users?role={tipo}`
+- Supporto `makeFilterableSelect` per ricerca nel dropdown
+
+### Feature: Pulsante "Inizia" a sinistra di "Annulla" (FEAT-2)
+- I pulsanti "Inizia" e "Annulla" sono ora nella stessa riga flex, con "Inizia" a sinistra (appare solo dopo selezione destinatario)
+
 ## v8.22.16
 
 ### Feature: Multi-select Tipo Servizio + Azione bulk su catalogo
