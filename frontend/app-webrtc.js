@@ -1,4 +1,4 @@
-// app-webrtc.js v1.8
+// app-webrtc.js v1.9
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -331,13 +331,23 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
         var AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (AudioCtx) {
             _webrtcAudioCtx = new AudioCtx();
+            // AudioContext may start suspended if created outside a user gesture.
+            // Resume it immediately — this is critical for audio to flow.
+            if (_webrtcAudioCtx.state === 'suspended') {
+                console.log('[WebRTC] AudioContext suspended, resuming...');
+                _webrtcAudioCtx.resume().catch(function(e) {
+                    console.warn('[WebRTC] AudioContext.resume() failed:', e.message);
+                });
+            }
+            console.log('[WebRTC] AudioContext state: ' + _webrtcAudioCtx.state);
             var sourceNode = _webrtcAudioCtx.createMediaStreamSource(stream);
             var destNode = _webrtcAudioCtx.createMediaStreamDestination();
             sourceNode.connect(destNode);
             recorderStream = destNode.stream;
-            console.log('[WebRTC] Using Web Audio API recorder stream (avoids mobile silence bug)');
+            console.log('[WebRTC] Using Web Audio API recorder stream');
 
-            // Diagnostic: check audio level after 3 seconds
+            // Diagnostic: check audio level after 3 seconds.
+            // If silence is detected, fall back to the direct stream.
             var analyser = _webrtcAudioCtx.createAnalyser();
             sourceNode.connect(analyser);
             analyser.fftSize = 256;
@@ -348,7 +358,8 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
                 for (var i = 0; i < dataArray.length; i++) avg += dataArray[i];
                 avg /= dataArray.length;
                 console.log('[WebRTC] Audio level check: avg=' + avg.toFixed(1) +
-                    (avg < 1 ? ' WARNING: SILENCE detected' : ' OK: audio signal detected'));
+                    ' ctx.state=' + _webrtcAudioCtx.state +
+                    (avg < 1 ? ' WARNING: SILENCE' : ' OK: audio detected'));
             }, 3000);
         }
     } catch(e) {
