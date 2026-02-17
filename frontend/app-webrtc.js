@@ -1,4 +1,4 @@
-// app-webrtc.js v1.7
+// app-webrtc.js v1.8
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -278,6 +278,7 @@ function _webrtcStartTimer() {
 var _webrtcLocalRecorder = null;
 var _webrtcChunkIntervalMs = 15000; // 15 seconds per chunk
 var _webrtcChunkTimer = null;
+var _webrtcAudioCtx = null; // Web Audio API context for recorder stream
 
 function _webrtcStartServerTranscription(conversationId) {
     var socket = window._commSocket;
@@ -314,10 +315,51 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
     var chunkCount = 0;
     var failCount = 0;
 
+    // Log audio track properties for diagnostics
+    var audioTracks = stream.getAudioTracks();
+    if (audioTracks.length > 0) {
+        var t = audioTracks[0];
+        console.log('[WebRTC] Audio track: enabled=' + t.enabled + ' muted=' + t.muted +
+            ' readyState=' + t.readyState + ' label="' + t.label + '"');
+    }
+
+    // Route audio through Web Audio API to create an independent stream
+    // for MediaRecorder. On mobile browsers, sharing a getUserMedia stream
+    // between PeerConnection and MediaRecorder can result in silence.
+    var recorderStream = stream;
+    try {
+        var AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            _webrtcAudioCtx = new AudioCtx();
+            var sourceNode = _webrtcAudioCtx.createMediaStreamSource(stream);
+            var destNode = _webrtcAudioCtx.createMediaStreamDestination();
+            sourceNode.connect(destNode);
+            recorderStream = destNode.stream;
+            console.log('[WebRTC] Using Web Audio API recorder stream (avoids mobile silence bug)');
+
+            // Diagnostic: check audio level after 3 seconds
+            var analyser = _webrtcAudioCtx.createAnalyser();
+            sourceNode.connect(analyser);
+            analyser.fftSize = 256;
+            setTimeout(function() {
+                var dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                var avg = 0;
+                for (var i = 0; i < dataArray.length; i++) avg += dataArray[i];
+                avg /= dataArray.length;
+                console.log('[WebRTC] Audio level check: avg=' + avg.toFixed(1) +
+                    (avg < 1 ? ' WARNING: SILENCE detected' : ' OK: audio signal detected'));
+            }, 3000);
+        }
+    } catch(e) {
+        console.warn('[WebRTC] Web Audio API failed, using direct stream:', e.message);
+        recorderStream = stream;
+    }
+
     function createAndStart() {
         var recorder;
         try {
-            recorder = new MediaRecorder(stream, { mimeType: mimeType });
+            recorder = new MediaRecorder(recorderStream, { mimeType: mimeType });
         } catch(e) {
             console.warn('[WebRTC] Cannot create MediaRecorder:', e.message);
             return null;
@@ -360,7 +402,6 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
             chunkCount++;
             var oldRecorder = _webrtcLocalRecorder;
             _webrtcLocalRecorder = createAndStart();
-            // Always try to stop the old recorder (even if new one failed)
             if (oldRecorder && oldRecorder.state === 'recording') {
                 try { oldRecorder.stop(); } catch(e) {
                     console.warn('[WebRTC] Error stopping old recorder:', e.message);
@@ -407,6 +448,11 @@ function _webrtcStopServerTranscription() {
         try { _webrtcLocalRecorder.stop(); } catch(e) {}
     }
     _webrtcLocalRecorder = null;
+    // Close Web Audio API context
+    if (_webrtcAudioCtx) {
+        try { _webrtcAudioCtx.close(); } catch(e) {}
+        _webrtcAudioCtx = null;
+    }
 }
 
 // ---- Section 7: End call & cleanup ----
