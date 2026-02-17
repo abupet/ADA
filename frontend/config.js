@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.19';
-const ADA_RELEASE_NOTES = 'Fix: conversazioni vet_ext ora visibili nell\'archivio sanitario del pet.';
+const ADA_VERSION = '8.22.20';
+const ADA_RELEASE_NOTES = 'Fix: attachment 401, AI description timeout, promo analysis.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

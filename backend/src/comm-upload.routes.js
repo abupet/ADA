@@ -169,16 +169,48 @@ function commUploadRouter({ requireAuth, upload }) {
         return res.status(400).json({ error: "invalid_attachment_id" });
       }
 
-      // Join with comm_messages and conversations to verify access
-      const { rows } = await pool.query(
-        "SELECT a.* FROM comm_attachments a " +
-        "JOIN comm_messages m ON m.message_id = a.message_id " +
-        "JOIN conversations c ON c.conversation_id = m.conversation_id " +
-        "WHERE a.attachment_id = $1 " +
-        "AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
-        "LIMIT 1",
-        [id, req.user.sub]
-      );
+      // Role-based access: same logic as communication.routes.js getConversationIfAllowed
+      const callerRole = req.user.role || '';
+      const userId = req.user.sub;
+      let query, values;
+      if (callerRole === 'vet_int' || callerRole === 'super_admin' || callerRole === 'vet') {
+        query = "SELECT a.* FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2 OR c.pet_id IS NOT NULL) " +
+          "LIMIT 1";
+        values = [id, userId];
+      } else if (callerRole === 'vet_ext') {
+        query = "SELECT a.* FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2 OR p.referring_vet_user_id = $2) " +
+          "LIMIT 1";
+        values = [id, userId];
+      } else if (callerRole === 'owner') {
+        query = "SELECT a.* FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2 OR p.owner_user_id = $2) " +
+          "LIMIT 1";
+        values = [id, userId];
+      } else {
+        // No role (signed URL) or unknown: direct participant only
+        query = "SELECT a.* FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
+          "LIMIT 1";
+        values = [id, userId];
+      }
+
+      const { rows } = await pool.query(query, values);
 
       if (!rows[0]) {
         return res.status(404).json({ error: "not_found" });
@@ -203,15 +235,48 @@ function commUploadRouter({ requireAuth, upload }) {
         return res.status(400).json({ error: "invalid_attachment_id" });
       }
 
-      const { rows } = await pool.query(
-        "SELECT a.file_data, a.mime_type, a.original_filename FROM comm_attachments a " +
-        "JOIN comm_messages m ON m.message_id = a.message_id " +
-        "JOIN conversations c ON c.conversation_id = m.conversation_id " +
-        "WHERE a.attachment_id = $1 " +
-        "AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
-        "LIMIT 1",
-        [id, req.user.sub]
-      );
+      // Role-based access: same logic as metadata endpoint
+      const callerRole = req.user.role || '';
+      const userId = req.user.sub;
+      let query, values;
+      if (callerRole === 'vet_int' || callerRole === 'super_admin' || callerRole === 'vet') {
+        query = "SELECT a.file_data, a.mime_type, a.original_filename FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2 OR c.pet_id IS NOT NULL) " +
+          "LIMIT 1";
+        values = [id, userId];
+      } else if (callerRole === 'vet_ext') {
+        query = "SELECT a.file_data, a.mime_type, a.original_filename FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2 OR p.referring_vet_user_id = $2) " +
+          "LIMIT 1";
+        values = [id, userId];
+      } else if (callerRole === 'owner') {
+        query = "SELECT a.file_data, a.mime_type, a.original_filename FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "LEFT JOIN pets p ON p.pet_id = c.pet_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2 OR p.owner_user_id = $2) " +
+          "LIMIT 1";
+        values = [id, userId];
+      } else {
+        // No role (signed URL) or unknown: direct participant only
+        query = "SELECT a.file_data, a.mime_type, a.original_filename FROM comm_attachments a " +
+          "JOIN comm_messages m ON m.message_id = a.message_id " +
+          "JOIN conversations c ON c.conversation_id = m.conversation_id " +
+          "WHERE a.attachment_id = $1 " +
+          "AND (c.owner_user_id = $2 OR c.vet_user_id = $2) " +
+          "LIMIT 1";
+        values = [id, userId];
+      }
+
+      const { rows } = await pool.query(query, values);
 
       if (!rows[0] || !rows[0].file_data) {
         return res.status(404).json({ error: "not_found" });

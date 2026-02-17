@@ -313,7 +313,7 @@ PROFILO RISCHIO: ...`;
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 25000);
 
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
