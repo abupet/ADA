@@ -1,4 +1,4 @@
-// app-webrtc.js v1.4
+// app-webrtc.js v1.5
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -326,15 +326,17 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
     if (!_webrtcLocalRecorder) return;
     console.log('[WebRTC] Audio capture started (chunk every ' + (_webrtcChunkIntervalMs/1000) + 's)');
 
-    // Every N seconds: stop current recorder (sends chunk) + start new one
+    // Every N seconds: start new recorder FIRST, then stop old one.
+    // Starting before stopping ensures zero audio gap between chunks.
     _webrtcChunkTimer = setInterval(function() {
         chunkCount++;
-        // Stop current → triggers async onstop → sends chunk
-        if (_webrtcLocalRecorder && _webrtcLocalRecorder.state === 'recording') {
-            try { _webrtcLocalRecorder.stop(); } catch(e) {}
-        }
-        // Start new recorder immediately (minimizes audio gap)
+        var oldRecorder = _webrtcLocalRecorder;
+        // Start new recorder FIRST (both record briefly in parallel — no gap)
         _webrtcLocalRecorder = createAndStart();
+        // Then stop old recorder → async onstop → sends chunk
+        if (oldRecorder && oldRecorder.state === 'recording') {
+            try { oldRecorder.stop(); } catch(e) {}
+        }
         if (_webrtcLocalRecorder) {
             console.log('[WebRTC] Chunk #' + chunkCount + ' finalized, new recorder started');
         }

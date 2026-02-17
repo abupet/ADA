@@ -8,6 +8,24 @@ const { sendPushToUser } = require("./push.routes");
 
 const onlineUsers = new Map(); // userId → Set<socketId>
 
+// Whisper hallucination filter — known phantom outputs on silent/ambient audio
+const WHISPER_HALLUCINATION_RE = [
+    /sottotitoli\s+(creati|di|a\s+cura)/i,
+    /amara\.org/i,
+    /grazie\s+per\s+(la\s+)?(visione|aver\s+guardato)/i,
+    /iscri(viti|zione)\s+(al\s+)?canale/i,
+    /grazie\s+per\s+l['']ascolto/i,
+    /musica/i,
+    /^\.*$/,
+];
+function isWhisperHallucination(text) {
+    if (!text || !text.trim()) return true;
+    const t = text.trim();
+    if (t.length < 3) return true;
+    for (const re of WHISPER_HALLUCINATION_RE) { if (re.test(t)) return true; }
+    return false;
+}
+
 // Helper: transcribe audio chunk via OpenAI Whisper
 // Uses native FormData + Blob (Node.js 20) — same pattern as comm-upload.routes.js
 async function transcribeAudioChunk(base64Audio, mimeType) {
@@ -308,17 +326,19 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
                 const transcription = await transcribeAudioChunk(audioData, mimeType);
                 if (!transcription || !transcription.trim()) return;
+                if (isWhisperHallucination(transcription)) return;
 
-                // Check if we can merge with the last transcription message from same speaker
+                // Merge logic: append to last transcription if same speaker is still talking.
+                // Only create a new message when the speaker changes.
                 const lastMsg = await pool.query(
-                    "SELECT message_id, content, created_at FROM comm_messages " +
-                    "WHERE conversation_id = $1 AND sender_id = $2 AND type = 'transcription' AND deleted_at IS NULL " +
+                    "SELECT message_id, content, sender_id FROM comm_messages " +
+                    "WHERE conversation_id = $1 AND type = 'transcription' AND deleted_at IS NULL " +
                     "ORDER BY created_at DESC LIMIT 1",
-                    [conversationId, speakerId]
+                    [conversationId]
                 );
 
-                if (lastMsg.rows[0] && (Date.now() - new Date(lastMsg.rows[0].created_at).getTime() < 30000)) {
-                    // Append to existing message
+                if (lastMsg.rows[0] && lastMsg.rows[0].sender_id === speakerId) {
+                    // Same speaker continues — append to existing message
                     await pool.query(
                         "UPDATE comm_messages SET content = content || ' ' || $1, updated_at = NOW() WHERE message_id = $2",
                         [transcription.trim(), lastMsg.rows[0].message_id]
@@ -332,7 +352,7 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                         updated_at: new Date().toISOString()
                     });
                 } else {
-                    // Create new message
+                    // Different speaker or first transcription — create new message
                     const msgId = crypto.randomUUID();
                     await pool.query(
                         "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, delivery_status) " +
