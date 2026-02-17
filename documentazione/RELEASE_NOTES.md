@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.22.24
+
+### Fix: Bulk AI Analysis — feedback progresso real-time (SSE)
+- **Root cause**: premendo "Bulk AI Analysis" l'utente non vedeva feedback — `fetchApi` abortiva dopo 30s (troppo poco per un'operazione multi-minuto) e la modal si chiudeva cliccando fuori
+- **Backend SSE stream**: l'endpoint `POST /api/admin/:tenant_id/bulk-ai-analysis` ora risponde con Server-Sent Events, inviando eventi `start`, `progress`, `pet_done` e `done` per ogni pet processato
+- **Frontend stream reader**: `bulkAiAnalysis()` usa `fetch()` diretto (bypassa il timeout 30s di `fetchApi`) con stream reader che legge gli eventi SSE in tempo reale
+- **Modal non chiudibile**: durante l'elaborazione il click fuori dalla modal non la chiude; diventa chiudibile solo a completamento
+- **Barra progresso live**: mostra "3/11" con percentuale, nome del pet corrente ("Elaborazione: Fido..."), contatori incrementali (descrizioni, analisi, cache), e timer trascorso
+- **Report finale**: a completamento la modal mostra i totali (pet, descrizioni generate, analisi eseguite, da cache) con tempo totale e pulsante Chiudi
+- Timeout esteso a 10 minuti lato server
+
 ## v8.22.23
 
 ### Feature: Bulk AI Analysis in Catalogo
