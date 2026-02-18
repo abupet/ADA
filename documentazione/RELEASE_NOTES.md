@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.22.26
+
+### Fix: Bulk AI Analysis — _currentTenantId non definito
+- **Root cause**: `bulkAiAnalysis()` referenziava `_currentTenantId` che non esiste — la variabile corretta è `_selectedDashboardTenant` con fallback a `getJwtTenantId()`
+- **Fix**: sostituito con lo stesso pattern usato in tutte le altre funzioni admin: `getJwtTenantId()` + fallback `_selectedDashboardTenant`
+
 ## v8.22.25
 
 ### Fix: Bulk AI Analysis SSE — CORS headers mancanti

@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.25';
-const ADA_RELEASE_NOTES = 'Fix: bulk AI analysis SSE — CORS headers preservati, null-check resp.body.';
+const ADA_VERSION = '8.22.26';
+const ADA_RELEASE_NOTES = 'Fix: bulk AI analysis — _currentTenantId undefined, usa getJwtTenantId() + fallback.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
