@@ -74,6 +74,8 @@ function createMockPool(queryResponses) {
 
 (async function testMarketingOff() {
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags query
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species query
@@ -100,6 +102,8 @@ function createMockPool(queryResponses) {
 
 (async function testNoCandidates() {
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species
@@ -148,6 +152,8 @@ function createMockPool(queryResponses) {
   };
 
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species
@@ -208,6 +214,8 @@ function createMockPool(queryResponses) {
   };
 
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species -> dog
@@ -253,6 +261,8 @@ function createMockPool(queryResponses) {
   };
 
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags (empty -> triggers computeTags)
     { rows: [] },
     // 2. computeTags: pet lookup (not found -> skip)
@@ -300,6 +310,8 @@ function createMockPool(queryResponses) {
   };
 
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags - pet has clinical:allergy
     { rows: [{ tag: "clinical:allergy", value: null, confidence: null }] },
     // 2. pets species
@@ -330,6 +342,8 @@ function createMockPool(queryResponses) {
 
 (async function testDefaultContext() {
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags (empty -> triggers computeTags)
     { rows: [] },
     // 2. computeTags: pet lookup (not found -> skip)
@@ -378,6 +392,8 @@ function createMockPool(queryResponses) {
   };
 
   const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
     // 1. pet_tags
     { rows: [{ tag: "species:dog", value: null, confidence: null }] },
     // 2. pets species
