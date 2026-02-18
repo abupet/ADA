@@ -1,14 +1,15 @@
-// app-webrtc.js v1.9
+// app-webrtc.js v1.10
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
-// Globals exposed:  initCallUI(), startCall(), handleIncomingCall(), endCall()
+// Globals exposed:  initCallUI(), startCall(), handleIncomingCall(), endCall(), _webrtcInitSignaling()
 
 var _webrtcPC = null, _webrtcLocalStream = null, _webrtcRemoteStream = null;
 var _webrtcCallId = null, _webrtcConvId = null, _webrtcCallType = null;
 var _webrtcTimerInterval = null, _webrtcStartTime = null, _webrtcIceQueue = [];
 var _webrtcIncomingCallData = null, _webrtcRingTimeout = null, _webrtcIncomingTimeout = null;
 var _webrtcIceServersCache = null, _webrtcIceTimeout = null;
+var _webrtcSignalingSocket = null; // tracks which socket instance has listeners attached
 
 function _webrtcApiBase() { return window.ADA_API_BASE_URL || ''; }
 function _webrtcAuth() { return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }; }
@@ -158,7 +159,14 @@ function _webrtcCreatePC(iceServers) {
             endCall();
         }
     };
-    // ICE connection timeout: if not connected within 20s, give up
+    // NOTE: ICE timeout is NOT started here. It is started after setRemoteDescription
+    // (in webrtc_offer/webrtc_answer handlers) so we don't time out while waiting
+    // for the callee to accept the call.
+}
+
+// Start ICE timeout AFTER the SDP exchange is complete (setRemoteDescription called)
+function _webrtcStartIceTimeout() {
+    if (_webrtcIceTimeout) return; // already running
     _webrtcIceTimeout = setTimeout(function() {
         if (_webrtcPC && _webrtcPC.iceConnectionState !== 'connected' && _webrtcPC.iceConnectionState !== 'completed') {
             console.error('[WebRTC] ICE timeout — state:', _webrtcPC.iceConnectionState);
@@ -234,7 +242,7 @@ function _webrtcShowOverlay(callType, isInitiator) {
     var old = document.getElementById('webrtc-call-overlay'); if (old) old.parentNode.removeChild(old);
     var ov = document.createElement('div'); ov.className = 'webrtc-overlay'; ov.id = 'webrtc-call-overlay';
     ov.setAttribute('data-testid','webrtc-call-overlay');
-    var h = '<div class="webrtc-overlay-header" data-testid="webrtc-call-status">' + (isInitiator ? 'Chiamata in corso...' : 'Connesso') + '</div>' +
+    var h = '<div class="webrtc-overlay-header" data-testid="webrtc-call-status">' + (isInitiator ? 'Chiamata in corso...' : 'Connessione in corso...') + '</div>' +
         '<div class="webrtc-overlay-timer" id="webrtc-call-timer" data-testid="webrtc-call-timer">00:00</div>';
     if (callType === 'video_call') {
         h += '<video class="webrtc-remote-video" id="webrtc-remote-video" data-testid="webrtc-remote-video" autoplay playsinline></video>';
@@ -486,13 +494,20 @@ function endCall() {
 }
 
 // ---- Section 8: Socket.io signaling listeners ----
+// Guard: only attach listeners once per socket instance (prevents duplicate handlers
+// and ensures listeners are re-attached if the socket is replaced after logout/login)
 function _webrtcInitSignaling() {
     var socket = window._commSocket; if (!socket) return;
+    if (_webrtcSignalingSocket === socket) return; // already attached to this socket
+    _webrtcSignalingSocket = socket;
+    console.log('[WebRTC] Attaching signaling listeners to socket');
 
     socket.on('incoming_call', function(d) { handleIncomingCall(d); });
 
     socket.on('call_accepted', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        // Dedup: event arrives via both conv room and user room
+        if (_webrtcPC.localDescription) return;
         console.log('[WebRTC] Call accepted, creating offer');
         if (_webrtcRingTimeout) { clearTimeout(_webrtcRingTimeout); _webrtcRingTimeout = null; }
         try {
@@ -511,9 +526,12 @@ function _webrtcInitSignaling() {
 
     socket.on('webrtc_offer', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        // Dedup: event arrives via both conv room and user room
+        if (_webrtcPC.remoteDescription) return;
         console.log('[WebRTC] Offer received, creating answer');
         try {
             await _webrtcPC.setRemoteDescription(new RTCSessionDescription(d.offer));
+            _webrtcStartIceTimeout(); // start ICE timeout now that SDP exchange has begun
             console.log('[WebRTC] Remote description set, draining', _webrtcIceQueue.length, 'queued ICE candidates');
             for (var i = 0; i < _webrtcIceQueue.length; i++) await _webrtcPC.addIceCandidate(new RTCIceCandidate(_webrtcIceQueue[i]));
             _webrtcIceQueue = [];
@@ -526,9 +544,12 @@ function _webrtcInitSignaling() {
 
     socket.on('webrtc_answer', async function(d) {
         if (!d || d.callId !== _webrtcCallId || !_webrtcPC) return;
+        // Dedup: event arrives via both conv room and user room
+        if (_webrtcPC.remoteDescription) return;
         console.log('[WebRTC] Answer received');
         try {
             await _webrtcPC.setRemoteDescription(new RTCSessionDescription(d.answer));
+            _webrtcStartIceTimeout(); // start ICE timeout now that SDP exchange is complete
             console.log('[WebRTC] Remote description set, draining', _webrtcIceQueue.length, 'queued ICE candidates');
             for (var i = 0; i < _webrtcIceQueue.length; i++) await _webrtcPC.addIceCandidate(new RTCIceCandidate(_webrtcIceQueue[i]));
             _webrtcIceQueue = [];
@@ -560,16 +581,15 @@ function _webrtcInitSignaling() {
 }
 
 // ---- Section 9: Auto-init signaling ----
+// Called from initCommSocket (app-communication.js) when socket is created,
+// AND as a fallback from DOMContentLoaded polling.
 function _webrtcCheckAndInitSignaling() {
     if (window._commSocket) { _webrtcInitSignaling(); return; }
-    // Retry multiple times with increasing delay
+    // Retry multiple times with increasing delay as fallback
     var attempts = [500, 1000, 2000, 5000];
     attempts.forEach(function(delay) {
         setTimeout(function() {
-            if (window._commSocket && !window._webrtcSignalingReady) {
-                _webrtcInitSignaling();
-                window._webrtcSignalingReady = true;
-            }
+            if (window._commSocket) _webrtcInitSignaling();
         }, delay);
     });
 }

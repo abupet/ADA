@@ -271,7 +271,11 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         socket.on("accept_call", async ({ conversationId, callId }) => {
             if (!conversationId || !callId) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
-            socket.to(`conv:${conversationId}`).emit("call_accepted", { conversationId, callId, acceptedBy: userId });
+            const payload = { conversationId, callId, acceptedBy: userId };
+            socket.to(`conv:${conversationId}`).emit("call_accepted", payload);
+            // Also emit to caller's user room for reliability (conv room may miss events)
+            const callerId = await getConversationRecipient(userId, conversationId);
+            if (callerId) commNs.to(`user:${callerId}`).emit("call_accepted", payload);
         });
         socket.on("reject_call", async ({ conversationId, callId, reason }) => {
             if (!conversationId || !callId) return;
@@ -281,17 +285,29 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         socket.on("webrtc_offer", async ({ conversationId, callId, offer }) => {
             if (!conversationId || !callId || !offer) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
-            socket.to(`conv:${conversationId}`).emit("webrtc_offer", { conversationId, callId, offer });
+            const payload = { conversationId, callId, offer };
+            socket.to(`conv:${conversationId}`).emit("webrtc_offer", payload);
+            // Also emit to recipient's user room for reliability
+            const recipientId = await getConversationRecipient(userId, conversationId);
+            if (recipientId) commNs.to(`user:${recipientId}`).emit("webrtc_offer", payload);
         });
         socket.on("webrtc_answer", async ({ conversationId, callId, answer }) => {
             if (!conversationId || !callId || !answer) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
-            socket.to(`conv:${conversationId}`).emit("webrtc_answer", { conversationId, callId, answer });
+            const payload = { conversationId, callId, answer };
+            socket.to(`conv:${conversationId}`).emit("webrtc_answer", payload);
+            // Also emit to recipient's user room for reliability
+            const recipientId = await getConversationRecipient(userId, conversationId);
+            if (recipientId) commNs.to(`user:${recipientId}`).emit("webrtc_answer", payload);
         });
         socket.on("webrtc_ice", async ({ conversationId, callId, candidate }) => {
             if (!conversationId || !callId || !candidate) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
-            socket.to(`conv:${conversationId}`).emit("webrtc_ice", { conversationId, callId, candidate });
+            const payload = { conversationId, callId, candidate };
+            socket.to(`conv:${conversationId}`).emit("webrtc_ice", payload);
+            // Also emit to recipient's user room for reliability
+            const recipientId = await getConversationRecipient(userId, conversationId);
+            if (recipientId) commNs.to(`user:${recipientId}`).emit("webrtc_ice", payload);
         });
         socket.on("end_call", async ({ conversationId, callId }) => {
             if (!conversationId) return;
