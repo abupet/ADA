@@ -197,8 +197,9 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
       // Brand consent check (skip when force=true)
       if (!force && !isMarketingAllowed(consent, item.tenant_id)) continue;
 
-      // Species filter
+      // Species filter (skip when force=true)
       if (
+        !force &&
         petSpecies &&
         item.species &&
         item.species.length > 0 &&
@@ -208,8 +209,9 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
         continue;
       }
 
-      // Lifecycle filter
+      // Lifecycle filter (skip when force=true)
       if (
+        !force &&
         petLifecycle &&
         item.lifecycle_target &&
         Array.isArray(item.lifecycle_target) &&
@@ -220,8 +222,8 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
         continue;
       }
 
-      // Context/category filter
-      if (rules.categories) {
+      // Context/category filter (skip when force=true)
+      if (!force && rules.categories) {
         if (!rules.categories.includes(item.category)) continue;
       }
 

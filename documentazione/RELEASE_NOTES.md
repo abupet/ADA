@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.22.28
+
+### Fix: Promo non visibile per nessun utente (owner/vet_int)
+- **Root cause**: in `eligibility.service.js`, la funzione `selectPromo()` con `force=true` bypassava solo consent e frequency capping, ma NON i filtri per category, species e lifecycle — se i `promo_items` nel DB avevano categorie non previste dal contesto (es. `food_clinical` in `pet_profile`), venivano tutti esclusi anche con forceMultiService ON
+- **Fix**: quando `force=true`, bypassare anche i filtri species, lifecycle e context/category — coerente con l'intento del flag "bypass tutti i gate"
+
 ## v8.22.27
 
 ### Fix: Promo non visibile in Dati Pet con forceMultiService ON
