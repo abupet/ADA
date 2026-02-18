@@ -1,6 +1,6 @@
 # Release Notes (cumulative)
 
-## v8.22.29
+## v8.22.31
 
 ### Fix: Bulk AI Analysis — descrizioni generiche "non ci sono dati" per pet con dati minimi
 - **Root cause 1 (prompt debole)**: il prompt OpenAI chiedeva "genera una descrizione basata sui dati forniti" — quando un pet aveva solo nome e specie (altri campi null), GPT-4o-mini rispondeva con "non ci sono dati, per favore fornisci..." invece di generare una descrizione con i dati disponibili
@@ -11,6 +11,23 @@
 - **Fix 3 (fallback dati base)**: nome, specie e razza dal query principale vengono sempre iniettati nei sources, anche se `_collectPetSourcesFromDB` restituisce dati vuoti
 - **Fix 4 (force-regenerate)**: nuovo pulsante "Rigenera Desc." che invia `{ force: true }` per rigenerare tutte le descrizioni, non solo quelle mancanti — utile per correggere descrizioni errate da run precedenti
 - **Fix 5 (rate limiting)**: aggiunto delay di 500ms tra ogni pet nel loop seriale per evitare sovraccarico API
+
+## v8.22.30
+
+### Fix: chiamata WebRTC cade immediatamente dopo l'accettazione (race condition dedup)
+- **Root cause**: la dual-emission introdotta in v8.22.29 (conv room + user room) causa la ricezione duplicata degli eventi `webrtc_offer` e `webrtc_answer`. I guard anti-duplicati usavano proprietà asincrone (`remoteDescription`) che non sono ancora impostate quando il secondo evento arriva, permettendo a entrambi di entrare nell'handler. Il secondo `setRemoteDescription` fallisce → catch chiama `endCall()` → il server notifica l'altro peer → entrambi chiudono la chiamata
+- **Fix**: sostituiti i check asincroni con flag booleani sincroni (`_webrtcOfferHandled`, `_webrtcAnswerHandled`, `_webrtcAcceptHandled`) impostati immediatamente all'ingresso dell'handler, prima di qualsiasi operazione async
+- **Fix**: lo stato `disconnected` del PeerConnection ora ha un grace period di 5s invece di terminare immediatamente la chiamata (lo stato `disconnected` è transitorio e può risolversi da solo)
+- **Miglioramento**: aggiunto logging in `endCall()` per facilitare il debug di chiusure inattese
+
+## v8.22.29
+
+### Fix: chiamate WebRTC non si connettono (signaling + ICE timeout)
+- Fix critico: i listener di signaling WebRTC (`call_accepted`, `webrtc_offer`, `webrtc_answer`, ecc.) non venivano mai registrati se l'utente faceva login manuale (non auto-login). Il polling con timeout fissi (500ms–5s) dopo DOMContentLoaded scadeva prima della creazione del socket. Ora `initCommSocket()` invoca direttamente `_webrtcInitSignaling()` al momento della creazione del socket, con guard anti-duplicati
+- Fix: gli eventi di signaling (`call_accepted`, `webrtc_offer`, `webrtc_answer`, `webrtc_ice`) ora vengono emessi anche sulla user room del destinatario (oltre alla conv room), come fallback per garantire la consegna anche se un socket non è nella conv room
+- Fix: il timeout ICE (20s) partiva alla creazione del PeerConnection (prima ancora che il callee accettasse la chiamata), causando timeout prematuri. Ora il timeout ICE parte solo dopo `setRemoteDescription` (completamento scambio SDP)
+- Fix: l'overlay del callee mostrava "Connesso" immediatamente all'accettazione — ora mostra "Connessione in corso..." fino alla connessione ICE effettiva
+- Dedup: aggiunta protezione contro eventi duplicati che arrivano via conv room + user room (check su `localDescription`/`remoteDescription` già impostate)
 
 ## v8.22.28
 
