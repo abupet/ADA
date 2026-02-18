@@ -2,9 +2,11 @@
 
 ## v8.22.28
 
-### Fix: Promo non visibile per nessun utente (owner/vet_int)
-- **Root cause**: in `eligibility.service.js`, la funzione `selectPromo()` con `force=true` bypassava solo consent e frequency capping, ma NON i filtri per category, species e lifecycle — se i `promo_items` nel DB avevano categorie non previste dal contesto (es. `food_clinical` in `pet_profile`), venivano tutti esclusi anche con forceMultiService ON
-- **Fix**: quando `force=true`, bypassare anche i filtri species, lifecycle e context/category — coerente con l'intento del flag "bypass tutti i gate"
+### Fix: Promo non visibile con forceMultiService ON (crash silenzioso)
+- **Root cause 1 (crash)**: in `eligibility.service.js`, quando `force=true` il consent fetch viene saltato (`consent = null`), ma riga 156 chiama `isClinicalTagsAllowed(null)` che accede a `null.clinical_tags` → **TypeError** → il catch esterno ritorna `null` silenziosamente, mascherando il problema reale
+- **Root cause 2 (filtri non bypassati)**: anche senza il crash, i filtri species, lifecycle e context/category NON erano bypassati da `force=true` — se i promo_items avevano categorie non previste dal contesto (es. `food_clinical` in `pet_profile`), venivano tutti esclusi
+- **Fix 1**: null-guard su `isClinicalTagsAllowed(consent)` → `consent ? isClinicalTagsAllowed(consent) : false`
+- **Fix 2**: quando `force=true`, bypassare anche species, lifecycle e context/category filters — coerente con l'intento "bypass tutti i gate"
 
 ## v8.22.27
 

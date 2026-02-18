@@ -153,7 +153,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
       }
     }
 
-    const clinicalAllowed = isClinicalTagsAllowed(consent);
+    const clinicalAllowed = consent ? isClinicalTagsAllowed(consent) : false;
     const highSensitivityOk =
       clinicalAllowed && HIGH_SENSITIVITY_CONTEXTS.includes(ctx);
 
