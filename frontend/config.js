@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.30';
-const ADA_RELEASE_NOTES = 'Fix: WebRTC calls not connecting (signaling reliability + ICE timeout).';
+const ADA_VERSION = '8.22.31';
+const ADA_RELEASE_NOTES = 'Fix: Bulk AI Analysis bad generic descriptions for pets with minimal data.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
