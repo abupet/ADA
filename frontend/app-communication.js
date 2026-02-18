@@ -270,6 +270,8 @@ function initCommSocket() {
         _commSocket.on('transcription_ready', function (d) {
             _commUpdateMessageTranscription(d.messageId, d.transcription);
         });
+        // Notify WebRTC module to attach signaling listeners to this socket
+        if (typeof _webrtcInitSignaling === 'function') _webrtcInitSignaling();
     } catch (_) { /* socket init failure is non-critical */ }
     window.addEventListener('online', _commFlushOfflineQueue);
 }

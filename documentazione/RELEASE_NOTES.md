@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.10
+
+### Fix: chiamate WebRTC non si connettono (signaling + ICE timeout)
+- Fix critico: i listener di signaling WebRTC (`call_accepted`, `webrtc_offer`, `webrtc_answer`, ecc.) non venivano mai registrati se l'utente faceva login manuale (non auto-login). Il polling con timeout fissi (500ms–5s) dopo DOMContentLoaded scadeva prima della creazione del socket. Ora `initCommSocket()` invoca direttamente `_webrtcInitSignaling()` al momento della creazione del socket, con guard anti-duplicati
+- Fix: gli eventi di signaling (`call_accepted`, `webrtc_offer`, `webrtc_answer`, `webrtc_ice`) ora vengono emessi anche sulla user room del destinatario (oltre alla conv room), come fallback per garantire la consegna anche se un socket non è nella conv room
+- Fix: il timeout ICE (20s) partiva alla creazione del PeerConnection (prima ancora che il callee accettasse la chiamata), causando timeout prematuri. Ora il timeout ICE parte solo dopo `setRemoteDescription` (completamento scambio SDP)
+- Fix: l'overlay del callee mostrava "Connesso" immediatamente all'accettazione — ora mostra "Connessione in corso..." fino alla connessione ICE effettiva
+- Dedup: aggiunta protezione contro eventi duplicati che arrivano via conv room + user room (check su `localDescription`/`remoteDescription` già impostate)
+
 ## v8.22.9
 
 ### Miglioramento qualità trascrizione chiamate
