@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.30
+
+### Fix: chiamata WebRTC cade immediatamente dopo l'accettazione (race condition dedup)
+- **Root cause**: la dual-emission introdotta in v8.22.29 (conv room + user room) causa la ricezione duplicata degli eventi `webrtc_offer` e `webrtc_answer`. I guard anti-duplicati usavano proprietà asincrone (`remoteDescription`) che non sono ancora impostate quando il secondo evento arriva, permettendo a entrambi di entrare nell'handler. Il secondo `setRemoteDescription` fallisce → catch chiama `endCall()` → il server notifica l'altro peer → entrambi chiudono la chiamata
+- **Fix**: sostituiti i check asincroni con flag booleani sincroni (`_webrtcOfferHandled`, `_webrtcAnswerHandled`, `_webrtcAcceptHandled`) impostati immediatamente all'ingresso dell'handler, prima di qualsiasi operazione async
+- **Fix**: lo stato `disconnected` del PeerConnection ora ha un grace period di 5s invece di terminare immediatamente la chiamata (lo stato `disconnected` è transitorio e può risolversi da solo)
+- **Miglioramento**: aggiunto logging in `endCall()` per facilitare il debug di chiusure inattese
+
 ## v8.22.29
 
 ### Fix: chiamate WebRTC non si connettono (signaling + ICE timeout)
