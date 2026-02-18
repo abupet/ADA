@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.32';
-const ADA_RELEASE_NOTES = 'Fix: Bulk AI Analysis bad generic descriptions for pets with minimal data.';
+const ADA_VERSION = '8.22.33';
+const ADA_RELEASE_NOTES = 'Fix: Bulk AI empty descriptions (SQL columns), timeout 45s, rate limit 120, debounce pet switch.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

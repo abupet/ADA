@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.33
+
+### Fix: Bulk AI Analysis descrizioni vuote + timeout + rate limit
+- **Fix critico (colonne SQL inesistenti)**: `_collectPetSourcesFromDB` usava `SELECT ... neutered, lifestyle ...` ma queste colonne non esistono nella tabella `pets` (sono dentro `extra_data` JSONB). PostgreSQL restituiva errore, catturato dal `catch` silenzioso → `sources.dati_pet` mai impostato → OpenAI riceveva solo nome/specie/razza dal fallback. Fix: rimosso `neutered`/`lifestyle` dalla SELECT, estratti da `extra_data` come fa il frontend
+- **Fix timeout**: aumentato timeout OpenAI nel bulk da 25s a 45s per evitare abort su pet con molti dati
+- **Fix rate limit 429**: aumentato default `RATE_LIMIT_PER_MIN` da 60 a 120 richieste/minuto
+- **Fix debounce navigazione**: aggiunto debounce 300ms sulle chiamate API (promo/insurance/nutrition) al cambio pet per evitare flood quando si naviga rapidamente tra pet
+
 ## v8.22.32
 
 ### Miglioramento: Bulk AI Analysis + Promo Selection da Top 5 AI Matches
