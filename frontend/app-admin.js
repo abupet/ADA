@@ -1403,6 +1403,7 @@
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="openImageManagement()" title="Gestione immagini prodotti filtrati">🖼️ Gestione Immagini</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="bulkAiAnalysis()">&#129302; Bulk AI Analysis</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;background:#fff3cd;border-color:#ffc107;" onclick="bulkAiAnalysis(true)" title="Rigenera tutte le descrizioni AI, anche quelle esistenti">&#128260; Rigenera Desc.</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
         html.push('</div>');
 
@@ -3666,8 +3667,12 @@
     // Bulk AI Analysis
     // =========================================================================
 
-    async function bulkAiAnalysis() {
-        if (!confirm('Avviare l\'analisi AI per tutti i pet?\n\nQuesto processo:\n- Genera la descrizione AI per i pet che ne sono privi\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti')) return;
+    async function bulkAiAnalysis(forceRegenerate) {
+        var msgBase = 'Avviare l\'analisi AI per tutti i pet?\n\nQuesto processo:\n- Genera la descrizione AI per i pet che ne sono privi\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti';
+        if (forceRegenerate) {
+            msgBase = 'Avviare l\'analisi AI con RIGENERAZIONE FORZATA?\n\nQuesto processo:\n- Rigenera TUTTE le descrizioni AI (anche quelle esistenti)\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti';
+        }
+        if (!confirm(msgBase)) return;
 
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
@@ -3758,6 +3763,9 @@
             h.push('<div style="background:#fefce8;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#ca8a04;">' + (result.analysesRun || 0) + '</div><div style="font-size:12px;color:#666;">Analisi eseguite</div></div>');
             h.push('<div style="background:#f0f9ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#0369a1;">' + (result.analysesCached || 0) + '</div><div style="font-size:12px;color:#666;">Analisi da cache</div></div>');
             h.push('</div>');
+            if (result.descriptionsSkippedBad > 0) {
+                h.push('<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#c2410c;">' + result.descriptionsSkippedBad + ' descrizioni generiche scartate (dati pet insufficienti per AI)</div>');
+            }
             // Elapsed
             h.push('<div style="text-align:center;margin-bottom:16px;font-size:13px;color:#64748b;">&#9201; Tempo totale: ' + elapsed + '</div>');
             // Errors
@@ -3787,7 +3795,7 @@
             var resp = await fetch(API_BASE_URL + '/api/admin/' + encodeURIComponent(tenantId) + '/bulk-ai-analysis', {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({})
+                body: JSON.stringify({ force: !!forceRegenerate })
             });
 
             if (!resp || !resp.ok) {
