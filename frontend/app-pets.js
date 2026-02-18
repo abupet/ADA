@@ -6,6 +6,7 @@
 
 let petsCache = [];         // Array of pets loaded from server
 let currentPetId = null;    // UUID of currently selected pet
+let _petSwitchApiTimer = null; // Debounce timer for API calls on pet switch
 
 // ============================================
 // API HELPERS
@@ -345,19 +346,25 @@ async function onPetSelectorChange(selectElement) {
     }
 
     // PR1: Refresh promo + insurance + nutrition quando si cambia pet
-    try {
-        var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
-        var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
-        if (typeof renderPromoSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
-            renderPromoSlot('patient-promo-container', 'pet_profile');
-        }
-        if (typeof renderInsuranceSlot === 'function') {
-            renderInsuranceSlot('patient-insurance-container', value || null);
-        }
-        if (typeof renderNutritionSlot === 'function') {
-            renderNutritionSlot('patient-nutrition-container', value || null);
-        }
-    } catch(_promoErr) {}
+    // Debounce 300ms to avoid flooding API when rapidly switching pets (causes 429)
+    if (_petSwitchApiTimer) clearTimeout(_petSwitchApiTimer);
+    var _petValue = value;
+    _petSwitchApiTimer = setTimeout(function() {
+        _petSwitchApiTimer = null;
+        try {
+            var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
+            var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+            if (typeof renderPromoSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
+                renderPromoSlot('patient-promo-container', 'pet_profile');
+            }
+            if (typeof renderInsuranceSlot === 'function') {
+                renderInsuranceSlot('patient-insurance-container', _petValue || null);
+            }
+            if (typeof renderNutritionSlot === 'function') {
+                renderNutritionSlot('patient-nutrition-container', _petValue || null);
+            }
+        } catch(_promoErr) {}
+    }, 300);
 
     updateSaveButtonState();
 }

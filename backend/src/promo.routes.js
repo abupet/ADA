@@ -204,14 +204,21 @@ function promoRouter({ requireAuth }) {
     const sources = {};
 
     // 1. Pet data + extra_data JSONB
+    // Note: neutered/lifestyle are NOT columns — they live inside extra_data JSONB
     try {
       const petRes = await dbPool.query(
-        "SELECT name, species, breed, sex, birthdate, weight_kg, neutered, lifestyle, extra_data FROM pets WHERE pet_id = $1 LIMIT 1",
+        "SELECT name, species, breed, sex, birthdate, weight_kg, extra_data FROM pets WHERE pet_id = $1 LIMIT 1",
         [petId]
       );
       if (petRes.rows[0]) {
         const p = petRes.rows[0];
-        const extra = p.extra_data || {};
+        let extra = p.extra_data || {};
+        if (typeof extra === 'string') {
+          try { extra = JSON.parse(extra); } catch (_) { extra = {}; }
+        }
+
+        const lifestyle = extra.lifestyle || null;
+
         sources.dati_pet = {
           nome: p.name || null,
           specie: p.species || null,
@@ -219,22 +226,25 @@ function promoRouter({ requireAuth }) {
           sesso: p.sex || null,
           data_nascita: p.birthdate || null,
           peso_kg: p.weight_kg || null,
-          sterilizzato: p.neutered || null,
-          stile_di_vita: p.lifestyle || null,
+          sterilizzato: null,
+          stile_di_vita: (typeof lifestyle === 'object' && lifestyle !== null && Object.keys(lifestyle).length > 0)
+            ? lifestyle : null,
           microchip: extra.microchip || null,
         };
         // Extra sources from extra_data JSONB
-        if (extra.vitals_data) {
+        if (extra.vitals_data && (Array.isArray(extra.vitals_data) ? extra.vitals_data.length > 0 : true)) {
           sources.parametri_vitali = extra.vitals_data;
         }
-        if (extra.medications) {
+        if (extra.medications && (Array.isArray(extra.medications) ? extra.medications.length > 0 : true)) {
           sources.farmaci = extra.medications;
         }
-        if (extra.history_data) {
+        if (extra.history_data && (Array.isArray(extra.history_data) ? extra.history_data.length > 0 : true)) {
           sources.storico_sanitario = extra.history_data;
         }
       }
-    } catch (_e) {}
+    } catch (e) {
+      console.error("[_collectPetSourcesFromDB] Pet data query failed for", petId, e.message);
+    }
 
     // 2. Documents
     try {
@@ -1383,7 +1393,7 @@ PROFILO RISCHIO: ...`;
             const { systemPrompt, userPrompt } = _getStructuredDescPrompts(sources);
 
             const descController = new AbortController();
-            const descTimeout = setTimeout(() => descController.abort(), 25000);
+            const descTimeout = setTimeout(() => descController.abort(), 45000);
 
             const descResponse = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
