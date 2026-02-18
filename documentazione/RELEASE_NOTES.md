@@ -1,5 +1,18 @@
 # Release Notes (cumulative)
 
+## v8.22.34
+
+### Bulk AI Analysis a 2 fasi + Cache Promo
+- **Processo a 2 fasi**: il Bulk AI Analysis ora esegue prima la Fase 1 (genera/aggiorna descrizioni AI per tutti i pet) e poi la Fase 2 (esegue analisi raccomandazione e salva i top 5 match nella tabella `pets`)
+- **Selezione fase 2 intelligente**: in modalità "changed", la Fase 2 viene eseguita solo per pet senza match cached, con descrizione appena aggiornata, o con match più vecchi della descrizione
+- **Promo da cache AI**: `GET /api/promo/recommendation` ora controlla prima i `ai_recommendation_matches` cached sul pet; se presenti, sceglie casualmente uno dei top 5 match (verificando che sia ancora `published`) — risposta istantanea senza chiamate OpenAI
+- **Salvataggio timestamp match**: nuova colonna `ai_recommendation_matches_generated_at` (migrazione 022) per tracciare quando i match sono stati generati
+- **Salvataggio match in analyze-match-all**: l'endpoint `POST /api/promo/analyze-match-all` ora salva anche i match + timestamp nella riga del pet
+- **UI stepper a 2 fasi**: il popup mostra uno stepper visuale (Fase 1 blu → Fase 2 verde) con barra progresso colorata per fase e contatori separati
+- **Risultati separati**: la schermata risultati mostra statistiche per fase — Fase 1 (descrizioni generate, invariati) e Fase 2 (analisi eseguite, da cache, già in cache)
+- **Timeout esteso**: timeout richiesta aumentato da 10 a 15 minuti per supportare le 2 fasi
+- **SSE eventi fase**: nuovi tipi evento `phase` per comunicare il cambio di fase al frontend
+
 ## v8.22.33
 
 ### Fix: Bulk AI Analysis descrizioni vuote + timeout + rate limit
