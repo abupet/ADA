@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.35
+
+### Fix: "Analisi Raccomandazione" ignora cache dal Bulk Phase 2
+- **Root cause**: `POST /api/promo/analyze-match-all` chiamava direttamente `_runAnalysisForPet()` senza consultare i match già salvati nella riga del pet (`ai_recommendation_matches`) dal Bulk AI Phase 2. La cache in-memory `explanation_cache` (SHA-256) poteva avere key diverse tra bulk e invocazione individuale → cache miss → ricalcolo completo con OpenAI
+- **Fix**: prima di chiamare `_runAnalysisForPet`, l'endpoint ora controlla `pets.ai_recommendation_matches` e `ai_recommendation_matches_generated_at`. Se i match esistono e sono più recenti della descrizione AI (`ai_description_generated_at`), restituisce i match cached immediatamente con `fromCache: true`
+- **Force recalc**: supporto per `{ petId, force: true }` nel body per forzare il ricalcolo (bypass cache pet row)
+
 ## v8.22.34
 
 ### Bulk AI Analysis a 2 fasi + Cache Promo

@@ -1228,6 +1228,39 @@ Ordina per score discendente.`;
         return res.status(503).json({ error: "db_not_available" });
       }
 
+      // Check for cached matches on pet row (saved by bulk Phase 2 or previous analysis)
+      const forceRecalc = req.body.force === true;
+      if (!forceRecalc) {
+        try {
+          const cachedResult = await pool.query(
+            `SELECT ai_recommendation_matches, ai_recommendation_matches_generated_at,
+                    ai_description_generated_at, name
+             FROM pets WHERE pet_id = $1 LIMIT 1`,
+            [petId]
+          );
+          const petRow = cachedResult.rows[0];
+          if (petRow && petRow.ai_recommendation_matches && petRow.ai_recommendation_matches_generated_at) {
+            const matchesAt = new Date(petRow.ai_recommendation_matches_generated_at).getTime();
+            const descAt = petRow.ai_description_generated_at
+              ? new Date(petRow.ai_description_generated_at).getTime() : 0;
+            if (matchesAt >= descAt) {
+              let matches = petRow.ai_recommendation_matches;
+              if (typeof matches === 'string') {
+                try { matches = JSON.parse(matches); } catch (_) { matches = null; }
+              }
+              if (Array.isArray(matches) && matches.length > 0) {
+                console.log(`[analyze-match-all] returning cached matches for pet=${petId}`);
+                return res.json({
+                  petId, petName: petRow.name,
+                  matches, fromCache: true,
+                  candidatesCount: matches.length
+                });
+              }
+            }
+          }
+        } catch (_e) {}
+      }
+
       const result = await _runAnalysisForPet(pool, petId, openAiKey);
 
       if (result.error === "pet_ai_description_missing") {

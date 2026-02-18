@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.34';
-const ADA_RELEASE_NOTES = 'Bulk AI: 2-phase process (descriptions + recommendation analysis). Cached AI matches serve promos with random selection from top 5.';
+const ADA_VERSION = '8.22.35';
+const ADA_RELEASE_NOTES = 'Fix: "Analisi Raccomandazione" now uses cached matches from Bulk AI Phase 2 instead of recalculating from scratch.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
