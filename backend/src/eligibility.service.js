@@ -91,6 +91,117 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
     const rules = CONTEXT_RULES[ctx] || CONTEXT_RULES.home_feed;
     const effectiveServiceType = serviceType || (rules.service_types ? rules.service_types[0] : "promo");
 
+    // 0. Try AI recommendation matches (top 5 from bulk analysis)
+    if (!force) {
+      try {
+        const matchesResult = await pool.query(
+          "SELECT ai_recommendation_matches FROM pets WHERE pet_id = $1 LIMIT 1",
+          [petId]
+        );
+        const aiMatches = matchesResult.rows[0]?.ai_recommendation_matches;
+        if (aiMatches && Array.isArray(aiMatches) && aiMatches.length > 0) {
+          // Get consent
+          const aiConsent = await getEffectiveConsent(pool, ownerUserId);
+          if (isMarketingAllowed(aiConsent, null)) {
+            // Filter matches through consent, vet flags, and freq cap
+            const validMatches = [];
+            for (const match of aiMatches) {
+              if (!match.promo_item_id) continue;
+
+              // Check vet flags
+              try {
+                const flagRes = await pool.query(
+                  "SELECT 1 FROM vet_flags WHERE pet_id = $1 AND promo_item_id = $2 AND status = 'active' LIMIT 1",
+                  [petId, match.promo_item_id]
+                );
+                if (flagRes.rows.length > 0) continue;
+              } catch (_e) { /* skip */ }
+
+              // Check freq cap (per_session: today's impressions for this item)
+              const freqCap = rules.freq || {};
+              let capped = false;
+              try {
+                if (freqCap.per_session) {
+                  const sessionRes = await pool.query(
+                    `SELECT COUNT(*) as cnt FROM promo_events
+                     WHERE owner_user_id = $1 AND pet_id = $2 AND promo_item_id = $3
+                     AND event_type = 'impression' AND created_at >= CURRENT_DATE`,
+                    [ownerUserId, petId, match.promo_item_id]
+                  );
+                  if (Number(sessionRes.rows[0].cnt) >= freqCap.per_session) capped = true;
+                }
+                if (!capped && freqCap.per_week) {
+                  const weekRes = await pool.query(
+                    `SELECT COUNT(*) as cnt FROM promo_events
+                     WHERE owner_user_id = $1 AND pet_id = $2
+                     AND event_type = 'impression'
+                     AND created_at >= NOW() - INTERVAL '7 days'`,
+                    [ownerUserId, petId]
+                  );
+                  if (Number(weekRes.rows[0].cnt) >= freqCap.per_week) capped = true;
+                }
+              } catch (_e) { /* don't cap on error */ }
+              if (capped) continue;
+
+              // Check brand consent
+              try {
+                const itemRes = await pool.query(
+                  "SELECT tenant_id, name, category, image_url, product_url, service_type, description FROM promo_items WHERE promo_item_id = $1 AND status = 'published' LIMIT 1",
+                  [match.promo_item_id]
+                );
+                if (!itemRes.rows[0]) continue;
+                const item = itemRes.rows[0];
+                if (!isMarketingAllowed(aiConsent, item.tenant_id)) continue;
+
+                // Check service_type filter
+                if (effectiveServiceType && item.service_type &&
+                    Array.isArray(item.service_type) && item.service_type.length > 0 &&
+                    !item.service_type.includes(effectiveServiceType)) continue;
+
+                validMatches.push({ ...match, _dbItem: item });
+              } catch (_e) { continue; }
+            }
+
+            if (validMatches.length > 0) {
+              // Random selection from valid matches
+              const chosen = validMatches[Math.floor(Math.random() * validMatches.length)];
+              const dbItem = chosen._dbItem;
+
+              const utmParams = new URLSearchParams({
+                utm_source: "ada",
+                utm_medium: "promo",
+                utm_campaign: "ai_recommendation",
+                utm_content: chosen.promo_item_id,
+              }).toString();
+
+              const ctaUrl = dbItem.product_url
+                ? dbItem.product_url + (dbItem.product_url.includes("?") ? "&" : "?") + utmParams
+                : null;
+
+              serverLog('INFO', 'ELIGIBILITY', 'selectPromo from ai_recommendation_matches', { petId, matchCount: validMatches.length, selectedItemId: chosen.promo_item_id });
+
+              return {
+                promoItemId: chosen.promo_item_id,
+                tenantId: dbItem.tenant_id,
+                name: dbItem.name,
+                category: dbItem.category,
+                imageUrl: dbItem.image_url || _randomProductPlaceholder(),
+                description: dbItem.description,
+                ctaUrl,
+                context: ctx,
+                source: "ai_recommendation",
+                matchedTags: chosen.key_matches || [],
+                _item: dbItem,
+              };
+            }
+          }
+        }
+      } catch (_aiErr) {
+        // Fallback to standard algorithm on any error
+        serverLog('WARN', 'ELIGIBILITY', 'ai_recommendation_matches lookup failed, falling back', { petId, error: _aiErr.message });
+      }
+    }
+
     // 1. Get or compute tags
     let petTags = [];
     try {
