@@ -3696,11 +3696,12 @@
         modeHtml.push('<div style="text-align:center;margin-bottom:20px;">');
         modeHtml.push('<div style="font-size:32px;margin-bottom:8px;">&#129302;</div>');
         modeHtml.push('<h3 style="color:#1e3a5f;margin:0;">Bulk AI Analysis</h3>');
+        modeHtml.push('<p style="color:#64748b;font-size:12px;margin-top:4px;">Fase 1: Descrizioni Pet &rarr; Fase 2: Analisi Raccomandazione</p>');
         modeHtml.push('</div>');
         modeHtml.push('<div style="margin-bottom:20px;">');
         modeHtml.push('<label style="display:flex;align-items:center;gap:10px;padding:12px;border:2px solid #2563eb;border-radius:8px;cursor:pointer;margin-bottom:8px;background:#eff6ff;">');
         modeHtml.push('<input type="radio" name="bulk-ai-mode" value="changed" checked style="width:18px;height:18px;">');
-        modeHtml.push('<div><strong>Solo pet con fonti modificate</strong><br><span style="font-size:12px;color:#64748b;">Salta i pet le cui fonti dati non sono cambiate dall\'ultima analisi</span></div>');
+        modeHtml.push('<div><strong>Solo pet con fonti modificate</strong><br><span style="font-size:12px;color:#64748b;">Salta descrizioni invariate; analisi solo per pet senza cache o con descrizione aggiornata</span></div>');
         modeHtml.push('</label>');
         modeHtml.push('<label style="display:flex;align-items:center;gap:10px;padding:12px;border:2px solid #e2e8f0;border-radius:8px;cursor:pointer;background:#fff;">');
         modeHtml.push('<input type="radio" name="bulk-ai-mode" value="all" style="width:18px;height:18px;">');
@@ -3761,17 +3762,45 @@
         }
 
         // Track running totals
-        var state = { total: 0, current: 0, petName: '', descs: 0, analyses: 0, cached: 0, skipped: 0, errors: 0 };
+        var state = {
+            phase: 1,
+            phaseLabel: 'Descrizioni Pet per AI',
+            total: 0,
+            totalPets: 0,
+            current: 0,
+            petName: '',
+            descs: 0,
+            skipped: 0,
+            analyses: 0,
+            analysesCached: 0,
+            analysesSkipped: 0,
+            errors: 0
+        };
 
         function renderProgress() {
             var pct = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0;
             var elapsed = formatElapsed(Date.now() - startTime);
             var h = [];
             h.push('<div style="padding:20px;">');
-            h.push('<h3 style="color:#1e3a5f;margin:0 0 16px;">&#129302; Bulk AI Analysis</h3>');
-            // Progress bar
+            h.push('<h3 style="color:#1e3a5f;margin:0 0 12px;">&#129302; Bulk AI Analysis</h3>');
+            // Phase indicator
+            h.push('<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">');
+            var p1Color = state.phase === 1 ? '#2563eb' : '#16a34a';
+            var p2Color = state.phase === 2 ? '#2563eb' : (state.phase > 1 ? '#16a34a' : '#cbd5e1');
+            h.push('<div style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:' + p1Color + ';">');
+            h.push(state.phase > 1 ? '&#10003;' : '&#9654;');
+            h.push(' Fase 1: Descrizioni</div>');
+            h.push('<div style="flex:1;height:2px;background:#e2e8f0;"></div>');
+            h.push('<div style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:' + p2Color + ';">');
+            h.push(state.phase === 2 ? '&#9654;' : '&#9675;');
+            h.push(' Fase 2: Analisi</div>');
+            h.push('</div>');
+            // Current phase label
+            h.push('<div style="font-size:13px;font-weight:600;color:#1e3a5f;margin-bottom:8px;">' + _escapeHtml(state.phaseLabel) + '</div>');
+            // Progress bar with phase-specific color
+            var barColor = state.phase === 1 ? 'linear-gradient(90deg,#2563eb,#3b82f6)' : 'linear-gradient(90deg,#16a34a,#22c55e)';
             h.push('<div style="background:#e2e8f0;border-radius:8px;height:24px;overflow:hidden;margin-bottom:8px;">');
-            h.push('<div style="background:linear-gradient(90deg,#2563eb,#3b82f6);height:100%;width:' + pct + '%;transition:width 0.3s;border-radius:8px;display:flex;align-items:center;justify-content:center;">');
+            h.push('<div style="background:' + barColor + ';height:100%;width:' + pct + '%;transition:width 0.3s;border-radius:8px;display:flex;align-items:center;justify-content:center;">');
             if (pct > 15) h.push('<span style="color:#fff;font-size:11px;font-weight:700;">' + pct + '%</span>');
             h.push('</div></div>');
             // Status line
@@ -3788,9 +3817,10 @@
             // Running counters
             h.push('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;">');
             if (state.descs > 0) h.push('<div style="background:#f0fdf4;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#16a34a;">' + state.descs + '</div>Descrizioni</div>');
-            if (state.analyses > 0) h.push('<div style="background:#fefce8;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#ca8a04;">' + state.analyses + '</div>Analisi</div>');
-            if (state.cached > 0) h.push('<div style="background:#f0f9ff;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#0369a1;">' + state.cached + '</div>Da cache</div>');
             if (state.skipped > 0) h.push('<div style="background:#f5f5f5;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#6b7280;">' + state.skipped + '</div>Invariati</div>');
+            if (state.analyses > 0) h.push('<div style="background:#fefce8;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#ca8a04;">' + state.analyses + '</div>Analisi</div>');
+            if (state.analysesCached > 0) h.push('<div style="background:#f0f9ff;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#0369a1;">' + state.analysesCached + '</div>Da cache</div>');
+            if (state.analysesSkipped > 0) h.push('<div style="background:#f5f5f5;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#6b7280;">' + state.analysesSkipped + '</div>Analisi skip</div>');
             h.push('</div>');
             h.push('</div>');
             body.innerHTML = h.join('');
@@ -3802,15 +3832,22 @@
             var h = [];
             h.push('<div style="padding:20px;">');
             h.push('<h3 style="color:#1e3a5f;margin:0 0 16px;">&#129302; Bulk AI Analysis completata</h3>');
+            // Phase 1 results
+            h.push('<div style="font-size:13px;font-weight:600;color:#2563eb;margin-bottom:8px;">Fase 1: Descrizioni Pet per AI</div>');
             h.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">');
             h.push('<div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#16a34a;">' + (result.total || 0) + '</div><div style="font-size:12px;color:#666;">Pet totali</div></div>');
             h.push('<div style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#2563eb;">' + (result.descriptionsGenerated || 0) + '</div><div style="font-size:12px;color:#666;">Descrizioni generate</div></div>');
-            h.push('<div style="background:#fefce8;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#ca8a04;">' + (result.analysesRun || 0) + '</div><div style="font-size:12px;color:#666;">Analisi eseguite</div></div>');
-            h.push('<div style="background:#f0f9ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#0369a1;">' + (result.analysesCached || 0) + '</div><div style="font-size:12px;color:#666;">Analisi da cache</div></div>');
             h.push('</div>');
             if (result.descriptionsSkipped > 0) {
-                h.push('<div style="background:#f5f5f4;border:1px solid #d6d3d1;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#57534e;">' + result.descriptionsSkipped + ' pet invariati (fonti non modificate)</div>');
+                h.push('<div style="background:#f5f5f4;border:1px solid #d6d3d1;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px;color:#57534e;">' + result.descriptionsSkipped + ' pet invariati (fonti non modificate)</div>');
             }
+            // Phase 2 results
+            h.push('<div style="font-size:13px;font-weight:600;color:#16a34a;margin-bottom:8px;">Fase 2: Analisi Raccomandazione</div>');
+            h.push('<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">');
+            h.push('<div style="background:#fefce8;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#ca8a04;">' + (result.analysesRun || 0) + '</div><div style="font-size:12px;color:#666;">Analisi eseguite</div></div>');
+            h.push('<div style="background:#f0f9ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#0369a1;">' + (result.analysesCached || 0) + '</div><div style="font-size:12px;color:#666;">Da cache</div></div>');
+            h.push('<div style="background:#f5f5f4;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#6b7280;">' + (result.analysesSkipped || 0) + '</div><div style="font-size:12px;color:#666;">Gi&agrave; in cache</div></div>');
+            h.push('</div>');
             // Elapsed
             h.push('<div style="text-align:center;margin-bottom:16px;font-size:13px;color:#64748b;">&#9201; Tempo totale: ' + elapsed + '</div>');
             // Errors
@@ -3884,7 +3921,16 @@
                     try { evt = JSON.parse(jsonStr); } catch(_) { continue; }
 
                     if (evt.type === 'start') {
+                        state.totalPets = evt.total;
                         state.total = evt.total;
+                        renderProgress();
+                    } else if (evt.type === 'phase') {
+                        state.phase = evt.phase;
+                        state.phaseLabel = evt.phaseLabel || ('Fase ' + evt.phase);
+                        state.total = evt.total;
+                        state.current = 0;
+                        state.petName = '';
+                        if (evt.skipped) state.analysesSkipped = evt.skipped;
                         renderProgress();
                     } else if (evt.type === 'progress') {
                         state.current = evt.current;
@@ -3892,10 +3938,14 @@
                         renderProgress();
                     } else if (evt.type === 'pet_done') {
                         state.current = evt.current;
-                        if (evt.descGenerated) state.descs++;
-                        if (evt.analysisRun) state.analyses++;
-                        if (evt.cached) state.cached++;
-                        if (evt.skipped) state.skipped++;
+                        if (evt.phase === 1 || !evt.phase) {
+                            if (evt.descGenerated) state.descs++;
+                            if (evt.skipped) state.skipped++;
+                        }
+                        if (evt.phase === 2) {
+                            if (evt.analysisRun) state.analyses++;
+                            if (evt.cached) state.analysesCached++;
+                        }
                         if (evt.error) state.errors++;
                         renderProgress();
                     } else if (evt.type === 'done') {
@@ -3905,8 +3955,16 @@
             }
 
             // If stream ended without a 'done' event, show what we have
-            if (state.current > 0 && state.current >= state.total && !body.querySelector('.btn-primary')) {
-                renderResults({ total: state.total, descriptionsGenerated: state.descs, analysesRun: state.analyses, analysesCached: state.cached, errors: [] });
+            if (state.current > 0 && !body.querySelector('.btn-primary')) {
+                renderResults({
+                    total: state.totalPets,
+                    descriptionsGenerated: state.descs,
+                    descriptionsSkipped: state.skipped,
+                    analysesRun: state.analyses,
+                    analysesCached: state.analysesCached,
+                    analysesSkipped: state.analysesSkipped,
+                    errors: []
+                });
             }
 
         } catch(e) {
