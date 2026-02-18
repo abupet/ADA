@@ -1227,9 +1227,34 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
   });
 
   // =======================================================
+  // Helper: detect bad/generic AI descriptions that should not be saved
+  // =======================================================
+  function _isBadAiDescription(text) {
+    if (!text || text.length < 30) return true;
+    const lower = text.toLowerCase();
+    const badPatterns = [
+      "non ci siano dati",
+      "non sono stati forniti dati",
+      "non siano stati forniti",
+      "avrei bisogno di",
+      "se puoi fornirmi",
+      "per poterti aiutare",
+      "non ho informazioni sufficienti",
+      "informazioni non disponibili",
+      "nessun dato disponibile",
+      "dati non forniti",
+      "non dispongo di",
+      "no data provided",
+      "no specific data",
+    ];
+    return badPatterns.some(p => lower.includes(p));
+  }
+
+  // =======================================================
   // POST /api/admin/:tenant_id/bulk-ai-analysis
   // Bulk AI analysis for all pets (super_admin / admin_brand only)
   // SSE stream: sends progress/pet_done/done events for real-time feedback
+  // Body: { force: true } to regenerate all descriptions (not just missing ones)
   // =======================================================
   router.post("/api/admin/:tenant_id/bulk-ai-analysis", requireAuth, async (req, res) => {
     // Role check: super_admin or admin_brand only
@@ -1247,6 +1272,8 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
       return res.status(503).json({ error: "openai_not_configured" });
     }
 
+    const forceRegenerate = req.body && req.body.force === true;
+
     // Extend request timeout to 10 minutes
     req.setTimeout(600000);
     if (res.socket) res.socket.setTimeout(600000);
@@ -1255,7 +1282,7 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
     let allPets = [];
     try {
       const petsResult = await pool.query(
-        "SELECT pet_id, name, ai_description FROM pets ORDER BY name"
+        "SELECT pet_id, name, species, breed, ai_description FROM pets ORDER BY name"
       );
       allPets = petsResult.rows;
     } catch (e) {
@@ -1277,6 +1304,7 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
     const results = {
       total: allPets.length,
       descriptionsGenerated: 0,
+      descriptionsSkippedBad: 0,
       analysesRun: 0,
       analysesCached: 0,
       errors: [],
@@ -1295,10 +1323,16 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
       let petError = null;
 
       try {
-        // Step A: Generate AI description if missing
-        if (!pet.ai_description) {
+        // Step A: Generate AI description if missing, bad, or force-regenerate
+        const needsDescription = !pet.ai_description || forceRegenerate || _isBadAiDescription(pet.ai_description);
+        if (needsDescription) {
           try {
             const sources = await _collectPetSourcesFromDB(pool, pet.pet_id);
+            // Always ensure basic pet info is present (from main query, not just sources)
+            if (!sources.dati_pet) sources.dati_pet = {};
+            if (!sources.dati_pet.nome && pet.name) sources.dati_pet.nome = pet.name;
+            if (!sources.dati_pet.specie && pet.species) sources.dati_pet.specie = pet.species;
+            if (!sources.dati_pet.razza && pet.breed) sources.dati_pet.razza = pet.breed;
             const sourcesText = JSON.stringify(sources);
 
             const descController = new AbortController();
@@ -1310,7 +1344,7 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
               body: JSON.stringify({
                 model: "gpt-4o-mini",
                 messages: [
-                  { role: "system", content: "Sei un assistente veterinario. Genera una descrizione completa del pet basata sui dati forniti. La descrizione deve includere specie, razza, età, peso, condizioni di salute note, stile di vita e qualsiasi informazione rilevante per raccomandazioni di prodotti. Scrivi in italiano, in modo chiaro e conciso (max 500 parole)." },
+                  { role: "system", content: "Sei un assistente veterinario. Genera una descrizione del pet basata ESCLUSIVAMENTE sui dati forniti. Usa SOLO le informazioni presenti nel JSON — se un campo è null o mancante, NON menzionarlo e NON chiedere ulteriori informazioni. Non chiedere MAI all'utente di fornire dati aggiuntivi. Scrivi una descrizione utile con qualsiasi dato disponibile, anche se minimo (es. solo nome e specie). La descrizione deve essere in italiano, chiara e concisa (max 500 parole). Se i dati sono molto limitati, scrivi comunque una breve descrizione basata su ciò che è disponibile." },
                   { role: "user", content: "Dati del pet:\n" + sourcesText }
                 ],
                 temperature: 0.3,
@@ -1324,14 +1358,29 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
             if (descResponse.ok) {
               const descData = await descResponse.json();
               const description = descData.choices?.[0]?.message?.content || "";
-              if (description) {
+              if (description && !_isBadAiDescription(description)) {
                 await pool.query(
                   "UPDATE pets SET ai_description = $1, ai_description_generated_at = NOW() WHERE pet_id = $2",
                   [description, pet.pet_id]
                 );
                 results.descriptionsGenerated++;
                 descGenerated = true;
+              } else if (description && _isBadAiDescription(description)) {
+                // Clear bad description if it existed before
+                if (pet.ai_description && _isBadAiDescription(pet.ai_description)) {
+                  await pool.query(
+                    "UPDATE pets SET ai_description = NULL, ai_description_generated_at = NULL WHERE pet_id = $1",
+                    [pet.pet_id]
+                  );
+                }
+                results.descriptionsSkippedBad++;
+                results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: "AI ha generato una descrizione generica (scartata)" });
+                petError = "descrizione_generica_scartata";
               }
+            } else {
+              const errStatus = descResponse.status;
+              results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: "OpenAI HTTP " + errStatus });
+              petError = "openai_http_" + errStatus;
             }
           } catch (descErr) {
             results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: descErr.message });
@@ -1373,9 +1422,14 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
         cached: cached,
         error: petError,
       });
+
+      // Small delay between pets to avoid overwhelming APIs
+      if (i < allPets.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
-    console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} analyses=${results.analysesRun} cached=${results.analysesCached} errors=${results.errors.length}`);
+    console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} skippedBad=${results.descriptionsSkippedBad} analyses=${results.analysesRun} cached=${results.analysesCached} errors=${results.errors.length}`);
     sendEvent({ type: "done", ...results });
     res.end();
   });

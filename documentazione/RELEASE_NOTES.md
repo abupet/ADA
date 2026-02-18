@@ -1,5 +1,17 @@
 # Release Notes (cumulative)
 
+## v8.22.29
+
+### Fix: Bulk AI Analysis — descrizioni generiche "non ci sono dati" per pet con dati minimi
+- **Root cause 1 (prompt debole)**: il prompt OpenAI chiedeva "genera una descrizione basata sui dati forniti" — quando un pet aveva solo nome e specie (altri campi null), GPT-4o-mini rispondeva con "non ci sono dati, per favore fornisci..." invece di generare una descrizione con i dati disponibili
+- **Root cause 2 (nessuna validazione)**: la risposta generica veniva salvata nel DB come `ai_description` valida, e il check `if (!pet.ai_description)` impediva la rigenerazione nei run successivi
+- **Root cause 3 (dati non passati)**: se `_collectPetSourcesFromDB` falliva silenziosamente (catch vuoto), i dati base del pet (nome, specie, razza) dalla query principale non venivano inclusi nel prompt
+- **Fix 1 (prompt robusto)**: riscritto il system prompt per istruire l'AI a usare SOLO i dati disponibili, MAI chiedere informazioni aggiuntive, e generare una descrizione anche con dati minimi
+- **Fix 2 (validazione)**: aggiunto `_isBadAiDescription()` che rileva pattern generici ("non ci sono dati", "avrei bisogno di", ecc.) e scarta le descrizioni invalide — le bad descriptions esistenti vengono cancellate dal DB
+- **Fix 3 (fallback dati base)**: nome, specie e razza dal query principale vengono sempre iniettati nei sources, anche se `_collectPetSourcesFromDB` restituisce dati vuoti
+- **Fix 4 (force-regenerate)**: nuovo pulsante "Rigenera Desc." che invia `{ force: true }` per rigenerare tutte le descrizioni, non solo quelle mancanti — utile per correggere descrizioni errate da run precedenti
+- **Fix 5 (rate limiting)**: aggiunto delay di 500ms tra ogni pet nel loop seriale per evitare sovraccarico API
+
 ## v8.22.28
 
 ### Fix: Promo non visibile con forceMultiService ON (crash silenzioso)
