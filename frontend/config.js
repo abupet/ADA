@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.26';
-const ADA_RELEASE_NOTES = 'Fix: bulk AI analysis — _currentTenantId undefined, usa getJwtTenantId() + fallback.';
+const ADA_VERSION = '8.22.27';
+const ADA_RELEASE_NOTES = 'Fix: promo non visibile in Dati Pet con forceMultiService ON.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

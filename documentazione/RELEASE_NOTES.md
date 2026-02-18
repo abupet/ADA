@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.22.27
+
+### Fix: Promo non visibile in Dati Pet con forceMultiService ON
+- **Root cause**: in `app-pets.js`, il refresh promo al cambio pet controllava solo `promoRole === 'proprietario'`, ignorando il flag `forceMultiService` — il promo non appariva per veterinari con "Visualizza sempre multi-servizio" attivo
+- **Fix**: aggiunto check `forceMultiService` identico a quello già presente in `app-core.js`
+
 ## v8.22.26
 
 ### Fix: Bulk AI Analysis — _currentTenantId non definito
