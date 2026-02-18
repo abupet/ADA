@@ -3669,7 +3669,8 @@
     async function bulkAiAnalysis() {
         if (!confirm('Avviare l\'analisi AI per tutti i pet?\n\nQuesto processo:\n- Genera la descrizione AI per i pet che ne sono privi\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti')) return;
 
-        var tenantId = _currentTenantId || '';
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
         if (!tenantId) {
             if (typeof showToast === 'function') showToast('Selezionare un tenant', 'warning');
             return;
