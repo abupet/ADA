@@ -1,5 +1,18 @@
 # Release Notes (cumulative)
 
+## v8.22.32
+
+### Miglioramento: Bulk AI Analysis + Promo Selection da Top 5 AI Matches
+- **Fix prompt "[fonte]"**: il system prompt dell'endpoint `POST /api/pets/:petId/ai-description` ora specifica i nomi esatti delle fonti (`[Dati Pet]`, `[Documento: <nome>]`, `[Farmaci]`, `[Parametri Vitali]`, `[Storico Sanitario]`, `[Conversazioni]`) — GPT non scrive più `[fonte]` generico
+- **Arricchimento fonti dati**: `_collectPetSourcesFromDB` ora legge anche `parametri_vitali`, `farmaci`, `storico_sanitario` e `microchip` dalla colonna `extra_data` JSONB della tabella `pets`
+- **Bulk AI riscritto**: il body accetta `{ mode: "changed" | "all" }` al posto di `{ force: true }`. Modalità "changed" confronta un hash content-based delle fonti con `ai_description_sources_hash` e salta i pet invariati. Tutte le descrizioni usano lo stesso prompt strutturato dell'endpoint individuale (sezioni ANAGRAFICA, CONDIZIONI MEDICHE, ecc.)
+- **Hash content-based**: sostituito `JSON.stringify(sources).length + "_" + Date.now()` con un hash deterministico basato sul contenuto (stesso algoritmo del frontend)
+- **Salvataggio top 5 match**: quando la descrizione cambia, il bulk esegue `_runAnalysisForPet` e salva i top 5 match nella nuova colonna `ai_recommendation_matches` (JSONB) sulla riga del pet
+- **Promo selection da AI**: `selectPromo()` ora prova prima a usare `ai_recommendation_matches` — sceglie casualmente tra i match validi (filtrati per consent, vet flags, freq cap). Se non ci sono match validi o la colonna è NULL, usa l'algoritmo classico (tag matching + priority + tie-break) come fallback
+- **UI admin migliorata**: rimosso pulsante "Rigenera Desc.", il pulsante "Bulk AI Analysis" ora apre un popup con scelta tra "Solo pet con fonti modificate" (default) e "Tutti i pet (rigenera tutto)". I pet skippati sono mostrati come "Invariati" durante il progresso
+- **Nuova migrazione SQL**: `sql/021_ai_recommendation_matches.sql` aggiunge la colonna JSONB
+- **Rimosso**: `_isBadAiDescription()` non più necessaria con il prompt strutturato
+
 ## v8.22.31
 
 ### Fix: Bulk AI Analysis — descrizioni generiche "non ci sono dati" per pet con dati minimi

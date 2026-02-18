@@ -1403,7 +1403,6 @@
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="openImageManagement()" title="Gestione immagini prodotti filtrati">🖼️ Gestione Immagini</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="bulkAiAnalysis()">&#129302; Bulk AI Analysis</button>');
-        html.push('<button class="btn btn-secondary" style="font-size:12px;background:#fff3cd;border-color:#ffc107;" onclick="bulkAiAnalysis(true)" title="Rigenera tutte le descrizioni AI, anche quelle esistenti">&#128260; Rigenera Desc.</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
         html.push('</div>');
 
@@ -3667,13 +3666,7 @@
     // Bulk AI Analysis
     // =========================================================================
 
-    async function bulkAiAnalysis(forceRegenerate) {
-        var msgBase = 'Avviare l\'analisi AI per tutti i pet?\n\nQuesto processo:\n- Genera la descrizione AI per i pet che ne sono privi\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti';
-        if (forceRegenerate) {
-            msgBase = 'Avviare l\'analisi AI con RIGENERAZIONE FORZATA?\n\nQuesto processo:\n- Rigenera TUTTE le descrizioni AI (anche quelle esistenti)\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti';
-        }
-        if (!confirm(msgBase)) return;
-
+    async function bulkAiAnalysis() {
         var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
         if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
         if (!tenantId) {
@@ -3681,12 +3674,12 @@
             return;
         }
 
-        // Create non-dismissable overlay (no click-outside close during processing)
+        // Show mode selection popup
         _closeModal();
         var overlay = document.createElement('div');
         overlay.id = 'admin-modal-overlay';
         overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
-        // No onclick on overlay during processing
+        overlay.onclick = function(e) { if (e.target === overlay) _closeModal(); };
 
         var modal = document.createElement('div');
         modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
@@ -3697,7 +3690,58 @@
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
 
-        // Initial loading state
+        // Mode selection UI
+        var modeHtml = [];
+        modeHtml.push('<div style="padding:20px;">');
+        modeHtml.push('<div style="text-align:center;margin-bottom:20px;">');
+        modeHtml.push('<div style="font-size:32px;margin-bottom:8px;">&#129302;</div>');
+        modeHtml.push('<h3 style="color:#1e3a5f;margin:0;">Bulk AI Analysis</h3>');
+        modeHtml.push('</div>');
+        modeHtml.push('<div style="margin-bottom:20px;">');
+        modeHtml.push('<label style="display:flex;align-items:center;gap:10px;padding:12px;border:2px solid #2563eb;border-radius:8px;cursor:pointer;margin-bottom:8px;background:#eff6ff;">');
+        modeHtml.push('<input type="radio" name="bulk-ai-mode" value="changed" checked style="width:18px;height:18px;">');
+        modeHtml.push('<div><strong>Solo pet con fonti modificate</strong><br><span style="font-size:12px;color:#64748b;">Salta i pet le cui fonti dati non sono cambiate dall\'ultima analisi</span></div>');
+        modeHtml.push('</label>');
+        modeHtml.push('<label style="display:flex;align-items:center;gap:10px;padding:12px;border:2px solid #e2e8f0;border-radius:8px;cursor:pointer;background:#fff;">');
+        modeHtml.push('<input type="radio" name="bulk-ai-mode" value="all" style="width:18px;height:18px;">');
+        modeHtml.push('<div><strong>Tutti i pet (rigenera tutto)</strong><br><span style="font-size:12px;color:#64748b;">Rigenera descrizioni e analisi per tutti i pet, anche quelli invariati</span></div>');
+        modeHtml.push('</label>');
+        modeHtml.push('</div>');
+        modeHtml.push('<div style="display:flex;gap:8px;justify-content:flex-end;">');
+        modeHtml.push('<button class="btn btn-secondary" onclick="_closeModal()">Annulla</button>');
+        modeHtml.push('<button class="btn btn-primary" id="bulk-ai-start-btn">Avvia</button>');
+        modeHtml.push('</div>');
+        modeHtml.push('</div>');
+        body.innerHTML = modeHtml.join('');
+
+        // Highlight selected radio
+        var radioLabels = body.querySelectorAll('label');
+        radioLabels.forEach(function(lbl) {
+            lbl.querySelector('input').addEventListener('change', function() {
+                radioLabels.forEach(function(l) { l.style.borderColor = '#e2e8f0'; l.style.background = '#fff'; });
+                if (this.checked) { lbl.style.borderColor = '#2563eb'; lbl.style.background = '#eff6ff'; }
+            });
+        });
+
+        // Wait for user to click "Avvia"
+        var selectedMode = await new Promise(function(resolve) {
+            document.getElementById('bulk-ai-start-btn').onclick = function() {
+                var checked = body.querySelector('input[name="bulk-ai-mode"]:checked');
+                resolve(checked ? checked.value : 'changed');
+            };
+            // If modal is closed, resolve null
+            var obs = new MutationObserver(function() {
+                if (!document.getElementById('bulk-ai-body')) { obs.disconnect(); resolve(null); }
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        });
+
+        if (!selectedMode) return; // User cancelled
+
+        // Disable close during processing
+        overlay.onclick = null;
+
+        // Switch to loading state
         body.innerHTML = '<div style="text-align:center;padding:40px;">' +
             '<div style="font-size:32px;margin-bottom:16px;">&#129302;</div>' +
             '<h3 style="color:#1e3a5f;margin-bottom:8px;">Bulk AI Analysis</h3>' +
@@ -3717,7 +3761,7 @@
         }
 
         // Track running totals
-        var state = { total: 0, current: 0, petName: '', descs: 0, analyses: 0, cached: 0, errors: 0 };
+        var state = { total: 0, current: 0, petName: '', descs: 0, analyses: 0, cached: 0, skipped: 0, errors: 0 };
 
         function renderProgress() {
             var pct = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0;
@@ -3742,10 +3786,11 @@
                 h.push('</div>');
             }
             // Running counters
-            h.push('<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">');
+            h.push('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;">');
             if (state.descs > 0) h.push('<div style="background:#f0fdf4;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#16a34a;">' + state.descs + '</div>Descrizioni</div>');
             if (state.analyses > 0) h.push('<div style="background:#fefce8;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#ca8a04;">' + state.analyses + '</div>Analisi</div>');
             if (state.cached > 0) h.push('<div style="background:#f0f9ff;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#0369a1;">' + state.cached + '</div>Da cache</div>');
+            if (state.skipped > 0) h.push('<div style="background:#f5f5f5;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#6b7280;">' + state.skipped + '</div>Invariati</div>');
             h.push('</div>');
             h.push('</div>');
             body.innerHTML = h.join('');
@@ -3763,8 +3808,8 @@
             h.push('<div style="background:#fefce8;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#ca8a04;">' + (result.analysesRun || 0) + '</div><div style="font-size:12px;color:#666;">Analisi eseguite</div></div>');
             h.push('<div style="background:#f0f9ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#0369a1;">' + (result.analysesCached || 0) + '</div><div style="font-size:12px;color:#666;">Analisi da cache</div></div>');
             h.push('</div>');
-            if (result.descriptionsSkippedBad > 0) {
-                h.push('<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#c2410c;">' + result.descriptionsSkippedBad + ' descrizioni generiche scartate (dati pet insufficienti per AI)</div>');
+            if (result.descriptionsSkipped > 0) {
+                h.push('<div style="background:#f5f5f4;border:1px solid #d6d3d1;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#57534e;">' + result.descriptionsSkipped + ' pet invariati (fonti non modificate)</div>');
             }
             // Elapsed
             h.push('<div style="text-align:center;margin-bottom:16px;font-size:13px;color:#64748b;">&#9201; Tempo totale: ' + elapsed + '</div>');
@@ -3795,7 +3840,7 @@
             var resp = await fetch(API_BASE_URL + '/api/admin/' + encodeURIComponent(tenantId) + '/bulk-ai-analysis', {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({ force: !!forceRegenerate })
+                body: JSON.stringify({ mode: selectedMode })
             });
 
             if (!resp || !resp.ok) {
@@ -3850,6 +3895,7 @@
                         if (evt.descGenerated) state.descs++;
                         if (evt.analysisRun) state.analyses++;
                         if (evt.cached) state.cached++;
+                        if (evt.skipped) state.skipped++;
                         if (evt.error) state.errors++;
                         renderProgress();
                     } else if (evt.type === 'done') {

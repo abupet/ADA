@@ -253,6 +253,16 @@ function petsRouter({ requireAuth }) {
     }
   });
 
+  // Content-based hash for sources (matches frontend _computeSourcesHash)
+  function _computeSourcesHash(sources) {
+    const str = JSON.stringify(sources);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return str.length + '_' + Math.abs(hash);
+  }
+
   // POST /api/pets/:petId/ai-description
   // Generate AI pet description from all pet data sources
   router.post("/api/pets/:petId/ai-description", requireAuth, async (req, res) => {
@@ -292,11 +302,20 @@ Il tuo output verrà usato per fare matching con descrizioni di prodotti veterin
 
 REGOLE:
 - Includi TUTTE le informazioni rilevanti
-- Per ogni informazione, indica la FONTE tra parentesi quadre [fonte]
 - Usa un formato strutturato e facilmente parsabile dall'AI
 - Includi: dati anagrafici, condizioni mediche, stile di vita, farmaci, parametri vitali, storico sanitario
 - Non inventare informazioni non presenti nei dati
-- Scrivi in italiano`;
+- Se un campo è null o mancante, NON menzionarlo e NON chiedere ulteriori informazioni
+- Scrivi in italiano
+
+FONTI: Per ogni informazione, indica la fonte specifica tra parentesi quadre:
+- [Dati Pet] per dati anagrafici (nome, specie, razza, sesso, peso, microchip, ecc.)
+- [Documento: <nome_file>] per informazioni da documenti sanitari caricati
+- [Farmaci] per farmaci e trattamenti in corso
+- [Parametri Vitali] per misurazioni (FC, FR, temperatura, peso)
+- [Storico Sanitario] per visite e diagnosi passate
+- [Conversazioni] per informazioni da conversazioni
+NON usare mai [fonte] generico.`;
 
     const userPrompt = `Genera una descrizione strutturata per il matching AI del seguente pet:
 
@@ -338,7 +357,7 @@ PROFILO RISCHIO: ...`;
 
       // Cache in DB
       try {
-        const sourcesHash = JSON.stringify(sources).length + "_" + Date.now();
+        const sourcesHash = _computeSourcesHash(sources);
         await pool.query(
           "UPDATE pets SET ai_description = $1, ai_description_sources_hash = $2, ai_description_generated_at = NOW() WHERE pet_id = $3",
           [description, sourcesHash, petId]
