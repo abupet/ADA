@@ -273,7 +273,8 @@ function requireJwt(req, res, next) {
       if (Number(exp) < now) {
         return res.status(401).json({ error: "expired" });
       }
-      const payload = `${req.path}:${uid}:${exp}`;
+      const fullPath = req.originalUrl.split('?')[0];
+      const payload = `${fullPath}:${uid}:${exp}`;
       const expected = crypto.createHmac("sha256", mediaSignSecret)
         .update(payload).digest("hex").substring(0, 32);
       if (sig === expected) {
@@ -835,7 +836,8 @@ function verifyMediaSignature(req, res, next) {
   if (Number(exp) < now) {
     return res.status(401).json({ error: "expired" });
   }
-  const payload = `${req.path}:${uid}:${exp}`;
+  const fullPath = req.originalUrl.split('?')[0];
+  const payload = `${fullPath}:${uid}:${exp}`;
   const expected = crypto.createHmac("sha256", mediaSignSecret || "fallback")
     .update(payload).digest("hex").substring(0, 32);
   if (sig !== expected) {

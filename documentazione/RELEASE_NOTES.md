@@ -1,6 +1,6 @@
 # Release Notes (cumulative)
 
-## v8.22.10
+## v8.22.29
 
 ### Fix: chiamate WebRTC non si connettono (signaling + ICE timeout)
 - Fix critico: i listener di signaling WebRTC (`call_accepted`, `webrtc_offer`, `webrtc_answer`, ecc.) non venivano mai registrati se l'utente faceva login manuale (non auto-login). Il polling con timeout fissi (500ms–5s) dopo DOMContentLoaded scadeva prima della creazione del socket. Ora `initCommSocket()` invoca direttamente `_webrtcInitSignaling()` al momento della creazione del socket, con guard anti-duplicati
@@ -8,6 +8,187 @@
 - Fix: il timeout ICE (20s) partiva alla creazione del PeerConnection (prima ancora che il callee accettasse la chiamata), causando timeout prematuri. Ora il timeout ICE parte solo dopo `setRemoteDescription` (completamento scambio SDP)
 - Fix: l'overlay del callee mostrava "Connesso" immediatamente all'accettazione — ora mostra "Connessione in corso..." fino alla connessione ICE effettiva
 - Dedup: aggiunta protezione contro eventi duplicati che arrivano via conv room + user room (check su `localDescription`/`remoteDescription` già impostate)
+
+## v8.22.28
+
+### Fix: Promo non visibile con forceMultiService ON (crash silenzioso)
+- **Root cause 1 (crash)**: in `eligibility.service.js`, quando `force=true` il consent fetch viene saltato (`consent = null`), ma riga 156 chiama `isClinicalTagsAllowed(null)` che accede a `null.clinical_tags` → **TypeError** → il catch esterno ritorna `null` silenziosamente, mascherando il problema reale
+- **Root cause 2 (filtri non bypassati)**: anche senza il crash, i filtri species, lifecycle e context/category NON erano bypassati da `force=true` — se i promo_items avevano categorie non previste dal contesto (es. `food_clinical` in `pet_profile`), venivano tutti esclusi
+- **Fix 1**: null-guard su `isClinicalTagsAllowed(consent)` → `consent ? isClinicalTagsAllowed(consent) : false`
+- **Fix 2**: quando `force=true`, bypassare anche species, lifecycle e context/category filters — coerente con l'intento "bypass tutti i gate"
+
+## v8.22.27
+
+### Fix: Promo non visibile in Dati Pet con forceMultiService ON
+- **Root cause**: in `app-pets.js`, il refresh promo al cambio pet controllava solo `promoRole === 'proprietario'`, ignorando il flag `forceMultiService` — il promo non appariva per veterinari con "Visualizza sempre multi-servizio" attivo
+- **Fix**: aggiunto check `forceMultiService` identico a quello già presente in `app-core.js`
+
+## v8.22.26
+
+### Fix: Bulk AI Analysis — _currentTenantId non definito
+- **Root cause**: `bulkAiAnalysis()` referenziava `_currentTenantId` che non esiste — la variabile corretta è `_selectedDashboardTenant` con fallback a `getJwtTenantId()`
+- **Fix**: sostituito con lo stesso pattern usato in tutte le altre funzioni admin: `getJwtTenantId()` + fallback `_selectedDashboardTenant`
+
+## v8.22.25
+
+### Fix: Bulk AI Analysis SSE — CORS headers mancanti
+- **Root cause**: `res.writeHead(200, {...})` nel backend sovrascriveva gli header CORS impostati dal middleware `cors()` di Express — il browser bloccava il body della risposta SSE, `resp.body` era `null`, `.getReader()` lanciava TypeError e il catch chiudeva la modal silenziosamente
+- **Backend fix**: sostituito `res.writeHead()` con `res.setHeader()` individuali + `res.flushHeaders()` per preservare gli header CORS già impostati dal middleware
+- **Frontend fix**: aggiunto null-check su `resp.body` prima di `.getReader()` con messaggio di errore chiaro via toast
+
+## v8.22.24
+
+### Fix: Bulk AI Analysis — feedback progresso real-time (SSE)
+- **Root cause**: premendo "Bulk AI Analysis" l'utente non vedeva feedback — `fetchApi` abortiva dopo 30s (troppo poco per un'operazione multi-minuto) e la modal si chiudeva cliccando fuori
+- **Backend SSE stream**: l'endpoint `POST /api/admin/:tenant_id/bulk-ai-analysis` ora risponde con Server-Sent Events, inviando eventi `start`, `progress`, `pet_done` e `done` per ogni pet processato
+- **Frontend stream reader**: `bulkAiAnalysis()` usa `fetch()` diretto (bypassa il timeout 30s di `fetchApi`) con stream reader che legge gli eventi SSE in tempo reale
+- **Modal non chiudibile**: durante l'elaborazione il click fuori dalla modal non la chiude; diventa chiudibile solo a completamento
+- **Barra progresso live**: mostra "3/11" con percentuale, nome del pet corrente ("Elaborazione: Fido..."), contatori incrementali (descrizioni, analisi, cache), e timer trascorso
+- **Report finale**: a completamento la modal mostra i totali (pet, descrizioni generate, analisi eseguite, da cache) con tempo totale e pulsante Chiudi
+- Timeout esteso a 10 minuti lato server
+
+## v8.22.23
+
+### Feature: Bulk AI Analysis in Catalogo
+- **Nuovo pulsante** "Bulk AI Analysis" nella pagina admin Catalogo (solo super_admin / admin_brand)
+- Per ogni pet nel database: genera la "Descrizione Pet per AI" se assente, poi esegue "Analisi raccomandazione"
+- Pre-calcola e cacha i risultati in `explanation_cache` (TTL 24h) per presentazione promo istantanea
+- **Nuovo endpoint** `POST /api/admin/:tenant_id/bulk-ai-analysis` con timeout 5 minuti
+- **Helper server-side** `_collectPetSourcesFromDB()`: raccoglie dati pet, documenti e conversazioni dal DB
+- **Refactor** `_runAnalysisForPet()`: logica core estratta dall'endpoint `analyze-match-all` per riuso
+- Modal UI con spinner durante l'elaborazione e report finale con conteggi (pet totali, descrizioni generate, analisi eseguite, analisi da cache, errori)
+
+### Feature: forceMultiService bypass totale
+- Quando "Visualizza sempre multi-servizio" è ON, tutti i gate vengono bypassati:
+  - **Frontend**: skip session impression limit in `renderPromoSlot()` — nessun cap per sessione
+  - **Frontend**: `loadPromoRecommendation()` aggiunge `force=1` alla query string
+  - **Backend**: `GET /api/promo/recommendation` passa il flag `force` a `selectPromo()`
+  - **Backend**: `selectPromo()` in `eligibility.service.js` quando `force=true` salta: consent check globale, brand consent per item, vet flag check, frequency capping intero
+- Risultato: navigando tra pagine con forceMultiService ON, Promo + Nutrizione + Assicurazione sono sempre visibili
+
+### Bug Fix: vet_ext conversazione senza pet_id
+- **Root cause**: il check `getAllPets()` per vet_ext in `app-communication.js` falliva se il cache era vuoto (navigazione diretta a Messaggi)
+- **Fix**: rimosso il check ridondante — il backend (`communication.routes.js`) già verifica `referring_vet_user_id`
+- Le conversazioni create da vet_ext ora includono sempre il `pet_id` e sono visibili in Archivio Sanitario
+
+## v8.22.22
+
+### Feature: Analisi Raccomandazione Potenziata
+- **Nuovo endpoint** `POST /api/promo/analyze-match-all`: analizza il profilo del pet contro TUTTI i prodotti eligibili con pre-filtering (specie, lifecycle, consent, tags) e ranking AI top 5
+- **Pre-filtering server-side**: i ~133 prodotti vengono filtrati a ~10-25 candidati usando la stessa logica di eligibility esistente prima dell'invio a OpenAI
+- **Ranking AI dettagliato**: ogni prodotto riceve score (0-100), reasoning personalizzato per il pet, key_matches e relevance level
+- **Cache 24h**: risultati salvati in `explanation_cache` con chiave basata su SHA256(ai_description + candidateIds) — secondo click istantaneo
+- **UI rinnovata**: modal con loading spinner, badge score colorati (verde/giallo/grigio), chip key_matches, link "Scopri di più", indicatore cache
+- **Backward compatibility**: il vecchio endpoint `analyze-match` e la vecchia modal rimangono intatti
+
+## v8.22.21
+
+### Fix: Chatbot AI — invio secondo messaggio fallisce con 500
+- **Root cause**: la query di recupero storico messaggi in `POST /api/communication/conversations/:id/messages` (ramo AI) referenziava colonne inesistenti `file_url`, `file_name`, `file_type` — i nomi corretti nella tabella `comm_messages` sono `media_url` e `media_type`
+- Il primo messaggio funzionava perché la creazione della conversazione costruisce lo storico manualmente senza query DB
+- Fix: corretti i nomi colonna nella SELECT e nei riferimenti nel codice di processing
+
+## v8.22.20
+
+### Fix: Attachment 401, AI description timeout, promo analysis
+- **BUG 1 — Attachment 401**: Fix path mismatch nella verifica signed URL — `req.path` (strippato del prefisso `/api` dal middleware mount) sostituito con `req.originalUrl.split('?')[0]` sia in `requireJwt` che in `verifyMediaSignature`. Le signed URL ora verificano correttamente dopo navigazione tra pagine
+- **BUG 1 — Download endpoint role-based**: Gli endpoint attachment metadata e download (`comm-upload.routes.js`) ora supportano accesso role-based come `getConversationIfAllowed` in `communication.routes.js` — utenti con accesso al pet possono scaricare attachment anche se non partecipanti diretti alla conversazione
+- **BUG 2 — AI Description 504**: Timeout OpenAI per `POST /api/pets/:id/ai-description` aumentato da 15s a 25s — evita `504 generation_timeout` con 5s di margine prima del frontend timeout (30s)
+- **BUG 3 — Analisi raccomandazione vuota**: Risolto automaticamente dal fix BUG 2 — la descrizione pet ora viene generata con successo e l'analisi promo non viene più saltata
+
+## v8.22.19
+
+### Fix: Conversazioni vet_ext non visibili nell'archivio pet
+- Fix: la query `GET /api/communication/conversations?pet_id=X` ora mostra TUTTE le conversazioni associate al pet quando l'utente ha accesso al pet, non solo quelle in cui è partecipante diretto
+- Fix: `getConversationIfAllowed` estesa con logica role-based — utenti con accesso al pet possono ora aprire e leggere conversazioni visibili nell'archivio (prima ricevevano 404)
+- **Ruoli con accesso globale** (`vet_int`, `vet`, `super_admin`): vedono tutte le conversazioni di ogni pet
+- **`vet_ext`**: vede le conversazioni dei pet a cui è assegnato come `referring_vet_user_id`
+- **`owner`**: vede le conversazioni dei propri pet (`owner_user_id`)
+- Fix copre anche telefonate (`voice_call`) e videochiamate (`video_call`) che usano la stessa tabella `conversations`
+
+## v8.22.18
+
+### Fix: Diagnostica errori AI Description e Analisi Raccomandazione
+- Fix: `generateAiPetDescription` ora logga in console lo status HTTP e il body dell'errore backend (503/502/504) — prima tornava `null` silenziosamente senza alcuna indicazione della causa
+- Fix: messaggio errore UI per "Descrizione Pet per AI" ora mostra "Verificare la configurazione OpenAI nel backend" invece del generico "Errore nella generazione della descrizione"
+- Fix: toast "Analisi raccomandazione" migliorato — ora dice "Descrizione pet non disponibile — generare prima la descrizione AI" con log `console.warn` per debugging
+
+## v8.22.17
+
+### Bug Fix: "Descrizione Pet per AI" genera dati vuoti (BUG-1)
+- Fix critico: aggiunto `await` mancante alla chiamata `getPetById()` — restituiva una Promise invece dell'oggetto pet, causando tutti i campi "Nessuna informazione disponibile"
+- Fix: rimossi i fetch a endpoint API inesistenti (`/api/pets/{id}/vitals`, `/api/pets/{id}/medications`) — vitali e farmaci vengono ora letti direttamente da `pet.vitalsData` e `pet.medications` (già normalizzati da `extra_data`)
+- Fix: corretto campo microchip (`pet.patient?.petMicrochip`) e aggiunti fallback per tutti i campi anagrafici via `pet.patient`
+- Fix: aggiunto recupero dello storico sanitario (`pet.historyData`) come fonte dati per la descrizione AI
+
+### Bug Fix: "Analisi Raccomandazione" risultato generico (BUG-2)
+- Risolto automaticamente dal fix BUG-1 — i dati pet ora arrivano correttamente al matching AI
+
+### Bug Fix: Promo non visibile con "Visualizza sempre multi-servizio" ON (BUG-3)
+- Fix: il toggle `forceMultiService` ora influenza anche la visibilità del promo slot, non solo dell'assicurazione — dichiarazione spostata prima di entrambi i blocchi di rendering
+
+### Feature: Selezione destinatario role-based per chiamate (FEAT-1)
+- Refactor del form di chiamata diretta dalla pagina Messaggi con selezione destinatario role-based:
+  - `vet_int`: dropdown tipo destinatario (Veterinario Interno / Esterno / Proprietario) + select destinatario dinamico
+  - `vet_ext` / `owner`: mostra direttamente solo i destinatari `vet_int`
+- I destinatari si caricano dinamicamente al cambio tipo via `GET /api/communication/users?role={tipo}`
+- Supporto `makeFilterableSelect` per ricerca nel dropdown
+
+### Feature: Pulsante "Inizia" a sinistra di "Annulla" (FEAT-2)
+- I pulsanti "Inizia" e "Annulla" sono ora nella stessa riga flex, con "Inizia" a sinistra (appare solo dopo selezione destinatario)
+
+## v8.22.16
+
+### Feature: Multi-select Tipo Servizio + Azione bulk su catalogo
+- **Nuovo Prodotto**: il campo "Tipo Servizio" ora usa checkboxes multi-select (Promo / Nutrizione / Assicurazione) invece di un singolo `<select>`, permettendo di assegnare più servizi contemporaneamente
+- **Modifica Prodotto**: aggiunto campo "Tipo Servizio" con checkboxes pre-selezionati in base ai valori correnti del prodotto — era impossibile modificare il tipo servizio dopo la creazione
+- **Bulk Tipo Servizio**: aggiunta barra azioni bulk nella vista catalogo con checkboxes servizio + bottoni "Aggiungi ai filtrati" / "Rimuovi dai filtrati" — opera su tutti i prodotti visibili dopo i filtri
+- **Backend**: nuovo endpoint `PATCH /api/admin/:tenantId/promo-items/bulk/service-type` con supporto add/remove array, tenant isolation e audit log
+
+## v8.22.15
+
+### Fix: Pulsante chiamata dalla pagina Messaggi sembra non funzionare
+- Fix UX: il form di selezione destinatario (chiamata dalla pagina principale Messaggi) appariva senza feedback visivo — se fuori vista, l'utente pensava che il pulsante non funzionasse
+- Aggiunto scroll automatico (`scrollIntoView`) verso il form dopo la sua creazione
+- Aggiunto auto-focus sull'input di ricerca destinatario dopo un breve delay (350ms) per garantire che lo scroll sia completato
+
+## v8.22.14
+
+### Fix: AudioContext suspended — trascrizione cattura silenzio
+- Fix: l'`AudioContext` creato nel callback ICE (non un gesto utente) partiva in stato `suspended` — nessun audio fluiva nel pipeline Web Audio API, il `MediaRecorder` registrava silenzio e Whisper produceva allucinazioni per ogni chunk
+- Fix: aggiunto `audioCtx.resume()` immediato con log dello stato (`suspended` → `running`)
+- Miglioramento: il log del livello audio ora include anche lo stato dell'AudioContext per diagnosi rapida
+
+## v8.22.13
+
+### Fix: MediaRecorder cattura silenzio su mobile — Web Audio API
+- Fix critico: su Chrome mobile, quando un `getUserMedia` stream viene usato contemporaneamente da `RTCPeerConnection` e `MediaRecorder`, quest'ultimo cattura silenzio anziché l'audio del microfono. L'interlocutore sente la voce (via WebRTC), ma la trascrizione riceve audio vuoto → Whisper produce allucinazioni ("Sottotitoli creati dalla comunità Amara.org") per ogni chunk
+- Fix: l'audio per il `MediaRecorder` viene ora instradato attraverso la **Web Audio API** (`AudioContext → MediaStreamSource → MediaStreamDestination`), creando uno stream audio indipendente che bypassa il conflitto con il PeerConnection
+- Aggiunta diagnostica: log del livello audio 3 secondi dopo l'inizio della cattura (`Audio level check: avg=X`) per verificare se il microfono produce effettivamente segnale
+- Aggiunta diagnostica: log delle proprietà dell'audio track (enabled, muted, readyState, label)
+- Cleanup: l'AudioContext viene chiuso correttamente quando la trascrizione termina
+
+## v8.22.12
+
+### Fix: Trascrizione chiamate — socket disconnect e rendering
+- Fix critico: lo speaker non vedeva MAI la propria trascrizione — `_commHandleNewMessage` saltava tutti i messaggi "propri" (`isOwn`) inclusi quelli di tipo `transcription` che sono generati dal server e mai renderizzati in anticipo dal client. Ora i messaggi `transcription` vengono sempre renderizzati
+- Fix: aggiunto deduplica messaggi per `message_id` in `_commHandleNewMessage` — previene duplicati se lo stesso evento arriva sia dalla conv room che dal user room
+- Fix: aumentato `pingTimeout` Socket.io da 20s (default) a 60s — i chunk audio da ~320KB congestionavano il WebSocket causando timeout del ping a ~45s dalla connessione, provocando un `transport close` che faceva perdere i chunk in elaborazione
+
+## v8.22.11
+
+### Diagnostica backend trascrizione chiamate
+- Il backend ora invia feedback in tempo reale al frontend per ogni chunk audio: `received`, `empty`, `hallucination`, `ok`, `error` — visibile nella console browser come `[WebRTC] Backend: status=...`
+- Permette di diagnosticare esattamente dove la pipeline di trascrizione si blocca senza bisogno di accesso ai log del server Render
+
+## v8.22.10
+
+### Fix: Robustezza chunking trascrizione chiamate + logging diagnostico
+- Fix critico: `MediaRecorder.start()` era fuori dal try/catch in `createAndStart()` — se falliva (comune su browser mobile), il callback di `setInterval` lanciava un'eccezione non catturata, il vecchio recorder non veniva mai stoppato, e la trascrizione si fermava silenziosamente dopo il primo/secondo chunk
+- Fix: aggiunto `onerror` handler su `MediaRecorder` per catturare errori del media pipeline (prima venivano ignorati silenziosamente)
+- Fix: nel callback `setInterval`, il vecchio recorder viene ora stoppato SEMPRE, anche se la creazione del nuovo recorder fallisce (prima veniva lasciato a registrare indefinitamente)
+- Fix: aggiunto `AbortController` con timeout 30s alla chiamata API OpenAI Whisper — se l'API non risponde, il chunk viene scartato anziché bloccare la pipeline
+- Miglioramento: logging diagnostico completo su frontend e backend — dimensione chunk, parti accumulate, errori di start/stop, transcription OK/empty/hallucination — per diagnosi rapida in caso di ulteriori problemi
 
 ## v8.22.9
 

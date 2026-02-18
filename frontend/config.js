@@ -161,7 +161,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.10';
+const ADA_VERSION = '8.22.29';
 const ADA_RELEASE_NOTES = 'Fix: WebRTC calls not connecting (signaling reliability + ICE timeout).';
 
 // ============================================

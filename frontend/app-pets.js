@@ -347,7 +347,8 @@ async function onPetSelectorChange(selectElement) {
     // PR1: Refresh promo + insurance + nutrition quando si cambia pet
     try {
         var promoRole = typeof getActiveRole === 'function' ? getActiveRole() : null;
-        if (typeof renderPromoSlot === 'function' && promoRole === 'proprietario') {
+        var forceMultiService = (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService());
+        if (typeof renderPromoSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
             renderPromoSlot('patient-promo-container', 'pet_profile');
         }
         if (typeof renderInsuranceSlot === 'function') {

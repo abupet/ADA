@@ -145,12 +145,33 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   const pool = getPool();
 
   // --- Helpers ---
-  async function getConversationIfAllowed(conversationId, userId) {
+  async function getConversationIfAllowed(conversationId, userId, role) {
+    // Direct participant check (always works regardless of role)
     const { rows } = await pool.query(
       "SELECT * FROM conversations WHERE conversation_id = $1 AND (owner_user_id = $2 OR vet_user_id = $2) LIMIT 1",
       [conversationId, userId]
     );
-    return rows[0] || null;
+    if (rows[0]) return rows[0];
+
+    // Role-based pet access: if user has access to the pet, allow viewing conversation
+    if (role) {
+      const convRes = await pool.query("SELECT * FROM conversations WHERE conversation_id = $1 LIMIT 1", [conversationId]);
+      const conv = convRes.rows[0];
+      if (!conv || !conv.pet_id) return null;
+
+      if (role === 'vet_int' || role === 'super_admin' || role === 'vet') {
+        return conv; // global pet access
+      }
+      if (role === 'vet_ext') {
+        const petRes = await pool.query("SELECT 1 FROM pets WHERE pet_id = $1 AND referring_vet_user_id = $2 LIMIT 1", [conv.pet_id, userId]);
+        return petRes.rows[0] ? conv : null;
+      }
+      if (role === 'owner') {
+        const petRes = await pool.query("SELECT 1 FROM pets WHERE pet_id = $1 AND owner_user_id = $2 LIMIT 1", [conv.pet_id, userId]);
+        return petRes.rows[0] ? conv : null;
+      }
+    }
+    return null;
   }
 
   // --- AI Settings ---
@@ -452,14 +473,38 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         "  SELECT COUNT(*) AS msg_count FROM comm_messages " +
         "  WHERE conversation_id = c.conversation_id AND deleted_at IS NULL" +
         ") mc ON true " +
-        "WHERE (c.owner_user_id = $1 OR c.vet_user_id = $1)";
+        "WHERE ";
       const values = [userId];
       let paramIndex = 2;
+      const callerRole = req.user?.role || '';
 
       if (pet_id) {
         if (!isValidUuid(pet_id)) return res.status(400).json({ error: "invalid_pet_id" });
-        query += " AND c.pet_id = $" + paramIndex++;
-        values.push(pet_id);
+        // Pet archive mode: show ALL conversations for this pet if user has access
+        if (callerRole === 'vet_int' || callerRole === 'super_admin' || callerRole === 'vet') {
+          // These roles have global pet access
+          query += "c.pet_id = $" + paramIndex++;
+          values.push(pet_id);
+        } else if (callerRole === 'vet_ext') {
+          // vet_ext: participant OR referring vet for this pet
+          query += "c.pet_id = $" + paramIndex + " AND (" +
+            "c.owner_user_id = $1 OR c.vet_user_id = $1 OR " +
+            "EXISTS(SELECT 1 FROM pets WHERE pet_id = $" + paramIndex + " AND referring_vet_user_id = $1)" +
+            ")";
+          paramIndex++;
+          values.push(pet_id);
+        } else {
+          // owner: participant OR pet owner
+          query += "c.pet_id = $" + paramIndex + " AND (" +
+            "c.owner_user_id = $1 OR c.vet_user_id = $1 OR " +
+            "EXISTS(SELECT 1 FROM pets WHERE pet_id = $" + paramIndex + " AND owner_user_id = $1)" +
+            ")";
+          paramIndex++;
+          values.push(pet_id);
+        }
+      } else {
+        // No pet_id: standard list — only user's own conversations
+        query += "(c.owner_user_id = $1 OR c.vet_user_id = $1)";
       }
       if (status) {
         const allowedStatuses = ["active", "closed", "archived"];
@@ -484,7 +529,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
     try {
       const { id } = req.params;
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
-      const conversation = await getConversationIfAllowed(id, req.user.sub);
+      const conversation = await getConversationIfAllowed(id, req.user.sub, req.user.role);
       if (!conversation) return res.status(404).json({ error: "not_found" });
       res.json(conversation);
     } catch (e) {
@@ -502,7 +547,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       const { status } = req.body;
       const allowedStatuses = ["active", "closed", "archived"];
       if (!status || !allowedStatuses.includes(status)) return res.status(400).json({ error: "invalid_status" });
-      const conversation = await getConversationIfAllowed(id, req.user.sub);
+      const conversation = await getConversationIfAllowed(id, req.user.sub, req.user.role);
       if (!conversation) return res.status(404).json({ error: "not_found" });
       const { rows } = await pool.query("UPDATE conversations SET status = $1, updated_at = NOW() WHERE conversation_id = $2 RETURNING *", [status, id]);
       const updated = rows[0];
@@ -533,7 +578,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
     try {
       const { id } = req.params;
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
-      const conversation = await getConversationIfAllowed(id, req.user.sub);
+      const conversation = await getConversationIfAllowed(id, req.user.sub, req.user.role);
       if (!conversation) return res.status(404).json({ error: "not_found" });
 
       const before = req.query.before;
@@ -593,7 +638,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       const { id } = req.params;
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
 
-      const conversation = await getConversationIfAllowed(id, req.user.sub);
+      const conversation = await getConversationIfAllowed(id, req.user.sub, req.user.role);
       if (!conversation) return res.status(404).json({ error: "not_found" });
 
       // Block sending to closed conversations
@@ -649,15 +694,15 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           if (conversation.subject) systemContent += `\n\nOggetto della conversazione: ${conversation.subject}`;
           if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
           const historyResult = await pool.query(
-            "SELECT ai_role AS role, content, file_url, file_name, file_type FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
+            "SELECT ai_role AS role, content, media_url, media_type FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
             [id, MAX_HISTORY_MESSAGES]
           );
           let hasImageAttachment = false;
           const historyMessages = historyResult.rows.reverse().map(m => {
             const role = m.role || "user";
             let msgContent = m.content || "";
-            if (m.file_url) {
-              const ft = (m.file_type || "").toLowerCase();
+            if (m.media_url) {
+              const ft = (m.media_type || "").toLowerCase();
               if (ft.startsWith("image/")) {
                 hasImageAttachment = true;
                 // Return multimodal content for vision
@@ -665,13 +710,13 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
                   role,
                   content: [
                     { type: "text", text: msgContent || "(immagine allegata)" },
-                    { type: "image_url", image_url: { url: m.file_url } }
+                    { type: "image_url", image_url: { url: m.media_url } }
                   ]
                 };
               } else if (ft === "application/pdf") {
-                msgContent += "\n[Allegato PDF: " + (m.file_name || "documento.pdf") + " — contenuto non disponibile per analisi]";
+                msgContent += "\n[Allegato PDF — contenuto non disponibile per analisi]";
               } else {
-                msgContent += "\n[Allegato: " + (m.file_name || "file") + " — tipo non supportato per analisi]";
+                msgContent += "\n[Allegato — tipo non supportato per analisi]";
               }
             }
             return { role, content: msgContent };
@@ -810,7 +855,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       const { id } = req.params;
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_conversation_id" });
       const userId = req.user.sub;
-      const conversation = await getConversationIfAllowed(id, userId);
+      const conversation = await getConversationIfAllowed(id, userId, req.user.role);
       if (!conversation) return res.status(404).json({ error: "not_found" });
       await pool.query(
         "UPDATE comm_messages SET is_read = true, read_at = NOW(), delivery_status = 'read' WHERE conversation_id = $1 AND sender_id != $2 AND is_read = false",

@@ -1402,6 +1402,7 @@
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="previewPromoItem()" title="Anteprima sequenziale prodotti filtrati">👁️ Anteprima</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="openImageManagement()" title="Gestione immagini prodotti filtrati">🖼️ Gestione Immagini</button>');
         html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="validateAllCatalogUrls()">Verifica URL</button>');
+        html.push('<button class="btn btn-secondary" style="font-size:12px;" onclick="bulkAiAnalysis()">&#129302; Bulk AI Analysis</button>');
         html.push('<span style="color:#888;font-size:12px;">' + _catalogTotal + ' prodotti</span>');
         html.push('</div>');
 
@@ -1452,6 +1453,16 @@
         }
         html.push('</div>');
 
+        // Bulk service type actions
+        html.push('<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;">');
+        html.push('<span style="font-size:12px;font-weight:600;color:#0369a1;">Bulk Tipo Servizio:</span>');
+        [{v:'promo',l:'Promo'},{v:'nutrition',l:'Nutrizione'},{v:'insurance',l:'Assicurazione'}].forEach(function(st) {
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="bulkServiceType" value="' + st.v + '">' + st.l + '</label>');
+        });
+        html.push('<button class="btn btn-success" style="font-size:11px;padding:4px 10px;" onclick="bulkAddServiceType()">+ Aggiungi ai filtrati</button>');
+        html.push('<button class="btn btn-danger" style="font-size:11px;padding:4px 10px;" onclick="bulkRemoveServiceType()">− Rimuovi dai filtrati</button>');
+        html.push('</div>');
+
         // Create item form (hidden)
         html.push('<div id="create-item-form" style="display:none;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">');
         html.push('<h4 style="margin:0 0 12px;color:#1e3a5f;">Nuovo Prodotto</h4>');
@@ -1476,9 +1487,11 @@
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Prodotto</label><input type="text" id="newItemUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">URL Immagine</label><input type="text" id="newItemImageUrl" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" placeholder="https://..."></div>');
         html.push('<div><label style="font-size:12px;font-weight:600;">Priorita</label><input type="number" id="newItemPriority" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" value="0"></div>');
-        html.push('<div><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><select id="newItemServiceType" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">');
-        html.push('<option value="promo">Promo</option><option value="nutrition">Nutrizione</option><option value="insurance">Assicurazione</option>');
-        html.push('</select></div>');
+        html.push('<div><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">');
+        [{v:'promo',l:'Promo'},{v:'nutrition',l:'Nutrizione'},{v:'insurance',l:'Assicurazione'}].forEach(function(st) {
+            html.push('<label style="display:flex;align-items:center;gap:3px;font-size:12px;"><input type="checkbox" class="newItemServiceType" value="' + st.v + '"' + (st.v === 'promo' ? ' checked' : '') + '>' + st.l + '</label>');
+        });
+        html.push('</div></div>');
         html.push('</div>');
         html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione Prodotto (per AI matching)</label>');
         html.push('<textarea id="newItemExtDesc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;"></textarea>');
@@ -1627,7 +1640,7 @@
                 product_url: (document.getElementById('newItemUrl') || {}).value || null,
                 image_url: (document.getElementById('newItemImageUrl') || {}).value || null,
                 priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0,
-                service_type: [(document.getElementById('newItemServiceType') || {}).value || 'promo']
+                service_type: (function() { var st = []; var stBoxes = document.querySelectorAll('.newItemServiceType:checked'); for (var sti = 0; sti < stBoxes.length; sti++) st.push(stBoxes[sti].value); return st.length ? st : ['promo']; })()
             })
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1711,6 +1724,16 @@
             });
             html.push('</div></div>');
 
+            // Service type checkboxes
+            var itemServiceType = Array.isArray(item.service_type) ? item.service_type : [item.service_type || 'promo'];
+            var serviceTypeOptions = [{v:'promo',l:'Promo'},{v:'nutrition',l:'Nutrizione'},{v:'insurance',l:'Assicurazione'}];
+            html.push('<div style="margin-top:8px;"><label style="font-size:12px;font-weight:600;">Tipo Servizio</label><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">');
+            serviceTypeOptions.forEach(function (st) {
+                var checked = itemServiceType.indexOf(st.v) !== -1 ? ' checked' : '';
+                html.push('<label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" class="editItemServiceType" value="' + st.v + '"' + checked + '>' + st.l + '</label>');
+            });
+            html.push('</div></div>');
+
             html.push('<div style="margin-top:16px;"><button class="btn btn-success" onclick="_savePromoItemEdit(\'' + _escapeHtml(itemId) + '\')">Salva</button> <button class="btn btn-secondary" onclick="_closeModal()">Annulla</button></div>');
             container.innerHTML = html.join('');
         });
@@ -1729,6 +1752,10 @@
         var lcCheckboxes = document.querySelectorAll('.editItemLifecycle:checked');
         for (var j = 0; j < lcCheckboxes.length; j++) lifecycle.push(lcCheckboxes[j].value);
 
+        var serviceType = [];
+        var stCheckboxes = document.querySelectorAll('.editItemServiceType:checked');
+        for (var k = 0; k < stCheckboxes.length; k++) serviceType.push(stCheckboxes[k].value);
+
         var patch = {
             name: (document.getElementById('editItemName') || {}).value || '',
             category: (document.getElementById('editItemCategory') || {}).value || '',
@@ -1738,7 +1765,8 @@
             image_url: (document.getElementById('editItemImageUrl') || {}).value || null,
             priority: parseInt((document.getElementById('editItemPriority') || {}).value) || 0,
             species: species,
-            lifecycle_target: lifecycle
+            lifecycle_target: lifecycle,
+            service_type: serviceType.length ? serviceType : ['promo']
         };
 
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {
@@ -2592,6 +2620,55 @@
             if (typeof showToast === 'function') showToast('' + (data.updated || 0) + ' prodotti pubblicati!', 'success');
             loadAdminCatalog();
         }).catch(function (e) {
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        });
+    }
+
+    function bulkAddServiceType() {
+        _bulkServiceTypeAction('add');
+    }
+
+    function bulkRemoveServiceType() {
+        _bulkServiceTypeAction('remove');
+    }
+
+    function _bulkServiceTypeAction(action) {
+        var tenantId = _getAdminTenantId();
+        if (!tenantId) return;
+
+        var selected = [];
+        var boxes = document.querySelectorAll('.bulkServiceType:checked');
+        for (var i = 0; i < boxes.length; i++) selected.push(boxes[i].value);
+        if (!selected.length) {
+            if (typeof showToast === 'function') showToast('Seleziona almeno un tipo servizio.', 'error');
+            return;
+        }
+
+        var filtered = _getFilteredCatalogItems();
+        if (!filtered.length) {
+            if (typeof showToast === 'function') showToast('Nessun prodotto filtrato.', 'error');
+            return;
+        }
+
+        var actionLabel = action === 'add' ? 'AGGIUNGERE' : 'RIMUOVERE';
+        if (!confirm(actionLabel + ' servizio [' + selected.join(', ') + '] a ' + filtered.length + ' prodotti filtrati?')) return;
+
+        var itemIds = filtered.map(function(item) { return item.promo_item_id; });
+        var payload = { item_ids: itemIds, add: [], remove: [] };
+        if (action === 'add') payload.add = selected;
+        else payload.remove = selected;
+
+        fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/bulk/service-type', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function(data) {
+            if (typeof showToast === 'function') showToast((data.updated || 0) + ' prodotti aggiornati.', 'success');
+            loadAdminCatalog();
+        }).catch(function(e) {
             if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
         });
     }
@@ -3586,6 +3663,206 @@
     }
 
     // =========================================================================
+    // Bulk AI Analysis
+    // =========================================================================
+
+    async function bulkAiAnalysis() {
+        if (!confirm('Avviare l\'analisi AI per tutti i pet?\n\nQuesto processo:\n- Genera la descrizione AI per i pet che ne sono privi\n- Esegue l\'analisi raccomandazione per ogni pet\n- Può richiedere diversi minuti')) return;
+
+        var tenantId = typeof getJwtTenantId === 'function' ? getJwtTenantId() : null;
+        if (!tenantId && _selectedDashboardTenant) tenantId = _selectedDashboardTenant;
+        if (!tenantId) {
+            if (typeof showToast === 'function') showToast('Selezionare un tenant', 'warning');
+            return;
+        }
+
+        // Create non-dismissable overlay (no click-outside close during processing)
+        _closeModal();
+        var overlay = document.createElement('div');
+        overlay.id = 'admin-modal-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        // No onclick on overlay during processing
+
+        var modal = document.createElement('div');
+        modal.style.cssText = 'background:#fff;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+
+        var body = document.createElement('div');
+        body.id = 'bulk-ai-body';
+        modal.appendChild(body);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Initial loading state
+        body.innerHTML = '<div style="text-align:center;padding:40px;">' +
+            '<div style="font-size:32px;margin-bottom:16px;">&#129302;</div>' +
+            '<h3 style="color:#1e3a5f;margin-bottom:8px;">Bulk AI Analysis</h3>' +
+            '<p style="color:#64748b;font-size:13px;">Connessione in corso...</p>' +
+            '<div style="margin-top:16px;width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:#1e3a5f;border-radius:50%;animation:spin 1s linear infinite;margin:16px auto;"></div>' +
+            '<style>@keyframes spin{to{transform:rotate(360deg)}}</style></div>';
+
+        // Elapsed timer
+        var startTime = Date.now();
+        var timerInterval = null;
+        function formatElapsed(ms) {
+            var secs = Math.floor(ms / 1000);
+            if (secs < 60) return secs + 's';
+            var mins = Math.floor(secs / 60);
+            var remSecs = secs % 60;
+            return mins + 'm ' + (remSecs < 10 ? '0' : '') + remSecs + 's';
+        }
+
+        // Track running totals
+        var state = { total: 0, current: 0, petName: '', descs: 0, analyses: 0, cached: 0, errors: 0 };
+
+        function renderProgress() {
+            var pct = state.total > 0 ? Math.round((state.current / state.total) * 100) : 0;
+            var elapsed = formatElapsed(Date.now() - startTime);
+            var h = [];
+            h.push('<div style="padding:20px;">');
+            h.push('<h3 style="color:#1e3a5f;margin:0 0 16px;">&#129302; Bulk AI Analysis</h3>');
+            // Progress bar
+            h.push('<div style="background:#e2e8f0;border-radius:8px;height:24px;overflow:hidden;margin-bottom:8px;">');
+            h.push('<div style="background:linear-gradient(90deg,#2563eb,#3b82f6);height:100%;width:' + pct + '%;transition:width 0.3s;border-radius:8px;display:flex;align-items:center;justify-content:center;">');
+            if (pct > 15) h.push('<span style="color:#fff;font-size:11px;font-weight:700;">' + pct + '%</span>');
+            h.push('</div></div>');
+            // Status line
+            h.push('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">');
+            h.push('<span style="font-size:14px;font-weight:600;color:#1e3a5f;">' + state.current + '/' + state.total + '</span>');
+            h.push('<span style="font-size:13px;color:#64748b;">&#9201; ' + elapsed + '</span>');
+            h.push('</div>');
+            // Current pet
+            if (state.petName) {
+                h.push('<div style="background:#eff6ff;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px;color:#1e40af;">');
+                h.push('Elaborazione: <strong>' + _escapeHtml(state.petName) + '</strong>...');
+                h.push('</div>');
+            }
+            // Running counters
+            h.push('<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">');
+            if (state.descs > 0) h.push('<div style="background:#f0fdf4;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#16a34a;">' + state.descs + '</div>Descrizioni</div>');
+            if (state.analyses > 0) h.push('<div style="background:#fefce8;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#ca8a04;">' + state.analyses + '</div>Analisi</div>');
+            if (state.cached > 0) h.push('<div style="background:#f0f9ff;padding:8px;border-radius:6px;text-align:center;font-size:12px;"><div style="font-weight:700;color:#0369a1;">' + state.cached + '</div>Da cache</div>');
+            h.push('</div>');
+            h.push('</div>');
+            body.innerHTML = h.join('');
+        }
+
+        function renderResults(result) {
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            var elapsed = formatElapsed(Date.now() - startTime);
+            var h = [];
+            h.push('<div style="padding:20px;">');
+            h.push('<h3 style="color:#1e3a5f;margin:0 0 16px;">&#129302; Bulk AI Analysis completata</h3>');
+            h.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">');
+            h.push('<div style="background:#f0fdf4;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#16a34a;">' + (result.total || 0) + '</div><div style="font-size:12px;color:#666;">Pet totali</div></div>');
+            h.push('<div style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#2563eb;">' + (result.descriptionsGenerated || 0) + '</div><div style="font-size:12px;color:#666;">Descrizioni generate</div></div>');
+            h.push('<div style="background:#fefce8;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#ca8a04;">' + (result.analysesRun || 0) + '</div><div style="font-size:12px;color:#666;">Analisi eseguite</div></div>');
+            h.push('<div style="background:#f0f9ff;padding:12px;border-radius:8px;text-align:center;"><div style="font-size:24px;font-weight:700;color:#0369a1;">' + (result.analysesCached || 0) + '</div><div style="font-size:12px;color:#666;">Analisi da cache</div></div>');
+            h.push('</div>');
+            // Elapsed
+            h.push('<div style="text-align:center;margin-bottom:16px;font-size:13px;color:#64748b;">&#9201; Tempo totale: ' + elapsed + '</div>');
+            // Errors
+            if (result.errors && result.errors.length > 0) {
+                h.push('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:16px;">');
+                h.push('<div style="font-weight:600;color:#dc2626;margin-bottom:8px;">' + result.errors.length + ' errori:</div>');
+                result.errors.slice(0, 10).forEach(function(err) {
+                    h.push('<div style="font-size:12px;color:#991b1b;margin:4px 0;">' + _escapeHtml((err.petName || err.petId) + ' (' + err.phase + '): ' + err.error) + '</div>');
+                });
+                if (result.errors.length > 10) {
+                    h.push('<div style="font-size:11px;color:#888;margin-top:4px;">...e altri ' + (result.errors.length - 10) + ' errori</div>');
+                }
+                h.push('</div>');
+            }
+            h.push('<div style="text-align:center;"><button class="btn btn-primary" onclick="_closeModal()">Chiudi</button></div>');
+            h.push('</div>');
+            body.innerHTML = h.join('');
+            // Now allow click-outside to close
+            overlay.onclick = function(e) { if (e.target === overlay) _closeModal(); };
+        }
+
+        try {
+            var token = typeof getAuthToken === 'function' ? getAuthToken() : '';
+            var headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+
+            var resp = await fetch(API_BASE_URL + '/api/admin/' + encodeURIComponent(tenantId) + '/bulk-ai-analysis', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({})
+            });
+
+            if (!resp || !resp.ok) {
+                if (typeof _closeModal === 'function') _closeModal();
+                var errData = null;
+                try { errData = await resp.json(); } catch(_) {}
+                if (typeof showToast === 'function') showToast('Errore: ' + ((errData && errData.error) || resp.status), 'error');
+                return;
+            }
+
+            // Guard: if browser blocked the body (e.g. CORS), give a clear error
+            if (!resp.body) {
+                if (typeof _closeModal === 'function') _closeModal();
+                if (typeof showToast === 'function') showToast('Errore: risposta streaming non disponibile', 'error');
+                return;
+            }
+
+            // Start elapsed timer
+            timerInterval = setInterval(function() {
+                if (state.total > 0 && state.current < state.total) renderProgress();
+            }, 1000);
+
+            // Read SSE stream
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            while (true) {
+                var chunk = await reader.read();
+                if (chunk.done) break;
+                buffer += decoder.decode(chunk.value, { stream: true });
+
+                var lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (var li = 0; li < lines.length; li++) {
+                    var line = lines[li];
+                    if (line.indexOf('data: ') !== 0) continue;
+                    var jsonStr = line.substring(6);
+                    var evt;
+                    try { evt = JSON.parse(jsonStr); } catch(_) { continue; }
+
+                    if (evt.type === 'start') {
+                        state.total = evt.total;
+                        renderProgress();
+                    } else if (evt.type === 'progress') {
+                        state.current = evt.current;
+                        state.petName = evt.petName || '';
+                        renderProgress();
+                    } else if (evt.type === 'pet_done') {
+                        state.current = evt.current;
+                        if (evt.descGenerated) state.descs++;
+                        if (evt.analysisRun) state.analyses++;
+                        if (evt.cached) state.cached++;
+                        if (evt.error) state.errors++;
+                        renderProgress();
+                    } else if (evt.type === 'done') {
+                        renderResults(evt);
+                    }
+                }
+            }
+
+            // If stream ended without a 'done' event, show what we have
+            if (state.current > 0 && state.current >= state.total && !body.querySelector('.btn-primary')) {
+                renderResults({ total: state.total, descriptionsGenerated: state.descs, analysesRun: state.analyses, analysesCached: state.cached, errors: [] });
+            }
+
+        } catch(e) {
+            if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+            if (typeof _closeModal === 'function') _closeModal();
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        }
+    }
+
+    // =========================================================================
     // Expose public API
     // =========================================================================
 
@@ -3682,6 +3959,8 @@
     global.validateAllCatalogUrls = validateAllCatalogUrls;
     global.previewExplanation     = previewExplanation;
     global.bulkPublishDraft       = bulkPublishDraft;
+    global.bulkAddServiceType     = bulkAddServiceType;
+    global.bulkRemoveServiceType  = bulkRemoveServiceType;
     global.catalogSearch          = catalogSearch;
     global.catalogSearchReset     = catalogSearchReset;
     // Image management wizard
@@ -3716,5 +3995,7 @@
     global.saveSource             = saveSource;
     global._sourcesFilterChange   = _sourcesFilterChange;
     global._sourcesSearchChange   = _sourcesSearchChange;
+    // Bulk AI Analysis
+    global.bulkAiAnalysis         = bulkAiAnalysis;
 
 })(typeof window !== 'undefined' ? window : this);

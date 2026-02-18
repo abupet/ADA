@@ -50,11 +50,22 @@ async function transcribeAudioChunk(base64Audio, mimeType) {
     form.append("language", "it");
     form.append("response_format", "text");
 
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + openAiKey },
-        body: form
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+        response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + openAiKey },
+            body: form,
+            signal: controller.signal
+        });
+    } catch (fetchErr) {
+        clearTimeout(timeout);
+        console.warn("[Whisper] Fetch error:", fetchErr.message);
+        return null;
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
         const errBody = await response.text().catch(() => "");
@@ -73,7 +84,9 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             credentials: true
         },
         path: "/ws",
-        transports: ["websocket", "polling"]
+        transports: ["websocket", "polling"],
+        pingTimeout: 60000,
+        pingInterval: 25000
     });
 
     const commNs = io.of("/communication");
@@ -322,13 +335,25 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
         // Call audio chunk transcription (server-side Whisper)
         socket.on("call_audio_chunk", async ({ conversationId, callId, source, audioData, mimeType, timestamp }) => {
-            if (!conversationId || !audioData) return;
-            if (!checkRateLimit(socket.id)) return;
-            if (!(await autoJoinConvRoom(socket, conversationId))) return;
+            if (!conversationId || !audioData) {
+                socket.emit("transcription_status", { status: "error", reason: "missing data" });
+                return;
+            }
+            if (!checkRateLimit(socket.id)) {
+                socket.emit("transcription_status", { status: "error", reason: "rate_limited" });
+                return;
+            }
+            if (!(await autoJoinConvRoom(socket, conversationId))) {
+                socket.emit("transcription_status", { status: "error", reason: "not_participant" });
+                return;
+            }
+
+            const chunkSize = audioData.length;
+            console.log("[WS] call_audio_chunk: conv=" + conversationId + " source=" + source + " base64len=" + chunkSize);
+            socket.emit("transcription_status", { status: "received", base64len: chunkSize });
 
             try {
                 const pool = getPool();
-                // Determine speaker: 'local' = sender, 'remote' = other participant
                 let speakerId = userId;
                 if (source === "remote") {
                     const { rows } = await pool.query(
@@ -341,11 +366,19 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                 }
 
                 const transcription = await transcribeAudioChunk(audioData, mimeType);
-                if (!transcription || !transcription.trim()) return;
-                if (isWhisperHallucination(transcription)) return;
+                if (!transcription || !transcription.trim()) {
+                    console.log("[WS] Transcription empty, skipping");
+                    socket.emit("transcription_status", { status: "empty" });
+                    return;
+                }
+                if (isWhisperHallucination(transcription)) {
+                    console.log("[WS] Hallucination filtered: " + transcription.trim().substring(0, 60));
+                    socket.emit("transcription_status", { status: "hallucination", text: transcription.trim().substring(0, 60) });
+                    return;
+                }
+                console.log("[WS] Transcription OK (" + transcription.trim().length + " chars): " + transcription.trim().substring(0, 80));
 
                 // Merge logic: append to last transcription if same speaker is still talking.
-                // Only create a new message when the speaker changes.
                 const lastMsg = await pool.query(
                     "SELECT message_id, content, sender_id FROM comm_messages " +
                     "WHERE conversation_id = $1 AND type = 'transcription' AND deleted_at IS NULL " +
@@ -354,7 +387,6 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                 );
 
                 if (lastMsg.rows[0] && lastMsg.rows[0].sender_id === speakerId) {
-                    // Same speaker continues — append to existing message
                     await pool.query(
                         "UPDATE comm_messages SET content = content || ' ' || $1, updated_at = NOW() WHERE message_id = $2",
                         [transcription.trim(), lastMsg.rows[0].message_id]
@@ -368,7 +400,6 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                         updated_at: new Date().toISOString()
                     });
                 } else {
-                    // Different speaker or first transcription — create new message
                     const msgId = crypto.randomUUID();
                     await pool.query(
                         "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, delivery_status) " +
@@ -384,8 +415,10 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                         created_at: new Date().toISOString()
                     });
                 }
+                socket.emit("transcription_status", { status: "ok", chars: transcription.trim().length, preview: transcription.trim().substring(0, 60) });
             } catch (e) {
-                console.warn("[WS] call_audio_chunk transcription error:", e.message);
+                console.error("[WS] call_audio_chunk error:", e.message, e.stack ? e.stack.split("\n")[1] : "");
+                socket.emit("transcription_status", { status: "error", reason: e.message });
             }
         });
 

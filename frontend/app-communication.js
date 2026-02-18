@@ -317,8 +317,11 @@ function _commHandleNewMessage(data) {
         if (container) {
             var isOwn = data.sender_id === _commGetCurrentUserId();
             // Skip own messages — already rendered optimistically
-            if (isOwn) return;
-            container.innerHTML += _commRenderBubble(data, false);
+            // Exception: transcription messages are server-generated, never rendered optimistically
+            if (isOwn && data.type !== 'transcription') return;
+            // Dedup: skip if this message is already in the DOM
+            if (data.message_id && document.querySelector('[data-msg-id="' + data.message_id + '"]')) return;
+            container.innerHTML += _commRenderBubble(data, isOwn);
             container.scrollTop = container.scrollHeight;
             _commMarkAsRead(_commCurrentConversationId);
             if (_commCurrentConversationType === 'human' && _commSocket) {
@@ -659,15 +662,8 @@ async function _commCreateConversation() {
 
     try {
         var body = { recipient_type: destType === 'ai' ? 'ai' : 'human' };
-        // For vet_ext, only include pet_id if the pet is in their visible list
-        if (petId && jwtRole === 'vet_ext') {
-            var _vetExtPets = typeof getAllPets === 'function' ? (getAllPets() || []) : [];
-            var _petInList = false;
-            for (var _pi = 0; _pi < _vetExtPets.length; _pi++) {
-                if ((_vetExtPets[_pi].pet_id || _vetExtPets[_pi].petId) === petId) { _petInList = true; break; }
-            }
-            if (_petInList) body.pet_id = petId;
-        } else if (petId) {
+        // Always include pet_id — backend validates vet_ext access via referring_vet_user_id
+        if (petId) {
             body.pet_id = petId;
         }
         if (subject) body.subject = subject;
@@ -2149,102 +2145,92 @@ function _commLoadMessages(conversationId) {
     if (conversationId) openConversation(conversationId);
 }
 
-// Direct call from messages page (MOD 11)
+// Direct call from messages page (MOD 11) — role-based recipient selection (v8.22.17)
 function _commStartDirectCall(callType) {
     var area = document.getElementById('comm-new-form-area');
     if (!area) return;
 
-    area.innerHTML = '<div class="comm-new-form" data-testid="comm-call-form">' +
-        '<label>Destinatario</label>' +
-        '<div style="position:relative;">' +
-        '<input type="text" id="comm-call-recipient-search" placeholder="Cerca destinatario..." ' +
-        '  autocomplete="off" ' +
-        '  style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;box-sizing:border-box;" />' +
-        '<input type="hidden" id="comm-call-recipient" />' +
-        '<div id="comm-call-recipient-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;' +
-        '  max-height:200px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;' +
-        '  box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:10;"></div>' +
-        '</div>' +
-        '<div id="comm-call-start-row" style="display:none;margin-top:12px;">' +
-        '<button class="comm-btn comm-btn-primary" onclick="_commInitiateDirectCall(\'' + callType + '\')">Inizia</button>' +
-        '</div>' +
-        '<button class="comm-btn comm-btn-secondary" style="margin-top:8px;" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
-        '</div>';
+    var role = _commGetRole();
+    var jwtRole = typeof getJwtRole === 'function' ? getJwtRole() : '';
+    var isVetInt = (jwtRole === 'vet_int' || (role !== 'proprietario' && jwtRole !== 'vet_ext'));
 
-    var searchInput = document.getElementById('comm-call-recipient-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', _commFilterCallRecipients);
-        searchInput.addEventListener('focus', _commShowCallRecipientDropdown);
+    var destTypeHtml = '';
+    if (isVetInt) {
+        destTypeHtml =
+            '<label>Destinatario</label>' +
+            '<select id="comm-call-dest-type" onchange="_commOnCallDestTypeChange(\'' + callType + '\')" ' +
+            '  style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:8px;">' +
+            '<option value="vet_int">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Interno</option>' +
+            '<option value="vet_ext">\uD83D\uDC68\u200D\u2695\uFE0F Veterinario Esterno</option>' +
+            '<option value="owner">\uD83E\uDDD1 Proprietario</option>' +
+            '</select>';
     }
-    // Close dropdown on outside click
-    document.addEventListener('click', function _commCloseDropdown(e) {
-        var dd = document.getElementById('comm-call-recipient-dropdown');
-        var si = document.getElementById('comm-call-recipient-search');
-        if (dd && si && !dd.contains(e.target) && e.target !== si) {
-            dd.style.display = 'none';
-        }
-        if (!document.getElementById('comm-call-recipient-search')) {
-            document.removeEventListener('click', _commCloseDropdown);
-        }
-    });
 
-    _commLoadCallRecipients();
+    area.innerHTML = '<div class="comm-new-form" data-testid="comm-call-form">' +
+        destTypeHtml +
+        '<label>Seleziona destinatario</label>' +
+        '<select id="comm-call-recipient" disabled ' +
+        '  style="width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;">' +
+        '<option value="">Caricamento...</option></select>' +
+        '<div style="margin-top:14px;display:flex;gap:8px;align-items:center;">' +
+        '<button class="comm-btn comm-btn-primary" id="comm-call-start-btn" style="display:none;" ' +
+        '  onclick="_commInitiateDirectCall(\'' + callType + '\')">Inizia</button>' +
+        '<button class="comm-btn comm-btn-secondary" onclick="document.getElementById(\'comm-new-form-area\').innerHTML=\'\'">Annulla</button>' +
+        '</div></div>';
+
+    // Scroll to form so it's visible (v8.22.15)
+    area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    // Load recipients based on initial type
+    _commLoadCallRecipientsForType('vet_int');
 }
 
-var _commCallRecipientsList = [];
+function _commOnCallDestTypeChange(callType) {
+    var destType = (document.getElementById('comm-call-dest-type') || {}).value || 'vet_int';
+    _commLoadCallRecipientsForType(destType);
+    var startBtn = document.getElementById('comm-call-start-btn');
+    if (startBtn) startBtn.style.display = 'none';
+}
 
-async function _commLoadCallRecipients() {
+async function _commLoadCallRecipientsForType(destType) {
+    var recipientSelect = document.getElementById('comm-call-recipient');
+    if (!recipientSelect) return;
+
+    recipientSelect.disabled = true;
+    recipientSelect.innerHTML = '<option value="">Caricamento...</option>';
+
     try {
-        var resp = await fetchApi('/api/communication/users?role=vet');
-        if (resp && resp.ok) {
-            var data = await resp.json();
-            _commCallRecipientsList = (data.users || []).map(function(u) {
-                return { id: u.user_id || '', name: u.display_name || u.email || 'Utente' };
-            });
+        var resp = await fetch(_commApiBase() + '/api/communication/users?role=' + encodeURIComponent(destType), {
+            headers: _commAuthHeaders()
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        var users = data.users || [];
+        if (users.length === 0) {
+            recipientSelect.innerHTML = '<option value="">Nessun destinatario trovato</option>';
+            return;
         }
-    } catch(e) {
+        var optHtml = '<option value="">-- Seleziona --</option>';
+        for (var i = 0; i < users.length; i++) {
+            var u = users[i];
+            var displayName = typeof formatUserNameWithRole === 'function'
+                ? formatUserNameWithRole(u.display_name || u.email || u.user_id, u.base_role || u.role)
+                : (u.display_name || u.email || u.user_id);
+            optHtml += '<option value="' + _commEscape(u.user_id) + '">' + _commEscape(displayName) + '</option>';
+        }
+        recipientSelect.innerHTML = optHtml;
+        recipientSelect.disabled = false;
+
+        recipientSelect.onchange = function() {
+            var startBtn = document.getElementById('comm-call-start-btn');
+            if (startBtn) startBtn.style.display = this.value ? '' : 'none';
+        };
+
+        if (typeof makeFilterableSelect === 'function') makeFilterableSelect('comm-call-recipient');
+    } catch (e) {
+        recipientSelect.innerHTML = '<option value="">Errore caricamento</option>';
         console.warn('[Communication] Load call recipients error:', e.message);
     }
-}
-
-function _commShowCallRecipientDropdown() {
-    _commFilterCallRecipients();
-}
-
-function _commFilterCallRecipients() {
-    var dd = document.getElementById('comm-call-recipient-dropdown');
-    var searchInput = document.getElementById('comm-call-recipient-search');
-    if (!dd || !searchInput) return;
-
-    var query = (searchInput.value || '').toLowerCase();
-    var filtered = _commCallRecipientsList.filter(function(u) {
-        return !query || u.name.toLowerCase().indexOf(query) !== -1;
-    });
-
-    if (filtered.length === 0) {
-        dd.innerHTML = '<div style="padding:10px 12px;color:#94a3b8;font-size:13px;">Nessun risultato</div>';
-    } else {
-        dd.innerHTML = filtered.map(function(u) {
-            return '<div class="comm-call-recipient-option" data-user-id="' + u.id + '" ' +
-                'style="padding:8px 12px;cursor:pointer;font-size:14px;border-bottom:1px solid #f1f5f9;transition:background 0.15s;" ' +
-                'onmouseenter="this.style.background=\'#f1f5f9\'" onmouseleave="this.style.background=\'\'" ' +
-                'onclick="_commSelectCallRecipient(\'' + u.id + '\',\'' + u.name.replace(/'/g, "\\'") + '\')">' +
-                u.name + '</div>';
-        }).join('');
-    }
-    dd.style.display = '';
-}
-
-function _commSelectCallRecipient(userId, displayName) {
-    var hidden = document.getElementById('comm-call-recipient');
-    var searchInput = document.getElementById('comm-call-recipient-search');
-    var dd = document.getElementById('comm-call-recipient-dropdown');
-    var row = document.getElementById('comm-call-start-row');
-
-    if (hidden) hidden.value = userId;
-    if (searchInput) searchInput.value = displayName;
-    if (dd) dd.style.display = 'none';
-    if (row) row.style.display = userId ? '' : 'none';
 }
 
 async function _commInitiateDirectCall(callType) {
@@ -2257,7 +2243,6 @@ async function _commInitiateDirectCall(callType) {
     }
 
     try {
-        // Create a conversation of type voice_call or video_call
         var callSubject = callType === 'video_call' ? 'Videotelefonata' : 'Telefonata';
         var resp = await fetchApi('/api/communication/conversations', {
             method: 'POST',
