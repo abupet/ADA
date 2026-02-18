@@ -529,6 +529,80 @@ REGOLE:
 
       // --- Full pipeline (when DB + services available) ---
       const force = req.query.force === '1';
+
+      // --- Check for cached AI recommendation matches first ---
+      if (pool && !force) {
+        try {
+          const matchesResult = await pool.query(
+            `SELECT ai_recommendation_matches, ai_recommendation_matches_generated_at, name
+             FROM pets WHERE pet_id = $1 LIMIT 1`,
+            [petId]
+          );
+          const petRow = matchesResult.rows[0];
+          if (petRow && petRow.ai_recommendation_matches) {
+            let matches = petRow.ai_recommendation_matches;
+            if (typeof matches === 'string') {
+              try { matches = JSON.parse(matches); } catch (_) { matches = null; }
+            }
+            if (Array.isArray(matches) && matches.length > 0) {
+              // Pick a random match from the top 5
+              const dismissed = [];
+              const eligible = matches.filter(m => m.promo_item_id && !dismissed.includes(m.promo_item_id));
+              if (eligible.length > 0) {
+                const pick = eligible[Math.floor(Math.random() * eligible.length)];
+
+                // Fetch full promo item details for the selected match
+                let promoItem = null;
+                try {
+                  const itemResult = await pool.query(
+                    `SELECT promo_item_id, tenant_id, name, category, description, extended_description,
+                            image_url, product_url, service_type, status
+                     FROM promo_items WHERE promo_item_id = $1 AND status = 'published' LIMIT 1`,
+                    [pick.promo_item_id]
+                  );
+                  promoItem = itemResult.rows[0] || null;
+                } catch (_e) {}
+
+                if (promoItem) {
+                  const effectiveServiceType = Array.isArray(promoItem.service_type) && promoItem.service_type.includes("promo")
+                    ? "promo"
+                    : (Array.isArray(promoItem.service_type) ? promoItem.service_type[0] : (promoItem.service_type || "promo"));
+
+                  const recommendation = {
+                    promoItemId: promoItem.promo_item_id,
+                    promo_item_id: promoItem.promo_item_id,
+                    tenantId: promoItem.tenant_id,
+                    name: promoItem.name,
+                    category: promoItem.category || pick.category,
+                    description: promoItem.description,
+                    imageUrl: promoItem.image_url,
+                    image_url: promoItem.image_url,
+                    product_url: promoItem.product_url,
+                    explanation: {
+                      why_you_see_this: pick.reasoning || "Prodotto consigliato in base al profilo del tuo pet.",
+                      benefit_for_pet: (pick.key_matches || []).join(", "),
+                      confidence: pick.score >= 70 ? "high" : pick.score >= 40 ? "medium" : "low",
+                      disclaimer: "Questa è una raccomandazione generata dall'AI. Consulta sempre il tuo veterinario.",
+                    },
+                    ctaEnabled: pick.score >= 40,
+                    ctaLabel: pick.score >= 40 ? "Acquista" : "Scopri di più",
+                    ctaUrl: promoItem.product_url,
+                    context,
+                    source: "ai_cached_match",
+                    serviceType: effectiveServiceType,
+                  };
+
+                  return res.json({ pet_id: petId, recommendation });
+                }
+              }
+            }
+          }
+        } catch (cacheErr) {
+          console.warn("promo recommendation: cached matches lookup error:", cacheErr.message);
+          // Fall through to standard pipeline
+        }
+      }
+
       if (pool && selectPromo && generateExplanation) {
         try {
           const promoResult = await selectPromo(pool, {
@@ -1163,6 +1237,18 @@ Ordina per score discendente.`;
         return res.status(500).json({ error: result.error });
       }
 
+      // Save matches + timestamp to pet row for cached promo serving
+      if (result.matches && result.matches.length > 0) {
+        try {
+          await pool.query(
+            "UPDATE pets SET ai_recommendation_matches = $1, ai_recommendation_matches_generated_at = NOW() WHERE pet_id = $2",
+            [JSON.stringify(result.matches), petId]
+          );
+        } catch (_saveErr) {
+          console.warn("[analyze-match-all] save matches error:", _saveErr.message);
+        }
+      }
+
       console.log(`[analyze-match-all] done pet=${petId} candidates=${result.candidatesCount} top=${result.matches?.length || 0} cached=${result.fromCache}`);
       return res.json(result);
 
@@ -1296,14 +1382,15 @@ PROFILO RISCHIO: ...`;
     return { systemPrompt, userPrompt };
   }
 
-  // =======================================================
   // POST /api/admin/:tenant_id/bulk-ai-analysis
-  // Bulk AI analysis for all pets (super_admin / admin_brand only)
-  // SSE stream: sends progress/pet_done/done events for real-time feedback
-  // Body: { mode: "changed" | "all" } — "changed" skips pets whose sources hash hasn't changed
-  // =======================================================
+  // Bulk AI analysis for all pets — TWO-PHASE process:
+  //   Phase 1: Generate/update AI pet descriptions
+  //   Phase 2: Run recommendation analysis and cache results
+  // SSE stream: sends phase/progress/pet_done/done events for real-time feedback
+  // Body: { mode: "changed" | "all" }
+  //   "changed": Phase 1 skips unchanged sources; Phase 2 only runs if no cache or desc changed
+  //   "all":     Phase 1 regenerates all descriptions; Phase 2 regenerates all analyses
   router.post("/api/admin/:tenant_id/bulk-ai-analysis", requireAuth, async (req, res) => {
-    // Role check: super_admin or admin_brand only
     const userRole = req.user?.role || req.headers["x-ada-role"];
     if (userRole !== "super_admin" && userRole !== "admin_brand") {
       return res.status(403).json({ error: "forbidden_admin_only" });
@@ -1318,19 +1405,19 @@ PROFILO RISCHIO: ...`;
       return res.status(503).json({ error: "openai_not_configured" });
     }
 
-    // Support both new "mode" and legacy "force" param
     const body = req.body || {};
     const mode = body.mode || (body.force === true ? "all" : "changed");
 
-    // Extend request timeout to 10 minutes
-    req.setTimeout(600000);
-    if (res.socket) res.socket.setTimeout(600000);
+    // Extend request timeout to 15 minutes (2 phases)
+    req.setTimeout(900000);
+    if (res.socket) res.socket.setTimeout(900000);
 
-    // Get all pets before switching to SSE
     let allPets = [];
     try {
       const petsResult = await pool.query(
-        "SELECT pet_id, name, species, breed, ai_description, ai_description_sources_hash FROM pets ORDER BY name"
+        `SELECT pet_id, name, species, breed, ai_description, ai_description_sources_hash,
+                ai_description_generated_at, ai_recommendation_matches, ai_recommendation_matches_generated_at
+         FROM pets ORDER BY name`
       );
       allPets = petsResult.rows;
     } catch (e) {
@@ -1355,24 +1442,28 @@ PROFILO RISCHIO: ...`;
       descriptionsSkipped: 0,
       analysesRun: 0,
       analysesCached: 0,
+      analysesSkipped: 0,
       errors: [],
     };
 
-    sendEvent({ type: "start", total: allPets.length });
+    const petsDescChanged = new Set();
 
-    // Process each pet serially to avoid OpenAI rate limits
+    sendEvent({ type: "start", total: allPets.length, phases: 2 });
+
+    // ===================================================================
+    // PHASE 1: Generate / update AI descriptions
+    // ===================================================================
+    sendEvent({ type: "phase", phase: 1, phaseLabel: "Descrizioni Pet per AI", total: allPets.length });
+
     for (let i = 0; i < allPets.length; i++) {
       const pet = allPets[i];
-      sendEvent({ type: "progress", current: i + 1, total: allPets.length, petName: pet.name });
+      sendEvent({ type: "progress", phase: 1, current: i + 1, total: allPets.length, petName: pet.name });
 
       let descGenerated = false;
-      let analysisRun = false;
-      let cached = false;
       let skipped = false;
       let petError = null;
 
       try {
-        // Step A: Collect sources and compute hash
         const sources = await _collectPetSourcesFromDB(pool, pet.pet_id);
         if (!sources.dati_pet) sources.dati_pet = {};
         if (!sources.dati_pet.nome && pet.name) sources.dati_pet.nome = pet.name;
@@ -1381,14 +1472,11 @@ PROFILO RISCHIO: ...`;
 
         const newHash = _computeSourcesHash(sources);
 
-        // Step B: Check if we need to regenerate
         const hashUnchanged = pet.ai_description_sources_hash === newHash && pet.ai_description;
         if (mode === "changed" && hashUnchanged) {
-          // Sources unchanged — skip
           skipped = true;
           results.descriptionsSkipped++;
         } else {
-          // Generate structured AI description (same prompt as individual endpoint)
           try {
             const { systemPrompt, userPrompt } = _getStructuredDescPrompts(sources);
 
@@ -1421,40 +1509,14 @@ PROFILO RISCHIO: ...`;
                   "UPDATE pets SET ai_description = $1, ai_description_sources_hash = $2, ai_description_generated_at = NOW() WHERE pet_id = $3",
                   [description, newHash, pet.pet_id]
                 );
+                // Update in-memory pet so Phase 2 sees new description
+                pet.ai_description = description;
+                pet.ai_description_generated_at = new Date();
                 results.descriptionsGenerated++;
                 descGenerated = true;
 
-                // Step C: If description changed, run analysis and save matches
-                const descriptionChanged = description !== oldDesc;
-                if (descriptionChanged) {
-                  try {
-                    const analysisResult = await _runAnalysisForPet(pool, pet.pet_id, openAiKey);
-                    if (analysisResult.error) {
-                      results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisResult.error });
-                      petError = analysisResult.error;
-                    } else {
-                      results.analysesRun++;
-                      analysisRun = true;
-                      if (analysisResult.fromCache) {
-                        results.analysesCached++;
-                        cached = true;
-                      }
-                      // Save top 5 matches to pet row
-                      if (analysisResult.matches && analysisResult.matches.length > 0) {
-                        try {
-                          await pool.query(
-                            "UPDATE pets SET ai_recommendation_matches = $1 WHERE pet_id = $2",
-                            [JSON.stringify(analysisResult.matches), pet.pet_id]
-                          );
-                        } catch (_saveErr) {
-                          console.warn("[bulk-ai] save matches error:", _saveErr.message);
-                        }
-                      }
-                    }
-                  } catch (analysisErr) {
-                    results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisErr.message });
-                    petError = analysisErr.message;
-                  }
+                if (description !== oldDesc) {
+                  petsDescChanged.add(pet.pet_id);
                 }
               }
             } else {
@@ -1467,31 +1529,110 @@ PROFILO RISCHIO: ...`;
             petError = descErr.message;
           }
         }
-
       } catch (petErr) {
-        results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "general", error: petErr.message });
+        results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "description", error: petErr.message });
         petError = petErr.message;
       }
 
       sendEvent({
         type: "pet_done",
+        phase: 1,
         current: i + 1,
         total: allPets.length,
         petName: pet.name,
         descGenerated,
-        analysisRun,
-        cached,
         skipped,
         error: petError,
       });
 
-      // Small delay between pets to avoid overwhelming APIs
       if (i < allPets.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+
+    // ===================================================================
+    // PHASE 2: Run recommendation analysis and cache results
+    // ===================================================================
+    const petsForAnalysis = [];
+    for (const pet of allPets) {
+      if (!pet.ai_description) continue;
+
+      if (mode === "all") {
+        petsForAnalysis.push(pet);
+      } else {
+        // "changed" mode
+        const hasMatches = pet.ai_recommendation_matches && pet.ai_recommendation_matches_generated_at;
+        const descJustChanged = petsDescChanged.has(pet.pet_id);
+
+        if (!hasMatches || descJustChanged) {
+          petsForAnalysis.push(pet);
+        } else {
+          const matchesAt = new Date(pet.ai_recommendation_matches_generated_at).getTime();
+          const descAt = pet.ai_description_generated_at ? new Date(pet.ai_description_generated_at).getTime() : 0;
+          if (descAt > matchesAt) {
+            petsForAnalysis.push(pet);
+          } else {
+            results.analysesSkipped++;
+          }
+        }
+      }
+    }
+
+    sendEvent({ type: "phase", phase: 2, phaseLabel: "Analisi Raccomandazione", total: petsForAnalysis.length, skipped: results.analysesSkipped });
+
+    for (let i = 0; i < petsForAnalysis.length; i++) {
+      const pet = petsForAnalysis[i];
+      sendEvent({ type: "progress", phase: 2, current: i + 1, total: petsForAnalysis.length, petName: pet.name });
+
+      let analysisRun = false;
+      let cached = false;
+      let petError = null;
+
+      try {
+        const analysisResult = await _runAnalysisForPet(pool, pet.pet_id, openAiKey);
+        if (analysisResult.error) {
+          results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisResult.error });
+          petError = analysisResult.error;
+        } else {
+          results.analysesRun++;
+          analysisRun = true;
+          if (analysisResult.fromCache) {
+            results.analysesCached++;
+            cached = true;
+          }
+          if (analysisResult.matches && analysisResult.matches.length > 0) {
+            try {
+              await pool.query(
+                "UPDATE pets SET ai_recommendation_matches = $1, ai_recommendation_matches_generated_at = NOW() WHERE pet_id = $2",
+                [JSON.stringify(analysisResult.matches), pet.pet_id]
+              );
+            } catch (_saveErr) {
+              console.warn("[bulk-ai] save matches error:", _saveErr.message);
+            }
+          }
+        }
+      } catch (analysisErr) {
+        results.errors.push({ petId: pet.pet_id, petName: pet.name, phase: "analysis", error: analysisErr.message });
+        petError = analysisErr.message;
+      }
+
+      sendEvent({
+        type: "pet_done",
+        phase: 2,
+        current: i + 1,
+        total: petsForAnalysis.length,
+        petName: pet.name,
+        analysisRun,
+        cached,
+        error: petError,
+      });
+
+      if (i < petsForAnalysis.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} skipped=${results.descriptionsSkipped} analyses=${results.analysesRun} cached=${results.analysesCached} errors=${results.errors.length}`);
+    console.log(`[bulk-ai-analysis] done: total=${results.total} descs=${results.descriptionsGenerated} skipped=${results.descriptionsSkipped} analyses=${results.analysesRun} cached=${results.analysesCached} analysesSkipped=${results.analysesSkipped} errors=${results.errors.length}`);
     sendEvent({ type: "done", ...results });
     res.end();
   });

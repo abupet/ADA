@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.33';
-const ADA_RELEASE_NOTES = 'Fix: Bulk AI empty descriptions (SQL columns), timeout 45s, rate limit 120, debounce pet switch.';
+const ADA_VERSION = '8.22.34';
+const ADA_RELEASE_NOTES = 'Bulk AI: 2-phase process (descriptions + recommendation analysis). Cached AI matches serve promos with random selection from top 5.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
