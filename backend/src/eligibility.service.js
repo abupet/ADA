@@ -199,6 +199,13 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
                 matchedTags: chosen.key_matches || [],
                 _item: dbItem,
               };
+            } else if (aiMatches.length > 0) {
+              // All cached AI matches are phantom — clear stale data asynchronously
+              serverLog('WARN', 'ELIGIBILITY', 'all AI matches phantom, clearing stale cache', { petId, matchCount: aiMatches.length });
+              pool.query(
+                "UPDATE pets SET ai_recommendation_matches = NULL, ai_recommendation_matches_generated_at = NULL WHERE pet_id = $1",
+                [petId]
+              ).catch(() => {});
             }
           }
         }
@@ -373,6 +380,9 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
         );
         if (excluded) continue;
       }
+
+      // Skip products without any description (aligned with AI analysis filter in _runAnalysisForPet)
+      if (!item.description && !item.extended_description) continue;
 
       // Tag sensitivity check: high-sensitivity tags in include only if allowed
       if (item.tags_include && item.tags_include.length > 0) {

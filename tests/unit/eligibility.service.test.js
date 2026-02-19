@@ -378,6 +378,7 @@ function createMockPool(queryResponses) {
     tenant_id: "t1",
     name: "Product",
     category: "food_general",
+    description: "A test product",
     species: ["all"],
     tags_include: [],
     tags_exclude: [],
