@@ -93,7 +93,9 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
     const effectiveServiceType = serviceType || (rules.service_types ? rules.service_types[0] : "promo");
 
     // 0. Try AI recommendation matches (top 5 from bulk analysis)
-    if (!force) {
+    // NOTE: AI matches are always tried, even with force=1.
+    // force=1 only relaxes filters on the standard algorithm fallback.
+    {
       try {
         const matchesResult = await pool.query(
           "SELECT ai_recommendation_matches FROM pets WHERE pet_id = $1 LIMIT 1",

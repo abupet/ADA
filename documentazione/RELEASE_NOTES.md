@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.47
+
+### Fix: force=1 bypassava AI cached path — "Satiety Weight Management" invece dei match personalizzati
+- **Root cause**: il flag `force=1` (debug "Multi-servizio forzato") bypassava ENTRAMBI i path AI (cached in `promo.routes.js` e AI matches in `selectPromo`). Se `localStorage.ada_debug_force_multi_service === 'true'` era rimasto attivo da sessioni di debug precedenti, il frontend inviava sempre `force=1`, facendo cadere nel fallback standard con 138 candidati e selezione hash-deterministica → "Satiety Weight Management" per Charlie
+- **Diagnostica**: l'unico log `[PROMO-DIAG]` era `using STANDARD algorithm` — nessun log dal cached path o dal selectPromo AI path, confermando che il guard `if (!force)` li saltava
+- **Fix**: rimosso il guard `!force` dal cached AI path in `promo.routes.js` e dal AI matches path in `selectPromo` (`eligibility.service.js`). I match AI personalizzati vengono ora sempre utilizzati quando presenti, indipendentemente dal flag force. Il flag `force=1` continua a rilassare i filtri solo sull'algoritmo standard di fallback
+- **Logging**: aggiunto log del valore `force` all'ingresso dell'handler per diagnostica futura
+
 ## v8.22.46
 
 ### Fix: Cached AI path bypassed — logging diagnostico per "Satiety Weight Management" sempre visibile
