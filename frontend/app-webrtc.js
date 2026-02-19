@@ -256,6 +256,10 @@ async function _webrtcAccept(convId, callId, callType) {
         window._commSocket.emit('join_conversation', { conversationId: convId });
         window._commSocket.emit('accept_call', { conversationId: convId, callId: callId });
     }
+    // Dismiss push notification for this call (if any)
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'DISMISS_CALL_NOTIFICATION', callId: callId });
+    }
     _webrtcShowOverlay(callType, false);
 }
 
@@ -264,6 +268,10 @@ function _webrtcReject(convId, callId) {
     _webrtcIncomingCallData = null;
     if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
     if (window._commSocket) window._commSocket.emit('reject_call', { conversationId: convId, callId: callId, reason: 'declined' });
+    // Dismiss push notification for this call (if any)
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'DISMISS_CALL_NOTIFICATION', callId: callId });
+    }
 }
 
 function _webrtcRemoveNotif() { var n = document.getElementById('webrtc-incoming-notification'); if (n && n.parentNode) n.parentNode.removeChild(n); }

@@ -242,6 +242,8 @@ function initCommSocket() {
             if (_commCurrentConversationId) {
                 _commSocket.emit('join_conversation', { conversationId: _commCurrentConversationId });
             }
+            // Registra per push notifications (safe, ha try/catch interno)
+            subscribeToPush();
         });
         _commSocket.on('new_message', function (d) { _commHandleNewMessage(d); });
         _commSocket.on('message_updated', function (d) { _commHandleMessageUpdated(d); });
@@ -1462,14 +1464,44 @@ async function _commToggleSetting(key, value) {
 async function subscribeToPush() {
     try {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (!('Notification' in window)) return;
+
+        // Se il permesso non è ancora stato concesso, chiederlo
+        var permission = Notification.permission;
+        if (permission === 'denied') {
+            console.log('[Push] Notification permission denied by user');
+            return;
+        }
+        if (permission === 'default') {
+            permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                console.log('[Push] Notification permission not granted');
+                return;
+            }
+        }
+
         var reg = await navigator.serviceWorker.ready;
-        // Get VAPID key
+
+        // Controlla se esiste già una subscription attiva
+        var existingSub = await reg.pushManager.getSubscription();
+        if (existingSub) {
+            // Già sottoscritto, aggiorna il backend (potrebbe essere cambiata la session)
+            var existingJson = existingSub.toJSON();
+            await fetch(_commApiBase() + '/api/push/subscribe', {
+                method: 'POST', headers: _commAuthHeaders(),
+                body: JSON.stringify({ endpoint: existingJson.endpoint, keys: existingJson.keys })
+            });
+            console.log('[Push] Existing subscription refreshed');
+            return;
+        }
+
+        // Ottieni la VAPID public key dal server
         var resp = await fetch(_commApiBase() + '/api/push/vapid-key', { headers: _commAuthHeaders() });
         if (!resp.ok) return;
         var data = await resp.json();
         if (!data.publicKey) return;
 
-        // Convert VAPID key
+        // Converti VAPID key in Uint8Array
         var rawKey = data.publicKey;
         var padding = '='.repeat((4 - rawKey.length % 4) % 4);
         var base64 = (rawKey + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -1483,7 +1515,7 @@ async function subscribeToPush() {
         });
         var subJson = subscription.toJSON();
 
-        // Send to backend
+        // Invia la subscription al backend
         await fetch(_commApiBase() + '/api/push/subscribe', {
             method: 'POST', headers: _commAuthHeaders(),
             body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys })
@@ -2368,9 +2400,31 @@ async function _commInitiateDirectCall(callType) {
 // Handle push notification navigation
 if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'navigate_to_conversation' && event.data.conversationId) {
+        if (!event.data) return;
+
+        if (event.data.type === 'navigate_to_conversation' && event.data.conversationId) {
             if (typeof navigateToPage === 'function') navigateToPage('communication');
             setTimeout(function() { openConversation(event.data.conversationId); }, 300);
+        }
+
+        if (event.data.type === 'incoming_call' && event.data.conversationId && event.data.callId) {
+            // Se l'app è aperta ma non ha il socket attivo, attiva la UI della chiamata
+            if (typeof handleIncomingCall === 'function') {
+                handleIncomingCall({
+                    conversationId: event.data.conversationId,
+                    callId: event.data.callId,
+                    callType: event.data.callType || 'voice_call',
+                    callerName: 'Utente'
+                });
+            } else {
+                // Fallback: naviga alla pagina comunicazione
+                if (typeof navigateToPage === 'function') navigateToPage('communication');
+                setTimeout(function() {
+                    if (typeof openConversation === 'function') {
+                        openConversation(event.data.conversationId);
+                    }
+                }, 300);
+            }
         }
     });
 }

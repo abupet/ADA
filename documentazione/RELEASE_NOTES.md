@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.23.1
+
+### Feature: Web Push Notifications per chiamate in arrivo
+- **Attivazione push**: `subscribeToPush()` ora richiede il permesso `Notification.requestPermission()`, verifica subscription esistenti, e viene chiamata automaticamente alla connessione socket.
+- **Service Worker migliorato**: `notificationclick` gestisce il rifiuto chiamata con fetch al server. Nuovo handler `DISMISS_CALL_NOTIFICATION` per chiudere la notifica se la chiamata è gestita in-app.
+- **Frontend incoming_call handler**: il message listener SW ora gestisce `incoming_call` dal push, attivando la UI chiamata anche se l'app era in background.
+- **WebRTC dismiss**: `_webrtcAccept()` e `_webrtcReject()` inviano `DISMISS_CALL_NOTIFICATION` al SW per chiudere eventuali notifiche push pendenti.
+- **Backend**: nuovo endpoint `POST /api/communication/conversations/:id/calls/:callId/reject` per rifiuto chiamata da notifica push.
+- **VAPID keys**: generate e configurate in `setup-ada-env.sh`.
+- **Files**: `frontend/app-communication.js`, `frontend/sw.js`, `frontend/app-webrtc.js`, `backend/src/communication.routes.js`, `setup-ada-env.sh`, `frontend/config.js`
+
 ## v8.23.0
 
 ### Feature: UX completa Nutrizione & Assicurazione
