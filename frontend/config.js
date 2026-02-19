@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.41';
-const ADA_RELEASE_NOTES = 'Fix: "Non mi interessa" blocca tutte le promo — dismissed IDs passati al backend, localStorage scoped per utente.';
+const ADA_VERSION = '8.22.42';
+const ADA_RELEASE_NOTES = 'Fix: Promos non visibili in pet_profile/home_feed — food_clinical aggiunto ai contesti, priority Cardiac+Renal normalizzata.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.22.42
+
+### Fix: Promos non visibili (pet_profile/home_feed) + Cardiac+Renal dominanza
+- **Root cause 1 (contesti troppo restrittivi)**: `CONTEXT_RULES` in `eligibility.service.js` escludeva `food_clinical` dai contesti `pet_profile` e `home_feed`. Poiché il 93% dei prodotti pubblicati sono food_clinical, l'algoritmo standard non aveva candidati in quei contesti → banner vuoto
+- **Root cause 2 (priority sbilanciata)**: il prodotto "Cardiac + Renal" (`pi_71cc08f7`) aveva `priority=10`, pari ai prodotti assicurativi premium. Dominava il ranking standard in tutti i contesti che ammettevano food_clinical (es. `faq_view`)
+- **Root cause 3 (AI matches mancanti)**: alcuni pet (es. chiara.romano) avevano `ai_recommendation_matches = NULL` → l'AI cached path non scattava, e il fallback standard aveva 0 candidati nei contesti restrittivi
+- **Fix 1 (eligibility.service.js)**: aggiunto `food_clinical` alle categories di `pet_profile` e `home_feed` in CONTEXT_RULES
+- **Fix 2 (DB Neon dev)**: normalizzato priority di tutti i food_clinical a <= 5 (`UPDATE promo_items SET priority = LEAST(priority, 5) WHERE category = 'food_clinical' AND priority > 5`)
+- **Fix 3 (DB Neon dev)**: triggherato bulk AI analysis per pet senza match
+
 ## v8.22.41
 
 ### Fix: "Non mi interessa" blocca tutte le promo + Cardiac+Renal persiste
