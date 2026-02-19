@@ -134,7 +134,7 @@ function _commInjectStyles() {
     if (_commCSSInjected) return;
     _commCSSInjected = true;
     var css =
-        '.comm-container{max-width:700px;margin:0 auto}' +
+        '.comm-container{max-width:700px;margin:0 auto;width:100%;box-sizing:border-box;padding:0 12px}' +
         '.comm-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}' +
         '.comm-header h3{margin:0;font-size:18px;color:#1e3a5f}' +
         '.comm-btn{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:background .2s}' +
@@ -155,8 +155,8 @@ function _commInjectStyles() {
         '.comm-status-badge{display:inline-block;font-size:10px;font-weight:600;text-transform:uppercase;padding:2px 8px;border-radius:6px;margin-left:8px}' +
         '.comm-status-open{background:#dcfce7;color:#16a34a}.comm-status-closed{background:#f1f5f9;color:#64748b}' +
         '.comm-chat-header{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}' +
-        '.comm-chat-messages{max-height:420px;overflow-y:auto;padding:8px 0;display:flex;flex-direction:column;gap:8px}' +
-        '.comm-msg{max-width:78%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;word-break:break-word;position:relative}' +
+        '.comm-chat-messages{max-height:min(420px,60vh);overflow-y:auto;padding:8px 0;display:flex;flex-direction:column;gap:8px}' +
+        '.comm-msg{max-width:78%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;word-break:break-word;overflow-wrap:break-word;position:relative}' +
         '.comm-msg-own{align-self:flex-end;background:#2563eb;color:#fff;border-bottom-right-radius:4px}' +
         '.comm-msg-other{align-self:flex-start;background:#f1f5f9;color:#1e3a5f;border-bottom-left-radius:4px}' +
         '.comm-msg-ai{align-self:flex-start;background:#f0f9ff;color:#1e3a5f;border-bottom-left-radius:4px}' +
@@ -200,11 +200,18 @@ function _commInjectStyles() {
         '.comm-switch input:checked+.comm-switch-slider:before{transform:translateX(20px)}' +
         '.comm-pet-hint{font-size:12px;color:#64748b;margin-top:4px;display:none}' +
         '.comm-input-icons{display:flex;gap:6px;margin-top:12px;align-items:center}' +
-        '@media (max-width:600px){' +
-        '.comm-container{max-width:100%;padding:0 4px;box-sizing:border-box;overflow-x:hidden}' +
+        '.comm-conv-avatar-call{background:#fef3c7;color:#d97706}' +
+        '.comm-msg img{max-width:100%;height:auto}' +
+        '.comm-msg audio{max-width:100%}' +
+        '.comm-msg video{max-width:100%;height:auto}' +
+        '@media (max-width:768px){' +
+        '.comm-container{max-width:100%;padding:0 8px;box-sizing:border-box;overflow-x:hidden}' +
+        '.comm-chat-header{flex-wrap:wrap;gap:8px}' +
         '.comm-input-row{flex-wrap:wrap;gap:4px}' +
-        '.comm-input-row textarea{min-width:0;width:100%}' +
+        '.comm-input-row textarea{min-width:0;width:100%;box-sizing:border-box}' +
         '.comm-msg{max-width:88%}' +
+        '.comm-chat-messages{max-height:60vh}' +
+        '.comm-input-icons{flex-wrap:wrap}' +
         '}';
     var style = document.createElement('style');
     style.setAttribute('data-comm-styles', '1');
@@ -426,11 +433,16 @@ function _commBuildConvListHtml(conversations) {
     for (var i = 0; i < conversations.length; i++) {
         var c = conversations[i];
         var isAi = c.recipient_type === 'ai' || c.vet_user_id === 'ada-assistant';
+        var isCallConv = c.type === 'voice_call' || c.type === 'video_call';
         var name, avatarCls, avatarContent;
         if (isAi) {
             name = 'ADA - Assistente';
             avatarCls = 'comm-conv-avatar comm-conv-avatar-ai';
             avatarContent = '\uD83E\uDD16';
+        } else if (isCallConv) {
+            name = _commEscape(c.subject || (c.type === 'video_call' ? 'Videochiamata' : 'Chiamata vocale'));
+            avatarCls = 'comm-conv-avatar comm-conv-avatar-call';
+            avatarContent = c.type === 'video_call' ? '\uD83C\uDFA5' : '\uD83D\uDCDE';
         } else {
             var isCurrentUserOwner = (userId === c.owner_user_id);
             var otherName, otherRole;
@@ -811,10 +823,11 @@ function _commRenderChat(container, convId, messages, meta) {
         '<div style="flex:1;"><div style="font-weight:600;color:#1e3a5f;font-size:14px;">' + headerTitle + '</div>' +
         '<div style="font-size:12px;color:#94a3b8;">' + _commEscape(convPetName) + '</div></div>';
 
+    var convType = (meta && meta.type) || 'chat';
     if (isAi) {
         html += '<span style="font-size:11px;color:#22c55e;">\u25CF Online</span>';
-    } else {
-        // PR6: Call buttons for human conversations
+    } else if (convType !== 'voice_call' && convType !== 'video_call') {
+        // Call buttons for human chat conversations (not for call conversations)
         html += '<div id="comm-call-controls" style="display:flex;gap:8px;margin-left:auto;">';
         html += '<button type="button" class="comm-btn-icon" onclick="if(typeof startCall===\'function\')startCall(\'' + convId + '\',\'voice_call\')" title="Chiamata audio" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83D\uDCDE</button>';
         html += '<button type="button" class="comm-btn-icon" onclick="if(typeof startCall===\'function\')startCall(\'' + convId + '\',\'video_call\')" title="Videochiamata" style="font-size:18px;background:none;border:none;cursor:pointer;">\uD83C\uDFA5</button>';

@@ -1,5 +1,27 @@
 # Release Notes (cumulative)
 
+## v8.22.49
+
+### Feature: Trascrizione chiamate in conversazioni dedicate + Responsive Messages
+
+**Parte A — Call Transcription**
+- **Nuova conversazione per chiamata**: quando un utente avvia una chiamata (voce o video), ADA crea automaticamente una conversazione dedicata di tipo `voice_call` / `video_call` collegata alla chat originale via `parent_conversation_id`
+- **Messaggio di sistema**: nella chat originale viene inserito un messaggio di sistema ("Chiamata vocale in corso..." / "Videochiamata in corso...") che si aggiorna con la durata a fine chiamata
+- **Trascrizione separata**: i chunk audio vengono trascritti nella conversazione dedicata, non nella chat originale, evitando di mischiare messaggi di testo e trascrizioni
+- **Bug fix updated_at**: aggiunta colonna `updated_at` a `comm_messages` (mancava nello schema), risolvendo il fallimento silenzioso della merge logic che causava messaggi separati per ogni chunk dello stesso speaker
+- **Nuovi endpoint REST**: `POST /api/communication/conversations/call` (crea call conversation) e `POST /api/communication/conversations/:id/end-call` (chiude con durata)
+- **Frontend**: `callConversationId` propagato in tutti gli eventi socket (`initiate_call`, `call_accepted`, `call_audio_chunk`, `end_call`), avatar dedicato per call conversations nella lista, bottoni chiamata nascosti nell'header delle call conversations
+- **Migrazione SQL**: `sql/023_call_conversations.sql` (parent_conversation_id, updated_at, call_id)
+
+**Parte B — Responsive Messages**
+- `.comm-container` ora ha `width:100%;box-sizing:border-box;padding:0 12px` per evitare overflow laterale
+- `.comm-chat-messages` usa `max-height:min(420px,60vh)` per altezza dinamica
+- `.comm-msg` ha `overflow-wrap:break-word` per testi lunghi senza spazi
+- Breakpoint mobile alzato da 600px a 768px per coprire tablet e telefoni landscape
+- Aggiunte regole responsive: `flex-wrap` su header/input, `max-height:60vh` su mobile, contenimento media (`img`, `audio`, `video`)
+
+**Files**: `backend/src/websocket.js`, `backend/src/communication.routes.js`, `backend/src/server.js`, `frontend/app-webrtc.js`, `frontend/app-communication.js`, `sql/023_call_conversations.sql`
+
 ## v8.22.48
 
 ### Feature: "Test Chiamata" — interlocutore loopback per debug
