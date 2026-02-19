@@ -548,11 +548,12 @@ REGOLE:
               try { matches = JSON.parse(matches); } catch (_) { matches = null; }
             }
             if (Array.isArray(matches) && matches.length > 0) {
-              // Pick a random match from the top 5
+              // Pick match using round-robin rotation index from frontend
               const dismissed = [];
               const eligible = matches.filter(m => m.promo_item_id && !dismissed.includes(m.promo_item_id));
               if (eligible.length > 0) {
-                const pick = eligible[Math.floor(Math.random() * eligible.length)];
+                const rotationIndex = parseInt(req.query.rotationIndex, 10) || 0;
+                const pick = eligible[rotationIndex % eligible.length];
 
                 // Fetch full promo item details for the selected match
                 let promoItem = null;
