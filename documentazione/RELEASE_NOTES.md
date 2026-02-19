@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.46
+
+### Fix: Cached AI path bypassed — logging diagnostico per "Satiety Weight Management" sempre visibile
+- **Problema**: per Charlie (andrea.colombo) il banner mostra sempre "Satiety Weight Management" che NON e' nei suoi 5 AI match. La risposta API ha `source: "cache"` (da generateExplanation) invece di `source: "ai_cached_match"` (dal cached path della route), indicando che il cached path viene bypassato e si cade nel fallback `selectPromo` che usa l'algoritmo standard hash-deterministico
+- **Causa probabile**: il backend Render dev potrebbe non aver deployato il codice aggiornato dei PR #360-363
+- **Fix**: aggiunto logging diagnostico `[PROMO-DIAG]` nel cached path di `promo.routes.js` e in `selectPromo` di `eligibility.service.js` per tracciare esattamente dove e perche' il cached path fallisce
+- **Debug**: aggiunto campo `_debug` nella risposta API (solo quando `ADA_DEBUG_LOG=true`) con `pathTaken` e `cachePathSkipped`
+- **Prossimi passi**: dopo deploy su Render, i log mostreranno il path preso. Se il cached path funziona dopo re-deploy, la causa era il backend non aggiornato
+
 ## v8.22.45
 
 ### Fix: Service worker serve file JS vecchi — cache invalidation
