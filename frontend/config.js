@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.44';
-const ADA_RELEASE_NOTES = 'Fix: Santevet Premium domina ranking + immagini placeholder 404 su GitHub Pages.';
+const ADA_VERSION = '8.22.45';
+const ADA_RELEASE_NOTES = 'Fix: Service worker cachava JS vecchi — ADA_SW_VERSION aggiornato, cache invalidata.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
