@@ -41,7 +41,7 @@ assert.ok(CONTEXT_RULES, "CONTEXT_RULES must be exported");
 (function testHomeFeedCategories() {
   assert.deepStrictEqual(
     CONTEXT_RULES.home_feed.categories,
-    ["food_general", "accessory", "service"]
+    ["food_general", "food_clinical", "accessory", "service"]
   );
   assert.deepStrictEqual(CONTEXT_RULES.home_feed.freq, { per_session: 2, per_week: 4 });
   console.log("  PASS: home_feed categories and freq correct");
@@ -247,7 +247,7 @@ function createMockPool(queryResponses) {
     promo_item_id: "item-supp",
     tenant_id: "t1",
     name: "Supplement",
-    category: "supplement", // not in home_feed categories [food_general, accessory, service]
+    category: "supplement", // not in home_feed categories [food_general, food_clinical, accessory, service]
     species: ["all"],
     tags_include: [],
     tags_exclude: [],
