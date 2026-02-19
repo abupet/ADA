@@ -959,15 +959,91 @@ function saveSOAP() {
     updateHistoryBadge();
     renderHistory();
 
-    // Insurance claim hook (multi-service)
+    // Insurance claim hook (multi-service) — with real claim creation
     if (typeof checkInsuranceCoverage === 'function') {
         try {
             var _petId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
             if (_petId) {
                 checkInsuranceCoverage(_petId).then(function(result) {
                     if (result && result.covered) {
-                        if (typeof showToast === 'function') {
-                            showToast('Il tuo pet è assicurato. Puoi generare un rimborso per questa visita.', 'info');
+                        // Build SOAP summary for the claim
+                        var soapSummary = {};
+                        try {
+                            soapSummary = {
+                                s: (document.getElementById('soap-s')?.value || '').trim().slice(0, 500),
+                                o: (document.getElementById('soap-o')?.value || '').trim().slice(0, 500),
+                                a: (document.getElementById('soap-a')?.value || '').trim().slice(0, 500),
+                                p: (document.getElementById('soap-p')?.value || '').trim().slice(0, 500),
+                                template: typeof currentTemplate !== 'undefined' ? currentTemplate : '',
+                                date: new Date().toISOString(),
+                            };
+                        } catch(_se) {}
+
+                        // Show claim creation modal
+                        if (typeof _insuranceShowModal === 'function') {
+                            _insuranceShowModal('Rimborso Assicurativo', function(body) {
+                                var h = [];
+                                h.push('<div style="text-align:center;margin-bottom:16px;">');
+                                h.push('<div style="font-size:16px;font-weight:600;color:#1e3a5f;">Il tuo pet è assicurato!</div>');
+                                h.push('<div style="font-size:13px;color:#64748b;">Vuoi richiedere il rimborso per questa visita?</div>');
+                                h.push('</div>');
+
+                                // SOAP summary card
+                                h.push('<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">');
+                                if (soapSummary.a) h.push('<div style="margin-bottom:4px;"><strong>Diagnosi:</strong> ' + soapSummary.a.replace(/</g, '&lt;').slice(0, 200) + '</div>');
+                                if (soapSummary.p) h.push('<div><strong>Terapia:</strong> ' + soapSummary.p.replace(/</g, '&lt;').slice(0, 200) + '</div>');
+                                h.push('</div>');
+
+                                // Amount input
+                                h.push('<div style="margin-bottom:16px;">');
+                                h.push('<label style="font-weight:600;font-size:13px;color:#1e3a5f;display:block;margin-bottom:4px;">Importo della visita (&euro;)</label>');
+                                h.push('<input type="number" id="ins-claim-amount" min="0" step="0.01" placeholder="Es: 85.00" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:16px;">');
+                                h.push('</div>');
+
+                                // Buttons
+                                h.push('<button type="button" id="ins-submit-claim-btn" style="width:100%;padding:12px;background:#1e40af;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Invia richiesta di rimborso</button>');
+                                h.push('<button type="button" onclick="document.getElementById(\'insurance-modal-overlay\').classList.remove(\'active\')" style="width:100%;margin-top:8px;padding:10px;background:#e5e7eb;color:#333;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Non ora</button>');
+
+                                body.innerHTML = h.join('');
+
+                                var submitBtn = document.getElementById('ins-submit-claim-btn');
+                                if (submitBtn) {
+                                    submitBtn.addEventListener('click', function() {
+                                        var amount = parseFloat(document.getElementById('ins-claim-amount').value);
+                                        if (!amount || amount <= 0) {
+                                            if (typeof showToast === 'function') showToast('Inserisci un importo valido.', 'warning');
+                                            return;
+                                        }
+                                        submitBtn.disabled = true;
+                                        submitBtn.textContent = 'Invio in corso...';
+
+                                        fetchApi('/api/insurance/claim/' + encodeURIComponent(_petId), {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ visit_data: soapSummary, amount: amount })
+                                        })
+                                        .then(function(r) { return r.ok ? r.json() : Promise.reject('claim_error'); })
+                                        .then(function(claim) {
+                                            body.innerHTML = '<div style="text-align:center;padding:24px;">' +
+                                                '<div style="font-size:16px;font-weight:600;color:#16a34a;margin-bottom:4px;">Richiesta inviata!</div>' +
+                                                '<div style="font-size:13px;color:#64748b;">ID rimborso: ' + (claim.claim_id ? claim.claim_id.slice(-8) : '?') + '</div>' +
+                                                '<div style="font-size:13px;color:#64748b;">Importo: ' + amount.toFixed(2) + '&euro;</div>' +
+                                                '<button type="button" onclick="document.getElementById(\'insurance-modal-overlay\').classList.remove(\'active\')" style="width:100%;margin-top:16px;padding:10px;background:#1e40af;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Chiudi</button>' +
+                                                '</div>';
+                                        })
+                                        .catch(function() {
+                                            if (typeof showToast === 'function') showToast('Errore nell\'invio del rimborso.', 'error');
+                                            submitBtn.disabled = false;
+                                            submitBtn.textContent = 'Invia richiesta di rimborso';
+                                        });
+                                    });
+                                }
+                            });
+                        } else {
+                            // Fallback: simple toast
+                            if (typeof showToast === 'function') {
+                                showToast('Il tuo pet è assicurato. Vai nella scheda pet per richiedere il rimborso.', 'info');
+                            }
                         }
                     }
                 }).catch(function() {});
