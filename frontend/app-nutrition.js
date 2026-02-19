@@ -30,6 +30,48 @@
     var NUTRITION_BORDER = '#bbf7d0';
 
     // =========================================================================
+    // Generic modal helper (re-usable within nutrition module)
+    // =========================================================================
+
+    function _nutritionShowModal(title, renderFn) {
+        var existing = document.getElementById('nutrition-modal-overlay');
+        if (existing) existing.parentNode.removeChild(existing);
+
+        var overlay = document.createElement('div');
+        overlay.id = 'nutrition-modal-overlay';
+        overlay.className = 'modal active';
+        overlay.style.zIndex = '3100';
+
+        var content = document.createElement('div');
+        content.className = 'modal-content';
+        content.style.maxWidth = '600px';
+
+        var header = document.createElement('div');
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;';
+        header.innerHTML = '<h3 style="margin:0;color:#1e3a5f;font-size:18px;">' + _escapeHtml(title) + '</h3>' +
+            '<button type="button" onclick="document.getElementById(\'nutrition-modal-overlay\').classList.remove(\'active\')" ' +
+            'style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;padding:4px 8px;">✕</button>';
+        content.appendChild(header);
+
+        var body = document.createElement('div');
+        body.id = 'nutrition-modal-body';
+        content.appendChild(body);
+
+        overlay.appendChild(content);
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.classList.remove('active');
+        });
+        document.body.appendChild(overlay);
+
+        if (typeof renderFn === 'function') renderFn(body);
+    }
+
+    function _nutritionCloseModal() {
+        var overlay = document.getElementById('nutrition-modal-overlay');
+        if (overlay) overlay.classList.remove('active');
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
@@ -328,24 +370,143 @@
 
         if (orderBtn) {
             orderBtn.addEventListener('click', function () {
-                if (_fnExists('showToast')) {
-                    showToast('Funzione ordine prodotti in arrivo!', 'info');
+                var products = plan.products || [];
+                if (products.length === 0) {
+                    if (_fnExists('showToast')) showToast('Nessun prodotto nel piano nutrizionale.', 'warning');
+                    return;
                 }
+                _nutritionShowModal('Ordina Prodotti', function(body) {
+                    var h = [];
+                    h.push('<div style="background:#fef3c7;color:#92400e;font-size:12px;text-align:center;padding:6px 12px;border-radius:6px;margin-bottom:16px;">Pagina simulata — nessun acquisto reale verrà effettuato</div>');
+                    h.push('<div style="margin-bottom:16px;">');
+                    for (var i = 0; i < products.length; i++) {
+                        var p = products[i];
+                        h.push('<div style="display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:8px;">');
+                        h.push('<div>');
+                        h.push('<div style="font-weight:600;color:#1e3a5f;">' + _escapeHtml(p.name || 'Prodotto') + '</div>');
+                        if (p.daily_dose || p.dose) {
+                            h.push('<div style="font-size:12px;color:#888;">Dose: ' + _escapeHtml(p.daily_dose || p.dose) + '</div>');
+                        }
+                        h.push('</div>');
+                        h.push('<label style="font-size:13px;color:#555;">Qtà: <input type="number" value="1" min="1" max="10" style="width:50px;padding:4px;border:1px solid #d1d5db;border-radius:6px;text-align:center;"></label>');
+                        h.push('</div>');
+                    }
+                    h.push('</div>');
+                    h.push('<button type="button" style="width:100%;padding:12px;background:' + NUTRITION_COLOR + ';color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;opacity:0.6;cursor:not-allowed;" disabled>Conferma Ordine (simulato)</button>');
+                    h.push('<button type="button" onclick="document.getElementById(\'nutrition-modal-overlay\').classList.remove(\'active\')" ' +
+                        'style="width:100%;margin-top:8px;padding:10px;background:#e5e7eb;color:#333;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Chiudi</button>');
+                    body.innerHTML = h.join('');
+                });
             });
         }
 
         if (detailsBtn) {
             detailsBtn.addEventListener('click', function () {
-                if (_fnExists('showToast')) {
-                    showToast('Dettagli piano nutrizionale in arrivo!', 'info');
-                }
+                _nutritionShowModal('Dettagli Piano Nutrizionale', function(body) {
+                    var h = [];
+                    h.push('<div style="margin-bottom:16px;">');
+                    h.push('<div style="font-size:24px;font-weight:700;color:' + NUTRITION_COLOR + ';margin-bottom:4px;">' + _escapeHtml(String(plan.daily_kcal || 0)) + ' kcal/giorno</div>');
+                    if (plan.meals_per_day) {
+                        h.push('<div style="font-size:14px;color:#666;">Pasti consigliati: ' + _escapeHtml(String(plan.meals_per_day)) + ' al giorno</div>');
+                    }
+                    h.push('</div>');
+
+                    // Products with doses
+                    var products = plan.products || [];
+                    if (products.length > 0) {
+                        h.push('<div style="margin-bottom:16px;">');
+                        h.push('<div style="font-weight:600;font-size:14px;color:#1e3a5f;margin-bottom:8px;">Prodotti consigliati</div>');
+                        for (var i = 0; i < products.length; i++) {
+                            var p = products[i];
+                            h.push('<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">');
+                            h.push('<div style="font-weight:600;color:#1e3a5f;">' + _escapeHtml(p.name || 'Prodotto') + '</div>');
+                            if (p.daily_dose || p.dose) {
+                                h.push('<div style="font-size:13px;color:#555;margin-top:2px;">Dose: ' + _escapeHtml(p.daily_dose || p.dose) + '</div>');
+                            }
+                            if (p.notes) {
+                                h.push('<div style="font-size:12px;color:#888;margin-top:2px;font-style:italic;">' + _escapeHtml(p.notes) + '</div>');
+                            }
+                            h.push('</div>');
+                        }
+                        h.push('</div>');
+                    }
+
+                    // Supplements
+                    var supplements = plan.supplements || [];
+                    if (supplements.length > 0) {
+                        h.push('<div style="margin-bottom:16px;">');
+                        h.push('<div style="font-weight:600;font-size:14px;color:#1e3a5f;margin-bottom:8px;">Integratori</div>');
+                        for (var s = 0; s < supplements.length; s++) {
+                            var sup = supplements[s];
+                            h.push('<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:6px;">');
+                            h.push('<div style="font-weight:600;color:#1e3a5f;">' + _escapeHtml(sup.name || '') + '</div>');
+                            if (sup.dose) h.push('<div style="font-size:13px;color:#555;">Dose: ' + _escapeHtml(sup.dose) + '</div>');
+                            if (sup.reason) h.push('<div style="font-size:12px;color:#888;font-style:italic;">' + _escapeHtml(sup.reason) + '</div>');
+                            h.push('</div>');
+                        }
+                        h.push('</div>');
+                    }
+
+                    // Restrictions
+                    var restrictions = plan.restrictions || [];
+                    if (restrictions.length > 0) {
+                        h.push('<div style="margin-bottom:16px;">');
+                        h.push('<div style="font-weight:600;font-size:14px;color:#dc2626;margin-bottom:8px;">Restrizioni</div>');
+                        for (var r = 0; r < restrictions.length; r++) {
+                            h.push('<div style="font-size:13px;color:#555;padding:4px 0;">' + _escapeHtml(restrictions[r]) + '</div>');
+                        }
+                        h.push('</div>');
+                    }
+
+                    // Clinical notes
+                    if (plan.clinical_notes) {
+                        h.push('<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:16px;">');
+                        h.push('<div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:4px;">Note cliniche</div>');
+                        h.push('<div style="font-size:13px;color:#78350f;line-height:1.5;">' + _escapeHtml(plan.clinical_notes) + '</div>');
+                        h.push('</div>');
+                    }
+
+                    // Status
+                    var status = plan.validation_status || plan.status || 'pending';
+                    var statusLabel = status === 'validated' ? 'Validato dal veterinario' : status === 'rejected' ? 'Rifiutato' : 'In attesa di validazione';
+                    h.push('<div style="text-align:center;font-size:13px;font-weight:600;color:#666;padding:8px 0;">' + statusLabel + '</div>');
+
+                    h.push('<button type="button" onclick="document.getElementById(\'nutrition-modal-overlay\').classList.remove(\'active\')" ' +
+                        'style="width:100%;margin-top:12px;padding:10px;background:#e5e7eb;color:#333;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Chiudi</button>');
+
+                    body.innerHTML = h.join('');
+                });
             });
         }
 
         if (askVetBtn) {
             askVetBtn.addEventListener('click', function () {
-                if (_fnExists('showToast')) {
-                    showToast('Richiesta inviata al veterinario.', 'success');
+                // Navigate to communication page and pre-fill subject
+                if (typeof navigateToPage === 'function') {
+                    // Store context for communication pre-fill
+                    window._nutritionCommContext = {
+                        petId: petId,
+                        subject: 'Piano Nutrizionale',
+                        message: 'Vorrei discutere del piano nutrizionale' +
+                            (plan.daily_kcal ? ' (' + plan.daily_kcal + ' kcal/giorno)' : '') +
+                            ' per il mio pet. ' +
+                            (plan.clinical_notes ? 'Note: ' + plan.clinical_notes : '')
+                    };
+                    navigateToPage('communication');
+                    // Try to trigger new conversation form after navigation
+                    setTimeout(function() {
+                        var newBtn = document.querySelector('[data-comm-action="new"]');
+                        if (newBtn) newBtn.click();
+                        setTimeout(function() {
+                            var subjectEl = document.getElementById('comm-new-subject');
+                            var msgEl = document.getElementById('comm-new-first-message');
+                            if (subjectEl && window._nutritionCommContext) subjectEl.value = window._nutritionCommContext.subject;
+                            if (msgEl && window._nutritionCommContext) msgEl.value = window._nutritionCommContext.message;
+                            window._nutritionCommContext = null;
+                        }, 400);
+                    }, 300);
+                } else {
+                    if (_fnExists('showToast')) showToast('Naviga alla sezione Comunicazione per contattare il veterinario.', 'info');
                 }
             });
         }
@@ -397,7 +558,41 @@
             })
             .then(function (data) {
                 if (!data || !data.plan_id) {
-                    validationEl.innerHTML = '';
+                    // No pending plan — offer generate button
+                    validationEl.innerHTML = '<div class="nutrition-validation-card" style="text-align:center;">' +
+                        '<div class="nutrition-validation-title" style="color:#1e3a5f;font-size:14px;">Nessun piano nutrizionale pending</div>' +
+                        '<button type="button" class="nutrition-btn nutrition-btn--primary" id="nutrition-generate-btn-' + petId + '" style="margin-top:10px;">Genera piano AI</button>' +
+                        '</div>';
+                    var genBtn = document.getElementById('nutrition-generate-btn-' + petId);
+                    if (genBtn) {
+                        genBtn.addEventListener('click', function() {
+                            genBtn.disabled = true;
+                            genBtn.textContent = 'Generazione in corso...';
+                            var tenantId = (typeof getJwtTenantId === 'function') ? getJwtTenantId() : null;
+                            if (!tenantId) {
+                                if (_fnExists('showToast')) showToast('Tenant ID non disponibile', 'error');
+                                genBtn.disabled = false;
+                                genBtn.textContent = 'Genera piano AI';
+                                return;
+                            }
+                            fetchApi('/api/nutrition/plan/' + encodeURIComponent(String(petId)) + '/generate', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tenant_id: tenantId })
+                            }).then(function(r) {
+                                if (r.ok) return r.json();
+                                throw new Error('generate failed');
+                            }).then(function(result) {
+                                if (_fnExists('showToast')) showToast('Piano nutrizionale generato! In attesa di validazione.', 'success');
+                                // Re-render validation card with the new pending plan
+                                renderNutritionValidation(containerId, petId);
+                            }).catch(function(err) {
+                                if (_fnExists('showToast')) showToast('Errore nella generazione del piano.', 'error');
+                                genBtn.disabled = false;
+                                genBtn.textContent = 'Genera piano AI';
+                            });
+                        });
+                    }
                     return;
                 }
                 _renderValidationCard(validationEl, data, petId);
@@ -481,9 +676,71 @@
 
         if (modifyBtn) {
             modifyBtn.addEventListener('click', function () {
-                if (_fnExists('showToast')) {
-                    showToast('Funzione modifica piano in arrivo!', 'info');
-                }
+                var planData = plan.plan_data || plan;
+                var dailyKcal = planData.daily_kcal || plan.daily_kcal || '';
+                var mealsPerDay = planData.meals_per_day || plan.meals_per_day || 2;
+                var clinicalNotes = planData.clinical_notes || plan.clinical_notes || '';
+
+                _nutritionShowModal('Modifica Piano Nutrizionale', function(body) {
+                    var h = [];
+                    h.push('<div style="margin-bottom:14px;">');
+                    h.push('<label style="font-weight:600;font-size:13px;color:#1e3a5f;display:block;margin-bottom:4px;">Kcal giornaliere</label>');
+                    h.push('<input type="number" id="nut-edit-kcal" value="' + _escapeHtml(String(dailyKcal)) + '" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">');
+                    h.push('</div>');
+
+                    h.push('<div style="margin-bottom:14px;">');
+                    h.push('<label style="font-weight:600;font-size:13px;color:#1e3a5f;display:block;margin-bottom:4px;">Pasti al giorno</label>');
+                    h.push('<input type="number" id="nut-edit-meals" value="' + _escapeHtml(String(mealsPerDay)) + '" min="1" max="6" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">');
+                    h.push('</div>');
+
+                    h.push('<div style="margin-bottom:14px;">');
+                    h.push('<label style="font-weight:600;font-size:13px;color:#1e3a5f;display:block;margin-bottom:4px;">Note cliniche</label>');
+                    h.push('<textarea id="nut-edit-notes" rows="4" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;resize:vertical;">' + _escapeHtml(clinicalNotes) + '</textarea>');
+                    h.push('</div>');
+
+                    h.push('<div style="display:flex;gap:8px;">');
+                    h.push('<button type="button" id="nut-edit-save" class="nutrition-btn nutrition-btn--primary" style="flex:1;padding:10px;">Salva modifiche</button>');
+                    h.push('<button type="button" onclick="document.getElementById(\'nutrition-modal-overlay\').classList.remove(\'active\')" class="nutrition-btn nutrition-btn--outline" style="flex:1;padding:10px;">Annulla</button>');
+                    h.push('</div>');
+
+                    body.innerHTML = h.join('');
+
+                    var saveBtn = document.getElementById('nut-edit-save');
+                    if (saveBtn) {
+                        saveBtn.addEventListener('click', function() {
+                            saveBtn.disabled = true;
+                            saveBtn.textContent = 'Salvataggio...';
+                            var updatedData = Object.assign({}, planData, {
+                                daily_kcal: Number(document.getElementById('nut-edit-kcal').value) || 0,
+                                meals_per_day: Number(document.getElementById('nut-edit-meals').value) || 2,
+                                clinical_notes: (document.getElementById('nut-edit-notes').value || '').trim(),
+                            });
+                            fetchApi('/api/nutrition/plan/' + encodeURIComponent(String(planId)), {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ plan_data: updatedData })
+                            }).then(function(r) {
+                                if (r.ok) {
+                                    if (_fnExists('showToast')) showToast('Piano nutrizionale aggiornato.', 'success');
+                                    _nutritionCloseModal();
+                                    // Re-render the validation card
+                                    if (typeof renderNutritionValidation === 'function' && el && el.parentNode) {
+                                        var parentId = el.parentNode.id || (el.closest && el.closest('[id]') ? el.closest('[id]').id : null);
+                                        if (parentId) renderNutritionValidation(parentId, petId);
+                                    }
+                                } else {
+                                    if (_fnExists('showToast')) showToast('Errore nel salvataggio.', 'error');
+                                    saveBtn.disabled = false;
+                                    saveBtn.textContent = 'Salva modifiche';
+                                }
+                            }).catch(function() {
+                                if (_fnExists('showToast')) showToast('Errore di rete.', 'error');
+                                saveBtn.disabled = false;
+                                saveBtn.textContent = 'Salva modifiche';
+                            });
+                        });
+                    }
+                });
             });
         }
 
@@ -516,5 +773,7 @@
 
     global.renderNutritionSlot       = renderNutritionSlot;
     global.renderNutritionValidation = renderNutritionValidation;
+    global._nutritionShowModal       = _nutritionShowModal;
+    global._nutritionCloseModal      = _nutritionCloseModal;
 
 })(typeof window !== 'undefined' ? window : this);

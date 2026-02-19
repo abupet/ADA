@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.23.0
+
+### Feature: UX completa Nutrizione & Assicurazione
+- **Backend**: 3 nuovi endpoint — `GET /api/insurance/plans` (piani assicurativi con pricing personalizzato), `POST /api/insurance/policy/:policyId/activate` (attivazione polizza), `GET /api/nutrition/products` (prodotti nutrizione per tenant)
+- **Nutrizione (proprietario)**: bottone "Dettagli" apre modal con prodotti, integratori, restrizioni, note cliniche e status validazione. "Ordina prodotti" apre modal simulato con lista prodotti e quantità. "Ne parlo col vet" naviga alla sezione Comunicazione con form precompilato.
+- **Nutrizione (veterinario)**: se non c'è piano pending, compare bottone "Genera piano AI" che chiama l'endpoint generate. "Modifica" apre modal con campi kcal, pasti/giorno e note cliniche editabili.
+- **Assicurazione (senza polizza)**: "Richiedi preventivo" apre modal con profilo rischio, lista piani Santevet con prezzi personalizzati, selezione piano, conferma preventivo e attivazione polizza.
+- **Assicurazione (con polizza attiva)**: "Dettagli" apre modal con dati copertura completi (rimborso %, massimale, franchigia, prevenzione, servizi coperti, add-on) e accesso allo storico rimborsi.
+- **SOAP → Claim**: dopo salvataggio referto, se il pet è assicurato compare modal per richiedere rimborso con importo visita e riepilogo SOAP.
+- **Files**: `backend/src/insurance.routes.js`, `backend/src/nutrition.routes.js`, `frontend/app-nutrition.js`, `frontend/app-insurance.js`, `frontend/app-soap.js`, `frontend/config.js`, `frontend/sw.js`
+
 ## v8.22.53
 
 ### Fix: Navigate to parent conversation after call ends
