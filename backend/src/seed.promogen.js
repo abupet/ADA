@@ -803,6 +803,16 @@ async function importProductsToCatalog(pool, products, options) {
       );
       deleted = delResult.rowCount || 0;
       console.log(`importProductsToCatalog: replace mode — deleted ${deleted} seed items for tenant ${tenantId}`);
+
+      // Invalidate stale AI recommendation matches (old promo_item_ids no longer exist)
+      try {
+        const invalidated = await pool.query(
+          "UPDATE pets SET ai_recommendation_matches = NULL, ai_recommendation_matches_generated_at = NULL WHERE ai_recommendation_matches IS NOT NULL"
+        );
+        console.log(`importProductsToCatalog: invalidated ai_recommendation_matches on ${invalidated.rowCount || 0} pets`);
+      } catch (invalErr) {
+        console.warn("importProductsToCatalog: invalidate ai matches error:", invalErr.message);
+      }
     } catch (delErr) {
       console.warn("importProductsToCatalog: replace delete error:", delErr.message);
     }

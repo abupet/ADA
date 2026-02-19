@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.40
+
+### Fix: Prodotto "Cardiac + Renal" mostrato sempre — pulizia match fantasma
+- **Root cause**: quando il seed viene rieseguito in modalità `replace`, crea nuovi `promo_item_id` (`seed-<randomUUID>`) ma non invalida `ai_recommendation_matches` sui pet → gli ID cachati puntano a prodotti cancellati → tutti i lookup falliscono → fallback all'algoritmo standard → "Cardiac + Renal" (priority 10) vince sempre
+- **Fix 1 (seed.promogen.js)**: dopo il `DELETE FROM promo_items` in modalità replace, esegue `UPDATE pets SET ai_recommendation_matches = NULL` per invalidare i match stantii
+- **Fix 2a (promo.routes.js)**: se TUTTI i match cachati sono fantasma (nessun `promo_item_id` trovato in `promo_items`), pulisce automaticamente `ai_recommendation_matches` sul pet per evitare fallback ripetuti
+- **Fix 2b (eligibility.service.js)**: stessa auto-pulizia nel path AI di `selectPromo` con log di warning
+- **Fix 3 (eligibility.service.js)**: aggiunto filtro `!item.description && !item.extended_description` nell'algoritmo standard, allineato con il filtro già presente in `_runAnalysisForPet` — prodotti senza descrizione non vengono più selezionati come fallback
+
 ## v8.22.39
 
 ### Fix: Banner promo mostra sempre "Cardiac + Renal" invece dei prodotti AI
