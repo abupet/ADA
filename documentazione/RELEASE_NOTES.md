@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.50
+
+### Fix: Test Chiamata non creava conversazione e non trascriveva audio
+- **Root cause**: `startTestCall()` usava un `fakeConvId` inesistente nel DB (`'test_call_' + Date.now()`). Il backend rifiutava i chunk audio con `not_participant` perche' la conversazione non esisteva. Nessuna trascrizione veniva eseguita.
+- **Fix**: ora `_commInitiateDirectCall` crea prima una conversazione reale via `POST /api/communication/conversations`, poi una call conversation dedicata via `POST /api/communication/conversations/call`. Entrambi gli ID vengono passati a `startTestCall()` che li usa per inviare i chunk audio al backend.
+- **Cleanup**: a fine test call, la call conversation viene chiusa via `POST /api/communication/conversations/:id/end-call` con la durata corretta
+- **Files**: `frontend/app-webrtc.js` (parametro `callConvId` in `startTestCall`, reset `_webrtcCallConvId`), `frontend/app-communication.js` (creazione conversazioni reali per test call)
+
 ## v8.22.49
 
 ### Feature: Trascrizione chiamate in conversazioni dedicate + Responsive Messages
