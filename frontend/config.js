@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.38';
-const ADA_RELEASE_NOTES = 'Fix: "Analisi Raccomandazione" now loads pet description read-only from DB instead of regenerating, preserving Bulk AI cache.';
+const ADA_VERSION = '8.22.39';
+const ADA_RELEASE_NOTES = 'Fix: Banner promo now cycles through all cached AI matches instead of falling back to "Cardiac + Renal" when a match ID is phantom.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

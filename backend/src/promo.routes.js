@@ -552,20 +552,23 @@ REGOLE:
               const dismissed = [];
               const eligible = matches.filter(m => m.promo_item_id && !dismissed.includes(m.promo_item_id));
               if (eligible.length > 0) {
+                // Try matches in rotation order — if one doesn't exist in promo_items, try next
                 const rotationIndex = parseInt(req.query.rotationIndex, 10) || 0;
-                const pick = eligible[rotationIndex % eligible.length];
-
-                // Fetch full promo item details for the selected match
                 let promoItem = null;
-                try {
-                  const itemResult = await pool.query(
-                    `SELECT promo_item_id, tenant_id, name, category, description, extended_description,
-                            image_url, product_url, service_type, status
-                     FROM promo_items WHERE promo_item_id = $1 AND status = 'published' LIMIT 1`,
-                    [pick.promo_item_id]
-                  );
-                  promoItem = itemResult.rows[0] || null;
-                } catch (_e) {}
+                let pick = null;
+                for (let i = 0; i < eligible.length; i++) {
+                  pick = eligible[(rotationIndex + i) % eligible.length];
+                  try {
+                    const itemResult = await pool.query(
+                      `SELECT promo_item_id, tenant_id, name, category, description, extended_description,
+                              image_url, product_url, service_type, status
+                       FROM promo_items WHERE promo_item_id = $1 AND status = 'published' LIMIT 1`,
+                      [pick.promo_item_id]
+                    );
+                    promoItem = itemResult.rows[0] || null;
+                    if (promoItem) break;
+                  } catch (_e) {}
+                }
 
                 if (promoItem) {
                   const effectiveServiceType = Array.isArray(promoItem.service_type) && promoItem.service_type.includes("promo")
