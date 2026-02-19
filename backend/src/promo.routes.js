@@ -537,9 +537,12 @@ REGOLE:
 
       // --- Full pipeline (when DB + services available) ---
       const force = req.query.force === '1';
+      console.log('[PROMO-DIAG] force:', force, 'pool:', !!pool);
 
       // --- Check for cached AI recommendation matches first ---
-      if (pool && !force) {
+      // NOTE: AI cached matches are always tried, even with force=1.
+      // force=1 only relaxes filters on the standard algorithm fallback.
+      if (pool) {
         try {
           console.log('[PROMO-DIAG] cached path entered for petId:', petId);
           const matchesResult = await pool.query(
