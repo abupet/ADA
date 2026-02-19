@@ -161,7 +161,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.23.0';
+const ADA_VERSION = '8.23.1';
 const ADA_RELEASE_NOTES = 'Fix: Service worker cachava JS vecchi — ADA_SW_VERSION aggiornato, cache invalidata.';
 
 // ============================================

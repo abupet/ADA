@@ -1084,6 +1084,26 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
     }
   });
 
+  // POST /api/communication/conversations/:id/calls/:callId/reject
+  // Chiamato dal Service Worker quando l'utente rifiuta dalla notifica push
+  router.post("/api/communication/conversations/:id/calls/:callId/reject", async (req, res) => {
+    try {
+      const { id: conversationId, callId } = req.params;
+      // Emetti l'evento di rifiuto via WebSocket (se il server ha il riferimento)
+      const io = req.app.get('io');
+      if (io) {
+        const commNs = io.of('/communication');
+        commNs.to('conv:' + conversationId).emit('call_rejected', {
+          conversationId, callId, reason: 'declined_from_notification'
+        });
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[Push] Call reject error:', e.message);
+      res.json({ ok: true }); // Non-blocking
+    }
+  });
+
   return router;
 }
 
