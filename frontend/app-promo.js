@@ -1106,7 +1106,29 @@ async function _showPromoAnalysis(productId, petId, productDescOverride) {
     if (typeof _aiPetDescCache !== 'undefined' && _aiPetDescCache[petId]) {
         petDesc = _aiPetDescCache[petId].description;
     }
+    if (!petDesc) {
+        // Load existing description from DB (read-only, no regeneration)
+        try {
+            var petResp = await fetchApi('/api/pets/' + petId);
+            if (petResp && petResp.ok) {
+                var petData = await petResp.json();
+                if (petData.ai_description) {
+                    petDesc = petData.ai_description;
+                    // Populate in-memory cache for next time
+                    if (typeof _aiPetDescCache !== 'undefined') {
+                        _aiPetDescCache[petId] = {
+                            description: petData.ai_description,
+                            sourcesHash: petData.ai_description_sources_hash || '',
+                            generatedAt: petData.ai_description_generated_at || new Date().toISOString(),
+                            sourcesUsed: []
+                        };
+                    }
+                }
+            }
+        } catch (_e) {}
+    }
     if (!petDesc && typeof generateAiPetDescription === 'function') {
+        // Only generate if truly missing from DB
         var result = await generateAiPetDescription(petId);
         petDesc = result ? result.description : null;
     }
