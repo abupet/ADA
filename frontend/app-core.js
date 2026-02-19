@@ -288,7 +288,11 @@ function getProductImageUrl(item) {
     if (item.image_cached_at || item.image_cached_mime) {
         return baseUrl + '/api/promo-items/' + (item.promo_item_id || item.id) + '/image';
     }
-    if (item.image_url) return item.image_url;
+    if (item.image_url) {
+        // Prepend API base for relative backend paths (e.g. /api/seed-assets/...)
+        if (item.image_url.charAt(0) === '/') return baseUrl + item.image_url;
+        return item.image_url;
+    }
     return baseUrl + _randomProductPlaceholderUrl();
 }
 
