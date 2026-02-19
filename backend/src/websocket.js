@@ -247,10 +247,61 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         socket.on("initiate_call", async ({ conversationId, callType, callId }) => {
             if (!conversationId || !callId) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
+
+            const pool = getPool();
+            let callConversationId = null;
+
+            // Create a dedicated call conversation
+            try {
+                const parentQ = await pool.query(
+                    "SELECT pet_id, owner_user_id, vet_user_id FROM conversations WHERE conversation_id = $1 LIMIT 1",
+                    [conversationId]
+                );
+                if (parentQ.rows[0]) {
+                    const p = parentQ.rows[0];
+                    callConversationId = crypto.randomUUID();
+                    const callLabel = callType === "video_call" ? "Videochiamata" : "Chiamata vocale";
+                    const timeStr = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+                    await pool.query(
+                        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, " +
+                        "type, status, subject, recipient_type, parent_conversation_id, call_id) " +
+                        "VALUES ($1, $2, $3, $4, $5, 'active', $6, 'human', $7, $8)",
+                        [callConversationId, p.pet_id, p.owner_user_id, p.vet_user_id,
+                         callType || "voice_call", callLabel + " \u2014 " + timeStr, conversationId, callId]
+                    );
+
+                    // System message in original chat
+                    const sysMsgId = crypto.randomUUID();
+                    const sysIcon = callType === "video_call" ? "\uD83C\uDFA5" : "\uD83D\uDCDE";
+                    await pool.query(
+                        "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, delivery_status, metadata) " +
+                        "VALUES ($1, $2, 'system', 'system', $3, 'delivered', $4)",
+                        [sysMsgId, conversationId, sysIcon + " " + callLabel + " in corso...",
+                         JSON.stringify({ call_conversation_id: callConversationId, call_type: callType })]
+                    );
+
+                    // Emit system message to chat
+                    commNs.to("conv:" + conversationId).emit("new_message", {
+                        message_id: sysMsgId, conversation_id: conversationId,
+                        sender_id: "system", type: "system",
+                        content: sysIcon + " " + callLabel + " in corso...",
+                        metadata: { call_conversation_id: callConversationId },
+                        created_at: new Date().toISOString()
+                    });
+
+                    // Auto-join call conversation room
+                    socket.join("conv:" + callConversationId);
+                }
+            } catch (e) {
+                console.error("[WS] Error creating call conversation:", e.message);
+            }
+
             const recipientId = await getConversationRecipient(userId, conversationId);
             const payload = {
                 conversationId, callType: callType || "voice_call", callId,
-                callerId: userId, callerName: socket.displayName || socket.userEmail || userId
+                callerId: userId, callerName: socket.displayName || socket.userEmail || userId,
+                callConversationId: callConversationId
             };
             // Emit to conv room (for participants already viewing the conversation)
             socket.to(`conv:${conversationId}`).emit("incoming_call", payload);
@@ -271,7 +322,19 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         socket.on("accept_call", async ({ conversationId, callId }) => {
             if (!conversationId || !callId) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
-            const payload = { conversationId, callId, acceptedBy: userId };
+            // Look up callConversationId for this call
+            let callConversationId = null;
+            try {
+                const pool = getPool();
+                const q = await pool.query(
+                    "SELECT conversation_id FROM conversations WHERE call_id = $1 LIMIT 1", [callId]
+                );
+                if (q.rows[0]) {
+                    callConversationId = q.rows[0].conversation_id;
+                    socket.join("conv:" + callConversationId);
+                }
+            } catch (_) {}
+            const payload = { conversationId, callId, acceptedBy: userId, callConversationId };
             socket.to(`conv:${conversationId}`).emit("call_accepted", payload);
             // Also emit to caller's user room for reliability (conv room may miss events)
             const callerId = await getConversationRecipient(userId, conversationId);
@@ -309,9 +372,48 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
             const recipientId = await getConversationRecipient(userId, conversationId);
             if (recipientId) commNs.to(`user:${recipientId}`).emit("webrtc_ice", payload);
         });
-        socket.on("end_call", async ({ conversationId, callId }) => {
+        socket.on("end_call", async ({ conversationId, callId, callConversationId, durationSeconds }) => {
             if (!conversationId) return;
             if (!(await autoJoinConvRoom(socket, conversationId))) return;
+
+            // Close the call conversation if it exists
+            if (callConversationId || callId) {
+                try {
+                    const pool = getPool();
+                    let callConvId = callConversationId;
+                    if (!callConvId && callId) {
+                        const q = await pool.query(
+                            "SELECT conversation_id FROM conversations WHERE call_id = $1 LIMIT 1", [callId]
+                        );
+                        if (q.rows[0]) callConvId = q.rows[0].conversation_id;
+                    }
+                    if (callConvId) {
+                        await pool.query(
+                            "UPDATE conversations SET status = 'closed', updated_at = NOW() WHERE conversation_id = $1",
+                            [callConvId]
+                        );
+                        // Update system message in parent chat with duration
+                        const dur = durationSeconds || 0;
+                        const durStr = dur > 0
+                            ? " \u2014 Durata: " + Math.floor(dur / 60) + ":" + String(dur % 60).padStart(2, "0")
+                            : "";
+                        const convQ = await pool.query(
+                            "SELECT type FROM conversations WHERE conversation_id = $1", [callConvId]
+                        );
+                        const callType = convQ.rows[0] ? convQ.rows[0].type : "voice_call";
+                        const sysIcon = callType === "video_call" ? "\uD83C\uDFA5" : "\uD83D\uDCDE";
+                        const callLabel = callType === "video_call" ? "Videochiamata" : "Chiamata vocale";
+                        await pool.query(
+                            "UPDATE comm_messages SET content = $1 " +
+                            "WHERE conversation_id = $2 AND type = 'system' AND metadata->>'call_conversation_id' = $3",
+                            [sysIcon + " " + callLabel + durStr, conversationId, callConvId]
+                        );
+                    }
+                } catch (e) {
+                    console.error("[WS] Error closing call conversation:", e.message);
+                }
+            }
+
             socket.to(`conv:${conversationId}`).emit("call_ended", { conversationId, callId, endedBy: userId });
             // Also emit to recipient's user room to dismiss pending incoming notification
             const recipientId = await getConversationRecipient(userId, conversationId);
@@ -334,7 +436,7 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
         });
 
         // Call audio chunk transcription (server-side Whisper)
-        socket.on("call_audio_chunk", async ({ conversationId, callId, source, audioData, mimeType, timestamp }) => {
+        socket.on("call_audio_chunk", async ({ conversationId, callId, callConversationId, source, audioData, mimeType, timestamp }) => {
             if (!conversationId || !audioData) {
                 socket.emit("transcription_status", { status: "error", reason: "missing data" });
                 return;
@@ -354,6 +456,22 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
 
             try {
                 const pool = getPool();
+
+                // Determine transcription target conversation (call conv if available)
+                let txConvId = callConversationId || conversationId;
+                if (!callConversationId && callId) {
+                    try {
+                        const callQ = await pool.query(
+                            "SELECT conversation_id FROM conversations WHERE call_id = $1 LIMIT 1", [callId]
+                        );
+                        if (callQ.rows[0]) txConvId = callQ.rows[0].conversation_id;
+                    } catch (_) { /* fallback to original conversationId */ }
+                }
+                // Join call conversation room if different
+                if (txConvId !== conversationId) {
+                    socket.join("conv:" + txConvId);
+                }
+
                 let speakerId = userId;
                 if (source === "remote") {
                     const { rows } = await pool.query(
@@ -383,7 +501,7 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                     "SELECT message_id, content, sender_id FROM comm_messages " +
                     "WHERE conversation_id = $1 AND type = 'transcription' AND deleted_at IS NULL " +
                     "ORDER BY created_at DESC LIMIT 1",
-                    [conversationId]
+                    [txConvId]
                 );
 
                 if (lastMsg.rows[0] && lastMsg.rows[0].sender_id === speakerId) {
@@ -391,9 +509,9 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                         "UPDATE comm_messages SET content = content || ' ' || $1, updated_at = NOW() WHERE message_id = $2",
                         [transcription.trim(), lastMsg.rows[0].message_id]
                     );
-                    commNs.to("conv:" + conversationId).emit("message_updated", {
+                    commNs.to("conv:" + txConvId).emit("message_updated", {
                         message_id: lastMsg.rows[0].message_id,
-                        conversation_id: conversationId,
+                        conversation_id: txConvId,
                         sender_id: speakerId,
                         type: "transcription",
                         content: lastMsg.rows[0].content + " " + transcription.trim(),
@@ -404,11 +522,11 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                     await pool.query(
                         "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, delivery_status) " +
                         "VALUES ($1, $2, $3, 'transcription', $4, 'delivered')",
-                        [msgId, conversationId, speakerId, transcription.trim()]
+                        [msgId, txConvId, speakerId, transcription.trim()]
                     );
-                    commNs.to("conv:" + conversationId).emit("new_message", {
+                    commNs.to("conv:" + txConvId).emit("new_message", {
                         message_id: msgId,
-                        conversation_id: conversationId,
+                        conversation_id: txConvId,
                         sender_id: speakerId,
                         type: "transcription",
                         content: transcription.trim(),
