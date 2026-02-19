@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.52
+
+### Fix: Call conversations appear as separate items in conversation list
+- **Root cause**: `GET /api/communication/conversations` did not filter out child call conversations (those with `parent_conversation_id IS NOT NULL`), causing users to see two entries — the parent chat and the call conversation — instead of one.
+- **Backend fix** (`communication.routes.js`): added `AND c.parent_conversation_id IS NULL` filter to the conversations list query, hiding child call conversations from the list. Also added `parent_conversation_id` to the messages endpoint response so the frontend can render navigation buttons.
+- **Frontend fix** (`app-communication.js`): system messages with `call_conversation_id` in metadata now show a "Vedi trascrizione" link to open the call conversation. Call conversation headers show a "Torna alla chat" button to navigate back to the parent conversation.
+- **Files**: `backend/src/communication.routes.js`, `frontend/app-communication.js`, `frontend/config.js`, `frontend/sw.js`
+
 ## v8.22.51
 
 ### Fix: Late transcription chunks go to parent conversation instead of call conversation

@@ -623,6 +623,9 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         // No pet_id: standard list — only user's own conversations
         query += "(c.owner_user_id = $1 OR c.vet_user_id = $1)";
       }
+      // Exclude child call conversations from list (they are accessed via parent)
+      query += " AND c.parent_conversation_id IS NULL";
+
       if (status) {
         const allowedStatuses = ["active", "closed", "archived"];
         if (!allowedStatuses.includes(status)) return res.status(400).json({ error: "invalid_status" });
@@ -738,6 +741,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         subject: conversation.subject,
         recipient_type: conversation.recipient_type,
         type: conversation.type || 'chat',
+        parent_conversation_id: conversation.parent_conversation_id || null,
         referral_form: parsedReferralForm,
         pet_name: petName,
         pet_species: petSpecies,
