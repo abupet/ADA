@@ -100,9 +100,11 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
           [petId]
         );
         const aiMatches = matchesResult.rows[0]?.ai_recommendation_matches;
+        console.log('[PROMO-DIAG] selectPromo aiMatches found:', aiMatches?.length || 0);
         if (aiMatches && Array.isArray(aiMatches) && aiMatches.length > 0) {
           // Get consent
           const aiConsent = await getEffectiveConsent(pool, ownerUserId);
+          console.log('[PROMO-DIAG] marketing allowed:', isMarketingAllowed(aiConsent, null));
           if (isMarketingAllowed(aiConsent, null)) {
             // Filter matches through consent, vet flags, and freq cap
             const validMatches = [];
@@ -164,6 +166,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
               } catch (_e) { continue; }
             }
 
+            console.log('[PROMO-DIAG] validMatches count:', validMatches.length);
             if (validMatches.length > 0) {
               // Deterministic selection: hash(petId + date) instead of random
               const dateStr = new Date().toISOString().split("T")[0];
@@ -520,6 +523,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
         utmParams
       : null;
 
+    console.log('[PROMO-DIAG] using STANDARD algorithm, selected:', selected.name, 'id:', selected.promo_item_id, 'candidates:', afterCapping.length);
     serverLog('INFO', 'ELIGIBILITY', 'after selectPromo', {petId, candidatesFound: afterCapping.length, selectedItemId: selected.promo_item_id, matchScore: selected._matchScore});
 
     return {
