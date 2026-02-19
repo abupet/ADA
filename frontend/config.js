@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.42';
-const ADA_RELEASE_NOTES = 'Fix: Promos non visibili in pet_profile/home_feed — food_clinical aggiunto ai contesti, priority Cardiac+Renal normalizzata.';
+const ADA_VERSION = '8.22.43';
+const ADA_RELEASE_NOTES = 'Fix: Promo mostra sempre Santevet Premium — filtro service_type in AI analysis e serving, rotation fix.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
