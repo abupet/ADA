@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.53
+
+### Fix: Navigate to parent conversation after call ends
+- **Root cause**: `endCall()` in `app-webrtc.js` removed the WebRTC overlay and reset all global variables (`_webrtcConvId = null`, `_webrtcCallConvId = null`) but did not navigate anywhere. After overlay removal, the user was left on the messages list instead of returning to the parent conversation from which the call was initiated.
+- **Fix**: save `_webrtcConvId` (the parent conversation ID) into a local variable before the global reset, then call `openConversation(parentConvId)` after cleanup. Applied to both real calls and test calls paths in `endCall()`.
+- **Files**: `frontend/app-webrtc.js`, `frontend/config.js`, `frontend/sw.js`
+
 ## v8.22.52
 
 ### Fix: Call conversations appear as separate items in conversation list
