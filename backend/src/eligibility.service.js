@@ -85,9 +85,10 @@ const HIGH_SENSITIVITY_CONTEXTS = ["post_visit", "post_vaccination"];
  * 6. Ranking: priority DESC -> match_score DESC -> updated_at DESC. LIMIT 1.
  * 7. Tie-break rotation: hash(petId + CURRENT_DATE) % count.
  */
-async function selectPromo(pool, { petId, ownerUserId, context, serviceType, force }) {
+async function selectPromo(pool, { petId, ownerUserId, context, serviceType, force, dismissed }) {
   try {
     const ctx = context || "home_feed";
+    const dismissedIds = Array.isArray(dismissed) ? dismissed : [];
     const rules = CONTEXT_RULES[ctx] || CONTEXT_RULES.home_feed;
     const effectiveServiceType = serviceType || (rules.service_types ? rules.service_types[0] : "promo");
 
@@ -107,6 +108,7 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
             const validMatches = [];
             for (const match of aiMatches) {
               if (!match.promo_item_id) continue;
+              if (dismissedIds.includes(match.promo_item_id)) continue;
 
               // Check vet flags
               try {
@@ -318,6 +320,9 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
     // 4. Filter candidates
     const filtered = [];
     for (const item of candidates) {
+      // Dismissed check
+      if (dismissedIds.includes(item.promo_item_id)) continue;
+
       // Brand consent check (skip when force=true)
       if (!force && !isMarketingAllowed(consent, item.tenant_id)) continue;
 

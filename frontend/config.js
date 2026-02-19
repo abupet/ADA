@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.40';
-const ADA_RELEASE_NOTES = 'Fix: Cardiac+Renal phantom IDs — seed invalidates stale AI matches, auto-cleanup on read, description filter aligned.';
+const ADA_VERSION = '8.22.41';
+const ADA_RELEASE_NOTES = 'Fix: "Non mi interessa" blocca tutte le promo — dismissed IDs passati al backend, localStorage scoped per utente.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

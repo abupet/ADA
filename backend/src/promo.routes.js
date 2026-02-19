@@ -525,6 +525,10 @@ REGOLE:
       const ownerUserId = req.user?.sub;
       const petId = req.query.petId;
       const context = req.query.context || "home_feed";
+      const dismissedParam = req.query.dismissed || '';
+      const dismissed = dismissedParam
+        ? dismissedParam.split(',').filter(id => isValidUuid(id))
+        : [];
 
       if (!petId || !isValidUuid(petId)) {
         return res.status(400).json({ error: "invalid_pet_id" });
@@ -549,7 +553,6 @@ REGOLE:
             }
             if (Array.isArray(matches) && matches.length > 0) {
               // Pick match using round-robin rotation index from frontend
-              const dismissed = [];
               const eligible = matches.filter(m => m.promo_item_id && !dismissed.includes(m.promo_item_id));
               if (eligible.length > 0) {
                 // Try matches in rotation order — if one doesn't exist in promo_items, try next
@@ -624,6 +627,7 @@ REGOLE:
             ownerUserId,
             context,
             force,
+            dismissed,
           });
 
           if (!promoResult) {
