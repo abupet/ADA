@@ -467,6 +467,22 @@ function initWebSocket(httpServer, jwtSecret, corsOrigin) {
                         if (callQ.rows[0]) txConvId = callQ.rows[0].conversation_id;
                     } catch (_) { /* fallback to original conversationId */ }
                 }
+                // Fallback: if txConvId is still the parent (no callConversationId nor callId),
+                // look up the most recent call conversation from parent
+                if (txConvId === conversationId) {
+                    try {
+                        const parentQ = await pool.query(
+                            "SELECT conversation_id FROM conversations " +
+                            "WHERE parent_conversation_id = $1 AND status IN ('active','closed') " +
+                            "ORDER BY created_at DESC LIMIT 1",
+                            [conversationId]
+                        );
+                        if (parentQ.rows[0]) {
+                            txConvId = parentQ.rows[0].conversation_id;
+                            console.log("[WS] call_audio_chunk: resolved call conv from parent:", txConvId);
+                        }
+                    } catch (_) { /* keep original conversationId */ }
+                }
                 // Join call conversation room if different
                 if (txConvId !== conversationId) {
                     socket.join("conv:" + txConvId);

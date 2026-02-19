@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v8.22.51
+
+### Fix: Late transcription chunks go to parent conversation instead of call conversation
+- **Root cause**: race condition in `endCall()` — `recorder.stop()` triggers async `onstop` callback, but `endCall()` immediately resets `_webrtcCallConvId` and `_webrtcCallId` to `null`. When `onstop` fires, the chunk is sent with `callConversationId: null`, causing the backend to write the transcription to the parent conversation instead of the dedicated call conversation.
+- **Frontend fix** (`app-webrtc.js`): snapshot `_webrtcCallConvId` and `_webrtcCallId` in closures at recorder creation time, so async `onstop` callbacks always use the correct IDs even after `endCall()` resets globals. Applied to both real calls (`createAndStart`) and test calls (`createAndStartRecorder`, `_webrtcTestSendChunkForTranscription`).
+- **Backend safety net** (`websocket.js`): if `call_audio_chunk` arrives with no `callConversationId` and no `callId`, the backend now looks up the most recent call conversation from the parent conversation as a fallback.
+- **Files**: `frontend/app-webrtc.js`, `backend/src/websocket.js`, `frontend/config.js`, `frontend/sw.js`
+
 ## v8.22.50
 
 ### Fix: Test Chiamata non creava conversazione e non trascriveva audio

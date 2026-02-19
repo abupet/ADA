@@ -1,4 +1,4 @@
-// app-webrtc.js v1.11
+// app-webrtc.js v1.12
 // ADA WebRTC Voice & Video Call System — veterinario <-> proprietario
 //
 // Globals expected: window._commSocket, window.ADA_API_BASE_URL, showToast(), _commGetCurrentUserId()
@@ -408,6 +408,8 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
     }
 
     function createAndStart() {
+        var callConvIdSnap = _webrtcCallConvId;  // snapshot before async onstop
+        var callIdSnap = _webrtcCallId;           // snapshot before async onstop
         var recorder;
         try {
             recorder = new MediaRecorder(recorderStream, { mimeType: mimeType });
@@ -427,7 +429,7 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
             if (parts.length > 0) {
                 var blob = new Blob(parts, { type: mimeType });
                 console.log('[WebRTC] Chunk ready: ' + parts.length + ' parts, ' + blob.size + 'B');
-                _webrtcSendAudioChunk(blob, source, conversationId);
+                _webrtcSendAudioChunk(blob, source, conversationId, callConvIdSnap, callIdSnap);
             } else {
                 console.warn('[WebRTC] Recorder stopped but no data captured');
             }
@@ -471,17 +473,19 @@ function _webrtcStartAudioCapture(source, stream, conversationId) {
     }, _webrtcChunkIntervalMs);
 }
 
-function _webrtcSendAudioChunk(blob, source, conversationId) {
+function _webrtcSendAudioChunk(blob, source, conversationId, callConvIdOverride, callIdOverride) {
+    var callConvId = callConvIdOverride !== undefined ? callConvIdOverride : _webrtcCallConvId;
+    var callId = callIdOverride !== undefined ? callIdOverride : _webrtcCallId;
     var reader = new FileReader();
     reader.onload = function() {
         var base64 = reader.result.split(',')[1];
         var socket = window._commSocket;
         if (socket) {
-            console.log('[WebRTC] Sending audio chunk: source=' + source + ', size=' + blob.size + 'B');
+            console.log('[WebRTC] Sending audio chunk: source=' + source + ', size=' + blob.size + 'B, callConvId=' + callConvId);
             socket.emit('call_audio_chunk', {
                 conversationId: conversationId,
-                callId: _webrtcCallId,
-                callConversationId: _webrtcCallConvId,
+                callId: callId,
+                callConversationId: callConvId,
                 source: source,
                 audioData: base64,
                 mimeType: blob.type,
@@ -700,6 +704,9 @@ function _webrtcTestStartTranscriptionCapture() {
         ? 'audio/webm;codecs=opus' : 'audio/webm';
 
     function createAndStartRecorder() {
+        var callConvIdSnap = _webrtcCallConvId;  // snapshot before async onstop
+        var callIdSnap = _webrtcCallId;           // snapshot before async onstop
+        var convIdSnap = _webrtcConvId;           // snapshot before async onstop
         var recorder;
         try {
             recorder = new MediaRecorder(_webrtcTestStream, { mimeType: mimeType });
@@ -712,7 +719,7 @@ function _webrtcTestStartTranscriptionCapture() {
         recorder.onstop = function() {
             if (parts.length > 0 && _webrtcTestMode === 'talk') {
                 var blob = new Blob(parts, { type: mimeType });
-                _webrtcTestSendChunkForTranscription(blob, 'local');
+                _webrtcTestSendChunkForTranscription(blob, 'local', callConvIdSnap, callIdSnap, convIdSnap);
             }
         };
         try { recorder.start(); } catch(e) { return null; }
@@ -731,17 +738,20 @@ function _webrtcTestStartTranscriptionCapture() {
     }, 15000);
 }
 
-function _webrtcTestSendChunkForTranscription(blob, source) {
+function _webrtcTestSendChunkForTranscription(blob, source, callConvIdOverride, callIdOverride, convIdOverride) {
+    var callConvId = callConvIdOverride !== undefined ? callConvIdOverride : _webrtcCallConvId;
+    var callId = callIdOverride !== undefined ? callIdOverride : _webrtcCallId;
+    var convId = convIdOverride !== undefined ? convIdOverride : _webrtcConvId;
     var reader = new FileReader();
     reader.onload = function() {
         var base64 = reader.result.split(',')[1];
         var socket = window._commSocket;
-        if (socket && _webrtcConvId) {
-            console.log('[TestCall] Sending transcription chunk: source=' + source + ', size=' + blob.size + 'B');
+        if (socket && convId) {
+            console.log('[TestCall] Sending transcription chunk: source=' + source + ', size=' + blob.size + 'B, callConvId=' + callConvId);
             socket.emit('call_audio_chunk', {
-                conversationId: _webrtcConvId,
-                callId: _webrtcCallId,
-                callConversationId: _webrtcCallConvId,
+                conversationId: convId,
+                callId: callId,
+                callConversationId: callConvId,
                 source: source,
                 audioData: base64,
                 mimeType: blob.type,
