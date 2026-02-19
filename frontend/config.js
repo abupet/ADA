@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.43';
-const ADA_RELEASE_NOTES = 'Fix: Promo mostra sempre Santevet Premium — filtro service_type in AI analysis e serving, rotation fix.';
+const ADA_VERSION = '8.22.44';
+const ADA_RELEASE_NOTES = 'Fix: Santevet Premium domina ranking + immagini placeholder 404 su GitHub Pages.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
