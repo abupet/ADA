@@ -38,6 +38,18 @@
     var _lastRenderedPromoItemId = null; // tracks last rendered promo for vet flag
 
     // =========================================================================
+    // Helpers: user-scoped dismissed key
+    // =========================================================================
+
+    function _getDismissedKey() {
+        var userId = null;
+        if (typeof getJwtUserId === 'function') {
+            try { userId = getJwtUserId(); } catch (_) {}
+        }
+        return userId ? PROMO_DISMISSED_KEY + '_' + userId : PROMO_DISMISSED_KEY;
+    }
+
+    // =========================================================================
     // Mock data (backward compat)
     // =========================================================================
 
@@ -66,10 +78,23 @@
 
     function _getDismissedIds() {
         try {
-            var raw = localStorage.getItem(PROMO_DISMISSED_KEY);
+            var key = _getDismissedKey();
+            var raw = localStorage.getItem(key);
             if (raw) {
                 var parsed = JSON.parse(raw);
                 if (Array.isArray(parsed)) return parsed;
+            }
+            // Migrate from old non-scoped key (one-time)
+            if (key !== PROMO_DISMISSED_KEY) {
+                var oldRaw = localStorage.getItem(PROMO_DISMISSED_KEY);
+                if (oldRaw) {
+                    var oldParsed = JSON.parse(oldRaw);
+                    if (Array.isArray(oldParsed) && oldParsed.length > 0) {
+                        localStorage.setItem(key, oldRaw);
+                        localStorage.removeItem(PROMO_DISMISSED_KEY);
+                        return oldParsed;
+                    }
+                }
             }
         } catch (_) { /* ignore */ }
         return [];
@@ -77,11 +102,12 @@
 
     function _addDismissedId(productId) {
         try {
+            var key = _getDismissedKey();
             var ids = _getDismissedIds();
             if (ids.indexOf(productId) === -1) {
                 ids.push(productId);
                 if (ids.length > 200) ids = ids.slice(-200);
-                localStorage.setItem(PROMO_DISMISSED_KEY, JSON.stringify(ids));
+                localStorage.setItem(key, JSON.stringify(ids));
             }
         } catch (_) { /* ignore */ }
     }
@@ -257,6 +283,10 @@
         try { rotData = JSON.parse(localStorage.getItem(rotKey) || '{}'); } catch(_) {}
         var rotIdx = (rotData[petId] || 0);
         params.push('rotationIndex=' + rotIdx);
+        var dismissedIds = _getDismissedIds();
+        if (dismissedIds.length > 0) {
+            params.push('dismissed=' + encodeURIComponent(dismissedIds.join(',')));
+        }
         if (params.length > 0) path += '?' + params.join('&');
 
         if (typeof ADALog !== 'undefined') {

@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.22.41
+
+### Fix: "Non mi interessa" blocca tutte le promo + Cardiac+Renal persiste
+- **Root cause 1 (backend ignora dismissed)**: `promo.routes.js` aveva `const dismissed = [];` hardcoded — il backend restituiva sempre lo stesso prodotto dismissato, il frontend lo nascondeva client-side e ritornava senza richiedere un'alternativa → banner vuoto per sempre
+- **Root cause 2 (localStorage non scoped)**: la chiave `ada_promo_dismissed` era condivisa tra tutti gli utenti sullo stesso browser → un dismiss di utente A nascondeva il prodotto anche per utente B
+- **Fix 1 (frontend/app-promo.js)**: nuova helper `_getDismissedKey()` che scopa la chiave localStorage per userId (`ada_promo_dismissed_<userId>`). Migrazione automatica dalla vecchia chiave non-scoped
+- **Fix 2 (frontend/app-promo.js)**: `loadPromoRecommendation()` ora passa `dismissed=id1,id2,...` come query param al backend
+- **Fix 3 (backend/src/promo.routes.js)**: parse `req.query.dismissed` con validazione UUID, rimozione di `const dismissed = []` hardcoded, passaggio a `selectPromo`
+- **Fix 4 (backend/src/eligibility.service.js)**: `selectPromo` accetta `dismissed` nel destructuring, filtra i dismissed sia nel path AI cached che nell'algoritmo standard
+- **Test**: 2 nuovi unit test — `testDismissedSkipped` (singolo candidato dismissed → null) e `testDismissedOnlyAffectsDismissed` (2 candidati, 1 dismissed ad alta priorità → seleziona l'altro)
+
 ## v8.22.40
 
 ### Fix: Prodotto "Cardiac + Renal" mostrato sempre — pulizia match fantasma

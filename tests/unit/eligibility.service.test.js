@@ -442,6 +442,133 @@ function createMockPool(queryResponses) {
   console.log("  PASS: selectPromo handles query errors gracefully -> null");
 })();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// selectPromo: dismissed single candidate -> null
+// ─────────────────────────────────────────────────────────────────────────────
+
+(async function testDismissedSkipped() {
+  const mockItem = {
+    promo_item_id: "item-dismissed",
+    tenant_id: "t1",
+    name: "Dismissed Product",
+    category: "food_general",
+    description: "A dismissed product",
+    species: ["all"],
+    tags_include: [],
+    tags_exclude: [],
+    priority: 10,
+    status: "published",
+    product_url: "https://example.com/product",
+    updated_at: "2026-01-01T00:00:00Z",
+    campaign_id: null,
+    frequency_cap: null,
+    utm_campaign: null,
+    contexts: null,
+  };
+
+  const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
+    // 1. pet_tags
+    { rows: [{ tag: "species:dog", value: null, confidence: null }] },
+    // 2. pets species
+    { rows: [{ species: "dog" }] },
+    // 3. lifecycle pet_tags query
+    { rows: [] },
+    // 4. consents
+    { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
+    // 5. candidates
+    { rows: [mockItem] },
+  ]);
+
+  const result = await selectPromo(pool, {
+    petId: "pet-dismissed-1",
+    ownerUserId: "owner-d1",
+    context: "home_feed",
+    dismissed: ["item-dismissed"],
+  });
+
+  assert.strictEqual(result, null, "Should return null when the only candidate is dismissed");
+  console.log("  PASS: selectPromo returns null when single candidate is dismissed");
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// selectPromo: dismissed only affects dismissed — selects the other
+// ─────────────────────────────────────────────────────────────────────────────
+
+(async function testDismissedOnlyAffectsDismissed() {
+  const dismissedItem = {
+    promo_item_id: "item-high-priority",
+    tenant_id: "t1",
+    name: "High Priority Dismissed",
+    category: "food_general",
+    description: "A high-priority product that was dismissed",
+    species: ["all"],
+    tags_include: [],
+    tags_exclude: [],
+    priority: 10,
+    status: "published",
+    product_url: "https://example.com/high",
+    updated_at: "2026-01-02T00:00:00Z",
+    campaign_id: null,
+    frequency_cap: null,
+    utm_campaign: null,
+    contexts: null,
+  };
+
+  const otherItem = {
+    promo_item_id: "item-lower-priority",
+    tenant_id: "t1",
+    name: "Lower Priority Product",
+    category: "food_general",
+    description: "A lower-priority product",
+    species: ["all"],
+    tags_include: [],
+    tags_exclude: [],
+    priority: 5,
+    status: "published",
+    product_url: "https://example.com/lower",
+    updated_at: "2026-01-01T00:00:00Z",
+    campaign_id: null,
+    frequency_cap: null,
+    utm_campaign: null,
+    contexts: null,
+  };
+
+  const pool = createMockPool([
+    // 0. ai_recommendation_matches query (null → skip AI path)
+    { rows: [{ ai_recommendation_matches: null }] },
+    // 1. pet_tags
+    { rows: [{ tag: "species:dog", value: null, confidence: null }] },
+    // 2. pets species
+    { rows: [{ species: "dog" }] },
+    // 3. lifecycle pet_tags query
+    { rows: [] },
+    // 4. consents
+    { rows: [{ consent_type: "marketing_global", scope: "global", status: "opted_in" }] },
+    // 5. candidates (both items)
+    { rows: [dismissedItem, otherItem] },
+    // 6. vet_flags check for otherItem (not dismissed, so it reaches vet flag check)
+    { rows: [] },
+    // 7. frequency capping - per_session
+    { rows: [{ cnt: "0" }] },
+    // 8. frequency capping - per_week
+    { rows: [{ cnt: "0" }] },
+  ]);
+
+  const result = await selectPromo(pool, {
+    petId: "pet-dismissed-2",
+    ownerUserId: "owner-d2",
+    context: "home_feed",
+    dismissed: ["item-high-priority"],
+  });
+
+  assert.ok(result, "Should return the non-dismissed product");
+  assert.strictEqual(result.promoItemId, "item-lower-priority", "Should select the lower-priority item since high-priority is dismissed");
+  assert.strictEqual(result.name, "Lower Priority Product");
+  console.log("  PASS: selectPromo skips dismissed and selects the other candidate");
+})();
+
 // Wait for all async tests to complete
 setTimeout(() => {
   console.log("OK eligibility.service.test.js");
