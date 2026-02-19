@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.36
+
+### Fix: Bulk Phase 2 timeout + force bypass completo
+- **Root cause (timeout)**: `_runAnalysisForPet` aveva un timeout OpenAI di 25s, insufficiente per pet con molti candidati (fino a 77) durante il bulk Phase 2. Risultato: 3/13 pet fallivano con "This operation was aborted", nessun match veniva salvato, e "Analisi Raccomandazione" doveva ricalcolare da zero
+- **Fix timeout**: timeout aumentato da 25s a 45s (default), configurabile via `opts.timeoutMs`
+- **Fix force**: `{ force: true }` ora bypassa ENTRAMBE le cache (pet row + `explanation_cache` SHA-256). Prima bypassava solo la pet row cache, il SHA-256 cache restituiva ancora `fromCache: true`
+
 ## v8.22.35
 
 ### Fix: "Analisi Raccomandazione" ignora cache dal Bulk Phase 2

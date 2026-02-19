@@ -279,7 +279,7 @@ function promoRouter({ requireAuth }) {
   // =======================================================
   // Helper: run analysis for a single pet (extracted from analyze-match-all)
   // =======================================================
-  async function _runAnalysisForPet(dbPool, petId, openAiKey) {
+  async function _runAnalysisForPet(dbPool, petId, openAiKey, opts = {}) {
     // 1. Get pet data + ai_description
     let pet = null;
     let petAiDesc = null;
@@ -374,26 +374,28 @@ function promoRouter({ requireAuth }) {
       return { petId, petName: pet.name, matches: [], fromCache: false, candidatesCount: 0 };
     }
 
-    // 6. Check cache
+    // 6. Check cache (skip if force recalc requested)
     const { createHash } = require("crypto");
     const candidateIds = candidates.map(c => c.promo_item_id).sort().join(",");
     const cacheInput = petAiDesc + "|" + candidateIds;
     const cacheKey = "aml_" + createHash("sha256").update(cacheInput).digest("hex");
 
-    try {
-      const cacheResult = await dbPool.query(
-        "SELECT explanation FROM explanation_cache WHERE cache_key = $1 AND expires_at > NOW() LIMIT 1",
-        [cacheKey]
-      );
-      if (cacheResult.rows[0]) {
-        const cached = cacheResult.rows[0].explanation;
-        return {
-          petId, petName: pet.name,
-          matches: cached.matches || [],
-          fromCache: true, candidatesCount: candidates.length
-        };
-      }
-    } catch (_e) {}
+    if (!opts.force) {
+      try {
+        const cacheResult = await dbPool.query(
+          "SELECT explanation FROM explanation_cache WHERE cache_key = $1 AND expires_at > NOW() LIMIT 1",
+          [cacheKey]
+        );
+        if (cacheResult.rows[0]) {
+          const cached = cacheResult.rows[0].explanation;
+          return {
+            petId, petName: pet.name,
+            matches: cached.matches || [],
+            fromCache: true, candidatesCount: candidates.length
+          };
+        }
+      } catch (_e) {}
+    }
 
     // 7. Build candidate list for prompt (max 30)
     const topCandidates = candidates.slice(0, 30);
@@ -439,7 +441,8 @@ REGOLE:
 - Ordina per score discendente`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeoutMs = opts.timeoutMs || 45000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     const startMs = Date.now();
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1261,7 +1264,7 @@ Ordina per score discendente.`;
         } catch (_e) {}
       }
 
-      const result = await _runAnalysisForPet(pool, petId, openAiKey);
+      const result = await _runAnalysisForPet(pool, petId, openAiKey, { force: forceRecalc });
 
       if (result.error === "pet_ai_description_missing") {
         return res.status(400).json({ error: "pet_ai_description_missing", message: "Generare prima la descrizione AI del pet" });
