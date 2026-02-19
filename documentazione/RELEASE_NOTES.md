@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.45
+
+### Fix: Service worker serve file JS vecchi — cache invalidation
+- **Root cause**: `sw.js` aveva `ADA_SW_VERSION = '8.22.2'` — mai aggiornato da 40+ versioni. La strategia Stale-While-Revalidate serviva i file JS cachati dalla v8.22.2, ignorando tutti i fix successivi (rotation, service_type filter, API_BASE_URL prefix, ecc.)
+- **Effetto**: gli utenti vedevano codice vecchio nonostante i deploy: banner promo con prodotto sbagliato, nessuna rotation, immagini 404, versione mostrata non corrispondente al deploy
+- **Fix**: `ADA_SW_VERSION` aggiornato a `8.22.45` → forza reinstallazione del service worker, cancellazione cache `ada-cache-8.22.2`, e ri-caching di tutti i file aggiornati
+
 ## v8.22.44
 
 ### Fix: Santevet Premium domina ranking + immagini placeholder 404
