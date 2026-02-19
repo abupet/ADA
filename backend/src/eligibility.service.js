@@ -163,8 +163,14 @@ async function selectPromo(pool, { petId, ownerUserId, context, serviceType, for
             }
 
             if (validMatches.length > 0) {
-              // Random selection from valid matches
-              const chosen = validMatches[Math.floor(Math.random() * validMatches.length)];
+              // Deterministic selection: hash(petId + date) instead of random
+              const dateStr = new Date().toISOString().split("T")[0];
+              const hashInput = petId + dateStr;
+              let hash = 0;
+              for (let i = 0; i < hashInput.length; i++) {
+                hash = ((hash << 5) - hash + hashInput.charCodeAt(i)) | 0;
+              }
+              const chosen = validMatches[Math.abs(hash) % validMatches.length];
               const dbItem = chosen._dbItem;
 
               const utmParams = new URLSearchParams({
