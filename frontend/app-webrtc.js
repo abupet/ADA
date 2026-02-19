@@ -508,7 +508,7 @@ function _webrtcStopServerTranscription() {
 }
 
 // ---- TEST CHIAMATA: loopback locale senza WebRTC ----
-async function startTestCall(conversationId, callType) {
+async function startTestCall(conversationId, callType, callConvId) {
     _webrtcInjectStyles();
     if (_webrtcPC || _webrtcIsTestCall) {
         if (typeof showToast === 'function') showToast('Chiamata gi\u00e0 in corso', 'warning');
@@ -528,6 +528,7 @@ async function startTestCall(conversationId, callType) {
     _webrtcIsTestCall = true;
     _webrtcConvId = conversationId;
     _webrtcCallType = callType;
+    _webrtcCallConvId = callConvId || null;
     _webrtcCallId = 'testcall_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     _webrtcTestRecordedChunks = [];
     _webrtcTestMode = 'talk';
@@ -785,7 +786,15 @@ function endCall() {
         var ov = document.getElementById('webrtc-call-overlay');
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
         var dur = _webrtcStartTime ? Math.floor((Date.now() - _webrtcStartTime) / 1000) : 0;
-        _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcStartTime = null;
+        // Close the call conversation via REST API
+        if (_webrtcCallConvId && typeof fetchApi === 'function') {
+            fetchApi('/api/communication/conversations/' + _webrtcCallConvId + '/end-call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duration_seconds: dur })
+            }).catch(function(e) { console.warn('[TestCall] end-call error:', e.message); });
+        }
+        _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcCallConvId = null; _webrtcStartTime = null;
         if (dur > 0 && typeof showToast === 'function') showToast('Test terminato (' + _webrtcFmtDur(dur) + ')', 'info');
         return;
     }
