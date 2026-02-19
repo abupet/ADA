@@ -2265,11 +2265,51 @@ async function _commInitiateDirectCall(callType) {
     var recipientId = (document.getElementById('comm-call-recipient') || {}).value;
     if (!recipientId) return;
 
-    // --- TEST CHIAMATA: avvia loopback senza creare conversazione ---
+    // --- TEST CHIAMATA: crea conversazione reale + call conversation, poi avvia loopback ---
     if (recipientId === '__test_call__') {
-        var fakeConvId = 'test_call_' + Date.now();
-        if (typeof startTestCall === 'function') {
-            startTestCall(fakeConvId, callType);
+        try {
+            var petId = (typeof getCurrentPetId === 'function') ? getCurrentPetId() : null;
+            var userId = _commGetCurrentUserId();
+            // Create a parent chat conversation for the test call
+            var callLabel = callType === 'video_call' ? 'Videochiamata Test' : 'Chiamata Test';
+            var parentResp = await fetchApi('/api/communication/conversations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pet_id: petId,
+                    vet_user_id: userId,
+                    subject: callLabel,
+                    recipient_type: 'human',
+                    type: 'chat',
+                    initial_message: callLabel + ' avviata'
+                })
+            });
+            if (!parentResp || !parentResp.ok) throw new Error('Impossibile creare conversazione');
+            var parentConv = await parentResp.json();
+            var parentConvId = parentConv.conversation_id;
+
+            // Create a dedicated call conversation
+            var callResp = await fetchApi('/api/communication/conversations/call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    parent_conversation_id: parentConvId,
+                    call_type: callType,
+                    call_id: 'testcall_' + Date.now()
+                })
+            });
+            var callConvId = null;
+            if (callResp && callResp.ok) {
+                var callConv = await callResp.json();
+                callConvId = callConv.conversation_id;
+            }
+
+            if (typeof startTestCall === 'function') {
+                startTestCall(parentConvId, callType, callConvId);
+            }
+        } catch (e) {
+            console.error('[Communication] Test call setup error:', e.message);
+            if (typeof showToast === 'function') showToast('Errore avvio test chiamata', 'error');
         }
         var area = document.getElementById('comm-new-form-area');
         if (area) area.innerHTML = '';
