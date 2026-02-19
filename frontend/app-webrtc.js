@@ -804,8 +804,10 @@ function endCall() {
                 body: JSON.stringify({ duration_seconds: dur })
             }).catch(function(e) { console.warn('[TestCall] end-call error:', e.message); });
         }
+        var parentConvId = _webrtcConvId;
         _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcCallConvId = null; _webrtcStartTime = null;
         if (dur > 0 && typeof showToast === 'function') showToast('Test terminato (' + _webrtcFmtDur(dur) + ')', 'info');
+        if (parentConvId && typeof openConversation === 'function') openConversation(parentConvId);
         return;
     }
 
@@ -826,8 +828,10 @@ function endCall() {
     _webrtcAcceptHandled = false; _webrtcOfferHandled = false; _webrtcAnswerHandled = false;
     var ov = document.getElementById('webrtc-call-overlay'); if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     _webrtcRemoveNotif();
+    var parentConvId = _webrtcConvId;
     _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcCallConvId = null; _webrtcStartTime = null; _webrtcIceQueue = [];
     if (dur > 0 && typeof showToast === 'function') showToast('Chiamata terminata (' + _webrtcFmtDur(dur) + ')', 'info');
+    if (parentConvId && typeof openConversation === 'function') openConversation(parentConvId);
 }
 
 // ---- Section 8: Socket.io signaling listeners ----
