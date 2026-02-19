@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.38
+
+### Promo: Rotazione sequenziale Top 5 + evidenzia prodotto attivo
+- **Problema**: il banner "Consigliato per il tuo amico pet" sceglieva casualmente (`Math.random()`) tra i top 5 match, causando ripetizioni non deterministiche — lo stesso prodotto poteva apparire più volte di seguito, altri mai
+- **Soluzione**: rotazione round-robin gestita con indice di rotazione. Il frontend mantiene un contatore per pet in `localStorage` (`ada_promo_rotation`) e lo passa al backend via query param `rotationIndex`. Il backend usa `eligible[rotationIndex % eligible.length]` invece di `Math.random()`
+- **Comportamento**: ad ogni caricamento della pagina pet il banner mostra il prodotto successivo nella sequenza (1→2→3→4→5→1→2→...). L'highlight verde "← Prodotto attualmente raccomandato" nella modale "Analisi Raccomandazione" continua a funzionare correttamente
+
 ## v8.22.37
 
 ### Fix: "Analisi Raccomandazione" rigenera descrizione e invalida cache
