@@ -1,4 +1,4 @@
-const ADA_SW_VERSION = '8.23.0';
+const ADA_SW_VERSION = '8.23.1';
 const CACHE_NAME = 'ada-cache-' + ADA_SW_VERSION;
 const STATIC_ASSETS = [
     './',
@@ -132,10 +132,16 @@ self.addEventListener('fetch', function(event) {
     );
 });
 
-// Notify clients when a new version is available
+// Handle messages from clients
 self.addEventListener('message', function(event) {
     if (event.data && event.data.type === 'GET_VERSION') {
         event.source.postMessage({ type: 'SW_VERSION', version: ADA_SW_VERSION });
+    }
+    // Chiudi notifica chiamata se la chiamata è stata gestita dall'app
+    if (event.data && event.data.type === 'DISMISS_CALL_NOTIFICATION' && event.data.callId) {
+        self.registration.getNotifications({ tag: 'incoming-call-' + event.data.callId }).then(function(notifications) {
+            notifications.forEach(function(n) { n.close(); });
+        });
     }
 });
 
@@ -165,12 +171,28 @@ self.addEventListener('push', function(event) {
 
 self.addEventListener('notificationclick', function(event) {
     event.notification.close();
-    if (event.action === 'dismiss') return;
 
     var data = event.notification.data || {};
     var isCall = data.type === 'incoming_call';
+
+    // Rifiuta chiamata
+    if (event.action === 'dismiss') {
+        if (isCall && data.callId && data.conversationId) {
+            // Notifica il server del rifiuto tramite fetch
+            event.waitUntil(
+                fetch('./api/communication/conversations/' + data.conversationId + '/calls/' + data.callId + '/reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(function() { /* offline, il timeout del server gestirà */ })
+            );
+        }
+        return;
+    }
+
+    // Accetta chiamata o click generico: apri/focalizza l'app
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
+            // Se l'app è già aperta, fai focus e invia il messaggio
             for (var i = 0; i < windowClients.length; i++) {
                 if ('focus' in windowClients[i]) {
                     windowClients[i].focus();
@@ -190,7 +212,14 @@ self.addEventListener('notificationclick', function(event) {
                     return;
                 }
             }
-            return clients.openWindow('./#conversation-' + (data.conversationId || ''));
+            // App chiusa: apri una nuova finestra
+            var targetUrl = './#communication';
+            if (isCall && data.conversationId) {
+                targetUrl = './#call-' + data.conversationId + '-' + (data.callId || '');
+            } else if (data.conversationId) {
+                targetUrl = './#conversation-' + data.conversationId;
+            }
+            return clients.openWindow(targetUrl);
         })
     );
 });
