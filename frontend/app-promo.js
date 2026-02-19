@@ -251,6 +251,12 @@
         if (typeof isDebugForceMultiService === 'function' && isDebugForceMultiService()) {
             params.push('force=1');
         }
+        // Read rotation index for this pet from localStorage (round-robin)
+        var rotKey = 'ada_promo_rotation';
+        var rotData = {};
+        try { rotData = JSON.parse(localStorage.getItem(rotKey) || '{}'); } catch(_) {}
+        var rotIdx = (rotData[petId] || 0);
+        params.push('rotationIndex=' + rotIdx);
         if (params.length > 0) path += '?' + params.join('&');
 
         if (typeof ADALog !== 'undefined') {
@@ -544,6 +550,15 @@
                     vetFlagContainers[vi].setAttribute('data-promo-item-id', productId);
                 }
             } catch (_) { /* ignore */ }
+        }
+
+        // Advance rotation for next load (round-robin through top 5)
+        if (petId) {
+            var rotKey = 'ada_promo_rotation';
+            var rotData = {};
+            try { rotData = JSON.parse(localStorage.getItem(rotKey) || '{}'); } catch(_) {}
+            rotData[petId] = ((rotData[petId] || 0) + 1) % 5;
+            try { localStorage.setItem(rotKey, JSON.stringify(rotData)); } catch(_) {}
         }
 
         // Track impression with IntersectionObserver (visible >50% for >1s)
