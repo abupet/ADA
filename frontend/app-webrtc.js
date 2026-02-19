@@ -15,6 +15,16 @@ var _webrtcSignalingSocket = null; // tracks which socket instance has listeners
 var _webrtcAcceptHandled = false, _webrtcOfferHandled = false, _webrtcAnswerHandled = false;
 var _webrtcDisconnectTimeout = null; // grace period for transient 'disconnected' state
 
+// --- TEST CHIAMATA (loopback) ---
+var _WEBRTC_TEST_CALL_USER_ID = '__test_call__';
+var _WEBRTC_TEST_CALL_DISPLAY  = '\ud83e\uddea Test Chiamata';
+var _webrtcIsTestCall = false;
+var _webrtcTestRecordedChunks = [];   // Blob[] audio registrati in modalità "Parla"
+var _webrtcTestMode = 'talk';          // 'talk' | 'listen'
+var _webrtcTestPlaybackAudio = null;   // HTMLAudioElement per riproduzione
+var _webrtcTestRecorder = null;        // MediaRecorder per registrazione loopback
+var _webrtcTestStream = null;          // MediaStream dal microfono (loopback)
+
 function _webrtcApiBase() { return window.ADA_API_BASE_URL || ''; }
 function _webrtcAuth() { return { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }; }
 function _webrtcUserId() {
@@ -280,6 +290,7 @@ function _webrtcShowOverlay(callType, isInitiator) {
 
 // ---- Section 6: Call controls ----
 function _webrtcToggleMute() {
+    if (_webrtcIsTestCall) { _webrtcToggleTestMute(); return; }
     if (!_webrtcLocalStream) return;
     var tracks = _webrtcLocalStream.getAudioTracks(); if (!tracks.length) return;
     var wasMuted = !tracks[0].enabled; tracks[0].enabled = wasMuted;
@@ -494,8 +505,288 @@ function _webrtcStopServerTranscription() {
     }
 }
 
+// ---- TEST CHIAMATA: loopback locale senza WebRTC ----
+async function startTestCall(conversationId, callType) {
+    _webrtcInjectStyles();
+    if (_webrtcPC || _webrtcIsTestCall) {
+        if (typeof showToast === 'function') showToast('Chiamata gi\u00e0 in corso', 'warning');
+        return;
+    }
+
+    try {
+        _webrtcTestStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: callType === 'video_call'
+        });
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Impossibile accedere al microfono', 'error');
+        return;
+    }
+
+    _webrtcIsTestCall = true;
+    _webrtcConvId = conversationId;
+    _webrtcCallType = callType;
+    _webrtcCallId = 'testcall_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    _webrtcTestRecordedChunks = [];
+    _webrtcTestMode = 'talk';
+
+    _webrtcShowTestOverlay(callType);
+
+    _webrtcStartTime = Date.now();
+    _webrtcTimerInterval = setInterval(function() {
+        var el = document.getElementById('webrtc-call-timer');
+        if (el) el.textContent = _webrtcFmtDur(Math.floor((Date.now() - _webrtcStartTime) / 1000));
+    }, 1000);
+    var st = document.querySelector('[data-testid="webrtc-call-status"]');
+    if (st) st.textContent = 'Test Chiamata \u2014 In chiamata';
+
+    _webrtcTestStartRecording();
+    _webrtcTestStartTranscriptionCapture();
+
+    if (typeof showToast === 'function') showToast('Test Chiamata connessa', 'success');
+}
+
+function _webrtcShowTestOverlay(callType) {
+    var old = document.getElementById('webrtc-call-overlay');
+    if (old) old.parentNode.removeChild(old);
+
+    var ov = document.createElement('div');
+    ov.className = 'webrtc-overlay';
+    ov.id = 'webrtc-call-overlay';
+    ov.setAttribute('data-testid', 'webrtc-call-overlay');
+
+    var h = '<div class="webrtc-overlay-header" data-testid="webrtc-call-status">Test Chiamata \u2014 Connessione...</div>' +
+        '<div class="webrtc-overlay-timer" id="webrtc-call-timer" data-testid="webrtc-call-timer">00:00</div>';
+
+    if (callType === 'video_call') {
+        h += '<video class="webrtc-remote-video" id="webrtc-remote-video" data-testid="webrtc-remote-video" autoplay playsinline muted></video>';
+        h += '<video class="webrtc-local-video" id="webrtc-local-video" data-testid="webrtc-local-video" autoplay playsinline muted></video>';
+    } else {
+        h += '<div style="font-size:64px;margin:20px 0;">\ud83e\uddea</div>';
+    }
+
+    h += '<div class="webrtc-overlay-controls">' +
+        '<button class="webrtc-btn webrtc-btn-mute" id="webrtc-mute-btn" data-testid="webrtc-mute-btn" onclick="_webrtcToggleMute()">&#128263; Muto</button>' +
+        '<button class="webrtc-btn webrtc-btn-test-talk" id="webrtc-test-talk-btn" data-testid="webrtc-test-talk-btn" ' +
+        '  onclick="_webrtcToggleTestTalkListen()">&#127908; Parla</button>' +
+        '<button class="webrtc-btn webrtc-btn-end" data-testid="webrtc-end-btn" onclick="endCall()">&#128308; Termina</button></div>';
+
+    ov.innerHTML = h;
+    document.body.appendChild(ov);
+
+    if (callType === 'video_call' && _webrtcTestStream) {
+        var lv = document.getElementById('webrtc-local-video');
+        if (lv) lv.srcObject = _webrtcTestStream;
+        var rv = document.getElementById('webrtc-remote-video');
+        if (rv) rv.srcObject = _webrtcTestStream;
+    }
+}
+
+function _webrtcTestStartRecording() {
+    if (!_webrtcTestStream) return;
+    var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+
+    try {
+        _webrtcTestRecorder = new MediaRecorder(_webrtcTestStream, { mimeType: mimeType });
+    } catch(e) {
+        console.warn('[TestCall] Cannot create MediaRecorder:', e.message);
+        return;
+    }
+
+    _webrtcTestRecorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0) {
+            _webrtcTestRecordedChunks.push(e.data);
+        }
+    };
+
+    _webrtcTestRecorder.start(1000);
+    console.log('[TestCall] Recording started');
+}
+
+function _webrtcTestStopRecording() {
+    if (_webrtcTestRecorder && _webrtcTestRecorder.state !== 'inactive') {
+        try { _webrtcTestRecorder.stop(); } catch(e) {}
+    }
+    _webrtcTestRecorder = null;
+}
+
+function _webrtcToggleTestTalkListen() {
+    var btn = document.getElementById('webrtc-test-talk-btn');
+    if (!btn) return;
+
+    if (_webrtcTestMode === 'talk') {
+        // === Passa a modalità ASCOLTA ===
+        _webrtcTestMode = 'listen';
+        btn.innerHTML = '&#128266; Ascolta';
+        btn.className = 'webrtc-btn webrtc-btn-test-talk listening';
+
+        _webrtcTestStopRecording();
+
+        if (_webrtcTestStream) {
+            _webrtcTestStream.getAudioTracks().forEach(function(t) { t.enabled = false; });
+        }
+
+        if (_webrtcTestRecordedChunks.length > 0) {
+            var fullBlob = new Blob(_webrtcTestRecordedChunks, { type: 'audio/webm' });
+            var url = URL.createObjectURL(fullBlob);
+            _webrtcTestPlaybackAudio = new Audio(url);
+            _webrtcTestPlaybackAudio.play().catch(function(e) {
+                console.warn('[TestCall] Playback error:', e.message);
+            });
+
+            _webrtcTestSendChunkForTranscription(fullBlob, 'remote');
+
+            _webrtcTestPlaybackAudio.onended = function() {
+                URL.revokeObjectURL(url);
+                if (_webrtcTestMode === 'listen') {
+                    _webrtcToggleTestTalkListen();
+                }
+            };
+        } else {
+            if (typeof showToast === 'function') showToast('Nessun audio registrato', 'info');
+            _webrtcTestMode = 'talk';
+            btn.innerHTML = '&#127908; Parla';
+            btn.className = 'webrtc-btn webrtc-btn-test-talk';
+            if (_webrtcTestStream) {
+                _webrtcTestStream.getAudioTracks().forEach(function(t) { t.enabled = true; });
+            }
+        }
+
+    } else {
+        // === Passa a modalità PARLA ===
+        _webrtcTestMode = 'talk';
+        btn.innerHTML = '&#127908; Parla';
+        btn.className = 'webrtc-btn webrtc-btn-test-talk';
+
+        if (_webrtcTestPlaybackAudio) {
+            _webrtcTestPlaybackAudio.pause();
+            _webrtcTestPlaybackAudio = null;
+        }
+
+        if (_webrtcTestStream) {
+            _webrtcTestStream.getAudioTracks().forEach(function(t) { t.enabled = true; });
+        }
+
+        _webrtcTestRecordedChunks = [];
+        _webrtcTestStartRecording();
+    }
+}
+
+function _webrtcToggleTestMute() {
+    if (!_webrtcTestStream) return;
+    var tracks = _webrtcTestStream.getAudioTracks();
+    if (!tracks.length) return;
+    var wasMuted = !tracks[0].enabled;
+    tracks[0].enabled = wasMuted;
+    var btn = document.getElementById('webrtc-mute-btn');
+    if (!btn) return;
+    btn.innerHTML = wasMuted ? '&#128263; Muto' : '&#128264; Attivo';
+    btn.classList.toggle('active', !wasMuted);
+}
+
+// Invio periodico dell'audio locale per trascrizione (ogni 15s come le chiamate normali)
+var _webrtcTestTranscriptionTimer = null;
+var _webrtcTestTranscriptionRecorder = null;
+
+function _webrtcTestStartTranscriptionCapture() {
+    var socket = window._commSocket;
+    if (!socket || !_webrtcTestStream) return;
+
+    var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+
+    function createAndStartRecorder() {
+        var recorder;
+        try {
+            recorder = new MediaRecorder(_webrtcTestStream, { mimeType: mimeType });
+        } catch(e) { return null; }
+
+        var parts = [];
+        recorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) parts.push(e.data);
+        };
+        recorder.onstop = function() {
+            if (parts.length > 0 && _webrtcTestMode === 'talk') {
+                var blob = new Blob(parts, { type: mimeType });
+                _webrtcTestSendChunkForTranscription(blob, 'local');
+            }
+        };
+        try { recorder.start(); } catch(e) { return null; }
+        return recorder;
+    }
+
+    _webrtcTestTranscriptionRecorder = createAndStartRecorder();
+
+    _webrtcTestTranscriptionTimer = setInterval(function() {
+        if (_webrtcTestMode !== 'talk') return;
+        var old = _webrtcTestTranscriptionRecorder;
+        _webrtcTestTranscriptionRecorder = createAndStartRecorder();
+        if (old && old.state === 'recording') {
+            try { old.stop(); } catch(e) {}
+        }
+    }, 15000);
+}
+
+function _webrtcTestSendChunkForTranscription(blob, source) {
+    var reader = new FileReader();
+    reader.onload = function() {
+        var base64 = reader.result.split(',')[1];
+        var socket = window._commSocket;
+        if (socket && _webrtcConvId) {
+            console.log('[TestCall] Sending transcription chunk: source=' + source + ', size=' + blob.size + 'B');
+            socket.emit('call_audio_chunk', {
+                conversationId: _webrtcConvId,
+                callId: _webrtcCallId,
+                source: source,
+                audioData: base64,
+                mimeType: blob.type,
+                timestamp: Date.now()
+            });
+        }
+    };
+    reader.readAsDataURL(blob);
+}
+
+function _webrtcTestStopTranscription() {
+    if (_webrtcTestTranscriptionTimer) {
+        clearInterval(_webrtcTestTranscriptionTimer);
+        _webrtcTestTranscriptionTimer = null;
+    }
+    if (_webrtcTestTranscriptionRecorder && _webrtcTestTranscriptionRecorder.state !== 'inactive') {
+        try { _webrtcTestTranscriptionRecorder.stop(); } catch(e) {}
+    }
+    _webrtcTestTranscriptionRecorder = null;
+}
+
 // ---- Section 7: End call & cleanup ----
 function endCall() {
+    // --- TEST CHIAMATA cleanup ---
+    if (_webrtcIsTestCall) {
+        console.log('[TestCall] Ending test call');
+        _webrtcTestStopRecording();
+        _webrtcTestStopTranscription();
+        if (_webrtcTestPlaybackAudio) {
+            _webrtcTestPlaybackAudio.pause();
+            _webrtcTestPlaybackAudio = null;
+        }
+        if (_webrtcTestStream) {
+            _webrtcTestStream.getTracks().forEach(function(t) { t.stop(); });
+            _webrtcTestStream = null;
+        }
+        _webrtcTestRecordedChunks = [];
+        _webrtcTestMode = 'talk';
+        _webrtcIsTestCall = false;
+
+        if (_webrtcTimerInterval) { clearInterval(_webrtcTimerInterval); _webrtcTimerInterval = null; }
+        var ov = document.getElementById('webrtc-call-overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+        var dur = _webrtcStartTime ? Math.floor((Date.now() - _webrtcStartTime) / 1000) : 0;
+        _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcStartTime = null;
+        if (dur > 0 && typeof showToast === 'function') showToast('Test terminato (' + _webrtcFmtDur(dur) + ')', 'info');
+        return;
+    }
+
     console.log('[WebRTC] endCall() called', _webrtcCallId ? '(callId=' + _webrtcCallId + ')' : '(no active call)');
     _webrtcStopServerTranscription();
     if (window._commSocket && _webrtcConvId) window._commSocket.emit('end_call', { conversationId: _webrtcConvId, callId: _webrtcCallId });
