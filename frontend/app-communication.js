@@ -823,6 +823,13 @@ function _commRenderChat(container, convId, messages, meta) {
         '<div style="flex:1;"><div style="font-weight:600;color:#1e3a5f;font-size:14px;">' + headerTitle + '</div>' +
         '<div style="font-size:12px;color:#94a3b8;">' + _commEscape(convPetName) + '</div></div>';
 
+    var parentConvId = (meta && meta.parent_conversation_id) || null;
+    if (parentConvId) {
+        html += '<button onclick="openConversation(\'' + parentConvId + '\')" ' +
+            'style="font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #93c5fd;' +
+            'background:#eff6ff;color:#1d4ed8;cursor:pointer;margin-left:8px;">\u2190 Torna alla chat</button>';
+    }
+
     var convType = (meta && meta.type) || 'chat';
     if (isAi) {
         html += '<span style="font-size:11px;color:#22c55e;">\u25CF Online</span>';
@@ -961,7 +968,14 @@ function _commRenderBubble(msg, isOwn) {
 
     // System message
     if (type === 'system') {
-        return '<div class="comm-msg comm-msg-system" data-testid="comm-msg-system">' + _commEscape(msg.content || '') + '</div>';
+        var sysHtml = '<div class="comm-msg comm-msg-system" data-testid="comm-msg-system">' + _commEscape(msg.content || '');
+        var sysMeta = msg.metadata;
+        if (typeof sysMeta === 'string') { try { sysMeta = JSON.parse(sysMeta); } catch(_) { sysMeta = null; } }
+        if (sysMeta && sysMeta.call_conversation_id) {
+            sysHtml += '<br><a href="#" onclick="openConversation(\'' + sysMeta.call_conversation_id + '\');return false;" ' +
+                'style="color:#2563eb;font-size:12px;">\uD83D\uDCDD Vedi trascrizione</a>';
+        }
+        return sysHtml + '</div>';
     }
 
     // Soft-deleted message
