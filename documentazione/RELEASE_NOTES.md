@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.22.44
+
+### Fix: Santevet Premium domina ranking + immagini placeholder 404
+- **Root cause 1 (priority non normalizzata)**: Santevet Premium Cane/Gatto avevano `priority=10` con `service_type={promo}` e `category=service` — il fix v8.22.42 normalizzava solo `food_clinical`, non `service`. Santevet dominava il ranking standard in tutti i contesti che ammettono "service" (es. home_feed)
+- **Root cause 2 (immagini 404)**: il backend restituiva `imageUrl: "/api/seed-assets/..."` (path relativo) nei match senza immagine. Il frontend su GitHub Pages risolveva il path come `https://abupet.github.io/api/...` → 404
+- **Fix 1 (DB)**: normalizzato priority di TUTTI i prodotti published a <= 5 (inclusi Santevet service_type={promo})
+- **Fix 2 (app-core.js)**: `getProductImageUrl()` ora prepone `API_BASE_URL` quando `image_url` è un path relativo (inizia con `/`)
+- **Fix 3 (DB)**: invalidati ai_recommendation_matches contaminati (rigenerati dal codice pre-v8.22.43 senza filtro service_type)
+
 ## v8.22.43
 
 ### Fix: Promo mostra sempre Santevet Premium (3 bug concatenati)
