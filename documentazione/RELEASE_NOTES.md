@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.22.39
+
+### Fix: Banner promo mostra sempre "Cardiac + Renal" invece dei prodotti AI
+- **Root cause**: il path cached in `GET /api/promo/recommendation` provava UN solo match dall'indice di rotazione. Se il `promo_item_id` era "fantasma" (generato da OpenAI con ID inesistente, es. `pi_21cc08f7` vs il reale `pi_71cc08f7`), abbandonava l'intero path cached e cadeva nell'algoritmo standard → "Cardiac + Renal" (priority 10, la più alta) vinceva sempre
+- **Fix 1 (promo.routes.js)**: il path cached ora cicla su TUTTI i match in ordine rotazione. Se il match all'indice corrente ha un `promo_item_id` inesistente, prova il successivo fino a trovarne uno valido
+- **Fix 2 (eligibility.service.js)**: il fallback `selectPromo` AI path usava `Math.random()` per la selezione — sostituito con hash deterministico `hash(petId + date)` (stesso pattern dell'algoritmo standard) per coerenza e riproducibilità
+
 ## v8.22.38
 
 ### Promo: Rotazione sequenziale Top 5 + evidenzia prodotto attivo
