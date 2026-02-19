@@ -19,6 +19,27 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   const router = express.Router();
   const pool = getPool();
 
+  // GET /api/nutrition/products?tenantId=X — list nutrition products for tenant
+  router.get("/api/nutrition/products", requireAuth, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId;
+      if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
+
+      const { rows } = await pool.query(
+        `SELECT promo_item_id, name, category, description
+         FROM promo_items
+         WHERE tenant_id = $1 AND 'nutrition' = ANY(service_type) AND status = 'published'
+         ORDER BY category, name`,
+        [tenantId]
+      );
+      res.json({ products: rows });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ products: [] });
+      console.error("GET /api/nutrition/products error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // GET /api/nutrition/plan/:petId — active validated plan
   router.get("/api/nutrition/plan/:petId", requireAuth, async (req, res) => {
     try {
