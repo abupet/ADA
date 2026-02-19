@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.35';
-const ADA_RELEASE_NOTES = 'Fix: "Analisi Raccomandazione" now uses cached matches from Bulk AI Phase 2 instead of recalculating from scratch.';
+const ADA_VERSION = '8.22.36';
+const ADA_RELEASE_NOTES = 'Fix: Bulk Phase 2 timeout increased 25s→45s, force=true now bypasses all caches in analyze-match-all.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
