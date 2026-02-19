@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.36';
-const ADA_RELEASE_NOTES = 'Fix: Bulk Phase 2 timeout increased 25s→45s, force=true now bypasses all caches in analyze-match-all.';
+const ADA_VERSION = '8.22.37';
+const ADA_RELEASE_NOTES = 'Fix: "Analisi Raccomandazione" now loads pet description read-only from DB instead of regenerating, preserving Bulk AI cache.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
