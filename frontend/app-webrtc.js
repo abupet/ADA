@@ -5,7 +5,7 @@
 // Globals exposed:  initCallUI(), startCall(), handleIncomingCall(), endCall(), _webrtcInitSignaling()
 
 var _webrtcPC = null, _webrtcLocalStream = null, _webrtcRemoteStream = null;
-var _webrtcCallId = null, _webrtcConvId = null, _webrtcCallType = null;
+var _webrtcCallId = null, _webrtcConvId = null, _webrtcCallType = null, _webrtcCallConvId = null;
 var _webrtcTimerInterval = null, _webrtcStartTime = null, _webrtcIceQueue = [];
 var _webrtcIncomingCallData = null, _webrtcRingTimeout = null, _webrtcIncomingTimeout = null;
 var _webrtcIceServersCache = null, _webrtcIceTimeout = null;
@@ -215,7 +215,7 @@ function handleIncomingCall(data) {
         if (window._commSocket) window._commSocket.emit('reject_call', { conversationId: data.conversationId, callId: data.callId, reason: 'busy' });
         return;
     }
-    _webrtcIncomingCallData = { conversationId: data.conversationId, callId: data.callId, callType: data.callType };
+    _webrtcIncomingCallData = { conversationId: data.conversationId, callId: data.callId, callType: data.callType, callConversationId: data.callConversationId };
     var typeLabel = data.callType === 'video_call' ? 'Videochiamata' : 'Chiamata vocale';
     var caller = data.callerName || 'Utente';
     var notif = document.createElement('div');
@@ -240,6 +240,7 @@ async function _webrtcAccept(convId, callId, callType) {
     _webrtcIncomingCallData = null;
     if (_webrtcIncomingTimeout) { clearTimeout(_webrtcIncomingTimeout); _webrtcIncomingTimeout = null; }
     _webrtcConvId = convId; _webrtcCallId = callId; _webrtcCallType = callType;
+    _webrtcCallConvId = _webrtcIncomingCallData ? (_webrtcIncomingCallData.callConversationId || null) : null;
     _webrtcAcceptHandled = false; _webrtcOfferHandled = false; _webrtcAnswerHandled = false;
     try {
         _webrtcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callType === 'video_call' });
@@ -480,6 +481,7 @@ function _webrtcSendAudioChunk(blob, source, conversationId) {
             socket.emit('call_audio_chunk', {
                 conversationId: conversationId,
                 callId: _webrtcCallId,
+                callConversationId: _webrtcCallConvId,
                 source: source,
                 audioData: base64,
                 mimeType: blob.type,
@@ -738,6 +740,7 @@ function _webrtcTestSendChunkForTranscription(blob, source) {
             socket.emit('call_audio_chunk', {
                 conversationId: _webrtcConvId,
                 callId: _webrtcCallId,
+                callConversationId: _webrtcCallConvId,
                 source: source,
                 audioData: base64,
                 mimeType: blob.type,
@@ -789,7 +792,8 @@ function endCall() {
 
     console.log('[WebRTC] endCall() called', _webrtcCallId ? '(callId=' + _webrtcCallId + ')' : '(no active call)');
     _webrtcStopServerTranscription();
-    if (window._commSocket && _webrtcConvId) window._commSocket.emit('end_call', { conversationId: _webrtcConvId, callId: _webrtcCallId });
+    var dur = _webrtcStartTime ? Math.floor((Date.now() - _webrtcStartTime) / 1000) : 0;
+    if (window._commSocket && _webrtcConvId) window._commSocket.emit('end_call', { conversationId: _webrtcConvId, callId: _webrtcCallId, callConversationId: _webrtcCallConvId, durationSeconds: dur });
     if (_webrtcLocalStream) { _webrtcLocalStream.getTracks().forEach(function(t) { t.stop(); }); _webrtcLocalStream = null; }
     if (_webrtcPC) { _webrtcPC.close(); _webrtcPC = null; }
     _webrtcRemoteStream = null;
@@ -803,8 +807,7 @@ function endCall() {
     _webrtcAcceptHandled = false; _webrtcOfferHandled = false; _webrtcAnswerHandled = false;
     var ov = document.getElementById('webrtc-call-overlay'); if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     _webrtcRemoveNotif();
-    var dur = _webrtcStartTime ? Math.floor((Date.now() - _webrtcStartTime) / 1000) : 0;
-    _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcStartTime = null; _webrtcIceQueue = [];
+    _webrtcCallId = null; _webrtcConvId = null; _webrtcCallType = null; _webrtcCallConvId = null; _webrtcStartTime = null; _webrtcIceQueue = [];
     if (dur > 0 && typeof showToast === 'function') showToast('Chiamata terminata (' + _webrtcFmtDur(dur) + ')', 'info');
 }
 
@@ -826,6 +829,7 @@ function _webrtcInitSignaling() {
         // before setLocalDescription completes.
         if (_webrtcAcceptHandled) return;
         _webrtcAcceptHandled = true;
+        if (d.callConversationId) _webrtcCallConvId = d.callConversationId;
         console.log('[WebRTC] Call accepted, creating offer');
         if (_webrtcRingTimeout) { clearTimeout(_webrtcRingTimeout); _webrtcRingTimeout = null; }
         try {

@@ -282,6 +282,123 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
   // --- Conversations ---
 
+  // POST /api/communication/conversations/call — create call conversation
+  router.post("/api/communication/conversations/call", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user.sub;
+      const { parent_conversation_id, call_type, call_id } = req.body;
+
+      if (!parent_conversation_id || !isValidUuid(parent_conversation_id)) {
+        return res.status(400).json({ error: "invalid_parent_conversation_id" });
+      }
+      if (!call_type || !["voice_call", "video_call"].includes(call_type)) {
+        return res.status(400).json({ error: "invalid_call_type" });
+      }
+
+      const parentQ = await pool.query(
+        "SELECT conversation_id, pet_id, owner_user_id, vet_user_id, subject " +
+        "FROM conversations WHERE conversation_id = $1 AND (owner_user_id = $2 OR vet_user_id = $2)",
+        [parent_conversation_id, userId]
+      );
+      if (!parentQ.rows[0]) {
+        return res.status(403).json({ error: "access_denied" });
+      }
+      const parent = parentQ.rows[0];
+
+      const conversationId = crypto.randomUUID();
+      const callLabel = call_type === "video_call" ? "Videochiamata" : "Chiamata vocale";
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+      const subject = callLabel + " \u2014 " + timeStr;
+
+      const { rows } = await pool.query(
+        "INSERT INTO conversations (conversation_id, pet_id, owner_user_id, vet_user_id, " +
+        "type, status, subject, recipient_type, parent_conversation_id, call_id) " +
+        "VALUES ($1, $2, $3, $4, $5, 'active', $6, 'human', $7, $8) RETURNING *",
+        [conversationId, parent.pet_id, parent.owner_user_id, parent.vet_user_id,
+         call_type, subject, parent_conversation_id, call_id || null]
+      );
+
+      // System message in parent chat
+      const sysMsgId = crypto.randomUUID();
+      const sysIcon = call_type === "video_call" ? "\uD83C\uDFA5" : "\uD83D\uDCDE";
+      const sysContent = sysIcon + " " + callLabel + " iniziata alle " + timeStr;
+      await pool.query(
+        "INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, delivery_status, metadata) " +
+        "VALUES ($1, $2, 'system', 'system', $3, 'delivered', $4)",
+        [sysMsgId, parent_conversation_id, sysContent,
+         JSON.stringify({ call_conversation_id: conversationId, call_type: call_type })]
+      );
+      await pool.query(
+        "UPDATE conversations SET message_count = message_count + 1, updated_at = NOW() WHERE conversation_id = $1",
+        [parent_conversation_id]
+      );
+
+      // Emit system message via socket
+      const commNs = req.app.get("commNs");
+      if (commNs) {
+        commNs.to("conv:" + parent_conversation_id).emit("new_message", {
+          message_id: sysMsgId,
+          conversation_id: parent_conversation_id,
+          sender_id: "system",
+          type: "system",
+          content: sysContent,
+          metadata: { call_conversation_id: conversationId, call_type: call_type },
+          created_at: now.toISOString()
+        });
+      }
+
+      res.status(201).json(rows[0]);
+    } catch (e) {
+      console.error("POST /api/communication/conversations/call error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // POST /api/communication/conversations/:id/end-call — close call conversation
+  router.post("/api/communication/conversations/:id/end-call", requireAuth, async (req, res) => {
+    try {
+      const conversationId = req.params.id;
+      if (!isValidUuid(conversationId)) return res.status(400).json({ error: "invalid_id" });
+
+      const userId = req.user.sub;
+      const { duration_seconds } = req.body;
+
+      const convQ = await pool.query(
+        "SELECT conversation_id, parent_conversation_id, type, subject " +
+        "FROM conversations WHERE conversation_id = $1 AND (owner_user_id = $2 OR vet_user_id = $2)",
+        [conversationId, userId]
+      );
+      if (!convQ.rows[0]) return res.status(404).json({ error: "not_found" });
+      const conv = convQ.rows[0];
+
+      await pool.query(
+        "UPDATE conversations SET status = 'closed', updated_at = NOW() WHERE conversation_id = $1",
+        [conversationId]
+      );
+
+      // Update system message in parent conv with duration
+      if (conv.parent_conversation_id && duration_seconds > 0) {
+        const mins = Math.floor(duration_seconds / 60);
+        const secs = duration_seconds % 60;
+        const durStr = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
+        const callLabel = conv.type === "video_call" ? "Videochiamata" : "Chiamata vocale";
+        const sysIcon = conv.type === "video_call" ? "\uD83C\uDFA5" : "\uD83D\uDCDE";
+
+        await pool.query(
+          "UPDATE comm_messages SET content = $1 " +
+          "WHERE conversation_id = $2 AND type = 'system' AND metadata->>'call_conversation_id' = $3",
+          [sysIcon + " " + callLabel + " \u2014 Durata: " + durStr, conv.parent_conversation_id, conversationId]
+        );
+      }
+
+      res.json({ ok: true, duration_seconds: duration_seconds || 0 });
+    } catch (e) {
+      console.error("POST end-call error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   // POST /api/communication/conversations — create (supports both human and AI)
   router.post("/api/communication/conversations", requireAuth, async (req, res) => {
     try {
@@ -620,6 +737,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         status: conversation.status,
         subject: conversation.subject,
         recipient_type: conversation.recipient_type,
+        type: conversation.type || 'chat',
         referral_form: parsedReferralForm,
         pet_name: petName,
         pet_species: petSpecies,

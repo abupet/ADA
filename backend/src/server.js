@@ -863,7 +863,8 @@ const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, () => {
   console.log(`ADA backend listening on ${PORT}`);
   // Init WebSocket only when not in mock/CI mode
   if (!isMockEnv) {
-    const { commNs } = initWebSocket(httpServer, effectiveJwtSecret, FRONTEND_ORIGIN);
+    const { io, commNs } = initWebSocket(httpServer, effectiveJwtSecret, FRONTEND_ORIGIN);
+    app.set("io", io);
     app.set("commNs", commNs);
     console.log("Socket.io WebSocket server initialized on /ws");
   }
