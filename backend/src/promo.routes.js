@@ -327,7 +327,7 @@ function promoRouter({ requireAuth }) {
       }
     } catch (_e) {}
 
-    // 4. Fetch ALL published promo items
+    // 4. Fetch published promo items (only service_type includes 'promo')
     let allItems = [];
     try {
       const itemsResult = await dbPool.query(
@@ -335,7 +335,8 @@ function promoRouter({ requireAuth }) {
                 description, extended_description, image_url, product_url,
                 tags_include, tags_exclude, priority, service_type
          FROM promo_items
-         WHERE status = 'published'`
+         WHERE status = 'published'
+           AND 'promo' = ANY(service_type)`
       );
       allItems = itemsResult.rows;
     } catch (e) {
@@ -568,7 +569,13 @@ REGOLE:
                        FROM promo_items WHERE promo_item_id = $1 AND status = 'published' LIMIT 1`,
                       [pick.promo_item_id]
                     );
-                    promoItem = itemResult.rows[0] || null;
+                    const candidate = itemResult.rows[0] || null;
+                    // Skip non-promo products (insurance, nutrition)
+                    if (candidate && Array.isArray(candidate.service_type) &&
+                        !candidate.service_type.includes('promo')) {
+                      continue;
+                    }
+                    promoItem = candidate;
                     if (promoItem) break;
                   } catch (_e) {}
                 }

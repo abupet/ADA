@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.22.43
+
+### Fix: Promo mostra sempre Santevet Premium (3 bug concatenati)
+- **Root cause 1 (AI analysis non filtrata)**: `_runAnalysisForPet` in `promo.routes.js` recuperava TUTTI i prodotti published, inclusi insurance/nutrition. I prodotti Santevet con `extended_description` dettagliate dominavano la top 5 AI
+- **Root cause 2 (serving non filtrato)**: il loop di serving dei match cached non verificava `service_type` → prodotti insurance venivano restituiti al frontend come promo
+- **Root cause 3 (rotation bloccata)**: nel frontend, la guardia `serviceType !== 'promo'` faceva `return` PRIMA dell'incremento rotation → deadlock a rotation=0, stesso prodotto insurance servito ad ogni caricamento
+- **Fix 1 (promo.routes.js)**: aggiunto `AND 'promo' = ANY(service_type)` alla query di `_runAnalysisForPet` per escludere insurance/nutrition dall'analisi AI
+- **Fix 2 (promo.routes.js)**: nel loop di serving cached, skip dei prodotti con `service_type` che non include 'promo'
+- **Fix 3 (app-promo.js)**: spostato incremento rotation PRIMA della guardia serviceType per evitare deadlock
+- **DB**: invalidati tutti i `ai_recommendation_matches` cached (contaminati da insurance/nutrition), da rieseguire Bulk AI Analysis
+
 ## v8.22.42
 
 ### Fix: Promos non visibili (pet_profile/home_feed) + Cardiac+Renal dominanza
