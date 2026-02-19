@@ -35,12 +35,12 @@ const CONTEXT_RULES = {
     service_types: ["promo"],
   },
   home_feed: {
-    categories: ["food_general", "accessory", "service"],
+    categories: ["food_general", "food_clinical", "accessory", "service"],
     freq: { per_session: 2, per_week: 4 },
     service_types: ["promo"],
   },
   pet_profile: {
-    categories: ["food_general", "accessory"],
+    categories: ["food_general", "food_clinical", "accessory"],
     freq: { per_session: 1 },
     service_types: ["promo"],
   },
