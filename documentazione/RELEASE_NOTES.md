@@ -1,5 +1,11 @@
 # Release Notes (cumulative)
 
+## v8.22.37
+
+### Fix: "Analisi Raccomandazione" rigenera descrizione e invalida cache
+- **Root cause**: dopo il Bulk AI Analysis ("Tutti i pet"), Phase 2 salvava correttamente i match nella pet row e nella `explanation_cache`. Ma quando l'utente premeva "Analisi Raccomandazione" su un pet, `_showPromoAnalysis()` chiamava `generateAiPetDescription()` (che rigenera la descrizione con `ai_description_generated_at = NOW()`), invalidando sia la cache pet row (`ai_description_generated_at` > `ai_recommendation_matches_generated_at`) sia la `explanation_cache` (SHA-256 key diverso per testo descrizione diverso)
+- **Fix**: sostituita la chiamata a `generateAiPetDescription()` con un fetch read-only da `GET /api/pets/:petId` che legge `ai_description` dal DB senza rigenerarla. La descrizione viene anche salvata in `_aiPetDescCache` per le chiamate successive. Solo se il DB non ha alcuna descrizione, viene generata come fallback
+
 ## v8.22.36
 
 ### Fix: Bulk Phase 2 timeout + force bypass completo
