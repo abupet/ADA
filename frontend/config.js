@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.22.39';
-const ADA_RELEASE_NOTES = 'Fix: Banner promo now cycles through all cached AI matches instead of falling back to "Cardiac + Renal" when a match ID is phantom.';
+const ADA_VERSION = '8.22.40';
+const ADA_RELEASE_NOTES = 'Fix: Cardiac+Renal phantom IDs — seed invalidates stale AI matches, auto-cleanup on read, description filter aligned.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

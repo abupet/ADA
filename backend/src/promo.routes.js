@@ -600,6 +600,13 @@ REGOLE:
                   };
 
                   return res.json({ pet_id: petId, recommendation });
+                } else {
+                  // All cached matches are phantom (promo_items deleted) — clear stale data
+                  console.warn(`promo recommendation: all ${eligible.length} cached AI matches are phantom for pet=${petId}, clearing`);
+                  pool.query(
+                    "UPDATE pets SET ai_recommendation_matches = NULL, ai_recommendation_matches_generated_at = NULL WHERE pet_id = $1",
+                    [petId]
+                  ).catch(() => {});
                 }
               }
             }
