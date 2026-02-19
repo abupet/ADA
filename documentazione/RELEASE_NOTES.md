@@ -1,5 +1,16 @@
 # Release Notes (cumulative)
 
+## v8.22.48
+
+### Feature: "Test Chiamata" — interlocutore loopback per debug
+- **Prerequisito**: flag "Debug attivo (per i test)" (`debugLogEnabled === true`)
+- **Destinatario virtuale**: quando il debug e' attivo, tutte le liste destinatari (messaggi e chiamate) mostrano "Test Chiamata" come opzione
+- **Loopback audio**: la chiamata si auto-connette senza WebRTC reale. In modalità "Parla" il microfono registra; premendo il tasto diventa "Ascolta" e riproduce tutto ciò che l'utente ha detto. A fine riproduzione torna automaticamente a "Parla"
+- **Trascrizione**: i chunk audio vengono inviati al backend via `call_audio_chunk` (source=local per la voce dell'utente, source=remote per la riproduzione) per la pipeline Whisper esistente
+- **Videochiamata test**: il video locale viene mostrato sia come "local" che come "remote" (mirror)
+- **Cleanup**: `endCall()` gestisce correttamente il test call senza errori WebRTC
+- **Files**: `app-webrtc.js` (nuove funzioni `startTestCall`, overlay, registrazione, toggle Parla/Ascolta, trascrizione), `app-communication.js` (iniezione opzione, intercettazione), `styles.css` (stili tasto)
+
 ## v8.22.47
 
 ### Fix: force=1 bypassava AI cached path — "Satiety Weight Management" invece dei match personalizzati

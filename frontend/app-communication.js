@@ -607,6 +607,13 @@ async function _commLoadRecipients() {
         }
         recipientSelect.innerHTML = optHtml;
         recipientSelect.disabled = false;
+        // --- TEST CHIAMATA: inietta destinatario virtuale se debug attivo ---
+        if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
+            var _tcOpt = document.createElement('option');
+            _tcOpt.value = '__test_call__';
+            _tcOpt.textContent = '\ud83e\uddea Test Chiamata';
+            recipientSelect.appendChild(_tcOpt);
+        }
         if (typeof makeFilterableSelect === 'function') makeFilterableSelect('comm-new-recipient');
     } catch (_) {
         recipientSelect.innerHTML = '<option value="">Errore caricamento</option>';
@@ -2221,6 +2228,14 @@ async function _commLoadCallRecipientsForType(destType) {
         recipientSelect.innerHTML = optHtml;
         recipientSelect.disabled = false;
 
+        // --- TEST CHIAMATA: inietta destinatario virtuale se debug attivo ---
+        if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
+            var _tcOpt = document.createElement('option');
+            _tcOpt.value = '__test_call__';
+            _tcOpt.textContent = '\ud83e\uddea Test Chiamata';
+            recipientSelect.appendChild(_tcOpt);
+        }
+
         recipientSelect.onchange = function() {
             var startBtn = document.getElementById('comm-call-start-btn');
             if (startBtn) startBtn.style.display = this.value ? '' : 'none';
@@ -2236,6 +2251,18 @@ async function _commLoadCallRecipientsForType(destType) {
 async function _commInitiateDirectCall(callType) {
     var recipientId = (document.getElementById('comm-call-recipient') || {}).value;
     if (!recipientId) return;
+
+    // --- TEST CHIAMATA: avvia loopback senza creare conversazione ---
+    if (recipientId === '__test_call__') {
+        var fakeConvId = 'test_call_' + Date.now();
+        if (typeof startTestCall === 'function') {
+            startTestCall(fakeConvId, callType);
+        }
+        var area = document.getElementById('comm-new-form-area');
+        if (area) area.innerHTML = '';
+        return;
+    }
+
     var petId = (typeof getCurrentPetId === 'function') ? getCurrentPetId() : null;
     if (!petId) {
         if (typeof showToast === 'function') showToast('Seleziona un pet', 'warning');

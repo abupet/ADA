@@ -1649,6 +1649,22 @@ button:active {
     to { transform: rotate(360deg); }
 }
 
+/* Test Chiamata — Parla/Ascolta button */
+.webrtc-btn-test-talk {
+    background: #8b5cf6;
+    color: #fff;
+    transition: background 0.2s;
+}
+.webrtc-btn-test-talk:hover {
+    background: #7c3aed;
+}
+.webrtc-btn-test-talk.listening {
+    background: #f59e0b;
+}
+.webrtc-btn-test-talk.listening:hover {
+    background: #d97706;
+}
+
 /* Offline banner */
 .offline-banner {
     position: fixed;
