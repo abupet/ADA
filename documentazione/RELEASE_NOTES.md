@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.23.4
+
+### Fix: vet_int può generare piano nutrizionale senza tenant nel JWT
+- **Backend** (`nutrition.routes.js`): `tenant_id` ora opzionale in `POST /api/nutrition/plan/:petId/generate`. Se non fornito, il backend seleziona automaticamente il primo tenant attivo con prodotti nutrition pubblicati.
+- **Frontend** (`app-nutrition.js`): rimosso il guard bloccante che mostrava "Tenant ID non disponibile" quando `getJwtTenantId()` restituiva `null`. La richiesta viene ora inviata anche senza `tenant_id`, delegando il fallback al backend.
+- **Files**: `backend/src/nutrition.routes.js`, `frontend/app-nutrition.js`, `frontend/config.js`
+
 ## v8.23.3
 
 ### Fix: Servizi Assicurazione e Nutrizione + Sistema Tag completo
