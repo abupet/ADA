@@ -328,9 +328,9 @@ async function _runSeedJob(pool, config, openAiKey) {
     // Tenant
     try {
       await pool.query(
-        `INSERT INTO tenants (tenant_id, name, slug)
-         VALUES ('seed-tenant', 'Seed Test Brand', 'seed-brand')
-         ON CONFLICT (tenant_id) DO NOTHING`
+        `INSERT INTO tenants (tenant_id, name, slug, status)
+         VALUES ('seed-tenant', 'Seed Test Brand', 'seed-brand', 'disabled')
+         ON CONFLICT (tenant_id) DO UPDATE SET status = 'disabled'`
       );
       _log('Tenant seed-tenant ensured');
     } catch (e) {
