@@ -80,6 +80,32 @@
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    // Helper: populate a tag picker container with checkboxes grouped by category
+    function _populateTagPicker(containerId, checkboxClass, allTags, selectedTags) {
+        var el = document.getElementById(containerId);
+        if (!el) return;
+
+        var categories = {};
+        allTags.forEach(function(t) {
+            if (!categories[t.category]) categories[t.category] = [];
+            categories[t.category].push(t);
+        });
+
+        var h = [];
+        Object.keys(categories).sort().forEach(function(cat) {
+            h.push('<div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;margin:4px 0 2px;">' + _escapeHtml(cat) + '</div>');
+            categories[cat].forEach(function(t) {
+                var checked = selectedTags.indexOf(t.tag) !== -1 ? ' checked' : '';
+                var sensColor = { low:'#16a34a', medium:'#eab308', high:'#dc2626' }[t.sensitivity] || '#888';
+                h.push('<label style="display:flex;align-items:center;gap:4px;font-size:12px;padding:1px 0;cursor:pointer;">');
+                h.push('<input type="checkbox" class="' + checkboxClass + '" value="' + _escapeHtml(t.tag) + '"' + checked + '>');
+                h.push('<span style="color:' + sensColor + ';">&#9679;</span> ' + _escapeHtml(t.label) + ' <code style="font-size:10px;color:#94a3b8;">(' + _escapeHtml(t.tag) + ')</code>');
+                h.push('</label>');
+            });
+        });
+        el.innerHTML = h.join('');
+    }
+
     // =========================================================================
     // Dashboard
     // =========================================================================
@@ -1496,6 +1522,21 @@
         html.push('<div style="margin-top:10px;"><label style="font-size:12px;font-weight:600;">Descrizione Prodotto (per AI matching)</label>');
         html.push('<textarea id="newItemExtDesc" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:12px;resize:vertical;"></textarea>');
         html.push('<small style="color:#888;">Max 2000 char. Usata dal motore AI per matching. Non visibile al cliente.</small></div>');
+        html.push('<div id="newTagsContainer" style="margin-top:12px;">');
+        html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">');
+        html.push('<div>');
+        html.push('<label style="font-size:12px;font-weight:600;color:#16a34a;">Tags Include</label>');
+        html.push('<small style="display:block;color:#888;font-size:11px;margin-bottom:4px;">Pet con almeno uno di questi tag vedranno il prodotto</small>');
+        html.push('<div id="newTagsIncludeList" style="max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px;background:#f0fdf4;">');
+        html.push('<span style="color:#888;font-size:11px;">Caricamento tag...</span>');
+        html.push('</div></div>');
+        html.push('<div>');
+        html.push('<label style="font-size:12px;font-weight:600;color:#dc2626;">Tags Exclude</label>');
+        html.push('<small style="display:block;color:#888;font-size:11px;margin-bottom:4px;">Pet con qualunque di questi tag NON vedranno il prodotto</small>');
+        html.push('<div id="newTagsExcludeList" style="max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px;background:#fef2f2;">');
+        html.push('<span style="color:#888;font-size:11px;">Caricamento tag...</span>');
+        html.push('</div></div>');
+        html.push('</div></div>');
         html.push('<div style="margin-top:12px;"><button class="btn btn-success" onclick="createPromoItem()">Crea</button> <button class="btn btn-secondary" onclick="hideCreateItemForm()">Annulla</button></div>');
         html.push('</div>');
 
@@ -1597,7 +1638,17 @@
     function filterCatalogCategory(val) { _catalogCategoryFilter = val; _catalogPage = 1; loadAdminCatalog(); }
     function filterCatalogSpecies(val) { _catalogSpeciesFilter = val; _catalogPage = 1; loadAdminCatalog(); }
 
-    function showCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = ''; }
+    function showCreateItemForm() {
+        var f = document.getElementById('create-item-form');
+        if (f) f.style.display = '';
+        fetchApi('/api/admin/tag-dictionary')
+            .then(function(r) { return r.ok ? r.json() : { tags: [] }; })
+            .then(function(data) {
+                var allTags = data.tags || [];
+                _populateTagPicker('newTagsIncludeList', 'newTagInclude', allTags, []);
+                _populateTagPicker('newTagsExcludeList', 'newTagExclude', allTags, []);
+            });
+    }
     function hideCreateItemForm() { var f = document.getElementById('create-item-form'); if (f) f.style.display = 'none'; }
 
     function filterCatalogStatus(status) {
@@ -1630,6 +1681,13 @@
         var lcBoxes = document.querySelectorAll('.newItemLifecycle:checked');
         for (var li = 0; li < lcBoxes.length; li++) lifecycle.push(lcBoxes[li].value);
 
+        var tagsInclude = [];
+        var tiBoxes = document.querySelectorAll('.newTagInclude:checked');
+        for (var tic = 0; tic < tiBoxes.length; tic++) tagsInclude.push(tiBoxes[tic].value);
+        var tagsExclude = [];
+        var teBoxes = document.querySelectorAll('.newTagExclude:checked');
+        for (var tec = 0; tec < teBoxes.length; tec++) tagsExclude.push(teBoxes[tec].value);
+
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1640,7 +1698,9 @@
                 product_url: (document.getElementById('newItemUrl') || {}).value || null,
                 image_url: (document.getElementById('newItemImageUrl') || {}).value || null,
                 priority: parseInt((document.getElementById('newItemPriority') || {}).value) || 0,
-                service_type: (function() { var st = []; var stBoxes = document.querySelectorAll('.newItemServiceType:checked'); for (var sti = 0; sti < stBoxes.length; sti++) st.push(stBoxes[sti].value); return st.length ? st : ['promo']; })()
+                service_type: (function() { var st = []; var stBoxes = document.querySelectorAll('.newItemServiceType:checked'); for (var sti = 0; sti < stBoxes.length; sti++) st.push(stBoxes[sti].value); return st.length ? st : ['promo']; })(),
+                tags_include: tagsInclude,
+                tags_exclude: tagsExclude
             })
         }).then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1734,8 +1794,34 @@
             });
             html.push('</div></div>');
 
+            // Tags include/exclude pickers
+            html.push('<div id="editTagsContainer" style="margin-top:12px;">');
+            html.push('<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">');
+            html.push('<div>');
+            html.push('<label style="font-size:12px;font-weight:600;color:#16a34a;">Tags Include (OR match)</label>');
+            html.push('<small style="display:block;color:#888;font-size:11px;margin-bottom:4px;">Pet con ALMENO UNO di questi tag vedranno il prodotto con priorità</small>');
+            html.push('<div id="editTagsIncludeList" style="max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px;background:#f0fdf4;">');
+            html.push('<span style="color:#888;font-size:11px;">Caricamento tag...</span>');
+            html.push('</div></div>');
+            html.push('<div>');
+            html.push('<label style="font-size:12px;font-weight:600;color:#dc2626;">Tags Exclude (AND NOT)</label>');
+            html.push('<small style="display:block;color:#888;font-size:11px;margin-bottom:4px;">Pet con QUALUNQUE di questi tag NON vedranno il prodotto</small>');
+            html.push('<div id="editTagsExcludeList" style="max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:8px;background:#fef2f2;">');
+            html.push('<span style="color:#888;font-size:11px;">Caricamento tag...</span>');
+            html.push('</div></div>');
+            html.push('</div></div>');
+
             html.push('<div style="margin-top:16px;"><button class="btn btn-success" onclick="_savePromoItemEdit(\'' + _escapeHtml(itemId) + '\')">Salva</button> <button class="btn btn-secondary" onclick="_closeModal()">Annulla</button></div>');
             container.innerHTML = html.join('');
+
+            // Load tag dictionary and populate checkboxes
+            fetchApi('/api/admin/tag-dictionary')
+                .then(function(r) { return r.ok ? r.json() : { tags: [] }; })
+                .then(function(data) {
+                    var allTags = data.tags || [];
+                    _populateTagPicker('editTagsIncludeList', 'editTagInclude', allTags, Array.isArray(item.tags_include) ? item.tags_include : []);
+                    _populateTagPicker('editTagsExcludeList', 'editTagExclude', allTags, Array.isArray(item.tags_exclude) ? item.tags_exclude : []);
+                });
         });
     }
 
@@ -1756,6 +1842,13 @@
         var stCheckboxes = document.querySelectorAll('.editItemServiceType:checked');
         for (var k = 0; k < stCheckboxes.length; k++) serviceType.push(stCheckboxes[k].value);
 
+        var tagsInclude = [];
+        var tiBoxes = document.querySelectorAll('.editTagInclude:checked');
+        for (var ti = 0; ti < tiBoxes.length; ti++) tagsInclude.push(tiBoxes[ti].value);
+        var tagsExclude = [];
+        var teBoxes = document.querySelectorAll('.editTagExclude:checked');
+        for (var te = 0; te < teBoxes.length; te++) tagsExclude.push(teBoxes[te].value);
+
         var patch = {
             name: (document.getElementById('editItemName') || {}).value || '',
             category: (document.getElementById('editItemCategory') || {}).value || '',
@@ -1766,7 +1859,9 @@
             priority: parseInt((document.getElementById('editItemPriority') || {}).value) || 0,
             species: species,
             lifecycle_target: lifecycle,
-            service_type: serviceType.length ? serviceType : ['promo']
+            service_type: serviceType.length ? serviceType : ['promo'],
+            tags_include: tagsInclude,
+            tags_exclude: tagsExclude
         };
 
         fetchApi('/api/admin/' + encodeURIComponent(tenantId) + '/promo-items/' + encodeURIComponent(itemId), {

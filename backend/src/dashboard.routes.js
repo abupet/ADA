@@ -1077,6 +1077,25 @@ function dashboardRouter({ requireAuth }) {
     }
   );
 
+  // GET /api/admin/tag-dictionary — read-only tag list for product forms
+  // Accessible by admin_brand and super_admin
+  router.get(
+    "/api/admin/tag-dictionary",
+    requireAuth,
+    requireRole(["super_admin", "admin_brand"]),
+    async (_req, res) => {
+      try {
+        const { rows } = await pool.query(
+          "SELECT tag, label, category, sensitivity FROM tag_dictionary ORDER BY category, tag"
+        );
+        res.json({ tags: rows });
+      } catch (e) {
+        console.error("GET /api/admin/tag-dictionary error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
   // ==============================
   // SUPER ADMIN: TAG DICTIONARY MANAGEMENT
   // ==============================
