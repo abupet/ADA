@@ -411,6 +411,7 @@ async function navigateToPage(page) {
     if (page === 'history') {
         try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch(e) {}
         try { if (typeof loadPetConversations === 'function') loadPetConversations(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
+        try { if (typeof _renderNutritionInHistory === 'function') _renderNutritionInHistory(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
     }
     if (page === 'ai-petdesc') {
         try { if (typeof updateAiPetDescriptionUI === 'function') updateAiPetDescriptionUI(); } catch(e) {}
@@ -430,12 +431,17 @@ async function navigateToPage(page) {
             if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
             if (page === 'qna') renderPromoSlot('qna-promo-container', 'faq_view');
         }
-        // Nutrition slot (multi-service)
-        if (typeof renderNutritionSlot === 'function') {
+        // Nutrition slot (multi-service) — SOLO per proprietario in Dati Pet
+        if (typeof renderNutritionSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
             if (page === 'patient') renderNutritionSlot('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
-        if (typeof renderNutritionValidation === 'function' && page === 'patient' && typeof getActiveRole === 'function' && getActiveRole() === 'veterinario') {
-            renderNutritionValidation('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+        // Nutrition dedicated page
+        if (page === 'nutrition') {
+            try {
+                if (typeof renderNutritionPage === 'function') {
+                    renderNutritionPage(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
+                }
+            } catch(e) { console.error('[CORE] renderNutritionPage failed:', e); }
         }
             // Insurance slot (multi-service)
             if (typeof renderInsuranceSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
@@ -1293,6 +1299,11 @@ function openEditPetModal() {
     // Close lifestyle section by default
     var ls = document.getElementById('editPetLifestyleSection');
     if (ls) ls.classList.remove('open');
+
+    // v3: Update breed datalist for edit modal
+    if (typeof _updateBreedDatalist === 'function') _updateBreedDatalist('editPetSpecies', 'editPetBreedList');
+    var editSpeciesEl = document.getElementById('editPetSpecies');
+    if (editSpeciesEl) editSpeciesEl.addEventListener('change', function() { if (typeof _updateBreedDatalist === 'function') _updateBreedDatalist('editPetSpecies', 'editPetBreedList'); });
 
     var modal = document.getElementById('editPetModal');
     if (modal) modal.classList.add('active');

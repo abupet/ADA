@@ -1,5 +1,67 @@
 # Release Notes (cumulative)
 
+## v8.25.0
+
+### Feature: Nutrizione v3 — Pagina Dedicata, UX Completa, Razze, Archivio, Metodo
+
+#### Pagina Nutrizione dedicata
+- **Nuova voce sidebar** "🥗 Nutrizione" per vet (dopo Referto) con pagina dedicata
+- Piano corrente (validato) visualizzato con `_buildFullPlanHTML()` — dettaglio completo pasti, items, macros, integratori, restrizioni, monitoraggio, transizione
+- Piano pending con pulsanti Valida/Modifica/Duplica/Rifiuta e vista completa inline
+- Storico piani con click per dettaglio in modal
+- Pagina abilitata per veterinario, vet_int, proprietario, super_admin in ROLE_PERMISSIONS
+
+#### Owner: nascondere sezione vuota
+- Se non c'è piano validato, la sezione nutrizione in Dati Pet è completamente nascosta (no "Nessun piano disponibile")
+- Slot reso visibile automaticamente quando un piano esiste
+
+#### Rinomina "Genera piano AI" → "Genera piano nutrizionale"
+- Tutte le occorrenze aggiornate nel frontend
+
+#### Card validazione arricchita + Modal modifica completo
+- **`_buildFullPlanHTML()`**: helper riutilizzabile per visualizzare un piano completo (fabbisogno, RER/K, date, pasti con items/grammi/kcal, macronutrienti, integratori, restrizioni, note cliniche, monitoraggio, transizione, input snapshot)
+- **`_openFullEditModal()`**: modal di modifica completo con form per kcal, pasti/giorno, date inizio/fine, pasti editabili (nome/orario/percentuale/kcal con items aggiungi/rimuovi), macronutrienti target, integratori, restrizioni, note cliniche
+- Flag `isDuplicate` per duplicare piano come nuovo record
+
+#### Date inizio/fine piano
+- Campi data inizio/fine nel modal di generazione (pre-compilato con data odierna)
+- Campi data nel modal di modifica
+- Date visualizzate nella card piano e nello storico
+- Salvate in `plan_data` JSONB (nessuna migrazione SQL)
+
+#### Duplica piano
+- **Backend**: nuovo endpoint `POST /api/nutrition/plan/:petId/duplicate` — crea piano pending da dati modificati
+- **Backend**: nuovo endpoint `GET /api/nutrition/plans/:petId/all` — storico completo piani per pet
+- **Frontend**: pulsante "📋 Duplica" nella pagina nutrizione, apre modal modifica con flag isDuplicate
+
+#### Breed dropdown con autocomplete
+- **`frontend/breed-data.js`**: database razze per Cane (100+), Gatto (50+), Coniglio (25+) con "Meticcio"
+- `<input>` + `<datalist>` HTML5 nativo per tutti e 3 i form (pet, newPet, editPet)
+- `_updateBreedDatalist()`: popola datalist al cambio specie, al caricamento pet, e apertura modal modifica
+
+#### Integrazione Archivio Sanitario, Profilo Sanitario, Descrizione Pet AI
+- **Archivio Sanitario**: piani nutrizionali validati mostrati come "documenti virtuali" con icona 🥗, click per dettaglio
+- **Profilo Sanitario**: sezione `PIANO NUTRIZIONALE` aggiunta al prompt `generateDiary()` con kcal, pasti, note, restrizioni
+- **Descrizione Pet AI**: fonte `piano_nutrizionale` aggiunta a `_collectPetDataForAI()` con kcal, pasti, note, restrizioni, integratori, data validazione
+
+#### Pulsante "Metodo" — calcoli per il pet specifico
+- **`_renderMethodButton()`** e **`_showMethodModal()`**: modal con 3 step didattici
+- Step 1: Calcolo RER (70 × peso^0.75), fattore K per specie/lifecycle/sterilizzazione/attività, MER finale
+- Step 2: Target macronutrienti per specie (tabelle cane vs gatto)
+- Step 3: Composizione piano con conversioni grammi (crocchette ~350 kcal/100g, umido ~80 kcal/100g)
+
+#### File modificati
+- `frontend/breed-data.js` (nuovo)
+- `frontend/index.html` — sidebar, page-nutrition, breed datalist, script tag
+- `frontend/config.js` — ROLE_PERMISSIONS, versione
+- `frontend/app-core.js` — navigateToPage (nutrition page, history integration, breed datalist in edit modal)
+- `frontend/app-nutrition.js` — v3 completo
+- `frontend/app-pets.js` — _updateBreedDatalist, species change binding
+- `frontend/app-data.js` — generateDiary nutrition, setPatientData breed datalist
+- `frontend/app-ai-petdesc.js` — _collectPetDataForAI nutrition source
+- `backend/src/nutrition.routes.js` — duplicate + all-plans endpoints
+- `AGENTS.md` — versione
+
 ## v8.24.0
 
 ### Feature: Piano Nutrizionale AI v2 — Integrazione Profonda nel Modello Dati
