@@ -222,6 +222,54 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
     }
   );
 
+  // POST /api/nutrition/plan/:petId/duplicate — duplicate plan with modifications
+  router.post(
+    "/api/nutrition/plan/:petId/duplicate",
+    requireAuth,
+    requireRole(["vet_int", "super_admin"]),
+    async (req, res) => {
+      try {
+        const { petId } = req.params;
+        if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+
+        const { plan_data, tenant_id } = req.body || {};
+        if (!plan_data) return res.status(400).json({ error: "plan_data_required" });
+
+        const newPlanId = "np_" + require("crypto").randomUUID();
+        const ownerUserId = req.user?.sub;
+
+        await pool.query(
+          `INSERT INTO nutrition_plans (plan_id, pet_id, owner_user_id, tenant_id, plan_data, status)
+           VALUES ($1, $2, $3, $4, $5, 'pending')`,
+          [newPlanId, petId, ownerUserId, tenant_id || null, JSON.stringify(plan_data)]
+        );
+
+        res.status(201).json({ plan_id: newPlanId, pet_id: petId, plan_data, status: "pending" });
+      } catch (e) {
+        console.error("POST /api/nutrition/plan/:petId/duplicate error", e);
+        res.status(500).json({ error: "server_error" });
+      }
+    }
+  );
+
+  // GET /api/nutrition/plans/:petId/all — all plans for a pet (history)
+  router.get("/api/nutrition/plans/:petId/all", requireAuth, async (req, res) => {
+    try {
+      const { petId } = req.params;
+      if (!petId || !isValidUuid(petId)) return res.json({ plans: [] });
+
+      const { rows } = await pool.query(
+        "SELECT plan_id, pet_id, status, plan_data, created_at, validated_at, validated_by FROM nutrition_plans WHERE pet_id = $1 ORDER BY created_at DESC LIMIT 50",
+        [petId]
+      );
+      res.json({ plans: rows });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ plans: [] });
+      console.error("GET /api/nutrition/plans/:petId/all error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   return router;
 }
 

@@ -190,6 +190,8 @@ function setPatientData(data) {
         const el = document.getElementById(f);
         if (el) el.value = (data && data[f]) || '';
     });
+    // v3: Update breed datalist when patient data is set
+    if (typeof _updateBreedDatalist === 'function') _updateBreedDatalist('petSpecies', 'petBreedList');
 }
 
 function setLifestyleData(data) {
@@ -309,6 +311,24 @@ async function generateDiary() {
     const vitalsText = vitalsData.map(v => `${new Date(v.date).toLocaleDateString('it-IT')}: Peso ${v.weight}kg, T ${v.temp}°C`).join('\n') || 'Nessuno';
     const medsText = medications.map(m => `${m.name} ${m.dosage} ${m.frequency}`).join('\n') || 'Nessuno';
 
+    // v3: Raccogliere piano nutrizionale attivo
+    var nutritionText = 'Nessuno';
+    try {
+        var petIdForNut = (typeof getCurrentPetId === 'function') ? getCurrentPetId() : null;
+        if (petIdForNut) {
+            var nutResp = await fetchApi('/api/nutrition/plan/' + encodeURIComponent(petIdForNut));
+            if (nutResp && nutResp.ok) {
+                var nutData = await nutResp.json();
+                if (nutData && nutData.plan) {
+                    var npd = (typeof nutData.plan.plan_data === 'string') ? JSON.parse(nutData.plan.plan_data) : (nutData.plan.plan_data || {});
+                    nutritionText = (npd.daily_kcal || '?') + ' kcal/giorno, ' + (npd.meals_per_day || '?') + ' pasti.';
+                    if (npd.clinical_notes) nutritionText += ' Note: ' + npd.clinical_notes;
+                    if (npd.restrictions && npd.restrictions.length > 0) nutritionText += ' Restrizioni: ' + npd.restrictions.join(', ');
+                }
+            }
+        }
+    } catch(_) {}
+
     const patientInfo = `PAZIENTE: ${patient.petName || 'N/D'}, ${patient.petSpecies || 'N/D'}, ${patient.petBreed || 'N/D'}, ${_computeAgeFromBirthdate(patient.petBirthdate) || 'N/D'}
 PROPRIETARIO: ${patient.ownerName || 'N/D'}
 STILE DI VITA: Ambiente ${lifestyle.lifestyle || 'N/D'}, Attività ${lifestyle.activityLevel || 'N/D'}
@@ -316,6 +336,7 @@ CONDIZIONI NOTE: ${lifestyle.knownConditions || 'Nessuna'}
 
 PARAMETRI VITALI: ${vitalsText}
 FARMACI: ${medsText}
+PIANO NUTRIZIONALE: ${nutritionText}
 STORICO REFERTI: ${historyText}`;
 
     let prompt;

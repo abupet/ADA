@@ -692,6 +692,30 @@ function loadPetIntoMainFields(pet) {
 }
 
 // ============================================
+// BREED DATALIST HELPERS (v3)
+// ============================================
+
+function _updateBreedDatalist(speciesSelectId, datalistId) {
+    var speciesEl = document.getElementById(speciesSelectId);
+    var datalist = document.getElementById(datalistId);
+    if (!speciesEl || !datalist) return;
+    var species = speciesEl.value;
+    var breeds = (typeof getBreedsForSpecies === 'function') ? getBreedsForSpecies(species) : [];
+    datalist.innerHTML = breeds.map(function(b) { return '<option value="' + b.replace(/"/g, '&quot;') + '">'; }).join('');
+}
+
+// Bind species change → breed datalist update
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        var petSpeciesEl = document.getElementById('petSpecies');
+        if (petSpeciesEl) petSpeciesEl.addEventListener('change', function() { _updateBreedDatalist('petSpecies', 'petBreedList'); });
+
+        var newPetSpeciesEl = document.getElementById('newPetSpecies');
+        if (newPetSpeciesEl) newPetSpeciesEl.addEventListener('change', function() { _updateBreedDatalist('newPetSpecies', 'newPetBreedList'); });
+    });
+})();
+
+// ============================================
 // FIELD HELPERS - ADD PET PAGE
 // ============================================
 
