@@ -91,17 +91,7 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
       if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
 
       const ownerUserId = req.user?.sub;
-      let tenantId = req.body?.tenant_id || req.query.tenant_id || null;
-      // If no tenantId provided (e.g. vet_int without tenant in JWT), pick first active tenant with nutrition products
-      if (!tenantId) {
-        const fallback = await pool.query(
-          `SELECT pi.tenant_id FROM promo_items pi
-           JOIN tenants t ON t.tenant_id = pi.tenant_id AND t.status = 'active'
-           WHERE 'nutrition' = ANY(pi.service_type) AND pi.status = 'published'
-           LIMIT 1`
-        );
-        tenantId = fallback.rows[0]?.tenant_id || null;
-      }
+      const tenantId = req.body?.tenant_id || req.query.tenant_id || null;
 
       const result = await generateNutritionPlan(pool, petId, ownerUserId, tenantId, getOpenAiKey);
       res.status(201).json(result);

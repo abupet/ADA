@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.23.5
+
+### Fix: Nutrition "Genera piano AI" — errore 500 per vet_int
+- **SQL** (`024_nutrition_nullable_tenant.sql`): `nutrition_plans.tenant_id` ora nullable — il vincolo NOT NULL causava un 500 quando `vet_int` (senza tenant nel JWT) generava un piano.
+- **Backend** (`nutrition.routes.js`): rimosso il fallback single-tenant che selezionava un tenant arbitrario. Il `tenant_id` viene ora passato solo se presente nel client (es. `admin_brand`). Per `vet_int` resta `null`, coerente con la query cross-tenant già usata dal service layer.
+- **Files**: `sql/024_nutrition_nullable_tenant.sql`, `backend/src/nutrition.routes.js`, `frontend/config.js`
+
 ## v8.23.4
 
 ### Fix: vet_int può generare piano nutrizionale senza tenant nel JWT
