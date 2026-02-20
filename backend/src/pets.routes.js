@@ -297,6 +297,19 @@ function petsRouter({ requireAuth }) {
       return res.status(503).json({ error: "openai_not_configured" });
     }
 
+    // Load tag dictionary
+    let tagDictionary = [];
+    try {
+      const tdResult = await pool.query(
+        "SELECT tag, label, category, sensitivity, description FROM tag_dictionary ORDER BY category, tag"
+      );
+      tagDictionary = tdResult.rows;
+    } catch (_e) {}
+
+    const tagRef = tagDictionary.map(t =>
+      `- ${t.tag} (${t.label}): ${t.description || t.category}`
+    ).join("\n");
+
     const systemPrompt = `Sei un assistente che prepara descrizioni strutturate di animali domestici per un sistema di raccomandazione AI.
 Il tuo output verrà usato per fare matching con descrizioni di prodotti veterinari/assicurativi/nutrizionali.
 
@@ -315,11 +328,21 @@ FONTI: Per ogni informazione, indica la fonte specifica tra parentesi quadre:
 - [Parametri Vitali] per misurazioni (FC, FR, temperatura, peso)
 - [Storico Sanitario] per visite e diagnosi passate
 - [Conversazioni] per informazioni da conversazioni
-NON usare mai [fonte] generico.`;
+NON usare mai [fonte] generico.
+
+TAG SYSTEM:
+Nelle sezioni TAGS APPLICABILI e TAGS NON APPLICABILI devi usare SOLO i tag dal dizionario fornito.
+Per ogni tag, valuta TUTTE le fonti disponibili (dati anagrafici, referti, farmaci, parametri vitali, storico, conversazioni).
+Un tag clinico può essere dedotto anche indirettamente: ad esempio un farmaco antinfiammatorio articolare implica "clinical:joint_issues",
+creatinina elevata implica "clinical:renal", BCS elevato implica "clinical:obesity".
+Indica SOLO tag per cui hai evidenze concrete nei dati. Non indovinare.`;
 
     const userPrompt = `Genera una descrizione strutturata per il matching AI del seguente pet:
 
 ${JSON.stringify(sources, null, 2)}
+
+TAG DICTIONARY (usa SOLO questi tag ID esatti):
+${tagRef}
 
 Formato output:
 ANAGRAFICA: ...
@@ -328,7 +351,9 @@ STILE DI VITA: ...
 FARMACI E TRATTAMENTI: ...
 PARAMETRI VITALI: ...
 STORICO SANITARIO: ...
-PROFILO RISCHIO: ...`;
+PROFILO RISCHIO: ...
+TAGS APPLICABILI: tag1, tag2, tag3
+TAGS NON APPLICABILI: tag4, tag5, tag6`;
 
     try {
       const controller = new AbortController();
@@ -363,6 +388,43 @@ PROFILO RISCHIO: ...`;
           [description, sourcesHash, petId]
         );
       } catch (_e) { /* non-critical */ }
+
+      // Extract AI-inferred tags and upsert into pet_tags
+      try {
+        const _extractTags = (desc, section) => {
+          const regex = new RegExp(section + ':\\s*(.+)', 'i');
+          const match = desc.match(regex);
+          if (!match) return [];
+          return match[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
+        };
+
+        const aiTagsApply = _extractTags(description, 'TAGS APPLICABILI');
+        const validTagIds = new Set(tagDictionary.map(t => t.tag));
+
+        for (const tag of aiTagsApply) {
+          if (validTagIds.has(tag)) {
+            await pool.query(
+              `INSERT INTO pet_tags (pet_id, tag, source, confidence, computed_at)
+               VALUES ($1, $2, 'ai', 0.85, NOW())
+               ON CONFLICT (pet_id, tag) DO UPDATE SET
+                 source = CASE WHEN pet_tags.source = 'computed' THEN 'computed' ELSE 'ai' END,
+                 confidence = GREATEST(pet_tags.confidence, 0.85),
+                 computed_at = NOW()`,
+              [petId, tag]
+            );
+          }
+        }
+
+        const aiTagsNotApply = _extractTags(description, 'TAGS NON APPLICABILI');
+        for (const tag of aiTagsNotApply) {
+          if (validTagIds.has(tag)) {
+            await pool.query(
+              `DELETE FROM pet_tags WHERE pet_id = $1 AND tag = $2 AND source = 'ai'`,
+              [petId, tag]
+            );
+          }
+        }
+      } catch (_tagErr) { /* non-critical */ }
 
       res.json({ description, model: "gpt-4o-mini", tokens: result.usage?.total_tokens });
     } catch (err) {

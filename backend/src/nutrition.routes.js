@@ -19,19 +19,28 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
   const router = express.Router();
   const pool = getPool();
 
-  // GET /api/nutrition/products?tenantId=X — list nutrition products for tenant
+  // GET /api/nutrition/products[?tenantId=X] — list nutrition products (cross-tenant if no tenantId)
   router.get("/api/nutrition/products", requireAuth, async (req, res) => {
     try {
-      const tenantId = req.query.tenantId;
-      if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
+      const tenantId = req.query.tenantId || null;
 
-      const { rows } = await pool.query(
-        `SELECT promo_item_id, name, category, description
-         FROM promo_items
-         WHERE tenant_id = $1 AND 'nutrition' = ANY(service_type) AND status = 'published'
-         ORDER BY category, name`,
-        [tenantId]
-      );
+      let query, params;
+      if (tenantId) {
+        query = `SELECT pi.promo_item_id, pi.name, pi.category, pi.description, pi.tenant_id, t.name AS tenant_name
+                 FROM promo_items pi
+                 JOIN tenants t ON t.tenant_id = pi.tenant_id
+                 WHERE pi.tenant_id = $1 AND 'nutrition' = ANY(pi.service_type) AND pi.status = 'published'
+                 ORDER BY pi.category, pi.name`;
+        params = [tenantId];
+      } else {
+        query = `SELECT pi.promo_item_id, pi.name, pi.category, pi.description, pi.tenant_id, t.name AS tenant_name
+                 FROM promo_items pi
+                 JOIN tenants t ON t.tenant_id = pi.tenant_id AND t.status = 'active'
+                 WHERE 'nutrition' = ANY(pi.service_type) AND pi.status = 'published'
+                 ORDER BY pi.category, pi.name`;
+        params = [];
+      }
+      const { rows } = await pool.query(query, params);
       res.json({ products: rows });
     } catch (e) {
       if (e.code === "42P01") return res.json({ products: [] });

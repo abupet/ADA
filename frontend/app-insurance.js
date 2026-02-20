@@ -166,16 +166,15 @@
     // =========================================================================
 
     function _showPlanSelector(petId) {
+        // tenantId opzionale: se l'owner non ha un tenant, il backend ritorna piani da tutti i tenant
         var tenantId = (typeof getJwtTenantId === 'function') ? getJwtTenantId() : null;
-        if (!tenantId) {
-            if (_fnExists('showToast')) global.showToast('Impossibile determinare il tenant.', 'error');
-            return;
-        }
 
         _insuranceShowModal('Scegli il tuo piano assicurativo', function(body) {
             body.innerHTML = '<div style="text-align:center;padding:24px;color:#64748b;">Caricamento piani disponibili...</div>';
 
-            global.fetchApi('/api/insurance/plans?petId=' + encodeURIComponent(petId) + '&tenantId=' + encodeURIComponent(tenantId))
+            var url = '/api/insurance/plans?petId=' + encodeURIComponent(petId);
+            if (tenantId) url += '&tenantId=' + encodeURIComponent(tenantId);
+            global.fetchApi(url)
                 .then(function(res) { return res.ok ? res.json() : Promise.reject('fetch_error'); })
                 .then(function(data) {
                     var plans = data.plans || [];
@@ -253,7 +252,10 @@
                         }
 
                         // Select button
-                        h.push('<button type="button" class="insurance-btn insurance-btn--primary ins-select-plan-btn" data-plan-id="' + _escapeHtml(p.promo_item_id) + '" data-plan-name="' + _escapeHtml(p.name) + '" data-plan-premium="' + (p.personalized_premium || 0) + '" style="width:100%;padding:10px;">Seleziona ' + _escapeHtml(p.name) + '</button>');
+                        if (p.tenant_name) {
+                            h.push('<div style="font-size:11px;color:#94a3b8;margin-top:-8px;margin-bottom:8px;">Provider: ' + _escapeHtml(p.tenant_name) + '</div>');
+                        }
+                        h.push('<button type="button" class="insurance-btn insurance-btn--primary ins-select-plan-btn" data-plan-id="' + _escapeHtml(p.promo_item_id) + '" data-plan-tenant-id="' + _escapeHtml(p.tenant_id || '') + '" data-plan-name="' + _escapeHtml(p.name) + '" data-plan-premium="' + (p.personalized_premium || 0) + '" style="width:100%;padding:10px;">Seleziona ' + _escapeHtml(p.name) + '</button>');
 
                         h.push('</div>');
                     }
@@ -277,7 +279,8 @@
                             var planItemId = btn.getAttribute('data-plan-id');
                             var planName = btn.getAttribute('data-plan-name');
                             var planPremium = btn.getAttribute('data-plan-premium');
-                            _requestInsuranceQuote(petId, tenantId, planItemId, planName, planPremium, body);
+                            var planTenantId = btn.getAttribute('data-plan-tenant-id');
+                            _requestInsuranceQuote(petId, planTenantId, planItemId, planName, planPremium, body);
                         });
                     }
                 })

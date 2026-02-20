@@ -16,13 +16,13 @@ function insuranceRouter({ requireAuth }) {
   const router = express.Router();
   const pool = getPool();
 
-  // GET /api/insurance/plans?petId=X&tenantId=Y — list eligible insurance plans with personalized pricing
+  // GET /api/insurance/plans?petId=X[&tenantId=Y] — list eligible insurance plans
+  // tenantId optional: if omitted, returns plans from ALL active tenants
   router.get("/api/insurance/plans", requireAuth, async (req, res) => {
     try {
       const petId = req.query.petId;
-      const tenantId = req.query.tenantId;
+      const tenantId = req.query.tenantId || null;
       if (!petId || !isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
-      if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
 
       // 1. Compute or fetch recent risk score
       let riskScore;
@@ -36,15 +36,28 @@ function insuranceRouter({ requireAuth }) {
         riskScore = await computeRiskScore(pool, petId);
       }
 
-      // 2. Fetch all published insurance promo_items for this tenant
-      const { rows: plans } = await pool.query(
-        `SELECT promo_item_id, name, description, extended_description,
-                image_url, product_url, insurance_data, species, tags_include, tags_exclude, priority
-         FROM promo_items
-         WHERE tenant_id = $1 AND 'insurance' = ANY(service_type) AND status = 'published'
-         ORDER BY priority DESC, name ASC`,
-        [tenantId]
-      );
+      // 2. Fetch published insurance promo_items (all tenants or filtered)
+      let plansQuery, plansParams;
+      if (tenantId) {
+        plansQuery = `SELECT pi.promo_item_id, pi.name, pi.description, pi.extended_description,
+                pi.image_url, pi.product_url, pi.insurance_data, pi.species,
+                pi.tags_include, pi.tags_exclude, pi.priority, pi.tenant_id, t.name AS tenant_name
+         FROM promo_items pi
+         JOIN tenants t ON t.tenant_id = pi.tenant_id
+         WHERE pi.tenant_id = $1 AND 'insurance' = ANY(pi.service_type) AND pi.status = 'published'
+         ORDER BY pi.priority DESC, pi.name ASC`;
+        plansParams = [tenantId];
+      } else {
+        plansQuery = `SELECT pi.promo_item_id, pi.name, pi.description, pi.extended_description,
+                pi.image_url, pi.product_url, pi.insurance_data, pi.species,
+                pi.tags_include, pi.tags_exclude, pi.priority, pi.tenant_id, t.name AS tenant_name
+         FROM promo_items pi
+         JOIN tenants t ON t.tenant_id = pi.tenant_id AND t.status = 'active'
+         WHERE 'insurance' = ANY(pi.service_type) AND pi.status = 'published'
+         ORDER BY pi.priority DESC, pi.name ASC`;
+        plansParams = [];
+      }
+      const { rows: plans } = await pool.query(plansQuery, plansParams);
 
       // 3. Load pet for species filtering
       const petResult = await pool.query("SELECT species FROM pets WHERE pet_id = $1 LIMIT 1", [petId]);
@@ -63,6 +76,8 @@ function insuranceRouter({ requireAuth }) {
           const personalizedPremium = Math.round(basePremium * (riskScore.price_multiplier || 1) * 100) / 100;
           return {
             promo_item_id: p.promo_item_id,
+            tenant_id: p.tenant_id,
+            tenant_name: p.tenant_name,
             name: p.name,
             description: p.description,
             extended_description: p.extended_description,
@@ -142,10 +157,20 @@ function insuranceRouter({ requireAuth }) {
       if (!isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
 
       const ownerUserId = req.user?.sub;
-      const tenantId = req.body?.tenant_id;
       const promoItemId = req.body?.promo_item_id || null;
+      let tenantId = req.body?.tenant_id || null;
 
-      if (!tenantId) return res.status(400).json({ error: "tenant_id_required" });
+      // Se manca il tenant_id, lo ricaviamo dal promo_item selezionato
+      if (!tenantId && promoItemId) {
+        try {
+          const itemTenant = await pool.query(
+            "SELECT tenant_id FROM promo_items WHERE promo_item_id = $1 LIMIT 1",
+            [promoItemId]
+          );
+          tenantId = itemTenant.rows[0]?.tenant_id || null;
+        } catch (_e) { /* fallback */ }
+      }
+      if (!tenantId) return res.status(400).json({ error: "tenant_id_required_or_invalid_product" });
 
       // Compute risk score
       const score = await computeRiskScore(pool, petId);
