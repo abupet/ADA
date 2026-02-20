@@ -588,16 +588,12 @@
                             genBtn.disabled = true;
                             genBtn.textContent = 'Generazione in corso...';
                             var tenantId = (typeof getJwtTenantId === 'function') ? getJwtTenantId() : null;
-                            if (!tenantId) {
-                                if (_fnExists('showToast')) showToast('Tenant ID non disponibile', 'error');
-                                genBtn.disabled = false;
-                                genBtn.textContent = 'Genera piano AI';
-                                return;
-                            }
+                            var bodyObj = {};
+                            if (tenantId) bodyObj.tenant_id = tenantId;
                             fetchApi('/api/nutrition/plan/' + encodeURIComponent(String(petId)) + '/generate', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ tenant_id: tenantId })
+                                body: JSON.stringify(bodyObj)
                             }).then(function(r) {
                                 if (r.ok) return r.json();
                                 throw new Error('generate failed');
