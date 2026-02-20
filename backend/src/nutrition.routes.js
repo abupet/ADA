@@ -84,7 +84,46 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
     }
   });
 
-  // POST /api/nutrition/plan/:petId/generate — generate new plan
+  // GET /api/nutrition/plan/:petId/inputs — preview all nutrition inputs for a pet
+  router.get("/api/nutrition/plan/:petId/inputs", requireAuth, async (req, res) => {
+    try {
+      const { petId } = req.params;
+      if (!petId || !isValidUuid(petId)) return res.status(400).json({ error: "invalid_pet_id" });
+
+      const petResult = await pool.query("SELECT * FROM pets WHERE pet_id = $1 LIMIT 1", [petId]);
+      const pet = petResult.rows[0];
+      if (!pet) return res.status(404).json({ error: "pet_not_found" });
+
+      var extraData = {};
+      if (pet.extra_data) {
+        extraData = typeof pet.extra_data === "string" ? JSON.parse(pet.extra_data) : pet.extra_data;
+      }
+
+      const tagsResult = await pool.query("SELECT tag, value, confidence FROM pet_tags WHERE pet_id = $1", [petId]);
+
+      res.json({
+        pet: {
+          pet_id: pet.pet_id,
+          name: pet.name,
+          species: pet.species,
+          breed: pet.breed,
+          sex: pet.sex,
+          birthdate: pet.birthdate,
+          weight_kg: pet.weight_kg
+        },
+        vitals: extraData.vitals_data || [],
+        lifestyle: extraData.lifestyle || {},
+        medications: extraData.medications || [],
+        tags: tagsResult.rows
+      });
+    } catch (e) {
+      if (e.code === "42P01") return res.json({ pet: null });
+      console.error("GET /api/nutrition/plan/:petId/inputs error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // POST /api/nutrition/plan/:petId/generate — generate new plan (v2 with overrides)
   router.post("/api/nutrition/plan/:petId/generate", requireAuth, async (req, res) => {
     try {
       const { petId } = req.params;
@@ -92,8 +131,9 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
 
       const ownerUserId = req.user?.sub;
       const tenantId = req.body?.tenant_id || req.query.tenant_id || null;
+      const overrides = req.body?.overrides || {};
 
-      const result = await generateNutritionPlan(pool, petId, ownerUserId, tenantId, getOpenAiKey);
+      const result = await generateNutritionPlan(pool, petId, ownerUserId, tenantId, getOpenAiKey, overrides);
       res.status(201).json(result);
     } catch (e) {
       console.error("POST /api/nutrition/plan/:petId/generate error", e);

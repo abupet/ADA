@@ -489,6 +489,24 @@
                                     <option value="casalingo">Casalingo</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label>Peso ideale (kg)</label>
+                                <input type="number" id="petIdealWeight" step="0.1" placeholder="Peso target" min="0.1" max="200">
+                            </div>
+                            <div class="form-group">
+                                <label>Pasti al giorno</label>
+                                <select id="petMealsPerDay">
+                                    <option value="">Seleziona...</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4 (cuccioli)</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Allergie alimentari</label>
+                                <input type="text" id="petFoodAllergies" placeholder="Separare con virgola: pollo, mais, glutine...">
+                            </div>
                             <div class="form-group full-width">
                                 <label>Preferenze alimentari</label>
                                 <input type="text" id="petDietPreferences" placeholder="Es: preferisce pollo, evita pesce...">
@@ -635,6 +653,24 @@
                                     <option value="casalingo">Casalingo</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label>Peso ideale (kg)</label>
+                                <input type="number" id="newPetIdealWeight" step="0.1" placeholder="Peso target" min="0.1" max="200">
+                            </div>
+                            <div class="form-group">
+                                <label>Pasti al giorno</label>
+                                <select id="newPetMealsPerDay">
+                                    <option value="">Seleziona...</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4 (cuccioli)</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Allergie alimentari</label>
+                                <input type="text" id="newPetFoodAllergies" placeholder="Separare con virgola: pollo, mais, glutine...">
+                            </div>
                             <div class="form-group full-width">
                                 <label>Preferenze alimentari</label>
                                 <input type="text" id="newPetDietPreferences" placeholder="Es: preferisce pollo, evita pesce...">
@@ -710,6 +746,21 @@
                         <div class="form-group">
                             <label>Freq. Respiratoria</label>
                             <input type="number" id="vitalRR" placeholder="FR">
+                        </div>
+                        <div class="form-group">
+                            <label>BCS (1-9)</label>
+                            <select id="vitalBCS">
+                                <option value="">-</option>
+                                <option value="1">1 - Emaciato</option>
+                                <option value="2">2 - Molto magro</option>
+                                <option value="3">3 - Magro</option>
+                                <option value="4">4 - Sottopeso</option>
+                                <option value="5">5 - Ideale</option>
+                                <option value="6">6 - Sovrappeso</option>
+                                <option value="7">7 - Pesante</option>
+                                <option value="8">8 - Obeso</option>
+                                <option value="9">9 - Gravemente obeso</option>
+                            </select>
                         </div>
                     </div>
                     <div class="button-row" style="margin-top: 10px;">
@@ -1683,6 +1734,24 @@
                             <option value="misto">Misto</option>
                             <option value="casalingo">Casalingo</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Peso ideale (kg)</label>
+                        <input type="number" id="editPetIdealWeight" step="0.1" placeholder="Peso target" min="0.1" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label>Pasti al giorno</label>
+                        <select id="editPetMealsPerDay">
+                            <option value="">Seleziona...</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4 (cuccioli)</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Allergie alimentari</label>
+                        <input type="text" id="editPetFoodAllergies" placeholder="Separare con virgola: pollo, mais, glutine...">
                     </div>
                     <div class="form-group full-width">
                         <label>Preferenze alimentari</label>
