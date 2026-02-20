@@ -57,6 +57,7 @@
                     <div class="nav-item" data-page="patient">🐾 Dati Pet</div>
                     <div class="nav-item active" data-page="recording">🎙️ Registrazione</div>
                     <div class="nav-item" data-page="soap">📋 Referto</div>
+                    <div class="nav-item" data-page="nutrition">🥗 Nutrizione</div>
                     <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
                     <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
                     <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
@@ -401,7 +402,8 @@
                         </div>
                         <div class="form-group">
                             <label>Razza</label>
-                            <input type="text" id="petBreed" placeholder="Razza">
+                            <input type="text" id="petBreed" placeholder="Digita per cercare..." list="petBreedList" autocomplete="off">
+                            <datalist id="petBreedList"></datalist>
                         </div>
                         <div class="form-group">
                             <label>Data di nascita</label>
@@ -565,7 +567,8 @@
                         </div>
                         <div class="form-group">
                             <label>Razza</label>
-                            <input type="text" id="newPetBreed" placeholder="Razza">
+                            <input type="text" id="newPetBreed" placeholder="Digita per cercare..." list="newPetBreedList" autocomplete="off">
+                            <datalist id="newPetBreedList"></datalist>
                         </div>
                         <div class="form-group">
                             <label>Data di nascita</label>
@@ -904,6 +907,26 @@
                     <div id="tipsTricksList" class="tips-list">
                         <p style="color: #888; text-align: center; padding: 40px;">Premi "Genera" per ricevere consigli personalizzati per il tuo pet</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Page: Nutrition (Vet + Owner dedicated page) -->
+            <div id="page-nutrition" class="page">
+                <div class="page-header">
+                    <h2>🥗 Nutrizione</h2>
+                </div>
+                <div class="card">
+                    <!-- Container per il piano corrente (validato o pending) -->
+                    <div id="nutrition-page-current"></div>
+
+                    <!-- Container per la generazione -->
+                    <div id="nutrition-page-generate"></div>
+
+                    <!-- Container per lo storico piani -->
+                    <div id="nutrition-page-history"></div>
+
+                    <!-- Container per il metodo di calcolo -->
+                    <div id="nutrition-page-method"></div>
                 </div>
             </div>
 
@@ -1654,7 +1677,8 @@
                 </div>
                 <div class="form-group">
                     <label>Razza</label>
-                    <input type="text" id="editPetBreed" placeholder="Razza">
+                    <input type="text" id="editPetBreed" placeholder="Digita per cercare..." list="editPetBreedList" autocomplete="off">
+                    <datalist id="editPetBreedList"></datalist>
                 </div>
                 <div class="form-group">
                     <label>Data di nascita</label>
@@ -1809,6 +1833,7 @@
     <script src="app-soap.js"></script>
     <script src="app-tts.js"></script>
     <script src="app-data.js"></script>
+    <script src="breed-data.js"></script>
     <script src="app-pets.js"></script>
     <script src="app-tips.js"></script>
     <script src="app-documents.js"></script>

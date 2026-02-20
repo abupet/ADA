@@ -69,6 +69,25 @@ async function _collectPetDataForAI(petId) {
         }
     } catch(e) {}
 
+    // 7. Nutrition plan (active) — v3
+    try {
+        var nutResp = await fetchApi('/api/nutrition/plan/' + encodeURIComponent(petId));
+        if (nutResp && nutResp.ok) {
+            var nutData = await nutResp.json();
+            if (nutData && nutData.plan) {
+                var npd = (typeof nutData.plan.plan_data === 'string') ? JSON.parse(nutData.plan.plan_data) : (nutData.plan.plan_data || {});
+                sources['piano_nutrizionale'] = {
+                    kcal_giorno: npd.daily_kcal,
+                    pasti_giorno: npd.meals_per_day,
+                    note_cliniche: npd.clinical_notes,
+                    restrizioni: npd.restrictions,
+                    integratori: (npd.supplements || []).map(function(s) { return s.name; }),
+                    data_validazione: nutData.plan.validated_at
+                };
+            }
+        }
+    } catch(e) {}
+
     return sources;
 }
 
