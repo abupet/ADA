@@ -1,5 +1,22 @@
 # Release Notes (cumulative)
 
+## v8.23.3
+
+### Fix: Servizi Assicurazione e Nutrizione + Sistema Tag completo
+
+#### Bug Fix
+- **Assicurazione: owner senza tenant** — `tenantId` ora opzionale in `GET /api/insurance/plans` (ritorna piani da tutti i tenant attivi se omesso). `POST /api/insurance/quote` deriva il `tenant_id` dal `promo_item_id` selezionato. Frontend rimuove il blocco "Impossibile determinare il tenant". Ogni card piano mostra il nome del provider/brand. `data-plan-tenant-id` nel bottone "Seleziona" passa il tenant corretto.
+- **Nutrizione: data unwrapping rotto** — L'API ritorna `{ plan: { plan_data: {...} } }` ma il frontend leggeva `data.daily_kcal` direttamente. Ora owner e vet fanno correttamente unwrap di `data.plan` e flatten di `plan_data` prima di passare ai renderer.
+- **Nutrizione: cross-tenant** — `nutrition.service.js` e `GET /api/nutrition/products` ora cercano prodotti da TUTTI i tenant attivi (JOIN su `tenants.status = 'active'`), non solo dal tenant del vet.
+
+#### Feature
+- **Tag picker nel form prodotto** — Nuovo endpoint `GET /api/admin/tag-dictionary` (admin_brand + super_admin). Form di creazione e modifica prodotto ora includono tag picker con checkbox raggruppati per categoria e colorati per sensitivity. Helper `_populateTagPicker()` per riuso.
+- **Tag nella AI Description** — I prompt di generazione descrizione pet (bulk e singolo) ora includono il tag dictionary e richiedono all'AI di produrre sezioni `TAGS APPLICABILI` e `TAGS NON APPLICABILI`. I tag estratti vengono upsertati in `pet_tags` con `source='ai'`. I tag `computed` non vengono sovrascritti.
+- **Tag matching nell'Analisi Raccomandazione** — Il prompt di analisi ora include i tag del pet e i tag include/exclude di ogni prodotto candidato. Pre-filtering ordina i candidati per `_tagMatchScore` (desc) poi `priority` (desc). Il system prompt include regole esplicite di matching tag.
+
+#### Files modificati
+`insurance.routes.js`, `app-insurance.js`, `app-nutrition.js`, `nutrition.service.js`, `nutrition.routes.js`, `dashboard.routes.js`, `app-admin.js`, `promo.routes.js`, `pets.routes.js`, `config.js`
+
 ## v8.23.2
 
 ### Fix: Seed tenant creato come disabled

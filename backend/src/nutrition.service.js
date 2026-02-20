@@ -89,10 +89,13 @@ async function generateNutritionPlan(pool, petId, ownerUserId, tenantId, getOpen
     const tagsResult = await pool.query("SELECT tag, value, confidence FROM pet_tags WHERE pet_id = $1", [petId]);
     const tags = tagsResult.rows;
 
-    // Load nutrition products from tenant
+    // Load nutrition products from ALL active tenants (cross-tenant)
     const productsResult = await pool.query(
-      "SELECT name, category, description FROM promo_items WHERE tenant_id = $1 AND 'nutrition' = ANY(service_type) AND status = 'published'",
-      [tenantId]
+      `SELECT pi.name, pi.category, pi.description, t.name AS tenant_name
+       FROM promo_items pi
+       JOIN tenants t ON t.tenant_id = pi.tenant_id AND t.status = 'active'
+       WHERE 'nutrition' = ANY(pi.service_type) AND pi.status = 'published'
+       ORDER BY pi.category, pi.name`
     );
     const products = productsResult.rows;
 

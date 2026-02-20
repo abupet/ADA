@@ -264,8 +264,25 @@
                         return response.json();
                     })
                     .then(function (data) {
-                        if (data) {
-                            _renderNutritionCard(cardEl, data, petId);
+                        if (data && data.plan) {
+                            // Flatten: merge plan_data into plan-level object for renderer
+                            var plan = data.plan;
+                            var planData = (typeof plan.plan_data === 'string')
+                                ? JSON.parse(plan.plan_data) : (plan.plan_data || {});
+                            var flat = {
+                                plan_id: plan.plan_id,
+                                daily_kcal: planData.daily_kcal,
+                                meals_per_day: planData.meals_per_day,
+                                products: planData.products || [],
+                                clinical_notes: planData.clinical_notes || '',
+                                restrictions: planData.restrictions || [],
+                                supplements: planData.supplements || [],
+                                status: plan.status,
+                                validation_status: plan.status
+                            };
+                            _renderNutritionCard(cardEl, flat, petId);
+                        } else {
+                            _renderNutritionEmpty(cardEl);
                         }
                         resolve();
                     })
@@ -557,7 +574,9 @@
                 return response.json();
             })
             .then(function (data) {
-                if (!data || !data.plan_id) {
+                // Unwrap: API returns { plan: {...} } or { plan: null }
+                var plan = (data && data.plan) ? data.plan : null;
+                if (!plan || !plan.plan_id) {
                     // No pending plan — offer generate button
                     validationEl.innerHTML = '<div class="nutrition-validation-card" style="text-align:center;">' +
                         '<div class="nutrition-validation-title" style="color:#1e3a5f;font-size:14px;">Nessun piano nutrizionale pending</div>' +
@@ -595,7 +614,20 @@
                     }
                     return;
                 }
-                _renderValidationCard(validationEl, data, petId);
+                // Flatten plan_data into top-level for renderer
+                var planData = (typeof plan.plan_data === 'string')
+                    ? JSON.parse(plan.plan_data) : (plan.plan_data || {});
+                var flat = {
+                    plan_id: plan.plan_id,
+                    daily_kcal: planData.daily_kcal,
+                    meals_per_day: planData.meals_per_day,
+                    products: planData.products || [],
+                    clinical_notes: planData.clinical_notes || '',
+                    restrictions: planData.restrictions || [],
+                    supplements: planData.supplements || [],
+                    status: plan.status
+                };
+                _renderValidationCard(validationEl, flat, petId);
             })
             .catch(function () {
                 validationEl.innerHTML = '';

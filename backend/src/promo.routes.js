@@ -312,6 +312,11 @@ function promoRouter({ requireAuth }) {
 
     const petTagNames = petTags.map(t => t.tag);
 
+    // Build pet tags summary for the prompt
+    const petTagsSummary = petTags.length > 0
+      ? petTags.map(t => t.tag + (t.source === 'ai' ? ' [AI-inferred]' : '')).join(', ')
+      : 'nessun tag';
+
     // 3. Species + lifecycle
     const { normalizeSpecies } = require("./tag.service");
     const petSpecies = pet.species ? normalizeSpecies(pet.species) : null;
@@ -368,6 +373,13 @@ function promoRouter({ requireAuth }) {
 
       if (!item.extended_description && !item.description) continue;
 
+      // Calculate tag match boost for sorting
+      let tagMatchScore = 0;
+      if (item.tags_include && item.tags_include.length > 0) {
+        tagMatchScore = item.tags_include.filter(t => petTagNames.includes(t)).length;
+      }
+      item._tagMatchScore = tagMatchScore;
+
       candidates.push(item);
     }
 
@@ -399,10 +411,17 @@ function promoRouter({ requireAuth }) {
     }
 
     // 7. Build candidate list for prompt (max 30)
+    // Sort by tag match score (desc), then priority (desc) to get best candidates in top 30
+    candidates.sort((a, b) => {
+      if (b._tagMatchScore !== a._tagMatchScore) return b._tagMatchScore - a._tagMatchScore;
+      return (b.priority || 0) - (a.priority || 0);
+    });
     const topCandidates = candidates.slice(0, 30);
     const candidateList = topCandidates.map((item, idx) => {
       const desc = item.extended_description || item.description || "N/A";
-      return `${idx + 1}. [ID:${item.promo_item_id}] "${item.name}" — ${desc}`;
+      const inclTags = (item.tags_include && item.tags_include.length > 0) ? ' | Tags include: ' + item.tags_include.join(', ') : '';
+      const exclTags = (item.tags_exclude && item.tags_exclude.length > 0) ? ' | Tags exclude: ' + item.tags_exclude.join(', ') : '';
+      return `${idx + 1}. [ID:${item.promo_item_id}] "${item.name}" — ${desc}${inclTags}${exclTags}`;
     }).join("\n");
 
     // 8. Call OpenAI
@@ -411,10 +430,19 @@ Analizza la descrizione di un pet e confrontala con i prodotti candidati.
 Per ogni prodotto, valuta quanto è adatto a QUESTO SPECIFICO pet.
 Seleziona i TOP 5 prodotti più adatti e spiega PERCHÉ sono adatti a questo pet.
 La spiegazione deve essere utile per il proprietario del pet: usa un linguaggio chiaro e amichevole.
+
+REGOLE MATCHING TAG:
+- Se un prodotto ha "Tags include" e il pet ha uno o più di quei tag → è un segnale FORTE di compatibilità, aumenta significativamente lo score
+- Se un prodotto ha "Tags include" ma il pet NON ha nessuno di quei tag → penalizza lo score
+- I prodotti con "Tags exclude" che corrispondono a tag del pet sono già stati pre-filtrati e rimossi
+- Usa i tag come segnale aggiuntivo al matching testuale, non come unico criterio
+
 Rispondi SOLO con JSON valido, senza markdown o testo aggiuntivo.`;
 
     const userPrompt = `DESCRIZIONE PET:
 ${petAiDesc}
+
+TAGS DEL PET: ${petTagsSummary}
 
 PRODOTTI CANDIDATI (${topCandidates.length} su ${candidates.length} pre-filtrati):
 ${candidateList}
@@ -1418,7 +1446,7 @@ Ordina per rilevanza decrescente. Massimo 10 corrispondenze.`;
   }
 
   // Structured AI description prompt (same as POST /api/pets/:petId/ai-description)
-  function _getStructuredDescPrompts(sources) {
+  function _getStructuredDescPrompts(sources, tagDictionary) {
     const systemPrompt = `Sei un assistente che prepara descrizioni strutturate di animali domestici per un sistema di raccomandazione AI.
 Il tuo output verrà usato per fare matching con descrizioni di prodotti veterinari/assicurativi/nutrizionali.
 
@@ -1437,11 +1465,26 @@ FONTI: Per ogni informazione, indica la fonte specifica tra parentesi quadre:
 - [Parametri Vitali] per misurazioni (FC, FR, temperatura, peso)
 - [Storico Sanitario] per visite e diagnosi passate
 - [Conversazioni] per informazioni da conversazioni
-NON usare mai [fonte] generico.`;
+NON usare mai [fonte] generico.
+
+TAG SYSTEM:
+Nelle sezioni TAGS APPLICABILI e TAGS NON APPLICABILI devi usare SOLO i tag dal dizionario fornito.
+Per ogni tag, valuta TUTTE le fonti disponibili (dati anagrafici, referti, farmaci, parametri vitali, storico, conversazioni).
+Un tag clinico può essere dedotto anche indirettamente: ad esempio un farmaco antinfiammatorio articolare implica "clinical:joint_issues",
+creatinina elevata implica "clinical:renal", BCS elevato implica "clinical:obesity".
+Indica SOLO tag per cui hai evidenze concrete nei dati. Non indovinare.`;
+
+    // Build tag dictionary reference
+    const tagRef = (tagDictionary || []).map(t =>
+      `- ${t.tag} (${t.label}): ${t.description || t.category}`
+    ).join("\n");
 
     const userPrompt = `Genera una descrizione strutturata per il matching AI del seguente pet:
 
 ${JSON.stringify(sources, null, 2)}
+
+TAG DICTIONARY (usa SOLO questi tag ID esatti):
+${tagRef}
 
 Formato output:
 ANAGRAFICA: ...
@@ -1450,7 +1493,9 @@ STILE DI VITA: ...
 FARMACI E TRATTAMENTI: ...
 PARAMETRI VITALI: ...
 STORICO SANITARIO: ...
-PROFILO RISCHIO: ...`;
+PROFILO RISCHIO: ...
+TAGS APPLICABILI: tag1, tag2, tag3
+TAGS NON APPLICABILI: tag4, tag5, tag6`;
 
     return { systemPrompt, userPrompt };
   }
@@ -1496,6 +1541,15 @@ PROFILO RISCHIO: ...`;
     } catch (e) {
       return res.status(500).json({ error: "db_error", message: e.message });
     }
+
+    // Load tag dictionary for AI description prompt
+    let tagDictionary = [];
+    try {
+      const tdResult = await pool.query(
+        "SELECT tag, label, category, sensitivity, description FROM tag_dictionary ORDER BY category, tag"
+      );
+      tagDictionary = tdResult.rows;
+    } catch (_e) { /* proceed without tags */ }
 
     // Switch to SSE stream
     res.status(200);
@@ -1551,7 +1605,7 @@ PROFILO RISCHIO: ...`;
           results.descriptionsSkipped++;
         } else {
           try {
-            const { systemPrompt, userPrompt } = _getStructuredDescPrompts(sources);
+            const { systemPrompt, userPrompt } = _getStructuredDescPrompts(sources, tagDictionary);
 
             const descController = new AbortController();
             const descTimeout = setTimeout(() => descController.abort(), 45000);
@@ -1590,6 +1644,45 @@ PROFILO RISCHIO: ...`;
 
                 if (description !== oldDesc) {
                   petsDescChanged.add(pet.pet_id);
+                }
+
+                // Extract AI-inferred tags and upsert into pet_tags
+                try {
+                  const _extractTagsFromDesc = (desc, section) => {
+                    const regex = new RegExp(section + ':\\s*(.+)', 'i');
+                    const match = desc.match(regex);
+                    if (!match) return [];
+                    return match[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
+                  };
+
+                  const aiTagsApply = _extractTagsFromDesc(description, 'TAGS APPLICABILI');
+                  const aiTagsNotApply = _extractTagsFromDesc(description, 'TAGS NON APPLICABILI');
+                  const validTagIds = new Set(tagDictionary.map(t => t.tag));
+
+                  for (const tag of aiTagsApply) {
+                    if (validTagIds.has(tag)) {
+                      await pool.query(
+                        `INSERT INTO pet_tags (pet_id, tag, source, confidence, computed_at)
+                         VALUES ($1, $2, 'ai', 0.85, NOW())
+                         ON CONFLICT (pet_id, tag) DO UPDATE SET
+                           source = CASE WHEN pet_tags.source = 'computed' THEN 'computed' ELSE 'ai' END,
+                           confidence = GREATEST(pet_tags.confidence, 0.85),
+                           computed_at = NOW()`,
+                        [pet.pet_id, tag]
+                      );
+                    }
+                  }
+
+                  for (const tag of aiTagsNotApply) {
+                    if (validTagIds.has(tag)) {
+                      await pool.query(
+                        `DELETE FROM pet_tags WHERE pet_id = $1 AND tag = $2 AND source = 'ai'`,
+                        [pet.pet_id, tag]
+                      );
+                    }
+                  }
+                } catch (tagExtErr) {
+                  console.warn("[bulk-ai] tag extraction error for", pet.pet_id, tagExtErr.message);
                 }
               }
             } else {
