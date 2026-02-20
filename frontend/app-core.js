@@ -1269,7 +1269,10 @@ function openEditPetModal() {
         'editPetKnownConditions': 'petKnownConditions',
         'editPetCurrentMeds': 'petCurrentMeds',
         'editPetBehaviorNotes': 'petBehaviorNotes',
-        'editPetLocation': 'petLocation'
+        'editPetLocation': 'petLocation',
+        'editPetIdealWeight': 'petIdealWeight',
+        'editPetMealsPerDay': 'petMealsPerDay',
+        'editPetFoodAllergies': 'petFoodAllergies'
     };
     for (var editId in lifestyleMapping) {
         var srcEl = document.getElementById(lifestyleMapping[editId]);
@@ -1346,7 +1349,10 @@ async function saveEditPet() {
         'petKnownConditions': 'editPetKnownConditions',
         'petCurrentMeds': 'editPetCurrentMeds',
         'petBehaviorNotes': 'editPetBehaviorNotes',
-        'petLocation': 'editPetLocation'
+        'petLocation': 'editPetLocation',
+        'petIdealWeight': 'editPetIdealWeight',
+        'petMealsPerDay': 'editPetMealsPerDay',
+        'petFoodAllergies': 'editPetFoodAllergies'
     };
     for (var lmId in lifestyleMapping) {
         var lSrc = document.getElementById(lifestyleMapping[lmId]);
@@ -2193,11 +2199,12 @@ function renderVitalsList() {
         const temp = vOrDash(v.temp);
         const hr = vOrDash(v.hr);
         const rr = vOrDash(v.rr);
+        const bcs = vOrDash(v.bcs);
 
         return `
         <div class="vital-record">
             <span class="vital-date">${_escapeHtml(fmt(v.date))}</span>
-            <span>Peso: ${_escapeHtml(String(weight))} kg | T: ${_escapeHtml(String(temp))} °C | FC ${_escapeHtml(String(hr))} bpm | FR ${_escapeHtml(String(rr))}</span>
+            <span>Peso: ${_escapeHtml(String(weight))} kg | T: ${_escapeHtml(String(temp))} °C | FC ${_escapeHtml(String(hr))} bpm | FR ${_escapeHtml(String(rr))} | BCS ${_escapeHtml(String(bcs))}/9</span>
             <button class="btn-small btn-danger" onclick="deleteVital(${idx})">🗑</button>
         </div>
     `;
@@ -2221,19 +2228,32 @@ function recordVitals() {
         weight: parseFloat(document.getElementById('vitalWeight').value) || null,
         temp: parseFloat(document.getElementById('vitalTemp').value) || null,
         hr: parseInt(document.getElementById('vitalHR').value) || null,
-        rr: parseInt(document.getElementById('vitalRR').value) || null
+        rr: parseInt(document.getElementById('vitalRR').value) || null,
+        bcs: parseInt(document.getElementById('vitalBCS').value) || null
     };
-    if (!vital.weight && !vital.temp && !vital.hr && !vital.rr) {
+    if (!vital.weight && !vital.temp && !vital.hr && !vital.rr && !vital.bcs) {
         showToast('Inserisci almeno un parametro', 'error');
         return;
     }
     vitalsData.push(vital);
     saveData();
     updateVitalsChart();
+    // Sync: se il peso è stato registrato, aggiornare anche il peso nel profilo pet
+    if (vital.weight && vital.weight > 0) {
+        var currentPet = getCurrentPetId();
+        if (currentPet) {
+            fetchApi('/api/pets/' + encodeURIComponent(currentPet), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ weight_kg: vital.weight })
+            }).catch(function() { /* silent */ });
+        }
+    }
     document.getElementById('vitalWeight').value = '';
     document.getElementById('vitalTemp').value = '';
     document.getElementById('vitalHR').value = '';
     document.getElementById('vitalRR').value = '';
+    document.getElementById('vitalBCS').value = '';
     initVitalsDateTime();
     showToast('Parametri registrati', 'success');
 }
@@ -2247,6 +2267,7 @@ function resetVitals() {
     document.getElementById('vitalTemp').value = '';
     document.getElementById('vitalHR').value = '';
     document.getElementById('vitalRR').value = '';
+    document.getElementById('vitalBCS').value = '';
     initVitalsDateTime();
     showToast('Parametri vitali azzerati', 'success');
 }

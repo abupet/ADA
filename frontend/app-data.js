@@ -176,7 +176,11 @@ function getLifestyleData() {
         currentMeds: document.getElementById('petCurrentMeds')?.value || '',
         behaviorNotes: document.getElementById('petBehaviorNotes')?.value || '',
         seasonContext: document.getElementById('petSeasonContext')?.value || '',
-        location: document.getElementById('petLocation')?.value || ''
+        location: document.getElementById('petLocation')?.value || '',
+        idealWeightKg: parseFloat(document.getElementById('petIdealWeight')?.value) || null,
+        mealsPerDay: parseInt(document.getElementById('petMealsPerDay')?.value) || null,
+        foodAllergies: (document.getElementById('petFoodAllergies')?.value || '')
+            .split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; })
     };
 }
 
@@ -213,7 +217,15 @@ function setLifestyleData(data) {
         const values = (data && data.household) ? data.household.split(', ') : [];
         Array.from(householdSelect.options).forEach(opt => opt.selected = values.includes(opt.value));
     }
-    
+
+    // New nutrition fields
+    var idealWEl = document.getElementById('petIdealWeight');
+    if (idealWEl) idealWEl.value = (data && data.idealWeightKg) || '';
+    var mealsEl = document.getElementById('petMealsPerDay');
+    if (mealsEl) mealsEl.value = (data && data.mealsPerDay) || '';
+    var allergiesEl = document.getElementById('petFoodAllergies');
+    if (allergiesEl) allergiesEl.value = (data && Array.isArray(data.foodAllergies)) ? data.foodAllergies.join(', ') : '';
+
     checkAndExpandLifestyle();
 }
 

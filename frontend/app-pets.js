@@ -697,7 +697,8 @@ function loadPetIntoMainFields(pet) {
 
 function clearNewPetFields() {
     var fields = ['newPetName', 'newPetSpecies', 'newPetBreed', 'newPetAge', 'newPetSex', 'newPetWeight', 'newPetMicrochip', 'newOwnerName', 'newOwnerReferringVet', 'newOwnerPhone', 'newVisitDate',
-                    'newPetLifestyle', 'newPetActivityLevel', 'newPetDietType', 'newPetDietPreferences', 'newPetKnownConditions', 'newPetCurrentMeds', 'newPetBehaviorNotes', 'newPetSeasonContext', 'newPetLocation'];
+                    'newPetLifestyle', 'newPetActivityLevel', 'newPetDietType', 'newPetDietPreferences', 'newPetKnownConditions', 'newPetCurrentMeds', 'newPetBehaviorNotes', 'newPetSeasonContext', 'newPetLocation',
+                    'newPetIdealWeight', 'newPetMealsPerDay', 'newPetFoodAllergies'];
     fields.forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
@@ -738,7 +739,11 @@ function getNewPetLifestyleData() {
         currentMeds: document.getElementById('newPetCurrentMeds')?.value || '',
         behaviorNotes: document.getElementById('newPetBehaviorNotes')?.value || '',
         seasonContext: document.getElementById('newPetSeasonContext')?.value || '',
-        location: document.getElementById('newPetLocation')?.value || ''
+        location: document.getElementById('newPetLocation')?.value || '',
+        idealWeightKg: parseFloat(document.getElementById('newPetIdealWeight')?.value) || null,
+        mealsPerDay: parseInt(document.getElementById('newPetMealsPerDay')?.value) || null,
+        foodAllergies: (document.getElementById('newPetFoodAllergies')?.value || '')
+            .split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; })
     };
 }
 
