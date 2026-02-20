@@ -1,5 +1,54 @@
 # Release Notes (cumulative)
 
+## v8.24.0
+
+### Feature: Piano Nutrizionale AI v2 — Integrazione Profonda nel Modello Dati
+
+#### Parametri Vitali — BCS (Body Condition Score)
+- **Nuovo campo BCS (1-9)** nella pagina Parametri Vitali: select con scala da "1 - Emaciato" a "9 - Gravemente obeso"
+- BCS registrato insieme a peso, temperatura, FC, FR nell'array `vitals_data[]`
+- Storico vitali mostra BCS nella riga di ogni rilevazione
+- Reset parametri vitali include pulizia campo BCS
+
+#### Stile di Vita — Nuovi campi nutrizionali
+- **Peso ideale (kg)**: campo numerico per il target di peso impostato dal veterinario
+- **Pasti al giorno**: select 1-4 (con label "cuccioli" per 4)
+- **Allergie alimentari**: campo testo separato da virgola, salvato come array
+- Campi aggiunti in tutti e tre i form: profilo paziente, nuovo pet, modifica pet
+- Funzioni `getLifestyleData()` / `setLifestyleData()` aggiornate per leggere/scrivere i nuovi campi
+- Edit pet modal mapping aggiornato per sincronizzare i nuovi campi
+
+#### Backend — Nutrition Service v2
+- **`buildNutritionPrompt()`** completamente riscritto: prompt veterinario dettagliato con regole RER/MER, fattori K per specie/lifecycle/sterilizzazione, allergie tassativamente escluse, formato JSON strutturato con pasti
+- **`generateNutritionPlan()`** accetta `overrides` dal modal frontend: weight, BCS, ideal weight, activity, diet type, allergies, meals, budget
+- Logica di estrazione automatica: peso da `vitals_data[]`, BCS da vitali, sterilizzazione derivata da `sex`, età calcolata da `birthdate`
+- **`input_snapshot`** aggiunto a ogni piano generato: congela tutti i dati usati dall'AI per trasparenza
+- Mock plan migliorato: calcolo RER/MER reale, struttura `meals[]` con items, macros, monitoring, transition plan
+- Nuovo endpoint **`GET /api/nutrition/plan/:petId/inputs`**: preview di tutti i dati nutrizionali per un pet
+- Endpoint generate aggiornato per passare overrides al service
+
+#### Frontend — Modal di Generazione AI (v2)
+- **`_collectNutritionInputs(pet)`**: raccoglie automaticamente tutti i dati dal profilo pet (anagrafici, vitali, lifestyle, tag)
+- **Modal pre-compilato**: griglia editabile con peso, BCS, peso ideale, attività, alimentazione, pasti/giorno, allergie, budget
+- **Indicatori visivi**: campi mancanti critici in rosso, opzionali in giallo
+- **Reminder**: condizioni note e farmaci in corso mostrati come badge read-only
+- **Budget**: campo transiente (non persistito) per calibrare la generazione
+
+#### Sincronizzazione bidirezionale peso
+- **Peso dal modal nutrizione → vitali**: se il vet modifica il peso nel modal, viene creata automaticamente una nuova entry vitali + PATCH `pets.weight_kg`
+- **Peso dai vitali → profilo pet**: `recordVitals()` ora aggiorna `pets.weight_kg` via PATCH quando viene registrato un peso
+
+#### Visualizzazione piano (v2)
+- **Pasti giornalieri**: card per ogni pasto con label, orario suggerito, items con grammature esatte e kcal
+- **Macronutrienti target**: griglia con proteine, grassi, carboidrati, fibre (%)
+- **Piano di monitoraggio**: frequenza pesata, controllo BCS, prossima revisione, regole di aggiustamento
+- **Piano di transizione**: schedule giorno per giorno vecchio/nuovo alimento
+- **Input snapshot collapsibile**: sezione "Dati usati per la generazione" nel modal dettagli
+- **Retrocompatibilità**: piani vecchi con formato `products[]` continuano a renderizzare correttamente
+
+#### Files modificati
+`frontend/index.html`, `frontend/app-core.js`, `frontend/app-data.js`, `frontend/app-pets.js`, `frontend/app-nutrition.js`, `frontend/config.js`, `backend/src/nutrition.service.js`, `backend/src/nutrition.routes.js`, `AGENTS.md`
+
 ## v8.23.5
 
 ### Fix: Nutrition "Genera piano AI" — errore 500 per vet_int
