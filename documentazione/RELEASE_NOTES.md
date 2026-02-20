@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v8.23.2
+
+### Fix: Seed tenant creato come disabled
+- Il tenant "Seed Test Brand" (`seed-tenant`) usato dal seed service ora viene creato con `status = 'disabled'` anziché il default `'active'`.
+- Questo impedisce che appaia nei dropdown admin (selettore brand, selettore dashboard, lista tenant), evitando confusione con i tenant reali.
+- Il seeding continua a funzionare normalmente: nessuna query del seed filtra per `status = 'active'` sul tenant.
+- Se il tenant esisteva già come `active`, viene aggiornato a `disabled` al prossimo seed (`ON CONFLICT DO UPDATE`).
+- **Files**: `backend/src/seed.service.js`, `frontend/config.js`
+
 ## v8.23.1
 
 ### Feature: Web Push Notifications per chiamate in arrivo
