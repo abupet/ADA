@@ -467,7 +467,11 @@ async function _commShowNewForm(containerId) {
         '<option value="chirurgia_ortopedia">\uD83E\uDDB4 Chirurgia / Ortopedia</option>' +
         '<option value="cardiologia">\u2764\uFE0F Cardiologia</option>' +
         '<option value="endoscopia_gastro">\uD83D\uDD2C Endoscopia / Gastroenterologia</option>' +
-        '<option value="dermatologia">\uD83E\uDE79 Dermatologia / Citologia avanzata</option></select>' +
+        '<option value="dermatologia">\uD83E\uDE79 Dermatologia / Citologia avanzata</option>' +
+        '<option value="neurologia">\uD83E\uDDE0 Neurologia</option>' +
+        '<option value="oftalmologia">\uD83D\uDC41\uFE0F Oftalmologia</option>' +
+        '<option value="oncologia">\uD83C\uDFAF Oncologia</option>' +
+        '<option value="medicina_interna">\uD83E\uDE7A Medicina Interna</option></select>' +
         '<div id="comm-referral-fields"></div>' : '';
 
     area.innerHTML = '<div class="comm-new-form" data-testid="comm-new-form">' +

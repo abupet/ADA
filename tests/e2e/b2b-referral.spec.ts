@@ -12,7 +12,8 @@ test.describe("B2B Referral @smoke", () => {
     await page.click('[data-page="communication"]');
     await expect(page.locator("#page-communication")).toBeVisible({ timeout: 10_000 });
 
-    // Wait for the referral type select to be present (vet_ext only)
+    // Click "Nuova conversazione" to open the new conversation form (referral type select is inside it)
+    await page.click('[data-testid="comm-new-btn"]');
     await expect(page.locator("#comm-referral-type")).toBeVisible({ timeout: 10_000 });
 
     // Check new specialties exist in referral type select
