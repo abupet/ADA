@@ -98,9 +98,9 @@
                             <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Documenti Condivisi</div>
                             <div class="nav-item" data-page="teleconsult"><i data-lucide="video" class="icon"></i> Teleconsulti</div>
                             <div class="nav-item" data-page="diagnostics"><i data-lucide="microscope" class="icon"></i> Diagnostica</div>
-                            <div class="nav-item" data-page="referral-analytics"><i data-lucide="bar-chart-3" class="icon"></i> Analytics Referral</div>
-                            <div class="nav-item" data-page="loyalty"><i data-lucide="trophy" class="icon"></i> Loyalty</div>
-                            <div class="nav-item" data-page="education"><i data-lucide="graduation-cap" class="icon"></i> Formazione</div>
+                            <div class="nav-item" data-page="referral-analytics" data-roles="vet_ext"><i data-lucide="bar-chart-3" class="icon"></i> Analytics Referral</div>
+                            <div class="nav-item" data-page="loyalty" data-roles="vet_ext"><i data-lucide="trophy" class="icon"></i> Loyalty</div>
+                            <div class="nav-item" data-page="education" data-roles="vet_ext,vet_int"><i data-lucide="graduation-cap" class="icon"></i> Formazione</div>
                         </div>
                     </div>
                     <div class="nav-group" data-group="vet-services">
@@ -181,6 +181,8 @@
                             <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Profilo</div>
                             <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
                             <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario</div>
+                            <div class="nav-item" data-page="vaccination-calendar"><i data-lucide="calendar-heart" class="icon"></i> Calendario Vaccini</div>
+                            <div class="nav-item" data-page="preventive-care"><i data-lucide="shield-plus" class="icon"></i> Prevenzione</div>
                         </div>
                     </div>
                     <div class="nav-group" data-group="breeder-services">
@@ -1963,6 +1965,7 @@
     <script src="app-genetic-tests.js"></script>
     <script src="app-education.js"></script>
     <script src="app-marketplace.js"></script>
+    <script src="app-developer.js"></script>
 <script>
 if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
     window.addEventListener('load', function() {

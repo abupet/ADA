@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.3.1';
-const ADA_RELEASE_NOTES = 'Bugfix: Whisper multipart, transcription status, WebP detection, role whitelist.';
+const ADA_VERSION = '9.3.2';
+const ADA_RELEASE_NOTES = 'Bugfix post-audit: Sidebar, Archivio Sanitario, Developer page, promo layout.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
