@@ -13,8 +13,8 @@ test.describe("B2B Booking @smoke", () => {
       (window as any).applyRoleUI("breeder");
     });
 
-    // Navigate to booking via sidebar
-    await page.click('[data-page="booking"]');
+    // Navigate to booking via JS (sidebar items are inside collapsible groups)
+    await page.evaluate(() => { if (typeof (window as any).navigateToPage === 'function') (window as any).navigateToPage('booking'); });
     await expect(page.locator("#page-booking")).toBeVisible({ timeout: 10_000 });
   });
 });

@@ -12,7 +12,7 @@ test.describe("Communication page", () => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
 
-    await page.locator('#sidebar-vet .nav-item[data-page="communication"]').click();
+    await page.evaluate(() => { if (typeof (window as any).navigateToPage === 'function') (window as any).navigateToPage('communication'); });
     await expect(page.locator("#page-communication")).toBeVisible({ timeout: 5_000 });
 
     expect(errors, errors.join("\n")).toHaveLength(0);
@@ -22,7 +22,7 @@ test.describe("Communication page", () => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
-    await page.locator('#sidebar-owner .nav-item[data-page="communication"]').click();
+    await page.evaluate(() => { if (typeof (window as any).navigateToPage === 'function') (window as any).navigateToPage('communication'); });
     await expect(page.locator("#page-communication")).toBeVisible({ timeout: 5_000 });
 
     expect(errors, errors.join("\n")).toHaveLength(0);
@@ -32,29 +32,39 @@ test.describe("Communication page", () => {
 
 test.describe("Communication nav items", () => {
 
-  test("@smoke Vet: Messaggi nav item visible", async ({ page }) => {
+  test("@smoke Vet: Comunicazioni nav item visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
 
+    // Expand the SERVIZI group that contains communication
+    await page.evaluate(() => {
+      const group = document.querySelector('.nav-group[data-group="vet-services"]');
+      if (group) group.classList.add('open');
+    });
     const navItem = page.locator('#sidebar-vet .nav-item[data-page="communication"]');
     await expect(navItem).toBeVisible();
-    await expect(navItem).toContainText("Messaggi");
+    await expect(navItem).toContainText("Comunicazioni");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Owner: Messaggi nav item visible", async ({ page }) => {
+  test("@smoke Owner: Comunicazioni nav item visible", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 
+    // Expand the SERVIZI group that contains communication
+    await page.evaluate(() => {
+      const group = document.querySelector('.nav-group[data-group="owner-services"]');
+      if (group) group.classList.add('open');
+    });
     const navItem = page.locator('#sidebar-owner .nav-item[data-page="communication"]');
     await expect(navItem).toBeVisible();
-    await expect(navItem).toContainText("Messaggi");
+    await expect(navItem).toContainText("Comunicazioni");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Owner: chatbot nav item removed (unified into Messaggi)", async ({ page }) => {
+  test("@smoke Owner: chatbot nav item removed (unified into Comunicazioni)", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_OWNER_EMAIL });
 

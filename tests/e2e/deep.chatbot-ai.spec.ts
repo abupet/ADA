@@ -46,14 +46,19 @@ test.describe("Deep unified messaging (AI)", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@deep Communication: vet sees Messaggi nav", async ({ page }) => {
+  test("@deep Communication: vet sees Comunicazioni nav", async ({ page }) => {
     const errors = captureHardErrors(page);
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
 
+    // Expand the SERVIZI group that contains communication
+    await page.evaluate(() => {
+      const group = document.querySelector('.nav-group[data-group="vet-services"]');
+      if (group) group.classList.add('open');
+    });
     const navItem = page.locator('#sidebar-vet .nav-item[data-page="communication"]');
     await expect(navItem).toBeVisible();
-    await expect(navItem).toContainText("Messaggi");
+    await expect(navItem).toContainText("Comunicazioni");
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
