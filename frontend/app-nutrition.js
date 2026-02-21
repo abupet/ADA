@@ -1959,7 +1959,7 @@
                             });
                         }
                     } else {
-                        container.innerHTML = '';
+                        container.innerHTML = '<div class="nutrition-empty" style="text-align:center;padding:20px;color:#888;">Nessun piano nutrizionale disponibile per questo pet</div>';
                     }
                     return;
                 }
