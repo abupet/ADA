@@ -226,7 +226,10 @@ function _setPetFieldsReadOnly(readonly) {
         if (el) el.disabled = readonly;
     });
     var hh = document.getElementById('petHousehold');
-    if (hh) hh.disabled = readonly;
+    if (hh) {
+        var chips = hh.querySelectorAll('.chip-option');
+        chips.forEach(function(c) { if (readonly) c.setAttribute('disabled', ''); else c.removeAttribute('disabled'); });
+    }
 }
 
 // ============================================
@@ -727,10 +730,7 @@ function clearNewPetFields() {
         var el = document.getElementById(id);
         if (el) el.value = '';
     });
-    var householdSelect = document.getElementById('newPetHousehold');
-    if (householdSelect) {
-        Array.from(householdSelect.options).forEach(function(opt) { opt.selected = false; });
-    }
+    if (typeof setChipValues === 'function') setChipValues('newPetHousehold', []);
     var section = document.getElementById('newPetLifestyleSection');
     if (section) section.classList.remove('open');
 }
@@ -750,8 +750,7 @@ function getNewPetPatientData() {
 }
 
 function getNewPetLifestyleData() {
-    var householdSelect = document.getElementById('newPetHousehold');
-    var selectedHousehold = householdSelect ? Array.from(householdSelect.selectedOptions).map(function(opt) { return opt.value; }).join(', ') : '';
+    var selectedHousehold = typeof getChipValues === 'function' ? getChipValues('newPetHousehold').join(', ') : '';
 
     return {
         lifestyle: document.getElementById('newPetLifestyle')?.value || '',

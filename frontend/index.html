@@ -3,20 +3,24 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ADA - AI Driven AbuPet</title>
         <link rel="icon" href="logo-abupet.png" type="image/png">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1e3a5f">
+    <meta name="theme-color" content="#0f766e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ADA">
     <link rel="apple-touch-icon" href="logo-abupet.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
   <script src="./spa-redirect.js"></script>
 </head>
 <body>
@@ -54,33 +58,33 @@
                 <!-- Sidebar: Veterinario -->
                 <div id="sidebar-vet" class="sidebar-role-section">
                     <div class="nav-section">VISITA</div>
-                    <div class="nav-item" data-page="patient">🐾 Dati Pet</div>
-                    <div class="nav-item active" data-page="recording">🎙️ Registrazione</div>
-                    <div class="nav-item" data-page="soap">📋 Referto</div>
-                    <div class="nav-item" data-page="nutrition">🥗 Nutrizione</div>
-                    <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
-                    <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
-                    <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
+                    <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Dati Pet</div>
+                    <div class="nav-item active" data-page="recording"><i data-lucide="mic" class="icon"></i> Registrazione</div>
+                    <div class="nav-item" data-page="soap"><i data-lucide="clipboard-list" class="icon"></i> Referto</div>
+                    <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
+                    <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
+                    <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Profilo Sanitario</div>
+                    <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
                 <div id="sidebar-owner" class="sidebar-role-section" style="display:none;">
                     <div class="nav-section">I MIEI AMICI ANIMALI</div>
-                    <div class="nav-item" data-page="patient">🐾 Dati Pet</div>
-                    <div class="nav-item" data-page="nutrition">🥗 Nutrizione</div>
-                    <div class="nav-item" data-page="diary">📔 Profilo Sanitario</div>
-                    <div class="nav-item" data-page="vitals">📊 Parametri Vitali</div>
-                    <div class="nav-item" data-page="medications">💊 Farmaci</div>
-                    <div class="nav-item" data-page="history">📁 Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
-                    <div class="nav-item" data-page="qna">❓ Domande & Risposte</div>
-                    <div class="nav-item" data-page="photos">📷 Foto</div>
-                    <div class="nav-item" data-page="communication">💬 Messaggi <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
+                    <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Dati Pet</div>
+                    <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
+                    <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Profilo Sanitario</div>
+                    <div class="nav-item" data-page="vitals"><i data-lucide="activity" class="icon"></i> Parametri Vitali</div>
+                    <div class="nav-item" data-page="medications"><i data-lucide="pill" class="icon"></i> Farmaci</div>
+                    <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
+                    <div class="nav-item" data-page="qna"><i data-lucide="help-circle" class="icon"></i> Domande & Risposte</div>
+                    <div class="nav-item" data-page="photos"><i data-lucide="camera" class="icon"></i> Foto</div>
+                    <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
                 </div>
 
                 <!-- Sidebar: TEST & DEMO (super_admin only) -->
                 <div id="sidebar-test-demo" class="sidebar-role-section" style="display:none;">
                     <div class="nav-section">TEST & DEMO</div>
-                    <div class="nav-item seed-nav-item" data-page="seed">🌱 Seed Engine</div>
+                    <div class="nav-item seed-nav-item" data-page="seed"><i data-lucide="sprout" class="icon"></i> Seed Engine</div>
                 </div>
 
                 <!-- Sidebar: Admin Brand / Super Admin -->
@@ -93,11 +97,11 @@
                 </div>
 
                 <div class="nav-section">SISTEMA</div>
-                <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;">🔧 Gestione</div>
-                <div class="nav-item" data-page="settings">⚙️ Impostazioni</div>
-                <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;">🛠 Debug</div>
-                <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;">🤖 Descrizione Pet per AI</div>
-                <div class="nav-item" onclick="logout()">🚪 Esci</div>
+                <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;"><i data-lucide="wrench" class="icon"></i> Gestione</div>
+                <div class="nav-item" data-page="settings"><i data-lucide="settings" class="icon"></i> Impostazioni</div>
+                <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;"><i data-lucide="bug" class="icon"></i> Debug</div>
+                <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;"><i data-lucide="sparkles" class="icon"></i> Descrizione Pet per AI</div>
+                <div class="nav-item" onclick="logout()"><i data-lucide="log-out" class="icon"></i> Esci</div>
             </nav>
         </aside>
         <button id="sidebarOverlay" class="sidebar-overlay" type="button" aria-label="Chiudi menu" onclick="setSidebarOpen(false)"></button>
@@ -106,7 +110,7 @@
         <main class="main-content">
             <div class="topbar">
                 <div class="topbar-left">
-                    <button class="hamburger" onclick="toggleSidebar()" data-testid="toggle-sidebar-button">☰</button>
+                    <button class="hamburger" onclick="toggleSidebar()" data-testid="toggle-sidebar-button" aria-label="Apri menu di navigazione">☰</button>
                 </div>
                 <div class="topbar-center">
                     <div class="selected-pet-header" data-selected-pet-header></div>
@@ -182,7 +186,7 @@
                         <textarea id="transcriptionText" placeholder="La trascrizione o il testo caricato appariranno qui..." rows="8"></textarea>
                         <!-- Hidden legacy input (v6.17.x): used by generateSOAPFromPaste() as optional source -->
                         <textarea id="pasteText" style="display:none"></textarea>
-                        <button class="expand-btn" onclick="expandTextarea('transcriptionText', 'Trascrizione')" data-testid="expand-transcription-button">⛶</button>
+                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('transcriptionText', 'Trascrizione')" data-testid="expand-transcription-button">⛶</button>
                     </div>
                     <div id="transcriptionReadOnlyNote" class="readonly-note" style="display:none;" data-testid="transcription-readonly-note">
                         🔒 Questo testo è in sola lettura perché proviene da una trascrizione audio. Se vuoi correggerlo, modifica un file TXT e ricaricalo con “Carica file testo”.
@@ -242,7 +246,7 @@
                         <label id="labelSoapS">Soggettivo</label>
                         <div class="textarea-wrapper">
                             <textarea id="soap-s" rows="6" placeholder="Sintomi riferiti dal proprietario..."></textarea>
-                            <button class="expand-btn" onclick="expandTextarea('soap-s', 'Soggettivo')" data-testid="expand-soap-s-button">⛶</button>
+                            <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('soap-s', 'Soggettivo')" data-testid="expand-soap-s-button">⛶</button>
                         </div>
                     </div>
                     
@@ -251,7 +255,7 @@
                         <label id="labelSoapO">Oggettivo</label>
                         <div class="textarea-wrapper">
                             <textarea id="soap-o" rows="6" placeholder="Esame obiettivo..."></textarea>
-                            <button class="expand-btn" onclick="expandTextarea('soap-o', 'Oggettivo')" data-testid="expand-soap-o-button">⛶</button>
+                            <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('soap-o', 'Oggettivo')" data-testid="expand-soap-o-button">⛶</button>
                         </div>
                     </div>
                     
@@ -260,7 +264,7 @@
                         <label id="labelSoapA">Analisi clinica</label>
                         <div class="textarea-wrapper">
                             <textarea id="soap-a" rows="6" placeholder="Diagnosi/valutazione..."></textarea>
-                            <button class="expand-btn" onclick="expandTextarea('soap-a', 'Analisi clinica')" data-testid="expand-soap-a-button">⛶</button>
+                            <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('soap-a', 'Analisi clinica')" data-testid="expand-soap-a-button">⛶</button>
                         </div>
                     </div>
                     
@@ -269,7 +273,7 @@
                         <label id="labelSoapP">Piano</label>
                         <div class="textarea-wrapper">
                             <textarea id="soap-p" rows="6" placeholder="Piano terapeutico..."></textarea>
-                            <button class="expand-btn" onclick="expandTextarea('soap-p', 'Piano')" data-testid="expand-soap-p-button">⛶</button>
+                            <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('soap-p', 'Piano')" data-testid="expand-soap-p-button">⛶</button>
                         </div>
                     </div>
 
@@ -281,27 +285,28 @@
                         <div class="soap-internal-body" id="internalNotesBody">
                             <div class="textarea-wrapper">
                                 <textarea id="soap-internal-notes" rows="6" placeholder="Note ad uso interno: informazioni dalla trascrizione non incluse nel referto, appunti, promemoria..."></textarea>
-                                <button class="expand-btn" onclick="expandTextarea('soap-internal-notes', 'Note interne')" data-testid="expand-internal-notes-button">⛶</button>
+                                <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('soap-internal-notes', 'Note interne')" data-testid="expand-internal-notes-button">⛶</button>
                             </div>
                         </div>
                     </div>
 
                     <div class="soap-actions">
-                        <button id="btnSpeakSOAP" class="btn btn-primary" onclick="speakSOAP()" data-testid="speak-soap-button">🔊 Leggi</button>
-                        <button class="btn btn-success" onclick="saveSOAP()" data-testid="save-soap-button">💾 Salva</button>
-                        <button class="btn btn-secondary" onclick="exportTXT()" data-testid="export-soap-txt-button">📄 TXT</button>
-                        <button class="btn btn-secondary" onclick="exportPDF()" data-testid="export-soap-pdf-button">📑 PDF</button>
-                        <button id="btnRecordCorrection" class="btn btn-secondary" onclick="startCorrectionRecording()" data-testid="record-correction-button">🎤 Correggi</button>
-                        <button id="btnTestSoap" class="btn btn-secondary" onclick="testFillSoap()" style="display:none;">🧪 Test</button>
+                        <button class="btn btn-primary" onclick="saveSOAP()" data-testid="save-soap-button"><i data-lucide="save" class="icon-sm"></i> Salva</button>
+                        <button id="btnRecordCorrection" class="btn btn-secondary" onclick="startCorrectionRecording()" data-testid="record-correction-button"><i data-lucide="mic" class="icon-sm"></i> Correggi</button>
+                        <button id="btnSpeakSOAP" class="btn btn-secondary" onclick="speakSOAP()" data-testid="speak-soap-button"><i data-lucide="volume-2" class="icon-sm"></i> Leggi</button>
+                        <div style="flex:1;"></div>
+                        <button class="btn btn-ghost" onclick="exportTXT()" data-testid="export-soap-txt-button"><i data-lucide="file-text" class="icon-sm"></i> TXT</button>
+                        <button class="btn btn-ghost" onclick="exportPDF()" data-testid="export-soap-pdf-button"><i data-lucide="file-down" class="icon-sm"></i> PDF</button>
+                        <button id="btnTestSoap" class="btn btn-secondary" onclick="testFillSoap()" style="display:none;"><i data-lucide="flask-conical" class="icon-sm"></i> Test</button>
                     </div>
                     <div class="soap-actions" id="correctionButtonsRow" style="display:none; margin-top:8px;">
                         <div id="correctionButtons" class="correction-buttons">
-                            <button class="btn btn-danger" onclick="cancelCorrection()" data-testid="cancel-correction-button">❌ Annulla</button>
-                            <button class="btn btn-success" onclick="sendCorrection()" data-testid="send-correction-button">✅ Invia correzione</button>
+                            <button class="btn btn-danger" onclick="cancelCorrection()" data-testid="cancel-correction-button"><i data-lucide="x" class="icon-sm"></i> Annulla</button>
+                            <button class="btn btn-primary" onclick="sendCorrection()" data-testid="send-correction-button"><i data-lucide="check" class="icon-sm"></i> Invia correzione</button>
                         </div>
                     </div>
 
-                    <button class="btn btn-primary btn-inline" id="btnGenerateOwnerExplanation" style="margin-top: 10px;" onclick="generateOwnerExplanation()" data-testid="generate-owner-explanation-button">📖 Spiegami il documento</button>
+                    <button class="btn btn-secondary btn-inline" id="btnGenerateOwnerExplanation" style="margin-top: 10px;" onclick="generateOwnerExplanation()" data-testid="generate-owner-explanation-button"><i data-lucide="book-open" class="icon-sm"></i> Spiegami il documento</button>
                     <!-- Promo slot: post_visit (PR 3) -->
                     <div id="soap-promo-container"></div>
                 </div>
@@ -340,7 +345,7 @@
 
                     <div class="textarea-wrapper">
                         <textarea id="ownerExplanation" rows="10" placeholder="Spiegazione per il proprietario..."></textarea>
-                        <button class="expand-btn" onclick="expandTextarea('ownerExplanation', 'Spiegazione')" data-testid="expand-owner-explanation-button">⛶</button>
+                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('ownerExplanation', 'Spiegazione')" data-testid="expand-owner-explanation-button">⛶</button>
                     </div>
                     
                     <div class="button-row">
@@ -464,13 +469,13 @@
                             </div>
                             <div class="form-group">
                                 <label>Conviventi</label>
-                                <select id="petHousehold" multiple>
-                                    <option value="bambini">Bambini</option>
-                                    <option value="anziani">Anziani</option>
-                                    <option value="altri_cani">Altri cani</option>
-                                    <option value="altri_gatti">Altri gatti</option>
-                                    <option value="altri_animali">Altri animali</option>
-                                </select>
+                                <div class="chip-selector" id="petHousehold">
+                                    <button type="button" class="chip-option" data-value="bambini">Bambini</button>
+                                    <button type="button" class="chip-option" data-value="anziani">Anziani</button>
+                                    <button type="button" class="chip-option" data-value="altri_cani">Altri cani</button>
+                                    <button type="button" class="chip-option" data-value="altri_gatti">Altri gatti</button>
+                                    <button type="button" class="chip-option" data-value="altri_animali">Altri animali</button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>Livello di attività</label>
@@ -629,13 +634,13 @@
                             </div>
                             <div class="form-group">
                                 <label>Conviventi</label>
-                                <select id="newPetHousehold" multiple>
-                                    <option value="bambini">Bambini</option>
-                                    <option value="anziani">Anziani</option>
-                                    <option value="altri_cani">Altri cani</option>
-                                    <option value="altri_gatti">Altri gatti</option>
-                                    <option value="altri_animali">Altri animali</option>
-                                </select>
+                                <div class="chip-selector" id="newPetHousehold">
+                                    <button type="button" class="chip-option" data-value="bambini">Bambini</button>
+                                    <button type="button" class="chip-option" data-value="anziani">Anziani</button>
+                                    <button type="button" class="chip-option" data-value="altri_cani">Altri cani</button>
+                                    <button type="button" class="chip-option" data-value="altri_gatti">Altri gatti</button>
+                                    <button type="button" class="chip-option" data-value="altri_animali">Altri animali</button>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label>Livello di attività</label>
@@ -798,7 +803,7 @@
                     
                     <div class="textarea-wrapper">
                         <textarea id="diaryText" rows="15" placeholder="Profilo sanitario del paziente..."></textarea>
-                        <button class="expand-btn" onclick="expandTextarea('diaryText', 'Profilo sanitario')" data-testid="expand-diary-button">⛶</button>
+                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('diaryText', 'Profilo sanitario')" data-testid="expand-diary-button">⛶</button>
                     </div>
 
                     <div class="button-row" style="margin-top: 15px;">
@@ -851,13 +856,13 @@
                     <button id="btnAskQuestion" class="btn btn-primary" onclick="toggleQuestionRecording()" data-testid="ask-question-button">🎤 Chiedi</button>
                     <div class="textarea-wrapper" style="margin-top: 10px;">
                         <textarea id="qnaQuestion" rows="3" placeholder="La tua domanda..."></textarea>
-                        <button class="expand-btn" onclick="expandTextarea('qnaQuestion', 'Domanda')" data-testid="expand-qna-question-button">⛶</button>
+                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('qnaQuestion', 'Domanda')" data-testid="expand-qna-question-button">⛶</button>
                     </div>
                     
                     <h3 style="margin-top: 20px;">Risposta</h3>
                     <div class="textarea-wrapper">
                         <textarea id="qnaAnswer" rows="6" placeholder="La risposta apparirà qui..." readonly></textarea>
-                        <button class="expand-btn" onclick="expandTextarea('qnaAnswer', 'Risposta')" data-testid="expand-qna-answer-button">⛶</button>
+                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('qnaAnswer', 'Risposta')" data-testid="expand-qna-answer-button">⛶</button>
                     </div>
                     <div class="button-row" style="margin-top: 10px;">
                         <button class="btn btn-primary" onclick="generateQnAAnswer()" data-testid="generate-qna-answer-button">💬 Rispondi</button>
@@ -1572,6 +1577,27 @@
                 </div>
             </div>
         </main>
+
+        <!-- Bottom Navigation (mobile only) -->
+        <nav id="bottomNav" class="bottom-nav" aria-label="Navigazione principale">
+            <button class="bottom-nav-item active" data-page="recording" data-vet>
+                <i data-lucide="mic" class="icon"></i>
+                <span>Registra</span>
+            </button>
+            <button class="bottom-nav-item" data-page="soap" data-vet>
+                <i data-lucide="clipboard-list" class="icon"></i>
+                <span>Referto</span>
+            </button>
+            <button class="bottom-nav-item" data-page="patient">
+                <i data-lucide="paw-print" class="icon"></i>
+                <span>Pet</span>
+            </button>
+            <button class="bottom-nav-item" data-page="communication">
+                <i data-lucide="message-circle" class="icon"></i>
+                <span>Chat</span>
+                <span class="bottom-nav-badge" id="bottomNavCommBadge" style="display:none;">0</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Modal: Medication -->
@@ -1732,13 +1758,13 @@
                     </div>
                     <div class="form-group">
                         <label>Conviventi</label>
-                        <select id="editPetHousehold" multiple>
-                            <option value="bambini">Bambini</option>
-                            <option value="anziani">Anziani</option>
-                            <option value="altri_cani">Altri cani</option>
-                            <option value="altri_gatti">Altri gatti</option>
-                            <option value="altri_animali">Altri animali</option>
-                        </select>
+                        <div class="chip-selector" id="editPetHousehold">
+                            <button type="button" class="chip-option" data-value="bambini">Bambini</button>
+                            <button type="button" class="chip-option" data-value="anziani">Anziani</button>
+                            <button type="button" class="chip-option" data-value="altri_cani">Altri cani</button>
+                            <button type="button" class="chip-option" data-value="altri_gatti">Altri gatti</button>
+                            <button type="button" class="chip-option" data-value="altri_animali">Altri animali</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>Livello di attività</label>

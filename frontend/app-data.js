@@ -100,7 +100,8 @@ function renderPhotos() {
     if (!grid) return;
 
     if (photos.length === 0) {
-        grid.innerHTML = '<p style="color:#888;text-align:center;padding:20px;grid-column:1/-1;">Nessuna foto</p>';
+        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon"><i data-lucide="camera" style="width:48px;height:48px;stroke-width:1.5;color:var(--gray-300);"></i></div><h3 class="empty-state-title">Nessuna foto</h3><p class="empty-state-text">Aggiungi foto per documentare lo stato del tuo amico</p></div>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
         return;
     }
 
@@ -163,8 +164,7 @@ function getPatientData() {
 }
 
 function getLifestyleData() {
-    const householdSelect = document.getElementById('petHousehold');
-    const selectedHousehold = householdSelect ? Array.from(householdSelect.selectedOptions).map(opt => opt.value).join(', ') : '';
+    const selectedHousehold = typeof getChipValues === 'function' ? getChipValues('petHousehold').join(', ') : '';
     
     return {
         lifestyle: document.getElementById('petLifestyle')?.value || '',
@@ -213,11 +213,10 @@ function setLifestyleData(data) {
         if (el) el.value = (data && data[key]) || '';
     });
     
-    // Handle household multi-select
-    const householdSelect = document.getElementById('petHousehold');
-    if (householdSelect) {
+    // Handle household chip selector
+    if (typeof setChipValues === 'function') {
         const values = (data && data.household) ? data.household.split(', ') : [];
-        Array.from(householdSelect.options).forEach(opt => opt.selected = values.includes(opt.value));
+        setChipValues('petHousehold', values);
     }
 
     // New nutrition fields
