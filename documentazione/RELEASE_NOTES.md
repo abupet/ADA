@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.25.2
+
+### Fix: Service Worker cache impediva visualizzazione menu Nutrizione
+
+- **Service Worker version bump**: `ADA_SW_VERSION` aggiornata da `8.23.1` a `8.25.2` — forza invalidazione cache nei browser degli utenti
+- La cache del SW era ferma alla v8.23.1 (pre-nutrizione), servendo file vecchi senza il menu Nutrizione nella sidebar
+
 ## v8.25.1
 
 ### Fix: Menu Nutrizione mancante per proprietario
