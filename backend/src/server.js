@@ -29,6 +29,10 @@ const { bookingRouter } = require("./booking.routes");
 const { sharedRecordsRouter } = require("./shared-records.routes");
 const { teleconsultRouter } = require("./teleconsult.routes");
 const { diagnosticsRouter } = require("./diagnostics.routes");
+const { vaccinationReminderRouter } = require("./vaccination-reminder.routes");
+const { referralAnalyticsRouter } = require("./referral-analytics.routes");
+const { loyaltyRouter } = require("./loyalty.routes");
+const { preventiveCareRouter } = require("./preventive-care.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -540,6 +544,12 @@ if (process.env.DATABASE_URL) {
   app.use(sharedRecordsRouter({ requireAuth, upload }));
   app.use(teleconsultRouter({ requireAuth }));
   app.use(diagnosticsRouter({ requireAuth }));
+
+  // B2B Phase 3
+  app.use(vaccinationReminderRouter({ requireAuth }));
+  app.use(referralAnalyticsRouter({ requireAuth }));
+  app.use(loyaltyRouter({ requireAuth }));
+  app.use(preventiveCareRouter({ requireAuth }));
 }
 
 function getOpenAiKey() {

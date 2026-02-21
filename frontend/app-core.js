@@ -465,6 +465,18 @@ async function navigateToPage(page) {
     if (page === 'diagnostics') {
         try { if (typeof loadDiagnosticsPage === 'function') loadDiagnosticsPage(); } catch(e) { console.error('[CORE] loadDiagnosticsPage failed:', e); }
     }
+    if (page === 'vaccination-calendar') {
+        try { if (typeof loadVaccinationCalendar === 'function') loadVaccinationCalendar(); } catch(e) {}
+    }
+    if (page === 'referral-analytics') {
+        try { if (typeof loadReferralAnalytics === 'function') loadReferralAnalytics(); } catch(e) {}
+    }
+    if (page === 'loyalty') {
+        try { if (typeof loadLoyaltyDashboard === 'function') loadLoyaltyDashboard(); } catch(e) {}
+    }
+    if (page === 'preventive-care') {
+        try { if (typeof loadPreventiveCarePage === 'function') loadPreventiveCarePage(); } catch(e) {}
+    }
     if (page === 'breeder-milestones') {
         try { if (typeof loadLitterMilestones === 'function') loadLitterMilestones(); } catch(e) { console.error('[CORE] loadLitterMilestones failed:', e); }
     }

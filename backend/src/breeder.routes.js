@@ -420,6 +420,49 @@ function breederRouter({ requireAuth }) {
     }
   });
 
+  // POST /api/breeder/programs/auto-schedule — schedule exams for pets that reached target age
+  router.post('/api/breeder/programs/auto-schedule', requireAuth, requireRole(['breeder']), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { rows: enrollments } = await pool.query(
+        `SELECT bpe.enrollment_id, bpe.pet_id, bpe.program_id, bpe.progress,
+                bp.exams, bp.name AS program_name,
+                p.birthdate AS birth_date, p.name AS pet_name
+         FROM breeding_program_enrollments bpe
+         JOIN breeding_programs bp ON bp.program_id = bpe.program_id
+         JOIN pets p ON p.pet_id = bpe.pet_id
+         WHERE bpe.breeder_user_id = $1 AND bpe.status IN ('enrolled', 'in_progress')`,
+        [userId]
+      );
+
+      let scheduled = 0;
+      for (const enrollment of enrollments) {
+        if (!enrollment.birth_date || !enrollment.exams) continue;
+        const birthDate = new Date(enrollment.birth_date);
+        const now = new Date();
+        const ageMonths = Math.floor((now - birthDate) / (1000 * 60 * 60 * 24 * 30.44));
+        const progress = enrollment.progress || {};
+        const exams = typeof enrollment.exams === 'string' ? JSON.parse(enrollment.exams) : enrollment.exams;
+        for (const exam of exams) {
+          if (progress[exam.name]) continue;
+          if (exam.min_age_months && ageMonths >= exam.min_age_months) {
+            progress[exam.name] = { status: 'due', since: now.toISOString() };
+            scheduled++;
+          }
+        }
+        await pool.query(
+          'UPDATE breeding_program_enrollments SET progress = $1, updated_at = NOW() WHERE enrollment_id = $2',
+          [JSON.stringify(progress), enrollment.enrollment_id]
+        );
+      }
+      res.json({ evaluated: enrollments.length, newly_due: scheduled });
+    } catch (err) {
+      if (err.code === '42P01') return res.json({ evaluated: 0, newly_due: 0 });
+      console.error('POST auto-schedule error:', err);
+      res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   return router;
 }
 
