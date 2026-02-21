@@ -1495,6 +1495,7 @@ async function loadPetConversations(petId, customContainer) {
             html += '</div>';
         }
         listEl.innerHTML = html;
+        if (typeof _updateAccordionCounter === 'function') _updateAccordionCounter('conversations', convs.length);
     } catch (e) {
         listEl.innerHTML = '';
     }

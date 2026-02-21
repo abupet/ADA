@@ -1,5 +1,17 @@
 # Release Notes (cumulative)
 
+## v9.3.2 — Bugfix post-audit (Sidebar + Archivio + Developer)
+
+### Fix
+- **P1** — Breeder sidebar: aggiunti nav-item per Calendario Vaccini e Prevenzione
+- **P2** — Archivio Sanitario: aggiunta sezione Assicurazioni nell'accordion
+- **P3** — Archivio Sanitario: pulsante "Spiega" su righe Referti e Documenti
+- **P4** — Archivio Sanitario: counter (N) nei titoli accordion
+- **P5** — Archivio Sanitario: sezioni vuote ora nascoste automaticamente
+- **P6** — Promo "Consigliato": layout flex titolo + bottone Analisi sulla stessa riga
+- **P7** — Pagina Developer (API & Webhook): hook navigazione, visibilità vet_ext, frontend module
+- **P8** — Sidebar vet: voci vet_ext-only (Analytics Referral, Loyalty) nascoste per vet_int
+
 ## v9.3.1 — Bugfix: Whisper, WebP Detection, Role Whitelist
 
 ### Bug fix

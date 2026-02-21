@@ -522,13 +522,13 @@
             : (rec.imageUrl || rec.image_url || getProductImageUrl(null));
         var description = rec.description || null;
 
+        var _hasAnalysis = (typeof debugLogEnabled !== 'undefined' && debugLogEnabled);
         var html = [
-            '<span class="promo-badge">Consigliato per il tuo amico pet</span>'
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+                '<span class="promo-badge" style="margin:0;">Consigliato per il tuo amico pet</span>' +
+                (_hasAnalysis ? '<button type="button" class="promo-btn promo-btn--info" data-promo-action="analysis" style="font-size:11px;padding:4px 12px;">🔍 Analisi</button>' : '') +
+            '</div>'
         ];
-        // v9.1.1: Debug analysis button moved to card header
-        if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
-            html.push('<div style="margin:4px 0;text-align:right;"><button type="button" class="promo-btn promo-btn--info" data-promo-action="analysis" style="font-size:11px;padding:4px 12px;">🔍 Analisi</button></div>');
-        }
 
         html.push('<img src="' + _escapeHtml(imageUrl) + '" alt="' + _escapeHtml(rec.name) + '" class="promo-card-img" style="width:100%;max-height:250px;object-fit:contain;border-radius:8px;margin:8px 0;" onerror="if(!this.dataset.fallback){this.dataset.fallback=1;var i=String(Math.floor(Math.random()*45)+1).padStart(2,\'0\');this.src=(typeof API_BASE_URL!==\'undefined\'?API_BASE_URL:\'\')+\'/api/seed-assets/placeholder-prodotti/Prodotto_\'+i+\'.png\';}">');
 

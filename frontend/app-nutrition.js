@@ -2298,6 +2298,8 @@
                 }
 
                 container.appendChild(section);
+                // P4: Update accordion counter
+                if (typeof _updateAccordionCounter === 'function') _updateAccordionCounter('nutrition', plans.length);
             })
             .catch(function() {});
     }

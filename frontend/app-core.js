@@ -480,6 +480,7 @@ async function navigateToPage(page) {
     if (page === 'genetic-tests') { try { if (typeof loadGeneticTestsPage === 'function') loadGeneticTestsPage(); } catch(e) {} }
     if (page === 'education') { try { if (typeof loadEducationPage === 'function') loadEducationPage(); } catch(e) {} }
     if (page === 'marketplace') { try { if (typeof loadMarketplacePage === 'function') loadMarketplacePage(); } catch(e) {} }
+    if (page === 'developer') { try { if (typeof loadDeveloperPage === 'function') loadDeveloperPage(); } catch(e) {} }
     if (page === 'breeder-milestones') {
         try { if (typeof loadLitterMilestones === 'function') loadLitterMilestones(); } catch(e) { console.error('[CORE] loadLitterMilestones failed:', e); }
     }
@@ -649,6 +650,17 @@ function applyRoleUI(role) {
     if (knowledgeEl) knowledgeEl.style.display = hasSARole ? '' : 'none';
     var auditBtn = document.getElementById('debug-audit-btn');
     if (auditBtn) auditBtn.style.display = hasSARole ? '' : 'none';
+
+    // Show developer nav for vet_ext or super_admin
+    var devEl = document.getElementById('nav-developer');
+    if (devEl) devEl.style.display = (jwtR === 'vet_ext' || hasSARole) ? '' : 'none';
+
+    // Filter nav-items with data-roles attribute based on JWT role
+    document.querySelectorAll('.nav-item[data-roles]').forEach(function(item) {
+        var allowedRoles = (item.dataset.roles || '').split(',').map(function(s) { return s.trim(); });
+        var visible = allowedRoles.indexOf(jwtR) !== -1 || hasSARole;
+        item.style.display = visible ? '' : 'none';
+    });
 
     // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');
@@ -3512,6 +3524,15 @@ function renderHistoryAccordion() {
     html += '  <div class="history-accordion-body"><div id="historyAccNutrition" style="padding-top:8px;">Caricamento...</div></div>';
     html += '</div>';
 
+    // Section: Assicurazioni
+    html += '<div class="history-accordion-section" data-history-section="insurance">';
+    html += '  <div class="history-accordion-header" onclick="_toggleHistorySection(this)">';
+    html += '    <span class="history-accordion-title">🛡️ Assicurazioni</span>';
+    html += '    <i data-lucide="chevron-right" class="history-accordion-chevron"></i>';
+    html += '  </div>';
+    html += '  <div class="history-accordion-body"><div id="historyAccInsurance" style="padding-top:8px;">Caricamento...</div></div>';
+    html += '</div>';
+
     // Section: Conversazioni
     html += '<div class="history-accordion-section" data-history-section="conversations">';
     html += '  <div class="history-accordion-header" onclick="_toggleHistorySection(this)">';
@@ -3528,6 +3549,7 @@ function renderHistoryAccordion() {
     _renderHistoryReports();
     _renderHistoryDocuments();
     _renderHistoryNutrition();
+    _renderHistoryInsurance();
     _renderHistoryConversations();
 }
 
@@ -3537,7 +3559,8 @@ function _renderHistoryReports() {
     try { migrateLegacyHistoryDataIfNeeded(); } catch(e) {}
     var sorted = (typeof _getHistorySortedForUI === 'function') ? _getHistorySortedForUI() : (historyData || []).slice();
     if (!sorted || sorted.length === 0) {
-        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessun referto ancora</p>';
+        el.innerHTML = '';
+        _hideEmptyAccordionSection('reports');
         return;
     }
     var months = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
@@ -3553,10 +3576,12 @@ function _renderHistoryReports() {
         html += '  <div class="history-date"><div class="day">' + date.getDate() + '</div><div class="month">' + months[date.getMonth()] + '</div></div>';
         html += '  <div class="history-info"><h4>' + diarizedBadge + ' ' + _escapeHtml(patientName) + ' - ' + _escapeHtml(title) + '</h4>';
         html += '    <p>' + (aText ? _escapeHtml(aText.substring(0, 80) + (aText.length > 80 ? '...' : '')) : 'Nessuna diagnosi') + '</p></div>';
+        html += '  <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;margin-right:4px;" onclick="event.stopPropagation(); if(typeof _explainFromHistory===\'function\') _explainFromHistory(\'' + item.id + '\', \'report\')"><i data-lucide="book-open" style="width:14px;height:14px;"></i> Spiega</button>';
         html += '  <button class="history-delete" onclick="event.stopPropagation(); deleteHistoryById(\'' + item.id + '\')">×</button>';
         html += '</div>';
     });
     el.innerHTML = html;
+    _updateAccordionCounter('reports', sorted.length);
 }
 
 function _renderHistoryDocuments() {
@@ -3573,7 +3598,8 @@ function _renderHistoryDocuments() {
     }
     getDocumentsForPet(petId).then(function(docs) {
         if (!Array.isArray(docs) || docs.length === 0) {
-            el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessun documento caricato</p>';
+            el.innerHTML = '';
+            _hideEmptyAccordionSection('documents');
             return;
         }
         var html = '';
@@ -3586,10 +3612,12 @@ function _renderHistoryDocuments() {
             html += '  <span>' + aiIcon + '</span>';
             html += '  <div style="flex:1;"><strong style="font-size:13px;">' + _escapeHtml(name) + '</strong>';
             html += '    <div style="font-size:11px;color:#888;">' + date.toLocaleDateString('it-IT') + '</div></div>';
+            html += '  <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;margin-right:4px;" onclick="event.stopPropagation(); if(typeof _explainFromHistory===\'function\') _explainFromHistory(\'' + doc.document_id + '\', \'document\')"><i data-lucide="book-open" style="width:14px;height:14px;"></i> Spiega</button>';
             html += '  <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;" onclick="event.stopPropagation();if(typeof openDocument===\'function\')openDocument(\'' + doc.document_id + '\')">Apri</button>';
             html += '</div>';
         });
         el.innerHTML = html;
+        _updateAccordionCounter('documents', docs.length);
     }).catch(function() {
         el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Errore nel caricamento documenti</p>';
     });
@@ -3607,8 +3635,16 @@ function _renderHistoryNutrition() {
             el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessun piano nutrizionale</p>';
         }
     } else {
-        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Modulo nutrizione non disponibile</p>';
+        el.innerHTML = '';
+        _hideEmptyAccordionSection('nutrition');
     }
+    // Nascondi sezione se rimane vuota dopo il fetch asincrono
+    setTimeout(function() {
+        var nutEl = document.getElementById('historyAccNutrition');
+        if (nutEl && (!nutEl.innerHTML.trim() || nutEl.innerHTML === 'Caricamento...')) {
+            _hideEmptyAccordionSection('nutrition');
+        }
+    }, 3000);
 }
 
 function _renderHistoryConversations() {
@@ -3622,8 +3658,91 @@ function _renderHistoryConversations() {
             el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessuna conversazione</p>';
         }
     } else {
-        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Modulo conversazioni non disponibile</p>';
+        el.innerHTML = '';
+        _hideEmptyAccordionSection('conversations');
     }
+    setTimeout(function() {
+        var convEl = document.getElementById('historyAccConversations');
+        if (convEl && (!convEl.innerHTML.trim() || convEl.innerHTML === 'Caricamento...')) {
+            _hideEmptyAccordionSection('conversations');
+        }
+    }, 3000);
+}
+
+function _renderHistoryInsurance() {
+    var el = document.getElementById('historyAccInsurance');
+    if (!el) return;
+    var petId = typeof getCurrentPetId === 'function' ? getCurrentPetId() : null;
+    if (!petId) {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Seleziona un pet</p>';
+        return;
+    }
+    if (typeof fetchApi !== 'function') {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Modulo assicurazioni non disponibile</p>';
+        return;
+    }
+    fetchApi('/api/insurance/coverage/' + encodeURIComponent(petId))
+        .then(function(resp) { return (resp && resp.ok) ? resp.json() : { policies: [] }; })
+        .then(function(data) {
+            var policies = data.policies || data.coverage || [];
+            if (!Array.isArray(policies) || policies.length === 0) {
+                el.innerHTML = '';
+                _hideEmptyAccordionSection('insurance');
+                return;
+            }
+            var html = '';
+            policies.forEach(function(pol) {
+                var status = pol.status || 'unknown';
+                var statusIcon = status === 'active' ? '✅' : (status === 'pending' ? '⏳' : '📋');
+                var name = pol.plan_name || pol.name || 'Polizza';
+                var date = pol.activated_at || pol.created_at;
+                var dateStr = date ? new Date(date).toLocaleDateString('it-IT') : '';
+                html += '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #f0f0f0;">';
+                html += '  <span>' + statusIcon + '</span>';
+                html += '  <div style="flex:1;"><strong style="font-size:13px;">' + _escapeHtml(name) + '</strong>';
+                html += '    <div style="font-size:11px;color:#888;">' + _escapeHtml(status) + (dateStr ? ' · ' + dateStr : '') + '</div></div>';
+                html += '</div>';
+            });
+            el.innerHTML = html;
+            _updateAccordionCounter('insurance', policies.length);
+        })
+        .catch(function() {
+            el.innerHTML = '';
+            _hideEmptyAccordionSection('insurance');
+        });
+}
+
+function _explainFromHistory(id, type) {
+    if (type === 'report') {
+        if (typeof loadHistoryById === 'function') loadHistoryById(id);
+        setTimeout(function() {
+            if (typeof generateOwnerExplanationFromReadonly === 'function') {
+                generateOwnerExplanationFromReadonly();
+            }
+        }, 500);
+    } else if (type === 'document') {
+        if (typeof openDocument === 'function') openDocument(id);
+        setTimeout(function() {
+            if (typeof explainDocument === 'function') {
+                explainDocument();
+            }
+        }, 500);
+    }
+}
+window._explainFromHistory = _explainFromHistory;
+
+function _updateAccordionCounter(sectionId, count) {
+    var section = document.querySelector('[data-history-section="' + sectionId + '"]');
+    if (!section) return;
+    var titleEl = section.querySelector('.history-accordion-title');
+    if (!titleEl) return;
+    var text = titleEl.textContent.replace(/\s*\(\d+\)$/, '');
+    titleEl.textContent = text + ' (' + count + ')';
+}
+
+function _hideEmptyAccordionSection(sectionId) {
+    var section = document.querySelector('[data-history-section="' + sectionId + '"]');
+    if (section) section.style.display = 'none';
 }
 
 function _toggleHistorySection(headerEl) {
@@ -3653,6 +3772,9 @@ window._historyExpandAll = _historyExpandAll;
 window._historyCollapseAll = _historyCollapseAll;
 window._toggleHistorySection = _toggleHistorySection;
 window.renderHistoryAccordion = renderHistoryAccordion;
+window._renderHistoryInsurance = typeof _renderHistoryInsurance === 'function' ? _renderHistoryInsurance : undefined;
+window._updateAccordionCounter = typeof _updateAccordionCounter === 'function' ? _updateAccordionCounter : undefined;
+window._hideEmptyAccordionSection = typeof _hideEmptyAccordionSection === 'function' ? _hideEmptyAccordionSection : undefined;
 
 // Initialize on load
 window.onload = checkSession;
