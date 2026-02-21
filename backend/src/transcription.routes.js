@@ -74,12 +74,24 @@ function transcriptionRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         }
         await pool.query("UPDATE call_recordings SET transcription_status = 'processing' WHERE recording_id = $1", [recordingId]);
         try {
+          // Validate recording URL: must be HTTPS to prevent SSRF
+          const audioUrl = new URL(rec.recording_url);
+          if (audioUrl.protocol !== "https:") throw new Error("Recording URL must use HTTPS");
+          // Block private/internal IPs
+          const host = audioUrl.hostname.toLowerCase();
+          if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.") || host.endsWith(".internal") || host.endsWith(".local")) {
+            throw new Error("Recording URL points to internal host");
+          }
           // Download audio file from URL
+          const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // 25 MB (Whisper API limit)
           const audioResp = await fetch(rec.recording_url);
           if (!audioResp.ok) throw new Error("Audio download failed: " + audioResp.status);
+          const contentLength = parseInt(audioResp.headers.get("content-length") || "0", 10);
+          if (contentLength > MAX_AUDIO_SIZE) throw new Error("Audio file too large: " + contentLength);
           const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+          if (audioBuffer.length > MAX_AUDIO_SIZE) throw new Error("Audio file too large: " + audioBuffer.length);
           // Determine filename from URL or fallback
-          const urlPath = new URL(rec.recording_url).pathname;
+          const urlPath = audioUrl.pathname;
           const fileName = urlPath.split("/").pop() || "audio.webm";
           // Build multipart/form-data
           const formData = new FormData();
