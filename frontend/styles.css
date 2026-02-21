@@ -142,7 +142,7 @@ body {
     margin-bottom: 15px;
     font-size: 16px;
 }
-.login-card input:focus { outline: none; border-color: var(--primary); }
+.login-card input:focus { outline: none; border-color: var(--primary-400); box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12); }
 .login-spinner {
     width: 28px; height: 28px;
     border: 3px solid #e0e0e0;
@@ -390,7 +390,8 @@ body {
 }
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
     outline: none;
-    border-color: var(--primary);
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
 }
 .form-group select[multiple] { height: 100px; }
 
@@ -1761,4 +1762,18 @@ button:active {
     font-size: 13px;
     font-weight: 600;
     z-index: 10000;
+}
+
+/* ============================================
+   ACCESSIBILITY — Focus ring (SPEC-A11Y-02)
+   ============================================ */
+:focus-visible {
+    outline: 2px solid var(--primary-400);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
 }
