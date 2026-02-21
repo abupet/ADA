@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.25.1
+
+### Fix: Menu Nutrizione mancante per proprietario
+
+- **Sidebar owner**: aggiunta voce "🥗 Nutrizione" nel menu proprietario (`sidebar-owner`) — prima era presente solo nel sidebar veterinario
+- **Pagina vuota owner**: quando non esiste un piano nutrizionale, il proprietario ora vede il messaggio "Nessun piano nutrizionale disponibile per questo pet" invece di una pagina vuota
+
 ## v8.25.0
 
 ### Feature: Nutrizione v3 — Pagina Dedicata, UX Completa, Razze, Archivio, Metodo
