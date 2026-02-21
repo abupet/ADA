@@ -82,6 +82,17 @@
                 </div>
 
                 <!-- Sidebar: TEST & DEMO (super_admin only) -->
+                <div id="sidebar-breeder" class="sidebar-role-section" style="display:none;">
+                    <div class="sidebar-section-label">Allevamento</div>
+                    <div class="nav-item" data-page="breeder-dashboard"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</div>
+                    <div class="nav-item" data-page="breeder-litters"><i data-lucide="baby" class="icon"></i> Cucciolate</div>
+                    <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> I miei Animali</div>
+                    <div class="nav-item" data-page="booking"><i data-lucide="calendar-check" class="icon"></i> Prenota Servizi</div>
+                    <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
+                    <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-breeder" style="display:none;">0</span></div>
+                    <div class="nav-item" data-page="document"><i data-lucide="file-text" class="icon"></i> Documenti</div>
+                </div>
+
                 <div id="sidebar-test-demo" class="sidebar-role-section" style="display:none;">
                     <div class="nav-section">TEST & DEMO</div>
                     <div class="nav-item seed-nav-item" data-page="seed"><i data-lucide="sprout" class="icon"></i> Seed Engine</div>
@@ -1424,6 +1435,13 @@
                 </div>
             </div>
 
+            <!-- B2B: Breeder Dashboard -->
+            <div id="page-breeder-dashboard" class="page"></div>
+            <!-- B2B: Breeder Litters -->
+            <div id="page-breeder-litters" class="page"></div>
+            <!-- B2B: Booking -->
+            <div id="page-booking" class="page"></div>
+
             <!-- Page: Seed Engine (PR 14) -->
             <div id="page-seed" class="page">
                 <div class="page-header">
@@ -1887,6 +1905,8 @@
     <script src="app-testdata.js"></script>
     <script src="app-seed.js"></script>
     <script src="app-knowledge.js"></script>
+    <script src="app-breeder.js"></script>
+    <script src="app-booking.js"></script>
 <script>
 if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
     window.addEventListener('load', function() {

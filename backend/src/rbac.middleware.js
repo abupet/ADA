@@ -26,7 +26,7 @@ function requireRole(allowedRoles) {
     // Legacy JWT (single-user auth)
     if (user.sub === "ada-user") {
       const headerRole = req.headers["x-ada-role"] || "";
-      const legacyRole = (headerRole === "vet" || headerRole === "vet_int" || headerRole === "vet_ext") ? headerRole : "owner";
+      const legacyRole = (headerRole === "vet" || headerRole === "vet_int" || headerRole === "vet_ext") ? headerRole : (headerRole === "breeder" ? "breeder" : "owner");
       // Map legacy 'vet' to 'vet_int' for new role system
       const effectiveRole = legacyRole === "vet" ? "vet_int" : legacyRole;
       // Check if allowed (accept both old 'vet' and new 'vet_int'/'vet_ext')

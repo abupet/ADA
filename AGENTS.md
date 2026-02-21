@@ -31,11 +31,11 @@ ADA è una SPA vanilla JS con backend Express.
 - Express 4, JWT auth, PostgreSQL via `pg`, multer per upload
 - Route: `pets.routes.js`, `pets.sync.routes.js`, `sync.routes.js`, `documents.routes.js`, `promo.routes.js`
 
-**SQL migrations** (`sql/`): 001–025
+**SQL migrations** (`sql/`): 001–028
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 8.27.1
+**Versione corrente:** 9.0.0
 
 ---
 
@@ -92,10 +92,15 @@ Il file `frontend/index.html` contiene un inline script che rileva automaticamen
 ## 5. Sistemi chiave (v7.3.2)
 
 ### Sistema ruoli
-- Due ruoli: `veterinario`, `proprietario`
+- Ruoli: `veterinario`, `proprietario`, `breeder`, `vet_int`, `vet_ext`, `admin_brand`, `super_admin`
 - `ROLE_PERMISSIONS` in `config.js` definisce pagine/azioni per ruolo
 - Toggle nell'header, persistito in `localStorage` (`ada_active_role`)
 - Route guard in `navigateToPage()` applica i permessi
+
+### B2B (v9.0.0)
+- **Breeder Hub**: dashboard KPI, gestione cucciolate, registrazione cuccioli, vendita, programmi sanitari, protocolli vaccinali
+- **Referral Workflow**: 9 specialità, status tracking end-to-end, SLA configurabili, audit trail
+- **Booking Online**: catalogo servizi, slot disponibilità, prenotazione singola/bulk, prezzi breeder
 
 ### Pets (online-only, v8.15.1+)
 - Nessun IndexedDB, nessun sync offline — tutti i CRUD via API REST dirette (`GET/POST/PATCH/DELETE /api/pets`)

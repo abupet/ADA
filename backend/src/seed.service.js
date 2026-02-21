@@ -1290,6 +1290,35 @@ async function _runDemoJob(pool, config, openAiKey) {
     }
 
     // =====================================================================
+    // Phase 13 (B2B): Seed breeding programs and vaccination protocols
+    // =====================================================================
+    _log('Phase 13: Seeding B2B data (breeding programs, vaccination protocols)...');
+
+    await pool.query(`
+      INSERT INTO breeding_programs (name, description, species, breed, exams, price_package, status) VALUES
+        ('Screening Displasia — Labrador/Golden', 'Percorso completo certificazione displasia anca e gomiti', 'dog', 'Labrador Retriever',
+         '[{"exam_name":"Rx Anche HD","exam_code":"HD_RX","mandatory":true,"order":1},{"exam_name":"Rx Gomiti ED","exam_code":"ED_RX","mandatory":true,"order":2},{"exam_name":"Visita Ortopedica","exam_code":"ORTHO_VISIT","mandatory":true,"order":3}]',
+         350.00, 'active'),
+        ('Screening Cardiologico — Cavalier King', 'Screening cardiologico per MVD', 'dog', 'Cavalier King Charles Spaniel',
+         '[{"exam_name":"Ecocardiografia","exam_code":"ECHO","mandatory":true,"order":1},{"exam_name":"Visita Cardiologica","exam_code":"CARDIO_VISIT","mandatory":true,"order":2}]',
+         250.00, 'active'),
+        ('Programma Cucciolo Sano', 'Check-up completo per cuccioli di tutte le razze', 'dog', NULL,
+         '[{"exam_name":"Visita Generale","exam_code":"GEN_VISIT","mandatory":true,"order":1},{"exam_name":"Vaccinazione Polivalente","exam_code":"VAX_POLY","mandatory":true,"order":2},{"exam_name":"Sverminazione","exam_code":"DEWORM","mandatory":true,"order":3},{"exam_name":"Microchip","exam_code":"MICROCHIP","mandatory":true,"order":4}]',
+         120.00, 'active')
+      ON CONFLICT DO NOTHING
+    `);
+
+    await pool.query(`
+      INSERT INTO vaccination_protocols (name, species, vaccinations, status) VALUES
+        ('Protocollo Cucciolo Cane', 'dog',
+         '[{"vaccine_name":"Polivalente (CHP)","age_weeks":6,"is_booster":false,"mandatory":true},{"vaccine_name":"Polivalente (CHPPi)","age_weeks":8,"is_booster":true,"mandatory":true},{"vaccine_name":"Polivalente + Lepto","age_weeks":12,"is_booster":true,"mandatory":true},{"vaccine_name":"Rabbia","age_weeks":16,"is_booster":false,"mandatory":true},{"vaccine_name":"Richiamo Annuale","age_weeks":52,"is_booster":true,"mandatory":true}]',
+         'active')
+      ON CONFLICT DO NOTHING
+    `);
+
+    _log('Phase 13 complete: B2B seed data inserted');
+
+    // =====================================================================
     // Done
     // =====================================================================
     job.status = 'completed';
