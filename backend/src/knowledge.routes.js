@@ -16,9 +16,19 @@ function serverLog(level, domain, message, data, req) {
     }));
 }
 
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 function knowledgeRouter({ requireAuth, upload, getOpenAiKey }) {
     const router = express.Router();
     const pool = getPool();
+
+    // Validate :bookId param as UUID
+    router.param('bookId', function(req, res, next, val) {
+        if (!UUID_REGEX.test(val)) {
+            return res.status(400).json({ error: "invalid_book_id", message: "ID libro non valido" });
+        }
+        next();
+    });
 
     // GET /api/superadmin/knowledge/books
     router.get("/api/superadmin/knowledge/books",
@@ -206,6 +216,11 @@ function knowledgeRouter({ requireAuth, upload, getOpenAiKey }) {
                 );
                 if (bookResult.rows.length === 0) {
                     return res.status(404).json({ error: "not_found" });
+                }
+
+                const currentStatus = bookResult.rows[0].processing_status;
+                if (['extracting', 'chunking', 'embedding'].indexOf(currentStatus) !== -1) {
+                    return res.status(409).json({ error: "already_processing", message: "Il libro è già in fase di elaborazione" });
                 }
 
                 await pool.query(
@@ -402,6 +417,13 @@ function knowledgeRouter({ requireAuth, upload, getOpenAiKey }) {
             );
 
             const pdfData = await pdfParse(pdfBuffer);
+            if (!pdfData.text || !pdfData.text.trim()) {
+                await pool.query(
+                    "UPDATE vet_knowledge_books SET processing_status = 'error', processing_error = $2, updated_at = NOW() WHERE book_id = $1",
+                    [bookId, "Nessun testo estraibile dal PDF. Potrebbe essere un PDF scansionato (immagini). Caricare un PDF con testo selezionabile."]
+                );
+                return;
+            }
             const totalPages = pdfData.numpages || 0;
 
             await pool.query(
@@ -460,11 +482,24 @@ function knowledgeRouter({ requireAuth, upload, getOpenAiKey }) {
                     })
                 });
 
+                if (embResponse.status === 429) {
+                    // Rate limited — retry after backoff
+                    const retryAfter = parseInt(embResponse.headers.get('retry-after') || '5', 10);
+                    console.warn(`[knowledge] Rate limited, retrying batch after ${retryAfter}s`);
+                    await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                    batchStart -= BATCH_SIZE; // retry this batch
+                    continue;
+                }
+
                 if (!embResponse.ok) {
                     throw new Error(`Embedding API error: ${embResponse.status}`);
                 }
 
                 const embData = await embResponse.json();
+
+                if (!embData.data || embData.data.length !== batchTexts.length) {
+                    throw new Error(`Embedding count mismatch: expected ${batchTexts.length}, got ${embData.data ? embData.data.length : 0}`);
+                }
 
                 for (let j = 0; j < embData.data.length; j++) {
                     const chunkIndex = batchStart + j;
@@ -527,7 +562,7 @@ function knowledgeRouter({ requireAuth, upload, getOpenAiKey }) {
         let currentChapter = null;
         let currentSection = null;
 
-        for (const para of paragraphs) {
+        for (let para of paragraphs) {
             const trimmed = para.trim();
             if (!trimmed) continue;
 
@@ -538,21 +573,38 @@ function knowledgeRouter({ requireAuth, upload, getOpenAiKey }) {
                 currentSection = trimmed.substring(0, 100);
             }
 
-            if ((currentChunk + "\n\n" + trimmed).length > maxChars && currentChunk.length > 0) {
-                chunks.push({
-                    text: currentChunk.trim(),
-                    estimatedTokens: Math.ceil(currentChunk.length / charPerToken),
-                    chapter: currentChapter,
-                    section: currentSection,
-                    metadata: {
-                        headings: [currentChapter, currentSection].filter(Boolean)
-                    }
-                });
+            // Split oversize paragraphs into sentence-boundary pieces
+            let subParts = [trimmed];
+            if (trimmed.length > maxChars) {
+                subParts = [];
+                let remaining = trimmed;
+                while (remaining.length > maxChars) {
+                    let splitAt = remaining.lastIndexOf('. ', maxChars);
+                    if (splitAt < maxChars * 0.3) splitAt = maxChars;
+                    else splitAt += 1; // include the period
+                    subParts.push(remaining.substring(0, splitAt).trim());
+                    remaining = remaining.substring(splitAt).trim();
+                }
+                if (remaining) subParts.push(remaining);
+            }
 
-                const overlapText = currentChunk.slice(-overlapChars);
-                currentChunk = overlapText + "\n\n" + trimmed;
-            } else {
-                currentChunk = currentChunk ? currentChunk + "\n\n" + trimmed : trimmed;
+            for (const subPart of subParts) {
+                if ((currentChunk + "\n\n" + subPart).length > maxChars && currentChunk.length > 0) {
+                    chunks.push({
+                        text: currentChunk.trim(),
+                        estimatedTokens: Math.ceil(currentChunk.length / charPerToken),
+                        chapter: currentChapter,
+                        section: currentSection,
+                        metadata: {
+                            headings: [currentChapter, currentSection].filter(Boolean)
+                        }
+                    });
+
+                    const overlapText = currentChunk.slice(-overlapChars);
+                    currentChunk = overlapText + "\n\n" + subPart;
+                } else {
+                    currentChunk = currentChunk ? currentChunk + "\n\n" + subPart : subPart;
+                }
             }
         }
 

@@ -110,7 +110,6 @@ Il tuo compito: spiegare al proprietario perché vede questo suggerimento di pro
 Sii professionale, empatico e conciso. Non dare consigli medici specifici.`;
 
     // RAG: enrich with veterinary knowledge
-    const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
     systemPrompt = await enrichSystemPrompt(pool, getOpenAiKey, systemPrompt, `${petSummary.specie || ''} ${petSummary.razza || ''} ${promoItem?.name || ''} ${context || ''}`, { sourceService: 'explanation' });
 
     const isInsurance = (serviceType === 'insurance');

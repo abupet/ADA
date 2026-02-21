@@ -1,5 +1,15 @@
 # Release Notes (cumulative)
 
+## v8.27.1
+
+### Fix: Bug e robustezza nel codice RAG Biblioteca Veterinaria
+
+- **Bug critico**: fix `ReferenceError: message is not defined` in chatbot.routes.js — variabile `message` rinominata correttamente in `content`
+- **rag.service.js**: aggiunto timeout 8s (AbortController) sulla fetch embedding, validazione risposta OpenAI (`embData.data[0].embedding`), validazione valori embedding (`Number.isFinite`), guard su `countResult.rows[0]`
+- **knowledge.routes.js**: validazione testo PDF (errore specifico per PDF scansionati), validazione UUID su parametro `:bookId`, gestione paragrafi oversize nel chunking, validazione count batch embedding, retry con backoff su rate limit 429, check concorrenza su reprocess
+- **app-knowledge.js**: fix URL upload XHR (`API_BASE_URL` al posto di `ADA_BACKEND_URL`), aggiunto `.catch()` su tutte le chiamate `fetchApi` senza handler, cleanup polling interval su navigazione pagina, rimosso optional chaining (`?.`) per compatibilità browser, aggiunto timeout XHR 120s
+- **explanation.service.js**: rimossa variabile `openAiKey` inutilizzata (dead code)
+
 ## v8.27.0
 
 ### Feature: Biblioteca Veterinaria RAG (Knowledge Base)
