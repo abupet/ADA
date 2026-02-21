@@ -98,6 +98,7 @@
 
                 <div class="nav-section">SISTEMA</div>
                 <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;"><i data-lucide="wrench" class="icon"></i> Gestione</div>
+                <div class="nav-item" id="nav-superadmin-knowledge" data-page="superadmin-knowledge" style="display:none;"><i data-lucide="book-open" class="icon"></i> Biblioteca Vet</div>
                 <div class="nav-item" data-page="settings"><i data-lucide="settings" class="icon"></i> Impostazioni</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;"><i data-lucide="bug" class="icon"></i> Debug</div>
                 <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;"><i data-lucide="sparkles" class="icon"></i> Descrizione Pet per AI</div>
@@ -1180,6 +1181,7 @@
                         <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-policies')">📋 Policies</button>
                         <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-tags')">🏷️ Tag Dictionary</button>
                         <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-sources')">💡 Fonti Tips</button>
+                        <button class="btn btn-primary" style="padding:14px 20px;font-size:15px;display:flex;align-items:center;gap:10px;" onclick="navigateToPage('superadmin-knowledge')">📚 Biblioteca Veterinaria</button>
                     </div>
                 </div>
             </div>
@@ -1241,6 +1243,16 @@
                 </div>
                 <div class="card">
                     <div id="superadmin-sources-content"></div>
+                </div>
+            </div>
+
+            <!-- Page: Super Admin Knowledge Base (RAG) -->
+            <div id="page-superadmin-knowledge" class="page">
+                <div class="page-header">
+                    <h2>Biblioteca Veterinaria</h2>
+                </div>
+                <div class="card">
+                    <div id="superadmin-knowledge-content"></div>
                 </div>
             </div>
 
@@ -1874,6 +1886,7 @@
     <script src="app-observability.js"></script>
     <script src="app-testdata.js"></script>
     <script src="app-seed.js"></script>
+    <script src="app-knowledge.js"></script>
 <script>
 if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
     window.addEventListener('load', function() {

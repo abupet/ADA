@@ -22,6 +22,7 @@ const { commUploadRouter } = require("./comm-upload.routes");
 const { chatbotRouter } = require("./chatbot.routes");
 const { transcriptionRouter } = require("./transcription.routes");
 const { pushRouter } = require("./push.routes");
+const { knowledgeRouter } = require("./knowledge.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -521,6 +522,8 @@ if (process.env.DATABASE_URL) {
   app.use(chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }));
   // --- Transcription routes (post-call) ---
   app.use(transcriptionRouter({ requireAuth, getOpenAiKey, isMockEnv }));
+  // --- Knowledge Base RAG routes (super_admin) ---
+  app.use(knowledgeRouter({ requireAuth, upload, getOpenAiKey }));
 }
 
 function getOpenAiKey() {
@@ -662,6 +665,25 @@ app.post("/api/chat", async (req, res) => {
 
     if (!sanitizedPayload.messages || !Array.isArray(sanitizedPayload.messages) || sanitizedPayload.messages.length === 0) {
       return res.status(400).json({ error: "messages_required" });
+    }
+
+    // --- RAG enrichment for SOAP proxy ---
+    try {
+      if (process.env.DATABASE_URL && sanitizedPayload.messages && sanitizedPayload.messages.length > 0) {
+        const sysMsg = sanitizedPayload.messages.find(m => m.role === 'system');
+        if (sysMsg && sysMsg.content && (/SOAP|referto|veterinar/i).test(sysMsg.content)) {
+          const userMsg = sanitizedPayload.messages.find(m => m.role === 'user');
+          const queryCtx = userMsg ? (typeof userMsg.content === 'string' ? userMsg.content : '').substring(0, 500) : '';
+          if (queryCtx) {
+            const { enrichSystemPrompt } = require("./rag.service");
+            const { getPool } = require("./db");
+            const pool = getPool();
+            sysMsg.content = await enrichSystemPrompt(pool, getOpenAiKey, sysMsg.content, queryCtx, { sourceService: 'soap_proxy', topK: 3 });
+          }
+        }
+      }
+    } catch (ragErr) {
+      console.warn("[rag] SOAP proxy enrichment failed:", ragErr.message);
     }
 
     return await proxyOpenAiRequest(res, "chat/completions", sanitizedPayload);

@@ -1,4 +1,4 @@
-const ADA_SW_VERSION = '8.26.1';
+const ADA_SW_VERSION = '8.27.0';
 const CACHE_NAME = 'ada-cache-' + ADA_SW_VERSION;
 const STATIC_ASSETS = [
     './',
@@ -26,6 +26,7 @@ const STATIC_ASSETS = [
     './app-observability.js',
     './app-testdata.js',
     './app-seed.js',
+    './app-knowledge.js',
     './spa-redirect.js',
     './runtime-config.js',
     './logo-abupet.png',

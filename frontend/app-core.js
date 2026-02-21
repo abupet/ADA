@@ -505,6 +505,9 @@ async function navigateToPage(page) {
         if (page === 'superadmin-sources' && typeof loadSuperadminSources === 'function') {
             loadSuperadminSources('superadmin-sources-content');
         }
+        if (page === 'superadmin-knowledge' && typeof initKnowledgePage === 'function') {
+            initKnowledgePage();
+        }
         if (page === 'seed' && typeof _seedLoadOwnerVetDropdowns === 'function') {
             _seedLoadOwnerVetDropdowns();
         }
@@ -590,6 +593,8 @@ function applyRoleUI(role) {
     var hasSARole = activeRoles.indexOf('super_admin') !== -1;
     var gestEl = document.getElementById('nav-superadmin-gestione');
     if (gestEl) gestEl.style.display = hasSARole ? '' : 'none';
+    var knowledgeEl = document.getElementById('nav-superadmin-knowledge');
+    if (knowledgeEl) knowledgeEl.style.display = hasSARole ? '' : 'none';
     var auditBtn = document.getElementById('debug-audit-btn');
     if (auditBtn) auditBtn.style.display = hasSARole ? '' : 'none';
 

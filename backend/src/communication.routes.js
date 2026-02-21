@@ -6,6 +6,7 @@ const express = require("express");
 const crypto = require("crypto");
 const { getPool } = require("./db");
 const { requireRole } = require("./rbac.middleware");
+const { enrichSystemPrompt } = require("./rag.service");
 
 // UUID v4 validation regex
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -493,6 +494,9 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           if (subject) systemContent += `\n\nOggetto della conversazione: ${subject}`;
           if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
 
+          // RAG: enrich with veterinary knowledge
+          systemContent = await enrichSystemPrompt(pool, getOpenAiKey, systemContent, initial_message || petContext || '', { sourceService: 'communication', petId: pet_id });
+
           try {
             let assistantContent, triageData;
             if (isMockEnv) {
@@ -815,6 +819,8 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           let systemContent = CHATBOT_SYSTEM_PROMPT;
           if (conversation.subject) systemContent += `\n\nOggetto della conversazione: ${conversation.subject}`;
           if (petContext) systemContent += `\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`;
+          // RAG: enrich with veterinary knowledge
+          systemContent = await enrichSystemPrompt(pool, getOpenAiKey, systemContent, content || petContext || '', { sourceService: 'communication_reply', petId: conversation.pet_id });
           const historyResult = await pool.query(
             "SELECT ai_role AS role, content, media_url, media_type FROM comm_messages WHERE conversation_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT $2",
             [id, MAX_HISTORY_MESSAGES]

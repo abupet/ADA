@@ -1,5 +1,28 @@
 # Release Notes (cumulative)
 
+## v8.27.0
+
+### Feature: Biblioteca Veterinaria RAG (Knowledge Base)
+
+Sistema completo di RAG (Retrieval-Augmented Generation) per arricchire tutte le risposte AI con conoscenze da testi veterinari di riferimento.
+
+#### Backend
+- **Nuovo servizio `rag.service.js`**: funzioni `searchKnowledgeBase()`, `buildVetKnowledgeContext()`, `enrichSystemPrompt()` per ricerca vettoriale e arricchimento prompt
+- **Nuovo router `knowledge.routes.js`**: 11 endpoint API sotto `/api/superadmin/knowledge/` (solo super_admin) per gestione libri, upload PDF, ricerca, log query, statistiche
+- **Pipeline asincrona PDF**: upload PDF → estrazione testo (`pdf-parse`) → chunking intelligente (600 token, 100 overlap, rispetto paragrafi) → embedding batch (`text-embedding-3-small`) → storage pgvector
+- **Integrazione RAG in tutti i servizi AI**: chatbot, communication (2 punti), nutrition, explanation, promo, pets AI description, document explain, tips sources, SOAP proxy — ogni servizio arricchisce il system prompt con contesto dalla knowledge base
+
+#### Frontend
+- **Nuovo modulo `app-knowledge.js`**: pagina "Biblioteca Veterinaria" per super_admin con dashboard statistiche, tabella libri con status, upload PDF con progress bar, dettaglio libro con browser chunk, tool di test ricerca RAG, log query
+- **Navigazione**: nuovo item sidebar "Biblioteca Vet" e pulsante nel Hub Gestione, visibili solo a super_admin
+
+#### Database
+- **Migrazione `025_vet_knowledge_base.sql`**: estensione pgvector, tabelle `vet_knowledge_books`, `vet_knowledge_chunks` (con colonna `vector(1536)`), `vet_knowledge_query_log`, `vet_knowledge_categories` con 18 categorie seed
+- **Indici**: IVFFlat su embeddings per ricerca veloce, GIN su metadata JSONB
+
+#### Dipendenze
+- Aggiunto `pdf-parse` al backend per estrazione testo da PDF
+
 ## v8.26.1
 
 ### Fix: Sezione "Piani Nutrizionali" duplicata in Archivio Sanitario

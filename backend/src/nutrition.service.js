@@ -2,6 +2,7 @@
 // Nutrition plan generation and management — deep data model integration
 
 const { randomUUID } = require("crypto");
+const { enrichSystemPrompt } = require("./rag.service");
 
 function serverLog(level, domain, message, data) {
   if (process.env.ADA_DEBUG_LOG !== "true") return;
@@ -243,7 +244,10 @@ async function generateNutritionPlan(pool, petId, ownerUserId, tenantId, getOpen
     };
 
     // Build prompt
-    const { system, user } = buildNutritionPrompt(pet, enrichedData, tags, products);
+    let { system, user } = buildNutritionPrompt(pet, enrichedData, tags, products);
+
+    // RAG: enrich system prompt with veterinary nutrition knowledge
+    system = await enrichSystemPrompt(pool, getOpenAiKey, system, `${pet.name || ''} ${pet.species || ''} ${pet.breed || ''} nutrizione alimentazione`, { sourceService: 'nutrition', category: 'nutrition', petId: petId });
 
     // Call OpenAI
     const openAiKey = getOpenAiKey ? getOpenAiKey() : null;
