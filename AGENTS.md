@@ -35,7 +35,7 @@ ADA è una SPA vanilla JS con backend Express.
 
 **Test** (`tests/`): Playwright E2E (smoke, regression), policy checks
 
-**Versione corrente:** 9.2.0
+**Versione corrente:** 9.3.0
 
 ---
 

@@ -1,5 +1,21 @@
 # Release Notes (cumulative)
 
+## v9.3.0 — B2B Phase 4: Scalabilità ed Ecosistema
+
+### Nuove funzionalità
+- **Test Genetici**: catalogo test DNA (8 test comuni cani/gatti), ordinazione per breeder/vet, tracking risultati, report genetico aggregato allevamento
+- **Formazione Continua (ECM)**: catalogo corsi (webinar, on-demand, workshop, case study), iscrizione, tracking progress, crediti ECM, certificati
+- **Marketplace**: catalogo unificato prodotti/servizi, carrello in-memory, ordini multi-item con prezzi ruolo-specifici, abbonamenti ricorrenti
+- **API Pubbliche**: gestione API key (generazione, revoca), webhook per eventi (referral, risultati, appuntamenti), documentazione scopes
+- **Booking Bulk UI**: selezione multipla animali per prenotazioni massive breeder
+
+### Modifiche tecniche
+- Migration SQL 035 (genetic_test_catalog, genetic_test_orders), 036 (education_courses, education_enrollments, ecm_credits), 037 (marketplace_products/orders/items/subscriptions), 038 (api_keys, api_webhooks)
+- Nuove route: `genetic-tests.routes.js`, `education.routes.js`, `marketplace.routes.js`, `api-keys.routes.js`
+- Frontend: `app-genetic-tests.js`, `app-education.js`, `app-marketplace.js`
+- RBAC aggiornato: genetic-tests (breeder), education (vet_ext, vet_int), marketplace (tutti), developer (vet_ext)
+- Sidebar: nuove voci Test Genetici, Formazione, Marketplace, API & Webhook nei rispettivi gruppi
+
 ## v9.2.0 — B2B Phase 3: Crescita e Fidelizzazione
 
 ### Nuove funzionalità

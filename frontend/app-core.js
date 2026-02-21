@@ -477,6 +477,9 @@ async function navigateToPage(page) {
     if (page === 'preventive-care') {
         try { if (typeof loadPreventiveCarePage === 'function') loadPreventiveCarePage(); } catch(e) {}
     }
+    if (page === 'genetic-tests') { try { if (typeof loadGeneticTestsPage === 'function') loadGeneticTestsPage(); } catch(e) {} }
+    if (page === 'education') { try { if (typeof loadEducationPage === 'function') loadEducationPage(); } catch(e) {} }
+    if (page === 'marketplace') { try { if (typeof loadMarketplacePage === 'function') loadMarketplacePage(); } catch(e) {} }
     if (page === 'breeder-milestones') {
         try { if (typeof loadLitterMilestones === 'function') loadLitterMilestones(); } catch(e) { console.error('[CORE] loadLitterMilestones failed:', e); }
     }

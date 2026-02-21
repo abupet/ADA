@@ -33,6 +33,10 @@ const { vaccinationReminderRouter } = require("./vaccination-reminder.routes");
 const { referralAnalyticsRouter } = require("./referral-analytics.routes");
 const { loyaltyRouter } = require("./loyalty.routes");
 const { preventiveCareRouter } = require("./preventive-care.routes");
+const { geneticTestsRouter } = require("./genetic-tests.routes");
+const { educationRouter } = require("./education.routes");
+const { marketplaceRouter } = require("./marketplace.routes");
+const { apiKeysRouter } = require("./api-keys.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -550,6 +554,12 @@ if (process.env.DATABASE_URL) {
   app.use(referralAnalyticsRouter({ requireAuth }));
   app.use(loyaltyRouter({ requireAuth }));
   app.use(preventiveCareRouter({ requireAuth }));
+
+  // B2B Phase 4
+  app.use(geneticTestsRouter({ requireAuth }));
+  app.use(educationRouter({ requireAuth }));
+  app.use(marketplaceRouter({ requireAuth }));
+  app.use(apiKeysRouter({ requireAuth }));
 }
 
 function getOpenAiKey() {

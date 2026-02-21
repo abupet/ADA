@@ -100,6 +100,7 @@
                             <div class="nav-item" data-page="diagnostics"><i data-lucide="microscope" class="icon"></i> Diagnostica</div>
                             <div class="nav-item" data-page="referral-analytics"><i data-lucide="bar-chart-3" class="icon"></i> Analytics Referral</div>
                             <div class="nav-item" data-page="loyalty"><i data-lucide="trophy" class="icon"></i> Loyalty</div>
+                            <div class="nav-item" data-page="education"><i data-lucide="graduation-cap" class="icon"></i> Formazione</div>
                         </div>
                     </div>
                     <div class="nav-group" data-group="vet-services">
@@ -111,6 +112,7 @@
                         <div class="nav-group-items">
                             <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Comunicazioni <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
                             <div class="nav-item" data-page="tips"><i data-lucide="lightbulb" class="icon"></i> Tips &amp; Tricks</div>
+                            <div class="nav-item" data-page="marketplace"><i data-lucide="shopping-bag" class="icon"></i> Marketplace</div>
                         </div>
                     </div>
                 </div>
@@ -151,6 +153,7 @@
                         <div class="nav-group-items">
                             <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Comunicazioni <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
                             <div class="nav-item" data-page="tips"><i data-lucide="lightbulb" class="icon"></i> Tips &amp; Tricks</div>
+                            <div class="nav-item" data-page="marketplace"><i data-lucide="shopping-bag" class="icon"></i> Marketplace</div>
                         </div>
                     </div>
                 </div>
@@ -166,6 +169,7 @@
                             <div class="nav-item" data-page="breeder-dashboard"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</div>
                             <div class="nav-item" data-page="breeder-litters"><i data-lucide="baby" class="icon"></i> Cucciolate</div>
                             <div class="nav-item" data-page="booking"><i data-lucide="calendar-check" class="icon"></i> Prenota Servizi</div>
+                            <div class="nav-item" data-page="genetic-tests"><i data-lucide="dna" class="icon"></i> Test Genetici</div>
                         </div>
                     </div>
                     <div class="nav-group" data-group="breeder-animals">
@@ -189,6 +193,7 @@
                             <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Comunicazioni <span class="badge" id="comm-unread-badge-breeder" style="display:none;">0</span></div>
                             <div class="nav-item" data-page="document"><i data-lucide="file-text" class="icon"></i> Documenti</div>
                             <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Doc. Condivisi</div>
+                            <div class="nav-item" data-page="marketplace"><i data-lucide="shopping-bag" class="icon"></i> Marketplace</div>
                         </div>
                     </div>
                 </div>
@@ -217,6 +222,7 @@
                 <div class="nav-section">SISTEMA</div>
                 <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;"><i data-lucide="wrench" class="icon"></i> Gestione</div>
                 <div class="nav-item" id="nav-superadmin-knowledge" data-page="superadmin-knowledge" style="display:none;"><i data-lucide="book-open" class="icon"></i> Biblioteca Vet</div>
+                <div class="nav-item" id="nav-developer" data-page="developer" style="display:none;"><i data-lucide="code" class="icon"></i> API & Webhook</div>
                 <div class="nav-item" data-page="settings"><i data-lucide="settings" class="icon"></i> Impostazioni</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;"><i data-lucide="bug" class="icon"></i> Debug</div>
                 <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;"><i data-lucide="sparkles" class="icon"></i> Identikit</div>
@@ -1475,6 +1481,10 @@
             <div id="page-referral-analytics" class="page"></div>
             <div id="page-loyalty" class="page"></div>
             <div id="page-preventive-care" class="page"></div>
+            <div id="page-genetic-tests" class="page"></div>
+            <div id="page-education" class="page"></div>
+            <div id="page-marketplace" class="page"></div>
+            <div id="page-developer" class="page"></div>
             <!-- B2B Phase 2: Litter Milestones -->
             <div id="page-breeder-milestones" class="page"></div>
 
@@ -1950,6 +1960,9 @@
     <script src="app-referral-analytics.js"></script>
     <script src="app-loyalty.js"></script>
     <script src="app-preventive-care.js"></script>
+    <script src="app-genetic-tests.js"></script>
+    <script src="app-education.js"></script>
+    <script src="app-marketplace.js"></script>
 <script>
 if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
     window.addEventListener('load', function() {
