@@ -26,6 +26,9 @@ const { knowledgeRouter } = require("./knowledge.routes");
 const { breederRouter } = require("./breeder.routes");
 const { referralRouter } = require("./referral.routes");
 const { bookingRouter } = require("./booking.routes");
+const { sharedRecordsRouter } = require("./shared-records.routes");
+const { teleconsultRouter } = require("./teleconsult.routes");
+const { diagnosticsRouter } = require("./diagnostics.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -532,6 +535,11 @@ if (process.env.DATABASE_URL) {
   app.use(breederRouter({ requireAuth }));
   app.use(referralRouter({ requireAuth }));
   app.use(bookingRouter({ requireAuth }));
+
+  // B2B Phase 2
+  app.use(sharedRecordsRouter({ requireAuth, upload }));
+  app.use(teleconsultRouter({ requireAuth }));
+  app.use(diagnosticsRouter({ requireAuth }));
 }
 
 function getOpenAiKey() {

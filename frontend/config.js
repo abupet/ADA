@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.0.0';
-const ADA_RELEASE_NOTES = 'Fix: sezione Piani Nutrizionali si duplicava in Archivio Sanitario ad ogni click.';
+const ADA_VERSION = '9.1.0';
+const ADA_RELEASE_NOTES = 'B2B Phase 2: Milestone cucciolate, documenti condivisi, teleconsulti, diagnostica, passaporto sanitario.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -174,8 +174,8 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc'],
-        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate']
+        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     proprietario: {
         pages: ['patient', 'addpet', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'ai-petdesc'],
@@ -186,25 +186,25 @@ const ROLE_PERMISSIONS = {
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports', 'run_wizard']
     },
     vet_int: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc'],
-        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate']
+        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+        actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     vet_ext: {
-        pages: ['patient', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'document', 'communication'],
-        actions: ['view_profile', 'view_history', 'explain_document', 'communicate']
+        pages: ['patient', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'document', 'communication', 'shared-records', 'teleconsult', 'diagnostics'],
+        actions: ['view_profile', 'view_history', 'explain_document', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     breeder: {
-        pages: ['breeder-dashboard', 'breeder-litters', 'patient', 'addpet', 'booking', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'owner', 'document', 'communication', 'settings', 'debug', 'ai-petdesc'],
-        actions: ['view_profile', 'manage_litters', 'manage_programs', 'book_appointment', 'bulk_book', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'sync', 'communicate']
+        pages: ['breeder-dashboard', 'breeder-litters', 'breeder-milestones', 'patient', 'addpet', 'booking', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'owner', 'document', 'communication', 'settings', 'debug', 'ai-petdesc', 'shared-records'],
+        actions: ['view_profile', 'manage_litters', 'manage_programs', 'book_appointment', 'bulk_book', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'sync', 'communicate', 'view_shared_records']
     },
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
                 'superadmin-gestione', 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
                 'superadmin-users', 'superadmin-sources', 'settings', 'debug',
-                'patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc'],
+                'patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
                   'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
-                  'manage_users', 'manage_sources', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync']
+                  'manage_users', 'manage_sources', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     }
 };
 
@@ -243,7 +243,7 @@ function getActiveRole() {
 }
 
 function setActiveRole(role) {
-    const validRoles = [ROLE_PROPRIETARIO, ROLE_VETERINARIO, 'admin_brand', 'super_admin'];
+    const validRoles = [ROLE_PROPRIETARIO, ROLE_VETERINARIO, 'admin_brand', 'super_admin', 'breeder', 'vet_ext', 'vet_int'];
     const validRole = validRoles.indexOf(role) !== -1 ? role : ROLE_VETERINARIO;
     try {
         localStorage.setItem(ADA_ACTIVE_ROLE_KEY, validRole);

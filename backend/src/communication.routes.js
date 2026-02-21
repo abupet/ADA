@@ -449,7 +449,7 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         }
       }
 
-      const validConvTypes = ['chat', 'voice_call', 'video_call'];
+      const validConvTypes = ['chat', 'voice_call', 'video_call', 'teleconsult'];
       const validatedType = validConvTypes.indexOf(convType) !== -1 ? convType : 'chat';
 
       const { rows } = await pool.query(
