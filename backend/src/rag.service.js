@@ -37,25 +37,39 @@ async function searchKnowledgeBase(pool, getOpenAiKey, options = {}) {
         return { chunks: [], query_text: query, latency_ms: 0 };
     }
 
-    // Generate query embedding
-    const embResponse = await fetch("https://api.openai.com/v1/embeddings", {
-        method: "POST",
-        headers: {
-            "Authorization": "Bearer " + openAiKey,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            model: "text-embedding-3-small",
-            input: query.trim()
-        })
-    });
+    // Generate query embedding (with timeout)
+    const embController = new AbortController();
+    const embTimeout = setTimeout(() => embController.abort(), 8000);
+    let embResponse;
+    try {
+        embResponse = await fetch("https://api.openai.com/v1/embeddings", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + openAiKey,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "text-embedding-3-small",
+                input: query.trim()
+            }),
+            signal: embController.signal
+        });
+    } finally {
+        clearTimeout(embTimeout);
+    }
 
     if (!embResponse.ok) {
         throw new Error(`Embedding API error: ${embResponse.status}`);
     }
 
     const embData = await embResponse.json();
+    if (!embData.data || !embData.data[0] || !embData.data[0].embedding) {
+        throw new Error("Invalid embedding response: missing data");
+    }
     const queryEmbedding = embData.data[0].embedding;
+    if (!queryEmbedding.every(v => Number.isFinite(v))) {
+        throw new Error("Invalid embedding values");
+    }
     const vectorStr = '[' + queryEmbedding.join(',') + ']';
 
     // Vector similarity search with cosine distance
@@ -170,7 +184,7 @@ async function enrichSystemPrompt(pool, getOpenAiKey, systemPrompt, queryContext
         const countResult = await pool.query(
             "SELECT COUNT(*) FROM vet_knowledge_books WHERE enabled = true AND processing_status = 'ready'"
         );
-        if (parseInt(countResult.rows[0].count) === 0) return systemPrompt;
+        if (!countResult.rows[0] || parseInt(countResult.rows[0].count) === 0) return systemPrompt;
 
         const results = await searchKnowledgeBase(pool, getOpenAiKey, {
             query: queryContext.trim().substring(0, 500), // limit query length

@@ -5,8 +5,15 @@ var _knowledgeBooks = [];
 var _knowledgeCategories = [];
 var _knowledgeStats = null;
 var _knowledgeActiveTab = 'books';
+var _knowledgePollingIntervals = [];
 
 function initKnowledgePage() {
+    // Cleanup previous polling intervals
+    for (var i = 0; i < _knowledgePollingIntervals.length; i++) {
+        clearInterval(_knowledgePollingIntervals[i]);
+    }
+    _knowledgePollingIntervals = [];
+
     var container = document.getElementById('superadmin-knowledge-content');
     if (!container) return;
 
@@ -223,12 +230,18 @@ function _uploadKnowledgeBook() {
     var formData = new FormData();
     formData.append('pdf_file', fileInput.files[0]);
     formData.append('title', title.value.trim());
-    formData.append('author', document.getElementById('kb-upload-author')?.value || '');
-    formData.append('category', document.getElementById('kb-upload-category')?.value || 'general');
-    formData.append('isbn', document.getElementById('kb-upload-isbn')?.value || '');
-    formData.append('publisher', document.getElementById('kb-upload-publisher')?.value || '');
-    formData.append('year_published', document.getElementById('kb-upload-year')?.value || '');
-    formData.append('description', document.getElementById('kb-upload-desc')?.value || '');
+    var elAuthor = document.getElementById('kb-upload-author');
+    var elCategory = document.getElementById('kb-upload-category');
+    var elIsbn = document.getElementById('kb-upload-isbn');
+    var elPublisher = document.getElementById('kb-upload-publisher');
+    var elYear = document.getElementById('kb-upload-year');
+    var elDesc = document.getElementById('kb-upload-desc');
+    formData.append('author', elAuthor ? elAuthor.value : '');
+    formData.append('category', elCategory ? elCategory.value : 'general');
+    formData.append('isbn', elIsbn ? elIsbn.value : '');
+    formData.append('publisher', elPublisher ? elPublisher.value : '');
+    formData.append('year_published', elYear ? elYear.value : '');
+    formData.append('description', elDesc ? elDesc.value : '');
 
     var progArea = document.getElementById('kb-upload-progress');
     if (progArea) progArea.style.display = 'block';
@@ -237,8 +250,14 @@ function _uploadKnowledgeBook() {
 
     var token = localStorage.getItem('ada_token');
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', (typeof ADA_BACKEND_URL !== 'undefined' ? ADA_BACKEND_URL : '') + '/api/superadmin/knowledge/books/upload');
+    xhr.open('POST', (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/api/superadmin/knowledge/books/upload');
+    xhr.timeout = 120000;
     if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+    xhr.ontimeout = function() {
+        showToast('Upload scaduto (timeout)', 'error');
+        if (progArea) progArea.style.display = 'none';
+    };
 
     xhr.upload.onprogress = function(e) {
         if (e.lengthComputable && bar) {
@@ -277,6 +296,8 @@ function _toggleKnowledgeBook(bookId, enabled) {
         body: JSON.stringify({ enabled: enabled })
     }).then(function(r) {
         if (r.ok) showToast(enabled ? 'Libro abilitato' : 'Libro disabilitato', 'success');
+    }).catch(function() {
+        showToast('Errore di rete', 'error');
     });
 }
 
@@ -288,12 +309,14 @@ function _deleteKnowledgeBook(bookId) {
                 showToast('Libro eliminato', 'success');
                 _loadKnowledgeAll();
             }
+        }).catch(function() {
+            showToast('Errore di rete', 'error');
         });
 }
 
 function _showKnowledgeBookDetail(bookId) {
-    fetchApi('/api/superadmin/knowledge/books/' + bookId)
-        .then(function(r) { return r.ok ? r.json() : null; })
+    fetchApi('/api/superadmin/knowledge/books/' + bookId).catch(function() { return null; })
+        .then(function(r) { return r && r.ok ? r.json() : null; })
         .then(function(data) {
             if (!data || !data.book) return;
             var book = data.book;
@@ -351,6 +374,8 @@ function _reprocessKnowledgeBook(bookId) {
                 if (modal) modal.classList.remove('active');
                 _loadKnowledgeAll();
             }
+        }).catch(function() {
+            showToast('Errore di rete', 'error');
         });
 }
 
@@ -366,6 +391,7 @@ function _pollKnowledgeBookStatus(bookId) {
                 }
             }).catch(function() { clearInterval(interval); });
     }, 5000);
+    _knowledgePollingIntervals.push(interval);
 }
 
 function _renderKnowledgeSearch() {
@@ -399,20 +425,24 @@ function _renderKnowledgeSearch() {
 }
 
 function _executeKnowledgeSearch() {
-    var query = document.getElementById('kb-search-query')?.value;
+    var queryEl = document.getElementById('kb-search-query');
+    var query = queryEl ? queryEl.value : '';
     if (!query || !query.trim()) { showToast('Inserisci una query', 'error'); return; }
 
     var resultsArea = document.getElementById('kb-search-results');
     if (resultsArea) resultsArea.innerHTML = '<p style="color:#64748b;">Ricerca in corso...</p>';
 
+    var topkEl = document.getElementById('kb-search-topk');
+    var threshEl = document.getElementById('kb-search-threshold');
+    var catEl = document.getElementById('kb-search-category');
     fetchApi('/api/superadmin/knowledge/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             query: query.trim(),
-            top_k: parseInt(document.getElementById('kb-search-topk')?.value) || 5,
-            similarity_threshold: parseFloat(document.getElementById('kb-search-threshold')?.value) || 0.3,
-            category: document.getElementById('kb-search-category')?.value || null
+            top_k: parseInt(topkEl ? topkEl.value : '5') || 5,
+            similarity_threshold: parseFloat(threshEl ? threshEl.value : '0.3') || 0.3,
+            category: (catEl ? catEl.value : '') || null
         })
     }).then(function(r) { return r.ok ? r.json() : null; })
     .then(function(data) {

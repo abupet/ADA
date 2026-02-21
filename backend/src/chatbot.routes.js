@@ -401,7 +401,7 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           : CHATBOT_SYSTEM_PROMPT;
 
         // RAG: enrich system prompt with veterinary knowledge base
-        systemContent = await enrichSystemPrompt(pool, getOpenAiKey, systemContent, message || petContext || '', { sourceService: 'chatbot', petId: session.pet_id });
+        systemContent = await enrichSystemPrompt(pool, getOpenAiKey, systemContent, content || petContext || '', { sourceService: 'chatbot', petId: session.pet_id });
 
         // Fetch last N history messages for context
         const historyResult = await pool.query(
