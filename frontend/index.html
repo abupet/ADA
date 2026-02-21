@@ -1576,6 +1576,27 @@
                 </div>
             </div>
         </main>
+
+        <!-- Bottom Navigation (mobile only) -->
+        <nav id="bottomNav" class="bottom-nav" aria-label="Navigazione principale">
+            <button class="bottom-nav-item active" data-page="recording" data-vet>
+                <i data-lucide="mic" class="icon"></i>
+                <span>Registra</span>
+            </button>
+            <button class="bottom-nav-item" data-page="soap" data-vet>
+                <i data-lucide="clipboard-list" class="icon"></i>
+                <span>Referto</span>
+            </button>
+            <button class="bottom-nav-item" data-page="patient">
+                <i data-lucide="paw-print" class="icon"></i>
+                <span>Pet</span>
+            </button>
+            <button class="bottom-nav-item" data-page="communication">
+                <i data-lucide="message-circle" class="icon"></i>
+                <span>Chat</span>
+                <span class="bottom-nav-badge" id="bottomNavCommBadge" style="display:none;">0</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Modal: Medication -->

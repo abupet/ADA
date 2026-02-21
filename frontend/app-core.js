@@ -325,6 +325,13 @@ function initNavigation() {
             navigateToPage(page);
         });
     });
+
+    // Bottom nav click handlers (SPEC-MOB-01)
+    document.querySelectorAll('.bottom-nav-item[data-page]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            navigateToPage(btn.dataset.page);
+        });
+    });
     
     // Save scroll position when scrolling
     document.querySelector('.main-content')?.addEventListener('scroll', debounce(() => {
@@ -384,6 +391,11 @@ async function navigateToPage(page) {
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
+
+    // Update bottom nav active state (SPEC-MOB-01)
+    document.querySelectorAll('.bottom-nav-item').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.page === page);
+    });
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
@@ -613,6 +625,11 @@ function applyRoleUI(role) {
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
         item.onclick = null;
         item.addEventListener('click', () => navigateToPage(item.dataset.page));
+    });
+
+    // Update bottom nav visibility based on role (SPEC-MOB-01)
+    document.querySelectorAll('.bottom-nav-item[data-vet]').forEach(function(btn) {
+        btn.style.display = showVet ? '' : 'none';
     });
 
     // Re-init Lucide icons after sidebar changes
