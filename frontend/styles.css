@@ -1835,6 +1835,14 @@ button:active {
 }
 
 /* ============================================
+   LUCIDE ICONS (SPEC-DS-03)
+   ============================================ */
+.icon { width: 18px; height: 18px; stroke-width: 2; display: inline-block; vertical-align: middle; }
+.icon-sm { width: 16px; height: 16px; stroke-width: 2; display: inline-block; vertical-align: middle; }
+.icon-lg { width: 22px; height: 22px; stroke-width: 2; display: inline-block; vertical-align: middle; }
+.nav-item .icon { width: 20px; height: 20px; opacity: 0.85; }
+
+/* ============================================
    ACCESSIBILITY — Focus ring (SPEC-A11Y-02)
    ============================================ */
 :focus-visible {

@@ -182,6 +182,9 @@ async function initApp() {
     // Initialize role system (PR 4)
     initRoleSystem();
 
+    // Initialize Lucide icons (SPEC-DS-03)
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
     // Render account info and settings visibility
     try { renderAccountInfo(); } catch(e) {}
     try { updateSettingsSectionsVisibility(); } catch(e) {}
@@ -611,6 +614,9 @@ function applyRoleUI(role) {
         item.onclick = null;
         item.addEventListener('click', () => navigateToPage(item.dataset.page));
     });
+
+    // Re-init Lucide icons after sidebar changes
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Update debug visibility
     try { updateDebugToolsVisibility(); } catch(e) {}
