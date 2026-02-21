@@ -1,5 +1,38 @@
 # Release Notes (cumulative)
 
+## v8.26.0
+
+### Feature: UI/UX Redesign completo
+
+#### Design System (SPEC-DS-01/02/03)
+- **Nuova palette teal/amber**: rimpiazzato il navy `#1e3a5f` con palette teal (`#14b8a6` family) e accenti amber (`#d97706`), variabili CSS organizzate in `:root`
+- **Tipografia DM Sans**: font Google Fonts con preconnect, sostituisce lo stack di sistema generico
+- **Icone Lucide**: tutte le emoji nella sidebar sostituite con icone SVG Lucide (paw-print, mic, clipboard-list, salad, folder-open, etc.)
+
+#### Componenti (SPEC-COMP-01/02/03/04/06)
+- **Login redesign**: gradient 3-stop, animazione fade-in, border-radius e shadow-xl
+- **Gerarchia bottoni**: `btn-primary` (gradient teal), `btn-secondary`, `btn-ghost`, `btn-danger`, `btn-cta` (amber gradient)
+- **Cards**: border + shadow-sm, hover shadow-md, varianti semantiche (.card-info, .card-warning, .card-success)
+- **Chip Selector**: `<select multiple>` per "Conviventi" sostituiti con chip toggleable in tutte e 3 le form (petHousehold, newPetHousehold, editPetHousehold)
+- **Communication CSS migration**: ~90 regole CSS estratte da `_commInjectStyles()` (JS) e migrate in `styles.css` con variabili design system
+- **SOAP buttons hierarchy**: "Salva" promosso a primario, "Correggi"/"Leggi" secondari, "TXT"/"PDF" ghost; tutte le emoji sostituite con icone Lucide
+
+#### Accessibilità (SPEC-A11Y-01/02/03/04)
+- **Viewport zoom**: rimosso `maximum-scale=1.0, user-scalable=no` — gli utenti possono ora zoomare
+- **Focus ring**: focus-visible globale con ring teal 2px offset 2px
+- **Contrasto label**: colore label aggiornato da `#666` a `var(--gray-600)` (#475569, ratio 5.74:1 conforme WCAG AA)
+- **ARIA labels**: aggiunti `aria-label` su hamburger menu e tutti i bottoni expand
+
+#### Mobile UX (SPEC-MOB-01/02/03)
+- **Bottom navigation bar**: nav mobile a 4 tab (Registra, Messaggi, Pet, Archivio) con icone Lucide, visibilità basata su ruolo
+- **Breakpoints aggiuntivi**: media query per tablet (801-1024px) e small phones (<374px)
+- **Touch targets**: `.btn-small` min-height 44px conforme Apple HIG
+
+#### Polish (SPEC-COMP-05/07, SPEC-POL-01)
+- **Animazioni**: page-enter e skeleton-pulse
+- **Language selector**: trasformato in segmented control pill-style
+- **Empty states**: archivio, messaggi e foto con icone Lucide, titoli e descrizioni al posto del testo grigio generico
+
 ## v8.25.2
 
 ### Fix: Service Worker cache impediva visualizzazione menu Nutrizione
