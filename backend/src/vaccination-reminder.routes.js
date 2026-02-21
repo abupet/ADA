@@ -72,13 +72,13 @@ function vaccinationReminderRouter({ requireAuth }) {
         const sevenDaysBefore = new Date(nextDue.getTime() - 7 * 24 * 60 * 60 * 1000);
         const { rowCount: exists7 } = await pool.query(
           `SELECT 1 FROM vaccination_reminders
-           WHERE vaccination_id = $1 AND reminder_type = '7_days_before' LIMIT 1`,
+           WHERE pet_vaccination_id = $1 AND reminder_type = '7_days_before' LIMIT 1`,
           [vacc.vaccination_id]
         );
         if (exists7 === 0) {
           await pool.query(
             `INSERT INTO vaccination_reminders
-               (reminder_id, vaccination_id, pet_id, owner_user_id, reminder_type, reminder_date, sent)
+               (reminder_id, pet_vaccination_id, pet_id, owner_user_id, reminder_type, reminder_date, sent)
              VALUES ($1, $2, $3, $4, '7_days_before', $5, false)`,
             [randomUUID(), vacc.vaccination_id, vacc.pet_id, vacc.owner_user_id, sevenDaysBefore.toISOString()]
           );
@@ -89,13 +89,13 @@ function vaccinationReminderRouter({ requireAuth }) {
         const oneDayBefore = new Date(nextDue.getTime() - 1 * 24 * 60 * 60 * 1000);
         const { rowCount: exists1 } = await pool.query(
           `SELECT 1 FROM vaccination_reminders
-           WHERE vaccination_id = $1 AND reminder_type = '1_day_before' LIMIT 1`,
+           WHERE pet_vaccination_id = $1 AND reminder_type = '1_day_before' LIMIT 1`,
           [vacc.vaccination_id]
         );
         if (exists1 === 0) {
           await pool.query(
             `INSERT INTO vaccination_reminders
-               (reminder_id, vaccination_id, pet_id, owner_user_id, reminder_type, reminder_date, sent)
+               (reminder_id, pet_vaccination_id, pet_id, owner_user_id, reminder_type, reminder_date, sent)
              VALUES ($1, $2, $3, $4, '1_day_before', $5, false)`,
             [randomUUID(), vacc.vaccination_id, vacc.pet_id, vacc.owner_user_id, oneDayBefore.toISOString()]
           );
@@ -119,7 +119,7 @@ function vaccinationReminderRouter({ requireAuth }) {
       const { rows } = await pool.query(
         `SELECT * FROM vaccination_compliance_reports
          WHERE breeder_user_id = $1
-         ORDER BY created_at DESC
+         ORDER BY generated_at DESC
          LIMIT 50`,
         [breederId]
       );
@@ -154,7 +154,7 @@ function vaccinationReminderRouter({ requireAuth }) {
       const reportId = randomUUID();
       const { rows } = await pool.query(
         `INSERT INTO vaccination_compliance_reports
-           (report_id, breeder_user_id, period_start, period_end, total_pets, vaccinated_pets, compliance_rate)
+           (report_id, breeder_user_id, report_period_start, report_period_end, total_pets, vaccinated_on_time, compliance_rate)
          VALUES ($1, $2, date_trunc('month', NOW()), date_trunc('month', NOW()) + INTERVAL '1 month' - INTERVAL '1 day', $3, $4, $5)
          RETURNING *`,
         [reportId, userId, totalPets, vaccinatedPets, complianceRate]

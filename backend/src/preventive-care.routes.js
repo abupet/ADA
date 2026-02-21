@@ -138,12 +138,13 @@ Rispondi SOLO con un JSON array di item con: category, title, description, recom
 
       // Insert plan
       const planId = randomUUID();
+      const userRole = req.user?.role || "veterinario";
       const { rows: planRows } = await pool.query(
         `INSERT INTO preventive_care_plans
-           (plan_id, pet_id, generated_by_user_id, status, ai_model)
-         VALUES ($1, $2, $3, 'draft', $4)
+           (plan_id, pet_id, generated_for_user_id, generated_for_role, status, ai_model)
+         VALUES ($1, $2, $3, $4, 'draft', $5)
          RETURNING *`,
-        [planId, petId, userId, apiKey ? "gpt-4o" : "mock"]
+        [planId, petId, userId, userRole, apiKey ? "gpt-4o" : "mock"]
       );
 
       // Insert plan items
@@ -152,11 +153,11 @@ Rispondi SOLO con un JSON array di item con: category, title, description, recom
         const itemId = randomUUID();
         const { rows: itemRows } = await pool.query(
           `INSERT INTO preventive_care_items
-             (item_id, plan_id, category, title, description, recommended_month, estimated_cost, priority, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+             (item_id, plan_id, category, title, description, recommended_month, estimated_cost, priority)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING *`,
-          [itemId, planId, item.category || "altro", item.title, item.description,
-           item.recommended_month || 1, item.estimated_cost || 0, item.priority || "medium"]
+          [itemId, planId, item.category || "other", item.title, item.description,
+           item.recommended_month || 1, item.estimated_cost || 0, item.priority || "recommended"]
         );
         if (itemRows[0]) insertedItems.push(itemRows[0]);
       }
@@ -199,10 +200,10 @@ Rispondi SOLO con un JSON array di item con: category, title, description, recom
 
       const { rows } = await pool.query(
         `UPDATE preventive_care_items
-         SET status = 'completed', completed_at = NOW(), completed_by_user_id = $1, updated_at = NOW()
-         WHERE item_id = $2 AND status IN ('pending', 'scheduled')
+         SET completed = true, completed_at = NOW()
+         WHERE item_id = $1 AND completed = false
          RETURNING *`,
-        [userId, itemId]
+        [itemId]
       );
 
       if (!rows[0]) return res.status(404).json({ error: "not_found_or_already_completed" });
@@ -223,7 +224,7 @@ Rispondi SOLO con un JSON array di item con: category, title, description, recom
            p.pet_id, p.name AS pet_name, p.species, p.breed,
            pcp.plan_id, pcp.status AS plan_status, pcp.created_at AS plan_created_at,
            COUNT(pci.item_id) AS total_items,
-           COUNT(pci.item_id) FILTER (WHERE pci.status = 'completed') AS completed_items,
+           COUNT(pci.item_id) FILTER (WHERE pci.completed = true) AS completed_items,
            CASE WHEN COUNT(pci.item_id) > 0
              THEN ROUND(
                COUNT(pci.item_id) FILTER (WHERE pci.status = 'completed')::numeric

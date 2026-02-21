@@ -17,14 +17,14 @@ function loyaltyRouter({ requireAuth }) {
 
       const { rows } = await pool.query(
         `SELECT vp.*,
-           pl.level_name, pl.min_referrals, pl.fee_percentage, pl.benefits,
-           pl_next.level_name AS next_level_name, pl_next.min_referrals AS next_level_min_referrals
+           pl.name AS level_name, pl.min_referrals_year, pl.fee_percentage, pl.benefits,
+           pl_next.name AS next_level_name, pl_next.min_referrals_year AS next_level_min_referrals
          FROM vet_partnerships vp
          JOIN partnership_levels pl ON vp.current_level_id = pl.level_id
-         LEFT JOIN partnership_levels pl_next ON pl_next.min_referrals = (
-           SELECT MIN(min_referrals) FROM partnership_levels WHERE min_referrals > pl.min_referrals
+         LEFT JOIN partnership_levels pl_next ON pl_next.min_referrals_year = (
+           SELECT MIN(min_referrals_year) FROM partnership_levels WHERE min_referrals_year > pl.min_referrals_year
          )
-         WHERE vp.vet_user_id = $1
+         WHERE vp.vet_ext_user_id = $1
          LIMIT 1`,
         [userId]
       );
@@ -160,7 +160,7 @@ function loyaltyRouter({ requireAuth }) {
     try {
       // Get all partnership levels sorted by min_referrals descending
       const { rows: levels } = await pool.query(
-        "SELECT * FROM partnership_levels ORDER BY min_referrals DESC"
+        "SELECT * FROM partnership_levels ORDER BY min_referrals_year DESC"
       );
 
       if (levels.length === 0) return res.json({ evaluated: 0, updated: 0 });
@@ -175,7 +175,7 @@ function loyaltyRouter({ requireAuth }) {
         const referralsThisYear = vp.referrals_this_year || 0;
 
         // Find the highest level the vet qualifies for
-        const newLevel = levels.find(l => referralsThisYear >= l.min_referrals);
+        const newLevel = levels.find(l => referralsThisYear >= l.min_referrals_year);
         if (newLevel && newLevel.level_id !== vp.current_level_id) {
           await pool.query(
             `UPDATE vet_partnerships

@@ -123,7 +123,7 @@
                         '<div>' +
                             (completed
                                 ? '<span style="color:#28a745;font-size:13px;font-weight:600"><i data-lucide="check-circle" style="width:16px;height:16px;vertical-align:middle;margin-right:4px"></i>Completato</span>'
-                                : '<button onclick="_completePreventiveItem(\'' + _escSafe(ci.id) + '\')" style="background:#28a745;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">' +
+                                : '<button onclick="_completePreventiveItem(\'' + _escSafe(ci.item_id) + '\')" style="background:#28a745;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">' +
                                   '<i data-lucide="check" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Completato</button>') +
                         '</div>' +
                     '</div>' +

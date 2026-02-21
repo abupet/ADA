@@ -26,7 +26,7 @@
             var specialtyData = await results[1].json();
 
             var summary = summaryData.summary || summaryData;
-            var specialties = specialtyData.specialties || specialtyData.data || [];
+            var specialties = specialtyData.by_specialty || specialtyData.specialties || [];
 
             var html = '<h2 style="margin:0 0 20px"><i data-lucide="bar-chart-3" style="width:24px;height:24px;vertical-align:middle;margin-right:8px"></i>Analytics Referral</h2>';
 
