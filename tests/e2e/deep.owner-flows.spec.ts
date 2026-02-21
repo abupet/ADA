@@ -30,7 +30,7 @@ test.describe("Deep owner flows", () => {
     await expect(ownerSidebar).toBeVisible();
 
     // Check key nav items exist
-    const expectedItems = ["Messaggi", "La tua assistente ADA"];
+    const expectedItems = ["Comunicazioni", "La tua assistente ADA"];
     for (const item of expectedItems) {
       const navItem = ownerSidebar.locator(`.nav-item:has-text("${item}")`);
       const count = await navItem.count();

@@ -8,8 +8,8 @@ test.describe("B2B Referral @smoke", () => {
     await login(page, { email: "vet_ext_test@adiuvet.it" });
 
     await expect(page.locator("#appContainer")).toBeVisible({ timeout: 10_000 });
-    // Navigate to communication
-    await page.click('[data-page="communication"]');
+    // Navigate to communication via JS (sidebar items are inside collapsible groups)
+    await page.evaluate(() => { if (typeof (window as any).navigateToPage === 'function') (window as any).navigateToPage('communication'); });
     await expect(page.locator("#page-communication")).toBeVisible({ timeout: 10_000 });
 
     // Click "Nuova conversazione" to open the new conversation form (referral type select is inside it)
