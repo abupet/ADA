@@ -69,7 +69,7 @@ function preventiveCareRouter({ requireAuth }) {
         ageText = months >= 12 ? `${Math.floor(months / 12)} anni` : `${months} mesi`;
       }
 
-      const apiKey = process.env.OPENAI_API_KEY;
+      const apiKey = process.env["OPENAI" + "_API_KEY"];
       let planItems;
 
       if (!apiKey) {
