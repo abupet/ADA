@@ -587,16 +587,7 @@
         html.push('  <button type="button" class="nutrition-btn nutrition-btn--secondary" data-nutrition-action="details">Dettagli</button>');
         html.push('  <button type="button" class="nutrition-btn nutrition-btn--outline" data-nutrition-action="ask-vet">Ne parlo col vet</button>');
         html.push('</div>');
-        if (typeof debugLogEnabled !== 'undefined' && debugLogEnabled) {
-            var _nutDescParts = ['Piano Nutrizionale - Fabbisogno giornaliero: ' + plan.daily_kcal + ' kcal.'];
-            var _prods = plan.products || [];
-            if (_prods.length > 0) { _nutDescParts.push('Prodotti: ' + _prods.map(function(p) { return (p.name || 'Prodotto') + (p.dose ? ' (' + p.dose + ')' : ''); }).join(', ') + '.'); }
-            if (plan.clinical_notes) { _nutDescParts.push('Note: ' + plan.clinical_notes); }
-            var _nutDesc = _nutDescParts.join(' ').replace(/'/g, "\\'");
-            html.push('<div style="margin-top:8px;text-align:center;">');
-            html.push('  <button type="button" class="nutrition-btn nutrition-btn--secondary" style="font-size:11px;padding:4px 12px;" onclick="if(typeof _showPromoAnalysis===\'function\')_showPromoAnalysis(null,\'' + _escapeHtml(petId) + '\',\'' + _nutDesc + '\')">🔍 Analisi raccomandazione</button>');
-            html.push('</div>');
-        }
+        // v9.1.1: Analysis button removed from nutrition card bottom
 
         cardEl.innerHTML = html.join('\n');
         cardEl.classList.remove('nutrition-card--hidden');
@@ -2264,9 +2255,9 @@
     // _renderNutritionInHistory — Archivio Sanitario integration (v3)
     // =========================================================================
 
-    function _renderNutritionInHistory(petId) {
+    function _renderNutritionInHistory(petId, customContainer) {
         if (!petId) return;
-        var container = document.getElementById('historyList');
+        var container = customContainer || document.getElementById('historyList') || document.getElementById('historyAccNutrition');
         if (!container) return;
 
         // Remove previous nutrition section to avoid duplicates on re-navigation

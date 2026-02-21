@@ -1449,8 +1449,8 @@ async function subscribeToPush() {
 // =========================================================================
 // Section 7: Pet conversations for history page
 // =========================================================================
-async function loadPetConversations(petId) {
-    var listEl = document.getElementById('pet-conversations-list');
+async function loadPetConversations(petId, customContainer) {
+    var listEl = customContainer || document.getElementById('pet-conversations-list') || document.getElementById('historyAccConversations');
     if (!listEl) return;
     if (!petId) { listEl.innerHTML = ''; return; }
 

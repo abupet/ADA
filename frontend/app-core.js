@@ -219,6 +219,10 @@ async function initApp() {
         if (typeof updateCommUnreadBadge === 'function') updateCommUnreadBadge();
         if (typeof startCommBadgePolling === 'function') startCommBadgePolling();
     } catch(e) { console.warn('[CORE] Communication init failed:', e); }
+
+    // Restore sidebar nav group state (v9.1.1)
+    try { _restoreNavGroupState(); } catch(e) {}
+    try { _syncGroupBadges(); } catch(e) {}
 }
 
 function makeFilterableSelect(selectId) {
@@ -395,6 +399,17 @@ async function navigateToPage(page) {
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
 
+    // Auto-expand group containing target page
+    var targetNavItem = document.querySelector('.nav-group .nav-item[data-page="' + page + '"]');
+    if (targetNavItem) {
+        var parentGroup = targetNavItem.closest('.nav-group');
+        if (parentGroup && !parentGroup.classList.contains('open')) {
+            parentGroup.classList.add('open');
+            _saveNavGroupState();
+        }
+    }
+    if (typeof _syncGroupBadges === 'function') _syncGroupBadges();
+
     // Update bottom nav active state (SPEC-MOB-01)
     document.querySelectorAll('.bottom-nav-item').forEach(function(btn) {
         btn.classList.toggle('active', btn.dataset.page === page);
@@ -420,16 +435,14 @@ async function navigateToPage(page) {
     if (page === 'communication') {
         try { if (typeof initCommunication === 'function') await initCommunication('communication-container'); } catch(e) { console.error('[CORE] initCommunication failed:', e); }
     }
-    if (page === 'qna-report') renderQnaReportDropdown();
+    // QNA pages removed in v9.1.1
     if (page === 'tips') {
         try { if (typeof restoreTipsDataForCurrentPet === 'function') restoreTipsDataForCurrentPet(); } catch(e) {}
         try { if (typeof updateTipsMeta === 'function') updateTipsMeta(); } catch(e) {}
         try { if (typeof renderTips === 'function') renderTips(); } catch(e) {}
     }
     if (page === 'history') {
-        try { if (typeof renderDocumentsInHistory === 'function') renderDocumentsInHistory(); } catch(e) {}
-        try { if (typeof loadPetConversations === 'function') loadPetConversations(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
-        try { if (typeof _renderNutritionInHistory === 'function') _renderNutritionInHistory(typeof getCurrentPetId === 'function' ? getCurrentPetId() : null); } catch(e) {}
+        try { if (typeof renderHistoryAccordion === 'function') renderHistoryAccordion(); } catch(e) { console.error('[CORE] renderHistoryAccordion failed:', e); }
     }
     if (page === 'ai-petdesc') {
         try { if (typeof updateAiPetDescriptionUI === 'function') updateAiPetDescriptionUI(); } catch(e) {}
@@ -468,9 +481,9 @@ async function navigateToPage(page) {
             if (page === 'patient') renderPromoSlot('patient-promo-container', 'pet_profile');
             if (page === 'soap') renderPromoSlot('soap-promo-container', 'post_visit');
             if (page === 'owner') renderPromoSlot('owner-promo-container', 'home_feed');
-            if (page === 'qna') renderPromoSlot('qna-promo-container', 'faq_view');
+            // QNA promo removed in v9.1.1
         }
-        // Nutrition slot (multi-service) — SOLO per proprietario in Dati Pet
+        // Nutrition slot (multi-service) — SOLO per proprietario in Profilo
         if (typeof renderNutritionSlot === 'function' && (promoRole === 'proprietario' || forceMultiService)) {
             if (page === 'patient') renderNutritionSlot('patient-nutrition-container', typeof getCurrentPetId === 'function' ? getCurrentPetId() : null);
         }
@@ -754,7 +767,6 @@ const ADA_DRAFT_FIELD_IDS = [
     'transcriptionText',
     'soap-s', 'soap-o', 'soap-a', 'soap-p',
     'ownerExplanation',
-    'qnaQuestion', 'qnaAnswer',
     'medName', 'medDosage', 'medFrequency', 'medDuration', 'medInstructions'
 ];
 
@@ -3380,6 +3392,252 @@ async function saveOpenAiOptimizations() {
         showToast('Ottimizzazioni salvate', 'success');
     } catch (e) { showToast('Errore: ' + e.message, 'error'); }
 }
+
+// =========================================================================
+// Sidebar: Two-level collapsible groups
+// =========================================================================
+
+function toggleNavGroup(headerEl) {
+    var group = headerEl.closest('.nav-group');
+    if (!group) return;
+    group.classList.toggle('open');
+    _saveNavGroupState();
+    _syncGroupBadges();
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+function _saveNavGroupState() {
+    var openGroups = [];
+    document.querySelectorAll('.nav-group.open').forEach(function(g) {
+        if (g.dataset.group) openGroups.push(g.dataset.group);
+    });
+    try { localStorage.setItem('ada_nav_groups_open', JSON.stringify(openGroups)); } catch(e) {}
+}
+
+function _restoreNavGroupState() {
+    var stored = [];
+    try { stored = JSON.parse(localStorage.getItem('ada_nav_groups_open') || '[]'); } catch(e) {}
+    if (!stored.length) {
+        var currentPage = localStorage.getItem('ada_current_page') || '';
+        document.querySelectorAll('.nav-group').forEach(function(g) {
+            var hasActive = g.querySelector('.nav-item[data-page="' + currentPage + '"]');
+            if (hasActive) g.classList.add('open');
+        });
+    } else {
+        stored.forEach(function(groupName) {
+            var g = document.querySelector('.nav-group[data-group="' + groupName + '"]');
+            if (g) g.classList.add('open');
+        });
+    }
+    var activePage = localStorage.getItem('ada_current_page') || '';
+    if (activePage) {
+        var activeItem = document.querySelector('.nav-group .nav-item[data-page="' + activePage + '"]');
+        if (activeItem) {
+            var parentGroup = activeItem.closest('.nav-group');
+            if (parentGroup && !parentGroup.classList.contains('open')) {
+                parentGroup.classList.add('open');
+            }
+        }
+    }
+}
+
+function _syncGroupBadges() {
+    document.querySelectorAll('.nav-group').forEach(function(group) {
+        var groupBadge = group.querySelector('.nav-group-badge');
+        if (!groupBadge) return;
+        var isOpen = group.classList.contains('open');
+        var totalCount = 0;
+        group.querySelectorAll('.nav-group-items .badge').forEach(function(badge) {
+            var count = parseInt(badge.textContent) || 0;
+            if (count > 0) totalCount += count;
+        });
+        if (!isOpen && totalCount > 0) {
+            groupBadge.textContent = totalCount;
+            groupBadge.style.display = '';
+        } else {
+            groupBadge.style.display = 'none';
+        }
+    });
+}
+
+// =========================================================================
+// History Accordion
+// =========================================================================
+
+function renderHistoryAccordion() {
+    var container = document.getElementById('historyAccordion');
+    if (!container) return;
+
+    var html = '';
+
+    // Section: Referti (SOAP reports)
+    html += '<div class="history-accordion-section open" data-history-section="reports">';
+    html += '  <div class="history-accordion-header" onclick="_toggleHistorySection(this)">';
+    html += '    <span class="history-accordion-title">📋 Referti</span>';
+    html += '    <i data-lucide="chevron-right" class="history-accordion-chevron"></i>';
+    html += '  </div>';
+    html += '  <div class="history-accordion-body"><div id="historyAccReports" style="padding-top:8px;">Caricamento...</div></div>';
+    html += '</div>';
+
+    // Section: Documenti
+    html += '<div class="history-accordion-section open" data-history-section="documents">';
+    html += '  <div class="history-accordion-header" onclick="_toggleHistorySection(this)">';
+    html += '    <span class="history-accordion-title">📄 Documenti Caricati</span>';
+    html += '    <i data-lucide="chevron-right" class="history-accordion-chevron"></i>';
+    html += '  </div>';
+    html += '  <div class="history-accordion-body"><div id="historyAccDocuments" style="padding-top:8px;">Caricamento...</div></div>';
+    html += '</div>';
+
+    // Section: Nutrizione
+    html += '<div class="history-accordion-section" data-history-section="nutrition">';
+    html += '  <div class="history-accordion-header" onclick="_toggleHistorySection(this)">';
+    html += '    <span class="history-accordion-title">🥗 Nutrizione</span>';
+    html += '    <i data-lucide="chevron-right" class="history-accordion-chevron"></i>';
+    html += '  </div>';
+    html += '  <div class="history-accordion-body"><div id="historyAccNutrition" style="padding-top:8px;">Caricamento...</div></div>';
+    html += '</div>';
+
+    // Section: Conversazioni
+    html += '<div class="history-accordion-section" data-history-section="conversations">';
+    html += '  <div class="history-accordion-header" onclick="_toggleHistorySection(this)">';
+    html += '    <span class="history-accordion-title">💬 Conversazioni</span>';
+    html += '    <i data-lucide="chevron-right" class="history-accordion-chevron"></i>';
+    html += '  </div>';
+    html += '  <div class="history-accordion-body"><div id="historyAccConversations" style="padding-top:8px;">Caricamento...</div></div>';
+    html += '</div>';
+
+    container.innerHTML = html;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Populate sections
+    _renderHistoryReports();
+    _renderHistoryDocuments();
+    _renderHistoryNutrition();
+    _renderHistoryConversations();
+}
+
+function _renderHistoryReports() {
+    var el = document.getElementById('historyAccReports');
+    if (!el) return;
+    try { migrateLegacyHistoryDataIfNeeded(); } catch(e) {}
+    var sorted = (typeof _getHistorySortedForUI === 'function') ? _getHistorySortedForUI() : (historyData || []).slice();
+    if (!sorted || sorted.length === 0) {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessun referto ancora</p>';
+        return;
+    }
+    var months = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+    var html = '';
+    sorted.forEach(function(item) {
+        if (!item || !item.id) return;
+        var date = new Date(_getCreatedAtFromRecord(item));
+        var diarizedBadge = item.diarized ? '✅' : '📋';
+        var title = item.titleDisplay || (templateTitles[_getTemplateKeyFromRecord(item)] || 'Visita');
+        var patientName = (item.patient && item.patient.petName) ? item.patient.petName : 'Paziente';
+        var aText = ((item.soapData && item.soapData.a) || item.a || '').trim();
+        html += '<div class="history-item" onclick="loadHistoryById(\'' + item.id + '\')" style="cursor:pointer;">';
+        html += '  <div class="history-date"><div class="day">' + date.getDate() + '</div><div class="month">' + months[date.getMonth()] + '</div></div>';
+        html += '  <div class="history-info"><h4>' + diarizedBadge + ' ' + _escapeHtml(patientName) + ' - ' + _escapeHtml(title) + '</h4>';
+        html += '    <p>' + (aText ? _escapeHtml(aText.substring(0, 80) + (aText.length > 80 ? '...' : '')) : 'Nessuna diagnosi') + '</p></div>';
+        html += '  <button class="history-delete" onclick="event.stopPropagation(); deleteHistoryById(\'' + item.id + '\')">×</button>';
+        html += '</div>';
+    });
+    el.innerHTML = html;
+}
+
+function _renderHistoryDocuments() {
+    var el = document.getElementById('historyAccDocuments');
+    if (!el) return;
+    if (typeof getDocumentsForPet !== 'function' || typeof getCurrentPetId !== 'function') {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Modulo documenti non disponibile</p>';
+        return;
+    }
+    var petId = getCurrentPetId();
+    if (!petId) {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Seleziona un pet</p>';
+        return;
+    }
+    getDocumentsForPet(petId).then(function(docs) {
+        if (!Array.isArray(docs) || docs.length === 0) {
+            el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessun documento caricato</p>';
+            return;
+        }
+        var html = '';
+        docs.forEach(function(doc) {
+            if (!doc || !doc.document_id) return;
+            var date = new Date(doc.created_at || Date.now());
+            var name = doc.original_filename || 'Documento';
+            var aiIcon = doc.ai_status === 'complete' ? '✅' : '📄';
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="if(typeof openDocument===\'function\')openDocument(\'' + doc.document_id + '\')">';
+            html += '  <span>' + aiIcon + '</span>';
+            html += '  <div style="flex:1;"><strong style="font-size:13px;">' + _escapeHtml(name) + '</strong>';
+            html += '    <div style="font-size:11px;color:#888;">' + date.toLocaleDateString('it-IT') + '</div></div>';
+            html += '  <button class="btn btn-ghost" style="font-size:11px;padding:4px 8px;" onclick="event.stopPropagation();if(typeof openDocument===\'function\')openDocument(\'' + doc.document_id + '\')">Apri</button>';
+            html += '</div>';
+        });
+        el.innerHTML = html;
+    }).catch(function() {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Errore nel caricamento documenti</p>';
+    });
+}
+
+function _renderHistoryNutrition() {
+    var el = document.getElementById('historyAccNutrition');
+    if (!el) return;
+    if (typeof _renderNutritionInHistory === 'function' && typeof getCurrentPetId === 'function') {
+        // Use existing renderer but target our new container
+        try {
+            var petId = getCurrentPetId();
+            _renderNutritionInHistory(petId, el);
+        } catch(e) {
+            el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessun piano nutrizionale</p>';
+        }
+    } else {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Modulo nutrizione non disponibile</p>';
+    }
+}
+
+function _renderHistoryConversations() {
+    var el = document.getElementById('historyAccConversations');
+    if (!el) return;
+    if (typeof loadPetConversations === 'function' && typeof getCurrentPetId === 'function') {
+        try {
+            var petId = getCurrentPetId();
+            loadPetConversations(petId, el);
+        } catch(e) {
+            el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Nessuna conversazione</p>';
+        }
+    } else {
+        el.innerHTML = '<p style="color:#888;text-align:center;padding:12px;">Modulo conversazioni non disponibile</p>';
+    }
+}
+
+function _toggleHistorySection(headerEl) {
+    var section = headerEl.closest('.history-accordion-section');
+    if (!section) return;
+    section.classList.toggle('open');
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+function _historyExpandAll() {
+    document.querySelectorAll('.history-accordion-section').forEach(function(s) {
+        s.classList.add('open');
+    });
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+function _historyCollapseAll() {
+    document.querySelectorAll('.history-accordion-section').forEach(function(s) {
+        s.classList.remove('open');
+    });
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+}
+
+// Expose sidebar and history functions globally
+window.toggleNavGroup = toggleNavGroup;
+window._historyExpandAll = _historyExpandAll;
+window._historyCollapseAll = _historyCollapseAll;
+window._toggleHistorySection = _toggleHistorySection;
+window.renderHistoryAccordion = renderHistoryAccordion;
 
 // Initialize on load
 window.onload = checkSession;

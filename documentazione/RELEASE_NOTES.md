@@ -1,5 +1,23 @@
 # Release Notes (cumulative)
 
+## v9.1.1 — Sidebar Two-Level Navigation + UX Renames
+
+### Nuove funzionalita
+- **Sidebar a due livelli**: navigazione ristrutturata con gruppi collassabili (IL PET, VISITA, SALUTE, CLINICA B2B, SERVIZI) per tutti i ruoli
+- **History Accordion**: Archivio Sanitario con sezioni accordion (Referti, Documenti, Nutrizione, Conversazioni) con espandi/comprimi tutto
+- **Rinominazioni UX**: "Dati Pet" diventa "Profilo", "Profilo Sanitario" diventa "Diario", "Messaggi" diventa "Comunicazioni", "Descrizione Pet per AI" diventa "Identikit"
+- **Rimozione QNA**: pagine Q&A Hub, Q&A Pet e Q&A Report rimosse; Tips & Tricks accessibile direttamente dal gruppo SERVIZI
+
+### Modifiche tecniche
+- Sidebar HTML ristrutturata con classi `nav-group`, `nav-group-header`, `nav-group-items`
+- CSS: nuove regole per `.nav-group*` e `.history-accordion-*`
+- `navigateToPage()` auto-espande il gruppo contenente la pagina target
+- Persistenza stato gruppi in `localStorage` (`ada_nav_groups_open`)
+- Badge aggregati sui gruppi chiusi (conteggio totale notifiche)
+- `renderHistoryAccordion()` sostituisce il rendering monolitico dell'archivio
+- Pulsante "Analisi" promo spostato nell'header della card
+- `'qna'`, `'qna-pet'`, `'qna-report'` rimossi da `ROLE_PERMISSIONS`
+
 ## v9.1.0 — B2B Phase 2: Milestone, Shared Records, Teleconsult, Diagnostica
 
 ### Nuove funzionalità

@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.1.0';
-const ADA_RELEASE_NOTES = 'B2B Phase 2: Milestone cucciolate, documenti condivisi, teleconsulti, diagnostica, passaporto sanitario.';
+const ADA_VERSION = '9.1.1';
+const ADA_RELEASE_NOTES = 'Sidebar two-level navigation, history accordion, QNA pages removed, UX renames.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -174,11 +174,11 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'qna', 'qna-pet', 'qna-report', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'ai-petdesc'],
+        pages: ['patient', 'addpet', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'ai-petdesc'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync', 'communicate', 'use_chatbot']
     },
     admin_brand: {
@@ -186,7 +186,7 @@ const ROLE_PERMISSIONS = {
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports', 'run_wizard']
     },
     vet_int: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'qna', 'qna-pet', 'qna-report', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     vet_ext: {
@@ -201,7 +201,7 @@ const ROLE_PERMISSIONS = {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
                 'superadmin-gestione', 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
                 'superadmin-users', 'superadmin-sources', 'settings', 'debug',
-                'patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'qna', 'qna-pet', 'qna-report', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+                'patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
                   'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
                   'manage_users', 'manage_sources', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'view_shared_records', 'teleconsult', 'view_diagnostics']

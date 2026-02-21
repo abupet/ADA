@@ -83,7 +83,7 @@ export async function triggerSyncPush(_page: Page) {
 // All navigable pages by role
 export const ALL_PAGES = {
   vet: ["recording", "soap", "patient", "history", "diary", "communication", "settings"],
-  owner: ["patient", "diary", "vitals", "medications", "history", "qna", "photos", "communication", "settings"],
+  owner: ["patient", "diary", "vitals", "medications", "history", "photos", "communication", "settings"],
   superAdmin: [
     "seed", "admin-dashboard", "admin-catalog", "admin-campaigns", "admin-wizard",
     "superadmin-tenants", "superadmin-users", "superadmin-policies",

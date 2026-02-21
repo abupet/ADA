@@ -57,45 +57,135 @@
             <nav class="sidebar-nav">
                 <!-- Sidebar: Veterinario -->
                 <div id="sidebar-vet" class="sidebar-role-section">
-                    <div class="nav-section">VISITA</div>
-                    <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Dati Pet</div>
-                    <div class="nav-item active" data-page="recording"><i data-lucide="mic" class="icon"></i> Registrazione</div>
-                    <div class="nav-item" data-page="soap"><i data-lucide="clipboard-list" class="icon"></i> Referto</div>
-                    <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
-                    <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
-                    <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Profilo Sanitario</div>
-                    <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
-                    <div class="nav-section">CLINICA B2B</div>
-                    <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Documenti Condivisi</div>
-                    <div class="nav-item" data-page="teleconsult"><i data-lucide="video" class="icon"></i> Teleconsulti</div>
-                    <div class="nav-item" data-page="diagnostics"><i data-lucide="microscope" class="icon"></i> Diagnostica</div>
+                    <div class="nav-group" data-group="vet-pet">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">IL PET</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Profilo</div>
+                            <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Diario</div>
+                            <div class="nav-item" data-page="photos"><i data-lucide="camera" class="icon"></i> Foto</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="vet-visit">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">VISITA</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item active" data-page="recording"><i data-lucide="mic" class="icon"></i> Registrazione</div>
+                            <div class="nav-item" data-page="soap"><i data-lucide="clipboard-list" class="icon"></i> Referto</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="vet-health">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">SALUTE</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
+                            <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="vet-b2b">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">CLINICA B2B</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Documenti Condivisi</div>
+                            <div class="nav-item" data-page="teleconsult"><i data-lucide="video" class="icon"></i> Teleconsulti</div>
+                            <div class="nav-item" data-page="diagnostics"><i data-lucide="microscope" class="icon"></i> Diagnostica</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="vet-services">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">SERVIZI</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                            <span class="nav-group-badge" id="nav-group-badge-vet-services" style="display:none;">0</span>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Comunicazioni <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
+                            <div class="nav-item" data-page="tips"><i data-lucide="lightbulb" class="icon"></i> Tips &amp; Tricks</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
                 <div id="sidebar-owner" class="sidebar-role-section" style="display:none;">
-                    <div class="nav-section">I MIEI AMICI ANIMALI</div>
-                    <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Dati Pet</div>
-                    <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
-                    <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Profilo Sanitario</div>
-                    <div class="nav-item" data-page="vitals"><i data-lucide="activity" class="icon"></i> Parametri Vitali</div>
-                    <div class="nav-item" data-page="medications"><i data-lucide="pill" class="icon"></i> Farmaci</div>
-                    <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
-                    <div class="nav-item" data-page="qna"><i data-lucide="help-circle" class="icon"></i> Domande & Risposte</div>
-                    <div class="nav-item" data-page="photos"><i data-lucide="camera" class="icon"></i> Foto</div>
-                    <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
+                    <div class="nav-group" data-group="owner-pet">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">IL MIO PET</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Profilo</div>
+                            <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Diario</div>
+                            <div class="nav-item" data-page="photos"><i data-lucide="camera" class="icon"></i> Foto</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="owner-health">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">SALUTE</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="vitals"><i data-lucide="activity" class="icon"></i> Parametri Vitali</div>
+                            <div class="nav-item" data-page="medications"><i data-lucide="pill" class="icon"></i> Farmaci</div>
+                            <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
+                            <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadgeOwner" data-testid="history-badge-owner">0</span></div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="owner-services">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">SERVIZI</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                            <span class="nav-group-badge" id="nav-group-badge-owner-services" style="display:none;">0</span>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Comunicazioni <span class="badge" id="comm-unread-badge-owner" style="display:none;">0</span></div>
+                            <div class="nav-item" data-page="tips"><i data-lucide="lightbulb" class="icon"></i> Tips &amp; Tricks</div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Sidebar: TEST & DEMO (super_admin only) -->
+                <!-- Sidebar: Breeder -->
                 <div id="sidebar-breeder" class="sidebar-role-section" style="display:none;">
-                    <div class="sidebar-section-label">Allevamento</div>
-                    <div class="nav-item" data-page="breeder-dashboard"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</div>
-                    <div class="nav-item" data-page="breeder-litters"><i data-lucide="baby" class="icon"></i> Cucciolate</div>
-                    <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> I miei Animali</div>
-                    <div class="nav-item" data-page="booking"><i data-lucide="calendar-check" class="icon"></i> Prenota Servizi</div>
-                    <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
-                    <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-breeder" style="display:none;">0</span></div>
-                    <div class="nav-item" data-page="document"><i data-lucide="file-text" class="icon"></i> Documenti</div>
-                    <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Doc. Condivisi</div>
+                    <div class="nav-group" data-group="breeder-farm">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">ALLEVAMENTO</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="breeder-dashboard"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</div>
+                            <div class="nav-item" data-page="breeder-litters"><i data-lucide="baby" class="icon"></i> Cucciolate</div>
+                            <div class="nav-item" data-page="booking"><i data-lucide="calendar-check" class="icon"></i> Prenota Servizi</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="breeder-animals">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">I MIEI ANIMALI</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Profilo</div>
+                            <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
+                            <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="breeder-services">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">SERVIZI</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                            <span class="nav-group-badge" id="nav-group-badge-breeder-services" style="display:none;">0</span>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Comunicazioni <span class="badge" id="comm-unread-badge-breeder" style="display:none;">0</span></div>
+                            <div class="nav-item" data-page="document"><i data-lucide="file-text" class="icon"></i> Documenti</div>
+                            <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Doc. Condivisi</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="sidebar-test-demo" class="sidebar-role-section" style="display:none;">
@@ -105,11 +195,18 @@
 
                 <!-- Sidebar: Admin Brand / Super Admin -->
                 <div id="sidebar-admin" class="sidebar-role-section" style="display:none;">
-                    <div class="nav-section">ADMIN PROMO</div>
-                    <div class="nav-item" data-page="admin-dashboard">Dashboard</div>
-                    <div class="nav-item" data-page="admin-catalog">Catalogo</div>
-                    <div class="nav-item" data-page="admin-campaigns">Campagne</div>
-                    <div class="nav-item" data-page="admin-wizard">Importa file</div>
+                    <div class="nav-group" data-group="admin-manage">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">GESTIONE</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="admin-dashboard"><i data-lucide="bar-chart-3" class="icon"></i> Dashboard</div>
+                            <div class="nav-item" data-page="admin-catalog"><i data-lucide="package" class="icon"></i> Catalogo</div>
+                            <div class="nav-item" data-page="admin-campaigns"><i data-lucide="megaphone" class="icon"></i> Campagne</div>
+                            <div class="nav-item" data-page="admin-wizard"><i data-lucide="upload" class="icon"></i> Importa file</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="nav-section">SISTEMA</div>
@@ -117,7 +214,7 @@
                 <div class="nav-item" id="nav-superadmin-knowledge" data-page="superadmin-knowledge" style="display:none;"><i data-lucide="book-open" class="icon"></i> Biblioteca Vet</div>
                 <div class="nav-item" data-page="settings"><i data-lucide="settings" class="icon"></i> Impostazioni</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;"><i data-lucide="bug" class="icon"></i> Debug</div>
-                <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;"><i data-lucide="sparkles" class="icon"></i> Descrizione Pet per AI</div>
+                <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;"><i data-lucide="sparkles" class="icon"></i> Identikit</div>
                 <div class="nav-item" onclick="logout()"><i data-lucide="log-out" class="icon"></i> Esci</div>
             </nav>
         </aside>
@@ -388,7 +485,7 @@
             <!-- Page: Patient -->
             <div id="page-patient" class="page">
                 <div class="page-header">
-                    <h2>🐾 Dati Pet</h2>
+                    <h2>🐾 Profilo</h2>
 
                 </div>
                 
@@ -806,7 +903,7 @@
             <!-- Page: Diary -->
             <div id="page-diary" class="page">
                 <div class="page-header">
-                    <h2>📔 Profilo sanitario</h2>
+                    <h2>💗 Diario</h2>
 
                 </div>
                 <div class="card">
@@ -833,86 +930,7 @@
                 </div>
             </div>
 
-            <!-- Page: Q&A HUB -->
-            <div id="page-qna" class="page">
-                <div class="page-header">
-                    <h2>❓ Domande & Risposte</h2>
-
-                </div>
-                <div class="card">
-                    <p style="color:#666; margin-top:6px;">Scegli cosa vuoi fare:</p>
-                    <div class="hub-grid">
-                        <div class="hub-tile" onclick="navigateToPage('qna-report')">
-                            <div class="hub-emoji">📋</div>
-                            <div class="hub-title">Domande su documento</div>
-                            <div class="hub-sub">Apri o genera la spiegazione del documento da archivio</div>
-                        </div>
-                        <div class="hub-tile" onclick="navigateToPage('qna-pet')">
-                            <div class="hub-emoji">🐾</div>
-                            <div class="hub-title">Domande sul tuo pet</div>
-                            <div class="hub-sub">Fai una domanda e ottieni una risposta</div>
-                        </div>
-                        <div class="hub-tile" onclick="navigateToPage('tips')">
-                            <div class="hub-emoji">💡</div>
-                            <div class="hub-title">Tips & Tricks</div>
-                            <div class="hub-sub">Consigli personalizzati per il tuo pet</div>
-                        </div>
-                    </div>
-                    <!-- Promo slot: faq_view (PR 3) -->
-                    <div id="qna-promo-container"></div>
-                </div>
-            </div>
-
-            <!-- Page: Q&A Pet -->
-            <div id="page-qna-pet" class="page">
-                <div class="page-header">
-                    <h2>🐾 Domande sul pet</h2>
-
-                </div>
-                <div class="card">
-                    <button id="btnAskQuestion" class="btn btn-primary" onclick="toggleQuestionRecording()" data-testid="ask-question-button">🎤 Chiedi</button>
-                    <div class="textarea-wrapper" style="margin-top: 10px;">
-                        <textarea id="qnaQuestion" rows="3" placeholder="La tua domanda..."></textarea>
-                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('qnaQuestion', 'Domanda')" data-testid="expand-qna-question-button">⛶</button>
-                    </div>
-                    
-                    <h3 style="margin-top: 20px;">Risposta</h3>
-                    <div class="textarea-wrapper">
-                        <textarea id="qnaAnswer" rows="6" placeholder="La risposta apparirà qui..." readonly></textarea>
-                        <button class="expand-btn" aria-label="Espandi campo" onclick="expandTextarea('qnaAnswer', 'Risposta')" data-testid="expand-qna-answer-button">⛶</button>
-                    </div>
-                    <div class="button-row" style="margin-top: 10px;">
-                        <button class="btn btn-primary" onclick="generateQnAAnswer()" data-testid="generate-qna-answer-button">💬 Rispondi</button>
-                        <button id="btnSpeakQnA" class="btn btn-secondary" onclick="speakQnAAnswer()" data-testid="speak-qna-button">🔊 Leggi</button>
-                    </div>
-                    
-                    <h3 style="margin-top: 20px;">Ti suggerisco io qualche domanda?</h3>
-                    <button class="btn btn-secondary" onclick="generateQnAFaq()" data-testid="generate-qna-faq-button">💡 Genera suggerimenti</button>
-                    <div id="qnaFaqList" class="faq-list"></div>
-                </div>
-            </div>
-
-            <!-- Page: Q&A Report -->
-            <div id="page-qna-report" class="page">
-                <div class="page-header">
-                    <h2>📋 Domande su documento</h2>
-
-                </div>
-                <div class="card">
-                    <h3>Seleziona un documento dall'archivio</h3>
-                    <div class="form-group" style="margin-top:10px;">
-                        <label>Documento</label>
-                        <select id="qnaReportSelect">
-                            <option value="">-- Seleziona --</option>
-                        </select>
-                        <p style="font-size:12px;color:#888;margin-top:6px;">Suggerimento: se la spiegazione del documento è già presente nel record, verrà riaperta senza rigenerarla.</p>
-                    </div>
-                    <div class="button-row" style="margin-top: 10px;">
-                        <button class="btn btn-primary" onclick="openOrGenerateOwnerFromSelectedReport()" data-testid="open-owner-from-report-button">📖 Spiegami il documento</button>
-                        <button class="btn btn-secondary" onclick="navigateToPage('history')" data-testid="go-to-history-button">📁 Vai all'Archivio Sanitario</button>
-                    </div>
-                </div>
-            </div>
+            <!-- QNA pages removed in v9.1.1 -->
 
             <!-- Page: Tips -->
             <div id="page-tips" class="page">
@@ -957,20 +975,16 @@
             <div id="page-history" class="page">
                 <div class="page-header">
                     <h2>📁 Archivio Sanitario</h2>
-
                 </div>
                 <div class="card">
-                    <div class="button-row" style="margin-bottom:15px;">
-                        <button class="btn btn-primary" onclick="triggerDocumentUpload()" data-testid="upload-document-button">📄 Carica Documento</button>
+                    <div class="button-row" style="margin-bottom:15px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="triggerDocumentUpload()" data-testid="upload-document-button"><i data-lucide="upload" class="icon-sm"></i> Carica Documento</button>
+                        <button class="btn btn-secondary" onclick="_historyExpandAll()" title="Espandi tutto"><i data-lucide="chevrons-down" class="icon-sm"></i></button>
+                        <button class="btn btn-secondary" onclick="_historyCollapseAll()" title="Comprimi tutto"><i data-lucide="chevrons-up" class="icon-sm"></i></button>
                         <input type="file" id="documentFileInput" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="handleDocumentUpload(event)">
                     </div>
                     <div id="documentUploadLoader"></div>
-                    <div id="historyList" class="history-list"></div>
-                    <p class="history-note">Nota: tieni premuto un referto per mostrare la "x" e cancellarlo.</p>
-                </div>
-                <div id="pet-conversations-section" style="margin-top: 24px;">
-                    <h3 style="font-size: 16px; color: #1e3a5f; margin-bottom: 12px;">💬 Conversazioni relative a questo pet</h3>
-                    <div id="pet-conversations-list"></div>
+                    <div id="historyAccordion"></div>
                 </div>
             </div>
 
@@ -1135,7 +1149,7 @@
             <!-- Page: Communication (Unified messaging: human + AI) -->
             <div id="page-communication" class="page">
                 <div class="page-header">
-                    <h2>💬 Messaggi</h2>
+                    <h2>💬 Comunicazioni</h2>
                 </div>
                 <div id="communication-container" data-testid="communication-container"></div>
             </div>
@@ -1414,7 +1428,7 @@
             <!-- Page: AI Pet Description -->
             <div id="page-ai-petdesc" class="page" style="display:none;">
                 <div class="card" style="margin-bottom:16px;">
-                    <h2 style="font-size:18px;color:#1e3a5f;margin-bottom:12px;">🤖 Descrizione Pet per AI</h2>
+                    <h2 style="font-size:18px;color:#1e3a5f;margin-bottom:12px;">🤖 Identikit</h2>
                     <p style="font-size:13px;color:#64748b;margin-bottom:16px;">
                         Questa descrizione viene generata automaticamente dall'AI a partire da tutti i dati del pet,
                         e viene usata per trovare il miglior match con i prodotti del catalogo.
@@ -1637,7 +1651,7 @@
             </button>
             <button class="bottom-nav-item" data-page="communication">
                 <i data-lucide="message-circle" class="icon"></i>
-                <span>Chat</span>
+                <span>Comunica</span>
                 <span class="bottom-nav-badge" id="bottomNavCommBadge" style="display:none;">0</span>
             </button>
         </nav>
