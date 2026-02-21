@@ -7,6 +7,7 @@ const express = require("express");
 const crypto = require("crypto");
 const { getPool } = require("./db");
 const { requireRole } = require("./rbac.middleware");
+const { enrichSystemPrompt } = require("./rag.service");
 
 function extractTextFromHtml(html) {
     return html
@@ -62,14 +63,19 @@ async function _crawlSource(pool, source, getOpenAiKey, triggeredBy) {
                 const oaKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
                 if (oaKey && contentText.length > 100) {
                     try {
+                        // RAG: build system prompt with veterinary knowledge
+                        let tipsSystemPrompt = "Sei un assistente veterinario esperto. Il tuo compito è analizzare testi da siti veterinari e produrre riassunti accurati.";
+                        tipsSystemPrompt = await enrichSystemPrompt(pool, getOpenAiKey, tipsSystemPrompt, contentText.substring(0, 300), { sourceService: 'tips_sources' });
                         const gptResp = await fetch('https://api.openai.com/v1/chat/completions', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${oaKey}` },
                             body: JSON.stringify({
                                 model: 'gpt-4o-mini',
-                                messages: [{
+                                messages: [
+                                { role: 'system', content: tipsSystemPrompt },
+                                {
                                     role: 'user',
-                                    content: `Sei un assistente veterinario. Analizza questo testo da un sito veterinario e produci:\n1. Riassunto in italiano (max 300 parole) dei contenuti utili per veterinari e proprietari\n2. Lista di 5-10 argomenti chiave\n\nSito: ${source.url} (${source.display_name})\n\nTESTO:\n${contentText.substring(0, 6000)}\n\nRispondi SOLO con JSON:\n{"summary_it": "...", "key_topics": ["..."], "detected_language": "en|it|..."}`
+                                    content: `Analizza questo testo da un sito veterinario e produci:\n1. Riassunto in italiano (max 300 parole) dei contenuti utili per veterinari e proprietari\n2. Lista di 5-10 argomenti chiave\n\nSito: ${source.url} (${source.display_name})\n\nTESTO:\n${contentText.substring(0, 6000)}\n\nRispondi SOLO con JSON:\n{"summary_it": "...", "key_topics": ["..."], "detected_language": "en|it|..."}`
                                 }],
                                 temperature: 0.3
                             })

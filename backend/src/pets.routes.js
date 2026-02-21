@@ -2,6 +2,7 @@
 const express = require("express");
 const { getPool } = require("./db");
 const { randomUUID } = require("crypto");
+const { enrichSystemPrompt } = require("./rag.service");
 
 // UUID v4 validation regex
 const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -310,7 +311,7 @@ function petsRouter({ requireAuth }) {
       `- ${t.tag} (${t.label}): ${t.description || t.category}`
     ).join("\n");
 
-    const systemPrompt = `Sei un assistente che prepara descrizioni strutturate di animali domestici per un sistema di raccomandazione AI.
+    let systemPrompt = `Sei un assistente che prepara descrizioni strutturate di animali domestici per un sistema di raccomandazione AI.
 Il tuo output verrà usato per fare matching con descrizioni di prodotti veterinari/assicurativi/nutrizionali.
 
 REGOLE:
@@ -336,6 +337,9 @@ Per ogni tag, valuta TUTTE le fonti disponibili (dati anagrafici, referti, farma
 Un tag clinico può essere dedotto anche indirettamente: ad esempio un farmaco antinfiammatorio articolare implica "clinical:joint_issues",
 creatinina elevata implica "clinical:renal", BCS elevato implica "clinical:obesity".
 Indica SOLO tag per cui hai evidenze concrete nei dati. Non indovinare.`;
+
+    // RAG: enrich with veterinary knowledge
+    systemPrompt = await enrichSystemPrompt(pool, () => openAiKey, systemPrompt, JSON.stringify(sources).substring(0, 500), { sourceService: 'pets_ai_desc', petId: petId });
 
     const userPrompt = `Genera una descrizione strutturata per il matching AI del seguente pet:
 

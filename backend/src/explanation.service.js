@@ -2,6 +2,7 @@
 // PR 3: OpenAI explanation generation with caching and budget control
 
 const { createHash } = require("crypto");
+const { enrichSystemPrompt } = require("./rag.service");
 
 // --- Debug logging helper (PR 13) ---
 function serverLog(level, domain, message, data, req) {
@@ -104,9 +105,13 @@ async function generateExplanation(
   }
 
   try {
-    const systemPrompt = `Sei un assistente veterinario informativo. Rispondi SOLO in formato JSON valido.
+    let systemPrompt = `Sei un assistente veterinario informativo. Rispondi SOLO in formato JSON valido.
 Il tuo compito: spiegare al proprietario perché vede questo suggerimento di prodotto per il suo animale.
 Sii professionale, empatico e conciso. Non dare consigli medici specifici.`;
+
+    // RAG: enrich with veterinary knowledge
+    const openAiKey = typeof getOpenAiKey === 'function' ? getOpenAiKey() : null;
+    systemPrompt = await enrichSystemPrompt(pool, getOpenAiKey, systemPrompt, `${petSummary.specie || ''} ${petSummary.razza || ''} ${promoItem?.name || ''} ${context || ''}`, { sourceService: 'explanation' });
 
     const isInsurance = (serviceType === 'insurance');
     const disclaimerText = isInsurance
