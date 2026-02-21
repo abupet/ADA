@@ -1,5 +1,12 @@
 # Release Notes (cumulative)
 
+## v8.26.1
+
+### Fix: Sezione "Piani Nutrizionali" duplicata in Archivio Sanitario
+
+- **Bug**: cliccando più volte su "Archivio Sanitario" nella sidebar, la sezione "Piani Nutrizionali" veniva appesa ripetutamente al DOM senza rimuovere quella precedente
+- **Fix**: `_renderNutritionInHistory()` ora rimuove la sezione precedente (via `data-nutrition-history` attribute) prima di appenderne una nuova
+
 ## v8.26.0
 
 ### Feature: UI/UX Redesign completo
