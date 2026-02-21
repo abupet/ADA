@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.1.1';
-const ADA_RELEASE_NOTES = 'Sidebar two-level navigation, history accordion, QNA pages removed, UX renames.';
+const ADA_VERSION = '9.3.0';
+const ADA_RELEASE_NOTES = 'B2B Phase 4: Test genetici, Formazione ECM, Marketplace, API pubbliche.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -174,34 +174,34 @@ const ADA_ACTIVE_ROLE_KEY = 'ada_active_role';
 
 const ROLE_PERMISSIONS = {
     veterinario: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics', 'preventive-care', 'marketplace'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     proprietario: {
-        pages: ['patient', 'addpet', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'ai-petdesc'],
+        pages: ['patient', 'addpet', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'soap-readonly', 'owner', 'photos', 'tips', 'settings', 'debug', 'document', 'costs', 'communication', 'ai-petdesc', 'vaccination-calendar', 'preventive-care', 'marketplace'],
         actions: ['view_profile', 'ask_question', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'view_photos', 'sync', 'communicate', 'use_chatbot']
     },
     admin_brand: {
-        pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard', 'settings'],
+        pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard', 'settings', 'marketplace'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports', 'run_wizard']
     },
     vet_int: {
-        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+        pages: ['patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'settings', 'debug', 'costs', 'document', 'vitals', 'photos', 'medications', 'tips', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics', 'preventive-care', 'education', 'marketplace'],
         actions: ['record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     vet_ext: {
-        pages: ['patient', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'document', 'communication', 'shared-records', 'teleconsult', 'diagnostics'],
+        pages: ['patient', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'document', 'communication', 'shared-records', 'teleconsult', 'diagnostics', 'referral-analytics', 'loyalty', 'preventive-care', 'education', 'marketplace', 'developer'],
         actions: ['view_profile', 'view_history', 'explain_document', 'communicate', 'view_shared_records', 'teleconsult', 'view_diagnostics']
     },
     breeder: {
-        pages: ['breeder-dashboard', 'breeder-litters', 'breeder-milestones', 'patient', 'addpet', 'booking', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'owner', 'document', 'communication', 'settings', 'debug', 'ai-petdesc', 'shared-records'],
+        pages: ['breeder-dashboard', 'breeder-litters', 'breeder-milestones', 'patient', 'addpet', 'booking', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'owner', 'document', 'communication', 'settings', 'debug', 'ai-petdesc', 'shared-records', 'vaccination-calendar', 'preventive-care', 'genetic-tests', 'marketplace'],
         actions: ['view_profile', 'manage_litters', 'manage_programs', 'book_appointment', 'bulk_book', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'sync', 'communicate', 'view_shared_records']
     },
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
                 'superadmin-gestione', 'superadmin-tenants', 'superadmin-policies', 'superadmin-tags', 'superadmin-audit',
                 'superadmin-users', 'superadmin-sources', 'settings', 'debug',
-                'patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics'],
+                'patient', 'addpet', 'recording', 'soap', 'nutrition', 'soap-readonly', 'owner', 'history', 'diary', 'vitals', 'medications', 'photos', 'tips', 'document', 'costs', 'seed', 'communication', 'ai-petdesc', 'shared-records', 'teleconsult', 'diagnostics', 'marketplace'],
         actions: ['manage_catalog', 'manage_campaigns', 'view_dashboard', 'export_reports',
                   'run_wizard', 'manage_tenants', 'manage_policies', 'manage_tags', 'view_audit',
                   'manage_users', 'manage_sources', 'record', 'transcribe', 'generate_soap', 'archive', 'read_document', 'explain_document', 'export_pdf', 'sync', 'view_shared_records', 'teleconsult', 'view_diagnostics']
