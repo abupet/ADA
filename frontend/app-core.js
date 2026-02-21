@@ -182,6 +182,12 @@ async function initApp() {
     // Initialize role system (PR 4)
     initRoleSystem();
 
+    // Initialize chip selectors (SPEC-COMP-03)
+    initChipSelectors();
+
+    // Initialize Lucide icons (SPEC-DS-03)
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
     // Render account info and settings visibility
     try { renderAccountInfo(); } catch(e) {}
     try { updateSettingsSectionsVisibility(); } catch(e) {}
@@ -322,6 +328,13 @@ function initNavigation() {
             navigateToPage(page);
         });
     });
+
+    // Bottom nav click handlers (SPEC-MOB-01)
+    document.querySelectorAll('.bottom-nav-item[data-page]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            navigateToPage(btn.dataset.page);
+        });
+    });
     
     // Save scroll position when scrolling
     document.querySelector('.main-content')?.addEventListener('scroll', debounce(() => {
@@ -381,6 +394,11 @@ async function navigateToPage(page) {
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
+
+    // Update bottom nav active state (SPEC-MOB-01)
+    document.querySelectorAll('.bottom-nav-item').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.page === page);
+    });
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     const pageEl = document.getElementById('page-' + page);
     if (pageEl) pageEl.classList.add('active');
@@ -611,6 +629,14 @@ function applyRoleUI(role) {
         item.onclick = null;
         item.addEventListener('click', () => navigateToPage(item.dataset.page));
     });
+
+    // Update bottom nav visibility based on role (SPEC-MOB-01)
+    document.querySelectorAll('.bottom-nav-item[data-vet]').forEach(function(btn) {
+        btn.style.display = showVet ? '' : 'none';
+    });
+
+    // Re-init Lucide icons after sidebar changes
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Update debug visibility
     try { updateDebugToolsVisibility(); } catch(e) {}
@@ -1286,14 +1312,10 @@ function openEditPetModal() {
         if (srcEl && dstEl) dstEl.value = srcEl.value || '';
     }
 
-    // Household multi-select
-    var srcHousehold = document.getElementById('petHousehold');
-    var dstHousehold = document.getElementById('editPetHousehold');
-    if (srcHousehold && dstHousehold) {
-        var srcValues = Array.from(srcHousehold.selectedOptions).map(function(o) { return o.value; });
-        Array.from(dstHousehold.options).forEach(function(opt) {
-            opt.selected = srcValues.indexOf(opt.value) !== -1;
-        });
+    // Household chip selector
+    if (typeof getChipValues === 'function' && typeof setChipValues === 'function') {
+        var srcValues = getChipValues('petHousehold');
+        setChipValues('editPetHousehold', srcValues);
     }
 
     // Close lifestyle section by default
@@ -1371,14 +1393,10 @@ async function saveEditPet() {
         if (lSrc && lDst) lDst.value = lSrc.value;
     }
 
-    // Household multi-select
-    var editHousehold = document.getElementById('editPetHousehold');
-    var mainHousehold = document.getElementById('petHousehold');
-    if (editHousehold && mainHousehold) {
-        var editValues = Array.from(editHousehold.selectedOptions).map(function(o) { return o.value; });
-        Array.from(mainHousehold.options).forEach(function(opt) {
-            opt.selected = editValues.indexOf(opt.value) !== -1;
-        });
+    // Household chip selector
+    if (typeof getChipValues === 'function' && typeof setChipValues === 'function') {
+        var editValues = getChipValues('editPetHousehold');
+        setChipValues('petHousehold', editValues);
     }
 
     // Close modal
@@ -1815,6 +1833,27 @@ function initVisualizer() {
 // ============================================
 
 const ADA_HIDE_EMPTY_KEY = 'ada_hide_empty_fields';
+
+// Chip selector helpers (SPEC-COMP-03)
+function initChipSelectors() {
+    document.querySelectorAll('.chip-selector').forEach(function(container) {
+        container.addEventListener('click', function(e) {
+            var btn = e.target.closest('.chip-option');
+            if (!btn) return;
+            btn.classList.toggle('selected');
+        });
+    });
+}
+function getChipValues(id) {
+    var chips = document.querySelectorAll('#' + id + ' .chip-option.selected');
+    return Array.from(chips).map(function(c) { return c.dataset.value; });
+}
+function setChipValues(id, values) {
+    var arr = Array.isArray(values) ? values : [];
+    document.querySelectorAll('#' + id + ' .chip-option').forEach(function(c) {
+        c.classList.toggle('selected', arr.indexOf(c.dataset.value) !== -1);
+    });
+}
 
 function initHideEmptyToggle() {
     try {
@@ -2952,7 +2991,8 @@ function renderHistory() {
     const list = document.getElementById('historyList');
     if (!list) return;
     if (!Array.isArray(historyData) || historyData.length === 0) {
-        list.innerHTML = '<p style="color:#888;text-align:center;padding:20px;">Nessuna visita nello storico</p>';
+        list.innerHTML = '<div class="empty-state"><div class="empty-state-icon"><i data-lucide="folder-open" style="width:48px;height:48px;stroke-width:1.5;color:var(--gray-300);"></i></div><h3 class="empty-state-title">Nessun referto ancora</h3><p class="empty-state-text">Registra la prima visita per iniziare l\'archivio sanitario</p></div>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
         return;
     }
 
