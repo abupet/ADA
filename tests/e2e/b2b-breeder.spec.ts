@@ -1,20 +1,26 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test-base";
+import { login } from "./helpers/login";
+import { captureHardErrors } from "./helpers/console";
 
 test.describe("B2B Breeder @smoke", () => {
-  test("breeder can login and see dashboard", async ({ page }) => {
-    await page.goto("/");
-    await page.fill('[data-testid="email-input"], #loginEmail', "breeder_test@adiuvet.it");
-    await page.fill('[data-testid="password-input"], #loginPassword', process.env.TEST_PASSWORD || "AltriUtentiPerTest72&");
-    await page.click('[data-testid="login-button"], #loginBtn');
-    await expect(page.locator("#page-breeder-dashboard")).toBeVisible({ timeout: 10000 });
+  test("@smoke breeder can login and see dashboard", async ({ page }) => {
+    const errors = captureHardErrors(page);
+    await login(page, { email: "breeder_test@adiuvet.it" });
+
+    await expect(page.locator("#appContainer")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#page-breeder-dashboard")).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("text=Dashboard Allevamento")).toBeVisible();
+
+    expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("breeder sidebar is visible", async ({ page }) => {
-    await page.goto("/");
-    await page.fill('[data-testid="email-input"], #loginEmail', "breeder_test@adiuvet.it");
-    await page.fill('[data-testid="password-input"], #loginPassword', process.env.TEST_PASSWORD || "AltriUtentiPerTest72&");
-    await page.click('[data-testid="login-button"], #loginBtn');
-    await expect(page.locator("#sidebar-breeder")).toBeVisible({ timeout: 10000 });
+  test("@smoke breeder sidebar is visible", async ({ page }) => {
+    const errors = captureHardErrors(page);
+    await login(page, { email: "breeder_test@adiuvet.it" });
+
+    await expect(page.locator("#appContainer")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#sidebar-breeder")).toBeVisible({ timeout: 10_000 });
+
+    expect(errors, errors.join("\n")).toHaveLength(0);
   });
 });
