@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const { getPool } = require("./db");
+const { enrichSystemPrompt } = require("./rag.service");
 
 // --- Debug logging helper (PR 13) ---
 function serverLog(level, domain, message, data, req) {
@@ -643,12 +644,15 @@ async function processDocumentExplain(pool, doc, getOpenAiKey, isMockEnv) {
 
   try {
     const explainModel = await getDocumentAiModel(pool);
+    // RAG: enrich explain prompt with veterinary knowledge
+    let explainSystemContent = "Sei il team AbuPet. Spiega il contenuto del documento veterinario al proprietario dell'animale in modo chiaro, empatico e rassicurante. Parla a nome del 'team AbuPet': il team spiega e informa, ma NON visita, NON diagnostica, NON prescrive. Usa sempre la terza persona per il veterinario: 'il veterinario ha notato che…', 'durante la visita è emerso che…'. NON usare 'abbiamo riscontrato', 'abbiamo notato', 'la nostra diagnosi'. Usa espressioni come 'è consigliabile…', 'il veterinario consiglia…'. Evidenzia risultati importanti, diagnosi, farmaci e azioni da seguire. Evita termini tecnici complessi (o spiegali brevemente). Chiudi con: 'Il team AbuPet'.";
+    explainSystemContent = await enrichSystemPrompt(pool, getOpenAiKey, explainSystemContent, (doc.read_text || '').substring(0, 500), { sourceService: 'document_explain' });
     const payload = {
       model: explainModel,
       messages: [
         {
           role: "system",
-          content: "Sei il team AbuPet. Spiega il contenuto del documento veterinario al proprietario dell'animale in modo chiaro, empatico e rassicurante. Parla a nome del 'team AbuPet': il team spiega e informa, ma NON visita, NON diagnostica, NON prescrive. Usa sempre la terza persona per il veterinario: 'il veterinario ha notato che…', 'durante la visita è emerso che…'. NON usare 'abbiamo riscontrato', 'abbiamo notato', 'la nostra diagnosi'. Usa espressioni come 'è consigliabile…', 'il veterinario consiglia…'. Evidenzia risultati importanti, diagnosi, farmaci e azioni da seguire. Evita termini tecnici complessi (o spiegali brevemente). Chiudi con: 'Il team AbuPet'.",
+          content: explainSystemContent,
         },
         {
           role: "user",

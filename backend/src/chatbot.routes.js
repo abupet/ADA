@@ -4,6 +4,7 @@
 const express = require("express");
 const { getPool } = require("./db");
 const { randomUUID } = require("crypto");
+const { enrichSystemPrompt } = require("./rag.service");
 
 // --- Constants ---
 const SESSION_TIMEOUT_MINUTES = 30;
@@ -395,9 +396,12 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
           ? await buildPetContext(pool, session.pet_id, userId)
           : "";
 
-        const systemContent = petContext
+        let systemContent = petContext
           ? `${CHATBOT_SYSTEM_PROMPT}\n\nINFORMAZIONI SULL'ANIMALE:\n${petContext}`
           : CHATBOT_SYSTEM_PROMPT;
+
+        // RAG: enrich system prompt with veterinary knowledge base
+        systemContent = await enrichSystemPrompt(pool, getOpenAiKey, systemContent, message || petContext || '', { sourceService: 'chatbot', petId: session.pet_id });
 
         // Fetch last N history messages for context
         const historyResult = await pool.query(

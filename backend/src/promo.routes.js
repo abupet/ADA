@@ -1,6 +1,7 @@
 // backend/src/promo.routes.js v2
 // Promo / product recommendation engine (PR 10 + PR 3 rewrite)
 const express = require("express");
+const { enrichSystemPrompt } = require("./rag.service");
 
 // UUID v4 validation regex
 const UUID_REGEX =
@@ -425,7 +426,7 @@ function promoRouter({ requireAuth }) {
     }).join("\n");
 
     // 8. Call OpenAI
-    const systemPrompt = `Sei un esperto veterinario e consulente per prodotti per animali domestici.
+    let systemPrompt = `Sei un esperto veterinario e consulente per prodotti per animali domestici.
 Analizza la descrizione di un pet e confrontala con i prodotti candidati.
 Per ogni prodotto, valuta quanto è adatto a QUESTO SPECIFICO pet.
 Seleziona i TOP 5 prodotti più adatti e spiega PERCHÉ sono adatti a questo pet.
@@ -468,6 +469,9 @@ REGOLE:
 - key_matches: lista di 2-4 aspetti specifici che corrispondono
 - reasoning: spiega al proprietario PERCHÉ questo prodotto fa bene al SUO pet specifico
 - Ordina per score discendente`;
+
+    // RAG: enrich with veterinary knowledge
+    systemPrompt = await enrichSystemPrompt(dbPool, () => openAiKey, systemPrompt, petAiDesc || '', { sourceService: 'promo', petId: petId });
 
     const controller = new AbortController();
     const timeoutMs = opts.timeoutMs || 45000;
