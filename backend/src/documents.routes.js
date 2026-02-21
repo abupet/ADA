@@ -27,7 +27,7 @@ const MAGIC_BYTES = [
   { mime: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47] },
   { mime: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
   { mime: "image/gif", bytes: [0x47, 0x49, 0x46] }, // GIF
-  { mime: "image/webp", bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF (WebP)
+  // WebP handled separately below (RIFF header shared with WAV/AVI)
   { mime: "image/tiff", bytes: [0x49, 0x49, 0x2a, 0x00] }, // TIFF little-endian
   { mime: "image/tiff", bytes: [0x4d, 0x4d, 0x00, 0x2a] }, // TIFF big-endian
 ];
@@ -45,6 +45,12 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function detectMimeFromBuffer(buffer) {
   if (!buffer || buffer.length < 4) return null;
+  // WebP: RIFF header (bytes 0-3) + "WEBP" at bytes 8-11
+  if (buffer.length >= 12 &&
+      buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+      buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+    return "image/webp";
+  }
   for (const entry of MAGIC_BYTES) {
     const match = entry.bytes.every((b, i) => buffer[i] === b);
     if (match) return entry.mime;

@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.3.0';
-const ADA_RELEASE_NOTES = 'B2B Phase 4: Test genetici, Formazione ECM, Marketplace, API pubbliche.';
+const ADA_VERSION = '9.3.1';
+const ADA_RELEASE_NOTES = 'Bugfix: Whisper multipart, transcription status, WebP detection, role whitelist.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
@@ -223,8 +223,10 @@ function getActiveRole() {
                 if (stored === ROLE_VETERINARIO) return ROLE_VETERINARIO;
                 if (stored === 'admin_brand') return 'admin_brand';
                 if (stored === 'super_admin') return 'super_admin';
-                // Default: last saved or veterinario
-                return stored || ROLE_VETERINARIO;
+                if (stored === 'breeder') return 'breeder';
+                if (stored === 'vet_int') return 'vet_int';
+                if (stored === 'vet_ext') return 'vet_ext';
+                return ROLE_VETERINARIO;
             }
         }
         // For vet_int/vet_ext JWT roles, default to veterinario
