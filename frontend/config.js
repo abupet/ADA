@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.26.0';
-const ADA_RELEASE_NOTES = 'UI/UX redesign: design system teal/amber, DM Sans, Lucide icons, bottom nav, chip selectors, SOAP button hierarchy, communication CSS migration, empty states, accessibility improvements.';
+const ADA_VERSION = '8.26.1';
+const ADA_RELEASE_NOTES = 'Fix: sezione Piani Nutrizionali si duplicava in Archivio Sanitario ad ogni click.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)
