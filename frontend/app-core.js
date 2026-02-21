@@ -443,6 +443,18 @@ async function navigateToPage(page) {
     if (page === 'booking') {
         try { if (typeof loadBookingPage === 'function') loadBookingPage(); } catch(e) { console.error('[CORE] loadBookingPage failed:', e); }
     }
+    if (page === 'shared-records') {
+        try { if (typeof loadSharedRecords === 'function') loadSharedRecords(); } catch(e) { console.error('[CORE] loadSharedRecords failed:', e); }
+    }
+    if (page === 'teleconsult') {
+        try { if (typeof loadTeleconsultPage === 'function') loadTeleconsultPage(); } catch(e) { console.error('[CORE] loadTeleconsultPage failed:', e); }
+    }
+    if (page === 'diagnostics') {
+        try { if (typeof loadDiagnosticsPage === 'function') loadDiagnosticsPage(); } catch(e) { console.error('[CORE] loadDiagnosticsPage failed:', e); }
+    }
+    if (page === 'breeder-milestones') {
+        try { if (typeof loadLitterMilestones === 'function') loadLitterMilestones(); } catch(e) { console.error('[CORE] loadLitterMilestones failed:', e); }
+    }
     syncLangSelectorsForCurrentDoc();
 
     // Update document AI buttons based on role

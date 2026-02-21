@@ -1,5 +1,23 @@
 # Release Notes (cumulative)
 
+## v9.1.0 — B2B Phase 2: Milestone, Shared Records, Teleconsult, Diagnostica
+
+### Nuove funzionalità
+- **Milestone Cucciolate**: template milestone automatici per specie (25 template dog/cat), generazione milestone da data nascita, tracking peso cuccioli, completamento milestone
+- **Passaporto Sanitario Potenziato**: generazione passaporto con dati completi (vaccinazioni, pesi, documenti), QR code token, visualizzazione per owner/vet/breeder
+- **Documenti Clinici Condivisi**: sistema consensi clinici, upload/download documenti condivisi tra vet con controllo accesso basato su consenso
+- **Teleconsulti**: richiesta teleconsulto specialistico, gestione sessioni (scheduled/in_progress/completed), note teleconsulto con condivisione selettiva
+- **Diagnostica**: pannelli diagnostici predefiniti (11 pannelli: emocromo, biochimico, urine, ecc.), registrazione risultati con range e valori, notifiche risultati per proprietari/vet referenti
+
+### Modifiche tecniche
+- Migration SQL 029 (litter_milestones, puppy_weights, milestone_templates), 030 (clinical_consents, shared_clinical_documents, teleconsult_sessions/notes), 031 (diagnostic_panels, diagnostic_results, result_notifications)
+- Nuove route: `shared-records.routes.js`, `teleconsult.routes.js`, `diagnostics.routes.js`
+- Route breeder potenziate: 8 nuovi endpoint (milestone CRUD, pesi cuccioli, generazione passaporto)
+- Frontend: `app-shared-records.js`, `app-teleconsult.js`, `app-diagnostics.js`, milestone/passaporto in `app-breeder.js`
+- RBAC aggiornato per nuove pagine (shared-records, teleconsult, diagnostics) su tutti i ruoli vet/breeder
+- Sidebar vet e breeder con nuove voci navigazione
+- Tipo conversazione 'teleconsult' aggiunto al sistema messaggistica
+
 ## v9.0.0 — B2B Phase 1: Breeder Hub + Referral Workflow + Booking
 
 ### Nuove funzionalità

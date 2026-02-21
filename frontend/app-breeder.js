@@ -157,10 +157,109 @@
         }
     }
 
+    // ── Phase 2: Litter Milestones ──
+
+    var _currentMilestoneLitterId = null;
+
+    async function loadLitterMilestones(litterId) {
+        if (litterId) _currentMilestoneLitterId = litterId;
+        var lid = _currentMilestoneLitterId;
+        var page = document.getElementById('page-breeder-milestones');
+        if (!page) return;
+        if (!lid) { page.innerHTML = '<p style="color:#666;padding:16px">Seleziona una cucciolata dalla pagina Cucciolate.</p>'; return; }
+        page.innerHTML = '<div class="loading-container"><div class="loading-spinner"></div><p>Caricamento milestone...</p></div>';
+
+        try {
+            var resp = await fetch(API_BASE_URL + '/api/breeder/litters/' + lid + '/milestones', {
+                headers: { 'Authorization': 'Bearer ' + getAuthToken() }
+            });
+            if (!resp.ok) throw new Error('Errore ' + resp.status);
+            var data = await resp.json();
+            var milestones = data.milestones || [];
+
+            var html = '<h2 style="margin:0 0 16px">Milestone Cucciolata</h2>' +
+                '<button class="btn" onclick="_generateMilestones(\'' + lid + '\')" style="background:#4A90D9;color:#fff;margin-bottom:16px">Genera Milestone da Template</button>';
+
+            if (!milestones.length) {
+                html += '<p style="color:#666">Nessuna milestone. Usa il pulsante sopra per generarle automaticamente.</p>';
+            } else {
+                for (var i = 0; i < milestones.length; i++) {
+                    var m = milestones[i];
+                    var statusColor = m.status === 'completed' ? '#27AE60' : m.status === 'overdue' ? '#E74C3C' : m.status === 'skipped' ? '#95A5A6' : '#F39C12';
+                    html += '<div style="border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:8px;border-left:4px solid ' + statusColor + '">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+                            '<div><strong>' + (m.title || '') + '</strong>' +
+                                '<span style="background:' + statusColor + ';color:#fff;padding:2px 6px;border-radius:8px;font-size:10px;margin-left:8px">' + (m.status || '') + '</span>' +
+                            '</div>' +
+                            '<div style="font-size:12px;color:#888">' + (m.due_date || '') + '</div>' +
+                        '</div>' +
+                        (m.description ? '<div style="font-size:13px;color:#666;margin-top:4px">' + m.description + '</div>' : '') +
+                        (m.status !== 'completed' && m.status !== 'skipped' ? '<button onclick="_completeMilestone(\'' + m.milestone_id + '\')" style="margin-top:6px;padding:4px 12px;background:#27AE60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Completa</button>' : '') +
+                    '</div>';
+                }
+            }
+            page.innerHTML = html;
+        } catch (e) {
+            page.innerHTML = '<div class="error-message">Errore: ' + e.message + '</div>';
+        }
+    }
+
+    async function _generateMilestones(litterId) {
+        try {
+            var resp = await fetch(API_BASE_URL + '/api/breeder/litters/' + litterId + '/generate-milestones', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }
+            });
+            if (!resp.ok) { var errData = await resp.json().catch(function() { return {}; }); throw new Error(errData.error || 'Errore ' + resp.status); }
+            var data = await resp.json();
+            if (typeof showToast === 'function') showToast('Generate ' + (data.count || 0) + ' milestone!', 'success');
+            loadLitterMilestones(litterId);
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        }
+    }
+
+    async function _completeMilestone(milestoneId) {
+        try {
+            var resp = await fetch(API_BASE_URL + '/api/breeder/milestones/' + milestoneId, {
+                method: 'PATCH',
+                headers: { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'completed', completed_date: new Date().toISOString().slice(0, 10) })
+            });
+            if (!resp.ok) throw new Error('Errore ' + resp.status);
+            if (typeof showToast === 'function') showToast('Milestone completata!', 'success');
+            loadLitterMilestones();
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Errore: ' + e.message, 'error');
+        }
+    }
+
+    // ── Phase 2: Health Passport ──
+
+    async function generatePassport(petId) {
+        try {
+            var resp = await fetch(API_BASE_URL + '/api/breeder/pets/' + petId + '/passport/generate', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getAuthToken(), 'Content-Type': 'application/json' }
+            });
+            if (!resp.ok) { var errData = await resp.json().catch(function() { return {}; }); throw new Error(errData.error || 'Errore ' + resp.status); }
+            var data = await resp.json();
+            if (typeof showToast === 'function') showToast('Passaporto sanitario generato!', 'success');
+            return data.passport;
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Errore passaporto: ' + e.message, 'error');
+            return null;
+        }
+    }
+
     global.loadBreederDashboard = loadBreederDashboard;
     global.loadBreederLitters = loadBreederLitters;
     global._showNewLitterModal = _showNewLitterModal;
     global._closeBreederModal = _closeBreederModal;
     global._submitNewLitter = _submitNewLitter;
+    global.loadLitterMilestones = loadLitterMilestones;
+    global._generateMilestones = _generateMilestones;
+    global._completeMilestone = _completeMilestone;
+    global.generatePassport = generatePassport;
 
 })(window);

@@ -234,6 +234,192 @@ function breederRouter({ requireAuth }) {
     }
   });
 
+  // ── Phase 2: Litter Milestones ──
+
+  router.get("/api/breeder/litters/:litterId/milestones", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { litterId } = req.params;
+      const litterCheck = await pool.query("SELECT * FROM litters WHERE litter_id = $1 AND breeder_user_id = $2", [litterId, userId]);
+      if (!litterCheck.rows[0]) return res.status(404).json({ error: "litter_not_found" });
+      const { rows } = await pool.query(
+        "SELECT * FROM litter_milestones WHERE litter_id = $1 ORDER BY due_date ASC, created_at ASC",
+        [litterId]
+      );
+      res.json({ milestones: rows });
+    } catch (e) {
+      console.error("GET /api/breeder/litters/:id/milestones error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  router.patch("/api/breeder/milestones/:milestoneId", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { milestoneId } = req.params;
+      const { status, completed_date, notes } = req.body;
+      const check = await pool.query(
+        "SELECT m.* FROM litter_milestones m JOIN litters l ON m.litter_id = l.litter_id WHERE m.milestone_id = $1 AND l.breeder_user_id = $2",
+        [milestoneId, userId]
+      );
+      if (!check.rows[0]) return res.status(404).json({ error: "not_found" });
+      const sets = []; const vals = [milestoneId]; let idx = 2;
+      if (status) { sets.push(`status = $${idx}`); vals.push(status); idx++; }
+      if (completed_date) { sets.push(`completed_date = $${idx}`); vals.push(completed_date); idx++; }
+      if (notes !== undefined) { sets.push(`notes = $${idx}`); vals.push(notes); idx++; }
+      if (!sets.length) return res.status(400).json({ error: "no_fields" });
+      sets.push("updated_at = NOW()");
+      const { rows } = await pool.query(`UPDATE litter_milestones SET ${sets.join(", ")} WHERE milestone_id = $1 RETURNING *`, vals);
+      res.json({ milestone: rows[0] });
+    } catch (e) {
+      console.error("PATCH /api/breeder/milestones/:id error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  router.post("/api/breeder/litters/:litterId/generate-milestones", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { litterId } = req.params;
+      const litterCheck = await pool.query("SELECT * FROM litters WHERE litter_id = $1 AND breeder_user_id = $2", [litterId, userId]);
+      if (!litterCheck.rows[0]) return res.status(404).json({ error: "litter_not_found" });
+      const litter = litterCheck.rows[0];
+      const birthDate = litter.actual_birth_date || litter.expected_birth_date;
+      if (!birthDate) return res.status(400).json({ error: "birth_date_required" });
+
+      const { rows: templates } = await pool.query(
+        "SELECT * FROM milestone_templates WHERE species = $1 AND status = 'active' ORDER BY day_offset ASC",
+        [litter.species || 'dog']
+      );
+      if (!templates.length) return res.status(404).json({ error: "no_templates" });
+
+      const created = [];
+      for (const t of templates) {
+        const dueDate = new Date(birthDate);
+        dueDate.setDate(dueDate.getDate() + t.day_offset);
+        const { rows } = await pool.query(
+          `INSERT INTO litter_milestones (litter_id, template_id, title, description, category, due_date, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+           ON CONFLICT DO NOTHING RETURNING *`,
+          [litterId, t.template_id, t.title, t.description, t.category, dueDate.toISOString().slice(0, 10)]
+        );
+        if (rows[0]) created.push(rows[0]);
+      }
+      res.status(201).json({ milestones: created, count: created.length });
+    } catch (e) {
+      console.error("POST /api/breeder/litters/:id/generate-milestones error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // ── Phase 2: Puppy Weights ──
+
+  router.get("/api/breeder/pets/:petId/weights", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { petId } = req.params;
+      const petCheck = await pool.query("SELECT * FROM pets WHERE pet_id = $1 AND owner_user_id = $2", [petId, userId]);
+      if (!petCheck.rows[0]) return res.status(404).json({ error: "pet_not_found" });
+      const { rows } = await pool.query(
+        "SELECT * FROM puppy_weights WHERE pet_id = $1 ORDER BY measured_at DESC",
+        [petId]
+      );
+      res.json({ weights: rows });
+    } catch (e) {
+      console.error("GET /api/breeder/pets/:id/weights error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  router.post("/api/breeder/pets/:petId/weights", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { petId } = req.params;
+      const { weight_grams, measured_at, notes } = req.body;
+      if (!weight_grams || weight_grams <= 0) return res.status(400).json({ error: "weight_required" });
+      const petCheck = await pool.query("SELECT * FROM pets WHERE pet_id = $1 AND owner_user_id = $2", [petId, userId]);
+      if (!petCheck.rows[0]) return res.status(404).json({ error: "pet_not_found" });
+      const { rows } = await pool.query(
+        `INSERT INTO puppy_weights (pet_id, weight_grams, measured_at, notes, recorded_by)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [petId, weight_grams, measured_at || new Date().toISOString(), notes || null, userId]
+      );
+      res.status(201).json({ weight: rows[0] });
+    } catch (e) {
+      console.error("POST /api/breeder/pets/:id/weights error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  // ── Phase 2: Health Passports ──
+
+  router.post("/api/breeder/pets/:petId/passport/generate", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
+    try {
+      const userId = req.user?.sub;
+      const { petId } = req.params;
+      const petCheck = await pool.query(
+        `SELECT p.*, l.breed AS litter_breed, l.species AS litter_species
+         FROM pets p LEFT JOIN litters l ON p.litter_id = l.litter_id
+         WHERE p.pet_id = $1 AND p.owner_user_id = $2`,
+        [petId, userId]
+      );
+      if (!petCheck.rows[0]) return res.status(404).json({ error: "pet_not_found" });
+      const pet = petCheck.rows[0];
+
+      // Gather passport data
+      const [vaxRes, weightRes, docsRes] = await Promise.all([
+        pool.query("SELECT * FROM pet_vaccinations WHERE pet_id = $1 ORDER BY administered_date", [petId]),
+        pool.query("SELECT * FROM puppy_weights WHERE pet_id = $1 ORDER BY measured_at", [petId]).catch(() => ({ rows: [] })),
+        pool.query("SELECT document_id, title, document_type, created_at FROM documents WHERE pet_id = $1 ORDER BY created_at", [petId]).catch(() => ({ rows: [] })),
+      ]);
+
+      const passportData = {
+        pet: { name: pet.name, species: pet.species, breed: pet.breed, sex: pet.sex, birthdate: pet.birthdate, microchip: pet.microchip_id || null },
+        vaccinations: vaxRes.rows,
+        weights: weightRes.rows,
+        documents: docsRes.rows,
+        generated_at: new Date().toISOString(),
+      };
+
+      const qrToken = randomUUID();
+      const existing = await pool.query("SELECT passport_id FROM health_passports WHERE pet_id = $1 AND status IN ('draft','active')", [petId]);
+      let passport;
+      if (existing.rows[0]) {
+        const { rows } = await pool.query(
+          "UPDATE health_passports SET passport_data = $1, qr_code_token = $2, status = 'active', updated_at = NOW() WHERE passport_id = $3 RETURNING *",
+          [JSON.stringify(passportData), qrToken, existing.rows[0].passport_id]
+        );
+        passport = rows[0];
+      } else {
+        const { rows } = await pool.query(
+          `INSERT INTO health_passports (pet_id, breeder_user_id, qr_code_token, passport_data, status)
+           VALUES ($1, $2, $3, $4, 'active') RETURNING *`,
+          [petId, userId, qrToken, JSON.stringify(passportData)]
+        );
+        passport = rows[0];
+      }
+      res.status(201).json({ passport });
+    } catch (e) {
+      console.error("POST /api/breeder/pets/:id/passport/generate error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  router.get("/api/breeder/pets/:petId/passport", requireAuth, requireRole(["breeder", "owner", "vet_int", "vet", "super_admin"]), async (req, res) => {
+    try {
+      const { petId } = req.params;
+      const { rows } = await pool.query(
+        "SELECT * FROM health_passports WHERE pet_id = $1 AND status = 'active' ORDER BY updated_at DESC LIMIT 1",
+        [petId]
+      );
+      if (!rows[0]) return res.status(404).json({ error: "passport_not_found" });
+      res.json({ passport: rows[0] });
+    } catch (e) {
+      console.error("GET /api/breeder/pets/:id/passport error", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   return router;
 }
 

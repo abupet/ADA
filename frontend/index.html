@@ -65,6 +65,10 @@
                     <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
                     <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Profilo Sanitario</div>
                     <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-vet" style="display:none;">0</span></div>
+                    <div class="nav-section">CLINICA B2B</div>
+                    <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Documenti Condivisi</div>
+                    <div class="nav-item" data-page="teleconsult"><i data-lucide="video" class="icon"></i> Teleconsulti</div>
+                    <div class="nav-item" data-page="diagnostics"><i data-lucide="microscope" class="icon"></i> Diagnostica</div>
                 </div>
 
                 <!-- Sidebar: Proprietario -->
@@ -91,6 +95,7 @@
                     <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
                     <div class="nav-item" data-page="communication"><i data-lucide="message-circle" class="icon"></i> Messaggi <span class="badge" id="comm-unread-badge-breeder" style="display:none;">0</span></div>
                     <div class="nav-item" data-page="document"><i data-lucide="file-text" class="icon"></i> Documenti</div>
+                    <div class="nav-item" data-page="shared-records"><i data-lucide="share-2" class="icon"></i> Doc. Condivisi</div>
                 </div>
 
                 <div id="sidebar-test-demo" class="sidebar-role-section" style="display:none;">
@@ -1441,6 +1446,14 @@
             <div id="page-breeder-litters" class="page"></div>
             <!-- B2B: Booking -->
             <div id="page-booking" class="page"></div>
+            <!-- B2B Phase 2: Shared Records -->
+            <div id="page-shared-records" class="page"></div>
+            <!-- B2B Phase 2: Teleconsult -->
+            <div id="page-teleconsult" class="page"></div>
+            <!-- B2B Phase 2: Diagnostics -->
+            <div id="page-diagnostics" class="page"></div>
+            <!-- B2B Phase 2: Litter Milestones -->
+            <div id="page-breeder-milestones" class="page"></div>
 
             <!-- Page: Seed Engine (PR 14) -->
             <div id="page-seed" class="page">
@@ -1907,6 +1920,9 @@
     <script src="app-knowledge.js"></script>
     <script src="app-breeder.js"></script>
     <script src="app-booking.js"></script>
+    <script src="app-shared-records.js"></script>
+    <script src="app-teleconsult.js"></script>
+    <script src="app-diagnostics.js"></script>
 <script>
 if ('serviceWorker' in navigator && !(/localhost|127\.0\.0\.1/).test(window.location.hostname)) {
     window.addEventListener('load', function() {
