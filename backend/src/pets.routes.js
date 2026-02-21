@@ -23,6 +23,18 @@ function petsRouter({ requireAuth }) {
         const { rows } = await pool.query("SELECT * FROM pets ORDER BY updated_at DESC");
         return res.json({ pets: rows });
       }
+      if (role === "breeder") {
+        // breeder sees all own pets with litter info
+        const { rows } = await pool.query(
+          `SELECT p.*, l.breed AS litter_breed, l.status AS litter_status, l.actual_birth_date AS litter_birth_date
+           FROM pets p
+           LEFT JOIN litters l ON p.litter_id = l.litter_id
+           WHERE p.owner_user_id = $1
+           ORDER BY p.litter_id NULLS LAST, p.created_at DESC`,
+          [req.user?.sub]
+        );
+        return res.json({ pets: rows });
+      }
       if (role === "vet_ext") {
         // vet_ext sees only pets assigned to them
         const { rows } = await pool.query("SELECT * FROM pets WHERE referring_vet_user_id = $1 ORDER BY updated_at DESC", [req.user?.sub]);

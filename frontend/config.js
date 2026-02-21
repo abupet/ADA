@@ -161,7 +161,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '8.27.1';
+const ADA_VERSION = '9.0.0';
 const ADA_RELEASE_NOTES = 'Fix: sezione Piani Nutrizionali si duplicava in Archivio Sanitario ad ogni click.';
 
 // ============================================
@@ -192,6 +192,10 @@ const ROLE_PERMISSIONS = {
     vet_ext: {
         pages: ['patient', 'soap-readonly', 'owner', 'history', 'settings', 'debug', 'document', 'communication'],
         actions: ['view_profile', 'view_history', 'explain_document', 'communicate']
+    },
+    breeder: {
+        pages: ['breeder-dashboard', 'breeder-litters', 'patient', 'addpet', 'booking', 'nutrition', 'diary', 'vitals', 'medications', 'history', 'owner', 'document', 'communication', 'settings', 'debug', 'ai-petdesc'],
+        actions: ['view_profile', 'manage_litters', 'manage_programs', 'book_appointment', 'bulk_book', 'view_history', 'explain_document', 'view_vitals', 'view_medications', 'sync', 'communicate']
     },
     super_admin: {
         pages: ['admin-dashboard', 'admin-catalog', 'admin-campaigns', 'admin-wizard',
@@ -227,6 +231,7 @@ function getActiveRole() {
         if (typeof getJwtRole === 'function') {
             var jr = getJwtRole();
             if (jr === 'vet_int' || jr === 'vet_ext' || jr === 'vet') return ROLE_VETERINARIO;
+            if (jr === 'breeder') return 'breeder';
             if (jr === 'owner') return ROLE_PROPRIETARIO;
         }
         var storedRole = localStorage.getItem(ADA_ACTIVE_ROLE_KEY);
@@ -267,7 +272,7 @@ function getActiveRoles() {
 }
 
 function setActiveRoles(rolesArray) {
-    var validRoles = ['veterinario', 'vet_int', 'vet_ext', 'proprietario', 'admin_brand', 'super_admin'];
+    var validRoles = ['veterinario', 'vet_int', 'vet_ext', 'breeder', 'proprietario', 'admin_brand', 'super_admin'];
     var filtered = (rolesArray || []).filter(function(r) { return validRoles.indexOf(r) !== -1; });
     if (filtered.length === 0) filtered = ['veterinario'];
     try {
@@ -317,6 +322,7 @@ function isActionAllowedForRole(action, role) {
 function getDefaultPageForRole(role) {
     const r = role || getActiveRole();
     if (r === ROLE_PROPRIETARIO) return 'patient';
+    if (r === 'breeder') return 'breeder-dashboard';
     if (r === 'admin_brand' || r === 'super_admin') return 'admin-dashboard';
     return 'recording';
 }
@@ -678,6 +684,10 @@ function isSuperAdmin() {
 
 function isVetExt() {
     return typeof getJwtRole === 'function' && getJwtRole() === 'vet_ext';
+}
+
+function isBreeder() {
+    return typeof getJwtRole === 'function' && getJwtRole() === 'breeder';
 }
 
 function isVetInt() {

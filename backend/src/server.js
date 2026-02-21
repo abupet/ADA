@@ -23,6 +23,9 @@ const { chatbotRouter } = require("./chatbot.routes");
 const { transcriptionRouter } = require("./transcription.routes");
 const { pushRouter } = require("./push.routes");
 const { knowledgeRouter } = require("./knowledge.routes");
+const { breederRouter } = require("./breeder.routes");
+const { referralRouter } = require("./referral.routes");
+const { bookingRouter } = require("./booking.routes");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -228,7 +231,7 @@ app.post("/auth/login/v2", async (req, res) => {
     let role = user.base_role;
     let tenantId = null;
 
-    if (role === "admin_brand" || role === "super_admin") {
+    if (role === "admin_brand" || role === "super_admin" || role === "breeder") {
       const utResult = await pool.query(
         "SELECT tenant_id, role FROM user_tenants WHERE user_id = $1 LIMIT 1",
         [user.user_id]
@@ -524,6 +527,11 @@ if (process.env.DATABASE_URL) {
   app.use(transcriptionRouter({ requireAuth, getOpenAiKey, isMockEnv }));
   // --- Knowledge Base RAG routes (super_admin) ---
   app.use(knowledgeRouter({ requireAuth, upload, getOpenAiKey }));
+
+  // B2B Phase 1
+  app.use(breederRouter({ requireAuth }));
+  app.use(referralRouter({ requireAuth }));
+  app.use(bookingRouter({ requireAuth }));
 }
 
 function getOpenAiKey() {

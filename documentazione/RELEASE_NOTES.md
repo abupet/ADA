@@ -1,5 +1,22 @@
 # Release Notes (cumulative)
 
+## v9.0.0 — B2B Phase 1: Breeder Hub + Referral Workflow + Booking
+
+### Nuove funzionalità
+- **Ruolo Breeder**: nuovo ruolo `breeder` con RBAC dedicato, dashboard KPI allevamento, gestione cucciolate (litters), registrazione cuccioli, trasferimento vendita
+- **Programmi Sanitari**: breeding programs con iscrizione pet e tracking progress
+- **Calendario Vaccinale**: protocolli vaccinali per specie/razza, tracking vaccinazioni con scadenze
+- **Passaporto Sanitario Digitale**: struttura per generazione PDF/QR con storia sanitaria cuccioli
+- **Referral Workflow Potenziato**: 9 specialità referral (aggiunte neurologia, oftalmologia, oncologia, medicina interna), status tracking end-to-end (submitted→accepted→scheduled→in_progress→report_ready→closed), SLA con deadline configurabili, audit trail completo
+- **Booking Online**: catalogo servizi prenotabili con prezzi differenziati per breeder, slot di disponibilità, prenotazione singola e in blocco (breeder), collegamento referral-appuntamento
+- **Test users**: aggiunti `breeder_test@adiuvet.it` e `vet_ext_test@adiuvet.it`
+
+### Modifiche tecniche
+- Migration SQL 026 (breeder), 027 (referral workflow), 028 (booking)
+- Nuove route: `breeder.routes.js`, `referral.routes.js`, `booking.routes.js`
+- Frontend: `app-breeder.js`, `app-booking.js`, sidebar breeder
+- RBAC aggiornato per ruolo `breeder` (login, middleware, dashboard, config)
+
 ## v8.27.1
 
 ### Fix: Bug e robustezza nel codice RAG Biblioteca Veterinaria

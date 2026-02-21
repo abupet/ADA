@@ -34,6 +34,18 @@ const USERS = [
     display_name: "OwnerTestName",
     base_role: "owner",
   },
+  {
+    user_id: "test-breeder-001",
+    email: "breeder_test@adiuvet.it",
+    display_name: "Allevamento Test",
+    base_role: "breeder",
+  },
+  {
+    user_id: "test-vet-ext-001",
+    email: "vet_ext_test@adiuvet.it",
+    display_name: "VetExtTestName",
+    base_role: "vet_ext",
+  },
 ];
 
 async function main() {
@@ -79,6 +91,14 @@ async function main() {
      ON CONFLICT (user_id, tenant_id) DO NOTHING`
   );
   console.log("  ✅ admin_brand_test → Test Tenant");
+
+  console.log("Linking breeder to Test Tenant...");
+  await pool.query(
+    `INSERT INTO user_tenants (user_id, tenant_id, role)
+     VALUES ('test-breeder-001', 'tenant-test-001', 'breeder')
+     ON CONFLICT (user_id, tenant_id) DO NOTHING`
+  );
+  console.log("  ✅ breeder_test → Test Tenant");
 
   await pool.end();
   console.log("\nDone. Tutti i test user sono pronti.");

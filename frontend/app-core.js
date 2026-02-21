@@ -434,6 +434,15 @@ async function navigateToPage(page) {
     if (page === 'ai-petdesc') {
         try { if (typeof updateAiPetDescriptionUI === 'function') updateAiPetDescriptionUI(); } catch(e) {}
     }
+    if (page === 'breeder-dashboard') {
+        try { if (typeof loadBreederDashboard === 'function') loadBreederDashboard(); } catch(e) { console.error('[CORE] loadBreederDashboard failed:', e); }
+    }
+    if (page === 'breeder-litters') {
+        try { if (typeof loadBreederLitters === 'function') loadBreederLitters(); } catch(e) { console.error('[CORE] loadBreederLitters failed:', e); }
+    }
+    if (page === 'booking') {
+        try { if (typeof loadBookingPage === 'function') loadBookingPage(); } catch(e) { console.error('[CORE] loadBookingPage failed:', e); }
+    }
     syncLangSelectorsForCurrentDoc();
 
     // Update document AI buttons based on role
@@ -572,16 +581,19 @@ function applyRoleUI(role) {
     const vetSection = document.getElementById('sidebar-vet');
     const ownerSection = document.getElementById('sidebar-owner');
     const adminSection = document.getElementById('sidebar-admin');
+    const breederSection = document.getElementById('sidebar-breeder');
     const testDemoSection = document.getElementById('sidebar-test-demo');
 
     var showVet = activeRoles.indexOf(ROLE_VETERINARIO) !== -1 || activeRoles.indexOf('vet_int') !== -1 || activeRoles.indexOf('vet_ext') !== -1;
     var showOwner = activeRoles.indexOf(ROLE_PROPRIETARIO) !== -1;
     var showAdmin = activeRoles.indexOf('admin_brand') !== -1 || activeRoles.indexOf('super_admin') !== -1;
+    var showBreeder = activeRoles.indexOf('breeder') !== -1;
     var showTestDemo = _isSA && activeRoles.indexOf('super_admin') !== -1;
 
     if (vetSection) vetSection.style.display = showVet ? '' : 'none';
     if (ownerSection) ownerSection.style.display = showOwner ? '' : 'none';
     if (adminSection) adminSection.style.display = showAdmin ? '' : 'none';
+    if (breederSection) breederSection.style.display = showBreeder ? '' : 'none';
     if (testDemoSection) testDemoSection.style.display = showTestDemo ? '' : 'none';
 
     // Hide addpet nav for vet_ext
@@ -601,8 +613,8 @@ function applyRoleUI(role) {
     // Update toggle button (show primary/first role)
     const icon = document.getElementById('roleToggleIcon');
     const labelEl = document.getElementById('roleToggleLabel');
-    var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡' };
-    var roleLabelsMap = { 'veterinario': 'Veterinario', 'proprietario': 'Proprietario', 'admin_brand': 'Admin Brand', 'super_admin': 'Super Admin' };
+    var roleIcons = { 'veterinario': '🩺', 'proprietario': '🐾', 'admin_brand': '📊', 'super_admin': '⚡', 'breeder': '🏠' };
+    var roleLabelsMap = { 'veterinario': 'Veterinario', 'proprietario': 'Proprietario', 'admin_brand': 'Admin Brand', 'super_admin': 'Super Admin', 'breeder': 'Allevatore' };
     if (icon) icon.textContent = roleIcons[r] || '🩺';
     if (labelEl) labelEl.textContent = roleLabelsMap[r] || 'Veterinario';
 

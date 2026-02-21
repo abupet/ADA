@@ -1812,6 +1812,60 @@ var REFERRAL_FORMS = {
             ], required: true },
             { id: 'note', label: 'Note per il collega', type: 'textarea', placeholder: '', required: false }
         ]
+    },
+    neurologia: {
+        label: '\uD83E\uDDE0 Neurologia',
+        fields: [
+            { id: 'motivo_consulenza', label: 'Motivo della consulenza', type: 'textarea', placeholder: 'Es: Crisi convulsive ricorrenti, atassia', required: true },
+            { id: 'sintomi_neurologici', label: 'Sintomi neurologici', type: 'textarea', placeholder: 'Es: Convulsioni tipo, frequenza, durata', required: true },
+            { id: 'esordio_decorso', label: 'Esordio e decorso', type: 'textarea', placeholder: 'Es: Acuto 3 gg fa, progressivo', required: true },
+            { id: 'esami_eseguiti', label: 'Esami gi\u00e0 eseguiti', type: 'textarea', placeholder: 'Es: Emocromo, biochimico, Rx colonna', required: false },
+            { id: 'terapia_in_corso', label: 'Terapia in corso', type: 'textarea', placeholder: 'Es: Fenobarbital 2.5 mg/kg BID', required: false },
+            { id: 'video_disponibile', label: 'Video sintomi disponibile', type: 'select', options: [{ value: 'si', label: 'S\u00ec' }, { value: 'no', label: 'No' }], required: false },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [{ value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' }, { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' }, { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }], required: true },
+            { id: 'note', label: 'Note', type: 'textarea', placeholder: '', required: false }
+        ]
+    },
+    oftalmologia: {
+        label: '\uD83D\uDC41\uFE0F Oftalmologia',
+        fields: [
+            { id: 'motivo_consulenza', label: 'Motivo della consulenza', type: 'textarea', placeholder: 'Es: Occhio rosso persistente, ulcera corneale', required: true },
+            { id: 'occhio_coinvolto', label: 'Occhio coinvolto', type: 'select', options: [{ value: 'destro', label: 'Destro (OD)' }, { value: 'sinistro', label: 'Sinistro (OS)' }, { value: 'bilaterale', label: 'Bilaterale (OU)' }], required: true },
+            { id: 'sintomi', label: 'Sintomi oculari', type: 'textarea', placeholder: 'Es: Blefarospasmo, scolo, opacit\u00e0', required: true },
+            { id: 'durata', label: 'Durata', type: 'text', placeholder: 'Es: 10 giorni', required: true },
+            { id: 'test_eseguiti', label: 'Test gi\u00e0 eseguiti', type: 'textarea', placeholder: 'Es: Fluoresceina, Schirmer', required: false },
+            { id: 'terapia_in_corso', label: 'Terapia in corso', type: 'textarea', placeholder: 'Es: Tobramicina 4x/die', required: false },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [{ value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' }, { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' }, { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }], required: true },
+            { id: 'note', label: 'Note', type: 'textarea', placeholder: '', required: false }
+        ]
+    },
+    oncologia: {
+        label: '\uD83D\uDD2C Oncologia',
+        fields: [
+            { id: 'sospetto', label: 'Sospetto neoplasia', type: 'textarea', placeholder: 'Es: Massa sottocutanea, FNA sospetto mastocitoma', required: true },
+            { id: 'localizzazione', label: 'Localizzazione', type: 'textarea', placeholder: 'Es: Fianco dx, 3x4cm, mobile', required: true },
+            { id: 'evoluzione', label: 'Evoluzione temporale', type: 'text', placeholder: 'Es: Crescita rapida ultimo mese', required: true },
+            { id: 'esami', label: 'Esami diagnostici', type: 'textarea', placeholder: 'Es: FNA, Rx torace, eco addome', required: false },
+            { id: 'istologico', label: 'Citologia/Istologia', type: 'textarea', placeholder: 'Es: Mastocitoma grado II', required: false },
+            { id: 'stato_generale', label: 'Stato generale', type: 'textarea', placeholder: 'Es: BCS 4/9, appetito ok', required: true },
+            { id: 'richiesta', label: 'Cosa chiedo', type: 'textarea', placeholder: 'Es: Stadiazione + parere chemio', required: true },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [{ value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' }, { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' }, { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }], required: true },
+            { id: 'note', label: 'Note', type: 'textarea', placeholder: '', required: false }
+        ]
+    },
+    medicina_interna: {
+        label: '\uD83E\uDE7A Medicina Interna',
+        fields: [
+            { id: 'motivo', label: 'Motivo consulenza', type: 'textarea', placeholder: 'Es: PU/PD da 2 mesi, dimagrimento', required: true },
+            { id: 'sintomi', label: 'Sintomi e durata', type: 'textarea', placeholder: 'Es: Poliuria, polidipsia, calo peso', required: true },
+            { id: 'iter_diagnostico', label: 'Iter diagnostico', type: 'textarea', placeholder: 'Es: Emocromo, biochimico, urine, T4', required: false },
+            { id: 'risultati', label: 'Risultati anomali', type: 'textarea', placeholder: 'Es: ALP 450, peso specifico 1.008', required: false },
+            { id: 'terapie', label: 'Terapie in corso', type: 'textarea', placeholder: 'Es: Dieta renale', required: false },
+            { id: 'patologie_pregresse', label: 'Patologie pregresse', type: 'textarea', placeholder: 'Es: IBD 2 anni fa', required: false },
+            { id: 'richiesta', label: 'Cosa chiedo', type: 'textarea', placeholder: 'Es: Inquadramento PU/PD', required: true },
+            { id: 'urgenza', label: 'Urgenza', type: 'select', options: [{ value: 'entro_24h', label: '\uD83D\uDD34 Entro 24h' }, { value: 'entro_1_settimana', label: '\uD83D\uDFE1 Entro 1 settimana' }, { value: 'programmabile', label: '\uD83D\uDFE2 Programmabile' }], required: true },
+            { id: 'note', label: 'Note', type: 'textarea', placeholder: '', required: false }
+        ]
     }
 };
 
