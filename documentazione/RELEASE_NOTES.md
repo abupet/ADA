@@ -1,5 +1,18 @@
 # Release Notes (cumulative)
 
+## v9.3.1 — Bugfix: Whisper, WebP Detection, Role Whitelist
+
+### Bug fix
+- **BUG-01 (High)**: Whisper API ora usa correttamente multipart/form-data con file audio binario invece di JSON con URL — le trascrizioni in MODE=REAL funzionano
+- **BUG-02 (High)**: Check API key spostato prima di SET `processing` — se manca la chiave, lo stato diventa `failed` invece di restare bloccato in `processing`
+- **BUG-03 (Medium)**: WebP detection verifica anche byte 8-11 (`WEBP`) oltre all'header RIFF — file WAV/AVI non vengono più accettati come immagini WebP
+- **BUG-04 (Medium)**: Whitelist `getActiveRole()` per super_admin ora include `breeder`, `vet_int`, `vet_ext`; rimosso fallback `stored ||` che poteva restituire ruoli non validati
+
+### File modificati
+- `backend/src/transcription.routes.js` — BUG-01, BUG-02
+- `backend/src/documents.routes.js` — BUG-03
+- `frontend/config.js` — BUG-04
+
 ## v9.3.0 — B2B Phase 4: Scalabilità ed Ecosistema
 
 ### Nuove funzionalità

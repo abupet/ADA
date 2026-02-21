@@ -61,19 +61,48 @@ function transcriptionRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       if (!recQ.rows[0]) return res.status(404).json({ error: "not_found" });
       const rec = recQ.rows[0];
       if (rec.transcription_status === "completed") return res.json({ status: "already_completed" });
-      await pool.query("UPDATE call_recordings SET transcription_status = 'processing' WHERE recording_id = $1", [recordingId]);
       let txText, txSegs;
       if (isMockEnv) {
+        await pool.query("UPDATE call_recordings SET transcription_status = 'processing' WHERE recording_id = $1", [recordingId]);
         txText = MOCK_TX.text;
         txSegs = JSON.stringify(MOCK_TX.segments);
       } else {
         const apiKey = getOpenAiKey();
-        if (!apiKey) return res.status(500).json({ error: "openai_key_not_configured" });
+        if (!apiKey) {
+          await pool.query("UPDATE call_recordings SET transcription_status = 'failed' WHERE recording_id = $1", [recordingId]);
+          return res.status(500).json({ error: "openai_key_not_configured" });
+        }
+        await pool.query("UPDATE call_recordings SET transcription_status = 'processing' WHERE recording_id = $1", [recordingId]);
         try {
+          // Validate recording URL: must be HTTPS to prevent SSRF
+          const audioUrl = new URL(rec.recording_url);
+          if (audioUrl.protocol !== "https:") throw new Error("Recording URL must use HTTPS");
+          // Block private/internal IPs
+          const host = audioUrl.hostname.toLowerCase();
+          if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.") || host.endsWith(".internal") || host.endsWith(".local")) {
+            throw new Error("Recording URL points to internal host");
+          }
+          // Download audio file from URL
+          const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // 25 MB (Whisper API limit)
+          const audioResp = await fetch(rec.recording_url);
+          if (!audioResp.ok) throw new Error("Audio download failed: " + audioResp.status);
+          const contentLength = parseInt(audioResp.headers.get("content-length") || "0", 10);
+          if (contentLength > MAX_AUDIO_SIZE) throw new Error("Audio file too large: " + contentLength);
+          const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+          if (audioBuffer.length > MAX_AUDIO_SIZE) throw new Error("Audio file too large: " + audioBuffer.length);
+          // Determine filename from URL or fallback
+          const urlPath = audioUrl.pathname;
+          const fileName = urlPath.split("/").pop() || "audio.webm";
+          // Build multipart/form-data
+          const formData = new FormData();
+          formData.append("file", new Blob([audioBuffer]), fileName);
+          formData.append("model", "whisper-1");
+          formData.append("response_format", "verbose_json");
+          formData.append("language", "it");
           const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
             method: "POST",
-            headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: "whisper-1", file: rec.recording_url, response_format: "verbose_json", language: "it" })
+            headers: { Authorization: "Bearer " + apiKey },
+            body: formData
           });
           if (!r.ok) throw new Error("OpenAI " + r.status);
           const result = await r.json();
