@@ -717,14 +717,6 @@ function initRoleSystem() {
 
     const role = getActiveRole();
     applyRoleUI(role);
-
-    // Navigate to default page for non-vet roles (vet defaults to recording which is already active in HTML)
-    if (role && role !== ROLE_VETERINARIO && role !== 'vet_ext') {
-        var defaultPage = typeof getDefaultPageForRole === 'function' ? getDefaultPageForRole(role) : null;
-        if (defaultPage) {
-            navigateToPage(defaultPage);
-        }
-    }
 }
 
 function saveCurrentPageState() {
