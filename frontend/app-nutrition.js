@@ -2269,6 +2269,10 @@
         var container = document.getElementById('historyList');
         if (!container) return;
 
+        // Remove previous nutrition section to avoid duplicates on re-navigation
+        var prev = container.querySelector('[data-nutrition-history]');
+        if (prev) prev.remove();
+
         fetchApi('/api/nutrition/plans/' + encodeURIComponent(String(petId)) + '/all', { method: 'GET' })
             .then(function(rr) { return rr.ok ? rr.json() : { plans: [] }; })
             .then(function(data) {
@@ -2276,6 +2280,7 @@
                 if (plans.length === 0) return;
 
                 var section = document.createElement('div');
+                section.setAttribute('data-nutrition-history', '1');
                 section.style.cssText = 'margin-top:20px;';
                 section.innerHTML = '<h4 style="font-size:14px;color:#1e3a5f;margin-bottom:8px;">🥗 Piani Nutrizionali</h4>';
 
