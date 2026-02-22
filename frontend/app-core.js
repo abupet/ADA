@@ -623,19 +623,16 @@ function applyRoleUI(role) {
     const ownerSection = document.getElementById('sidebar-owner');
     const adminSection = document.getElementById('sidebar-admin');
     const breederSection = document.getElementById('sidebar-breeder');
-    const testDemoSection = document.getElementById('sidebar-test-demo');
 
     var showVet = activeRoles.indexOf(ROLE_VETERINARIO) !== -1 || activeRoles.indexOf('vet_int') !== -1 || activeRoles.indexOf('vet_ext') !== -1;
     var showOwner = activeRoles.indexOf(ROLE_PROPRIETARIO) !== -1;
     var showAdmin = activeRoles.indexOf('admin_brand') !== -1 || activeRoles.indexOf('super_admin') !== -1;
     var showBreeder = activeRoles.indexOf('breeder') !== -1;
-    var showTestDemo = _isSA && activeRoles.indexOf('super_admin') !== -1;
 
     if (vetSection) vetSection.style.display = showVet ? '' : 'none';
     if (ownerSection) ownerSection.style.display = showOwner ? '' : 'none';
     if (adminSection) adminSection.style.display = showAdmin ? '' : 'none';
     if (breederSection) breederSection.style.display = showBreeder ? '' : 'none';
-    if (testDemoSection) testDemoSection.style.display = showTestDemo ? '' : 'none';
 
     // Hide addpet nav for vet_ext
     var jwtR = typeof getJwtRole === 'function' ? getJwtRole() : '';
@@ -644,16 +641,14 @@ function applyRoleUI(role) {
 
     // Show super_admin-only nav items
     var hasSARole = activeRoles.indexOf('super_admin') !== -1;
-    var gestEl = document.getElementById('nav-superadmin-gestione');
-    if (gestEl) gestEl.style.display = hasSARole ? '' : 'none';
-    var knowledgeEl = document.getElementById('nav-superadmin-knowledge');
-    if (knowledgeEl) knowledgeEl.style.display = hasSARole ? '' : 'none';
     var auditBtn = document.getElementById('debug-audit-btn');
     if (auditBtn) auditBtn.style.display = hasSARole ? '' : 'none';
 
-    // Show developer nav for vet_ext or super_admin
-    var devEl = document.getElementById('nav-developer');
-    if (devEl) devEl.style.display = (jwtR === 'vet_ext' || hasSARole) ? '' : 'none';
+    // Show GESTIONE nav-group and Seed Engine for super_admin
+    var gestioneGroup = document.getElementById('nav-group-gestione');
+    if (gestioneGroup) gestioneGroup.style.display = hasSARole ? '' : 'none';
+    var seedEl = document.getElementById('nav-seed');
+    if (seedEl) seedEl.style.display = hasSARole ? '' : 'none';
 
     // Filter nav-items with data-roles attribute based on JWT role
     document.querySelectorAll('.nav-item[data-roles]').forEach(function(item) {

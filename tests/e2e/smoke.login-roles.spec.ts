@@ -55,9 +55,10 @@ test.describe("Login per ruolo", () => {
       (window as any).applyRoleUI('super_admin');
     });
 
-    // Super admin role: sidebar-admin and TEST & DEMO should be visible
+    // Super admin role: sidebar-admin, GESTIONE group, and Seed Engine should be visible
     await expect(page.locator("#sidebar-admin")).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator("#sidebar-test-demo")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#nav-group-gestione")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#nav-seed")).toBeVisible({ timeout: 10_000 });
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });

@@ -1,5 +1,27 @@
 # Release Notes (cumulative)
 
+## v9.4.0 — Sidebar restructuring & UI cleanup
+
+### Sidebar
+- **Vet sidebar**: renamed "IL PET" group → "PAZIENTE" (vet sees pet as patient)
+- **Vet SALUTE group**: added Parametri Vitali + Farmaci nav-items (pages already existed, now accessible from sidebar)
+- **Breeder sidebar**: added "Diario" to "I MIEI ANIMALI" group
+- **Admin sidebar**: renamed "GESTIONE" group → "PROMO" (contents are all promo-related: Dashboard, Catalogo, Campagne, Importa/Esporta)
+- **New GESTIONE group** (super_admin only): collapsible nav-group containing Gestione, Biblioteca Vet, API & Webhook — moved from flat SISTEMA items
+- **Seed Engine**: consolidated from separate "TEST & DEMO" section into SISTEMA section (super_admin only)
+- **Renamed** "Importa file" → "Importa/Esporta" (sidebar + page header)
+
+### UI cleanup
+- **Comunicazioni page**: removed redundant "Messaggi" subtitle from header
+
+### File modificati
+- `frontend/index.html` — sidebar restructuring (all changes above)
+- `frontend/app-core.js` — `applyRoleUI()` updated for GESTIONE group + seed visibility
+- `frontend/app-communication.js` — removed "Messaggi" h3 subtitle
+- `frontend/config.js` — version bump to 9.4.0
+- `AGENTS.md` — version bump
+- `documentazione/RELEASE_NOTES.md` — this entry
+
 ## v9.3.6 — Fix Render deploy: explicit IPv4 bind
 
 ### Bug fix
