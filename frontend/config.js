@@ -161,7 +161,7 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.3.3';
+const ADA_VERSION = '9.3.4';
 const ADA_RELEASE_NOTES = 'Bugfix post-audit: Sidebar, Archivio Sanitario, Developer page, promo layout.';
 
 // ============================================
