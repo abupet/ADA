@@ -1,5 +1,14 @@
 # Release Notes (cumulative)
 
+## v9.3.4 — Audit backend/frontend coverage report
+
+### Documentazione
+- Aggiunto report tecnico scaricabile con audit statico approfondito delle API backend non referenziate dal frontend.
+- Evidenziati gap ad alta priorità (moduli completamente non collegati, incoerenze ruoli e naming parametri).
+
+### File modificati
+- `documentazione/REPORT_BACKEND_FRONTEND_GAP_v9.3.4.md`
+
 ## v9.3.3 — Audit bugfix: Chatbot, Nutrition, Security, Promo
 
 ### Bug fix
