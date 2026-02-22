@@ -1,5 +1,13 @@
 # Release Notes (cumulative)
 
+## v9.3.6 — Fix Render deploy: explicit IPv4 bind
+
+### Bug fix
+- **Render port scan timeout**: `server.js` now explicitly binds to `0.0.0.0` (IPv4 all interfaces) instead of relying on Node.js default (`::` IPv6). Render's port scanner requires IPv4 binding to detect the service.
+
+### File modificati
+- `backend/src/server.js` — added `"0.0.0.0"` host parameter to `app.listen()`
+
 ## v9.3.5 — Codex report verification: dead code cleanup & API-only docs
 
 ### Refactoring
