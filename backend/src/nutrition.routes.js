@@ -179,10 +179,10 @@ function nutritionRouter({ requireAuth, getOpenAiKey }) {
         const reason = req.body?.reason || null;
 
         const { rows } = await pool.query(
-          `UPDATE nutrition_plans SET status = 'rejected', validated_by = $2, validated_at = NOW(), updated_at = NOW()
+          `UPDATE nutrition_plans SET status = 'rejected', validated_by = $2, validated_at = NOW(), rejection_reason = $3, updated_at = NOW()
            WHERE plan_id = $1 AND status = 'pending'
            RETURNING *`,
-          [planId, vetUserId]
+          [planId, vetUserId, reason]
         );
 
         if (!rows[0]) return res.status(404).json({ error: "plan_not_found_or_not_pending" });

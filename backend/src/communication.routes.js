@@ -1092,9 +1092,22 @@ function communicationRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
   // POST /api/communication/conversations/:id/calls/:callId/reject
   // Chiamato dal Service Worker quando l'utente rifiuta dalla notifica push
-  router.post("/api/communication/conversations/:id/calls/:callId/reject", async (req, res) => {
+  router.post("/api/communication/conversations/:id/calls/:callId/reject", requireAuth, async (req, res) => {
     try {
       const { id: conversationId, callId } = req.params;
+      const userId = req.user?.sub;
+
+      // Verify the user is a participant of the conversation
+      if (pool) {
+        const convCheck = await pool.query(
+          "SELECT conversation_id FROM conversations WHERE conversation_id = $1 AND (owner_user_id = $2 OR vet_user_id = $2) LIMIT 1",
+          [conversationId, userId]
+        );
+        if (!convCheck.rows[0]) {
+          return res.status(403).json({ error: "not_a_participant" });
+        }
+      }
+
       // Emetti l'evento di rifiuto via WebSocket (se il server ha il riferimento)
       const io = req.app.get('io');
       if (io) {

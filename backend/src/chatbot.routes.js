@@ -209,70 +209,9 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
   const router = express.Router();
   const pool = getPool();
 
-  // POST /api/chatbot/sessions -- create a new chat session
-  router.post("/api/chatbot/sessions", requireAuth, async (req, res) => {
-    try {
-      const userId = req.user?.sub;
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
-
-      // Check if chatbot is enabled for this user
-      const enabled = await requireAiEnabled(pool, userId);
-      if (!enabled) {
-        return res.status(403).json({ error: "chatbot_disabled" });
-      }
-
-      const { pet_id } = req.body || {};
-      if (pet_id && !isValidUuid(pet_id)) {
-        return res.status(400).json({ error: "invalid_pet_id" });
-      }
-
-      const sessionId = randomUUID();
-      const now = new Date().toISOString();
-
-      await pool.query(
-        `INSERT INTO chat_sessions (session_id, owner_user_id, pet_id, status, message_count, created_at)
-         VALUES ($1, $2, $3, 'active', 0, $4)`,
-        [sessionId, userId, pet_id || null, now]
-      );
-
-      res.status(201).json({
-        session: {
-          session_id: sessionId,
-          owner_user_id: userId,
-          pet_id: pet_id || null,
-          status: "active",
-          message_count: 0,
-          created_at: now,
-        },
-      });
-    } catch (e) {
-      if (e.code === "42P01") {
-        return res.status(500).json({ error: "chat_sessions_table_not_found" });
-      }
-      console.error("POST /api/chatbot/sessions error", e);
-      res.status(500).json({ error: "server_error" });
-    }
-  });
-
-  // GET /api/chatbot/sessions -- list user sessions
-  router.get("/api/chatbot/sessions", requireAuth, async (req, res) => {
-    try {
-      const userId = req.user?.sub;
-      if (!userId) return res.status(401).json({ error: "unauthorized" });
-
-      const { rows } = await pool.query(
-        `SELECT session_id, owner_user_id, pet_id, status, message_count, summary, triage_level, created_at, last_message_at
-         FROM chat_sessions WHERE owner_user_id = $1 ORDER BY created_at DESC`,
-        [userId]
-      );
-
-      res.json({ sessions: rows });
-    } catch (e) {
-      if (e.code === "42P01") return res.json({ sessions: [] });
-      console.error("GET /api/chatbot/sessions error", e);
-      res.status(500).json({ error: "server_error" });
-    }
-  });
+  // NOTE: POST /api/chatbot/sessions and GET /api/chatbot/sessions are handled
+  // by communication.routes.js (registered first) using the conversations table.
+  // All routes below use conversations + comm_messages for consistency.
 
   // GET /api/chatbot/sessions/:id -- session detail with messages
   router.get("/api/chatbot/sessions/:id", requireAuth, async (req, res) => {
@@ -282,8 +221,8 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       if (!isValidUuid(id)) return res.status(400).json({ error: "invalid_session_id" });
 
       const sessionResult = await pool.query(
-        `SELECT session_id, owner_user_id, pet_id, status, message_count, summary, triage_level, created_at, last_message_at
-         FROM chat_sessions WHERE session_id = $1 AND owner_user_id = $2 LIMIT 1`,
+        `SELECT conversation_id AS session_id, owner_user_id, pet_id, status, message_count, subject AS summary, triage_level, created_at, updated_at AS last_message_at
+         FROM conversations WHERE conversation_id = $1 AND owner_user_id = $2 AND recipient_type = 'ai' LIMIT 1`,
         [id, userId]
       );
 
@@ -295,8 +234,8 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       let messages = [];
       try {
         const msgResult = await pool.query(
-          `SELECT message_id, session_id, role, content, triage_level, triage_action, follow_up_questions, created_at
-           FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC`,
+          `SELECT message_id, conversation_id AS session_id, ai_role AS role, content, triage_level, triage_action, follow_up_questions, created_at
+           FROM comm_messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
           [id]
         );
         messages = msgResult.rows.map((m) => ({
@@ -338,10 +277,10 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         return res.status(403).json({ error: "chatbot_disabled" });
       }
 
-      // Fetch session
+      // Fetch session from conversations table
       const sessionResult = await pool.query(
-        `SELECT session_id, owner_user_id, pet_id, status, message_count, created_at, last_message_at
-         FROM chat_sessions WHERE session_id = $1 AND owner_user_id = $2 LIMIT 1`,
+        `SELECT conversation_id AS session_id, owner_user_id, pet_id, status, message_count, created_at, updated_at AS last_message_at
+         FROM conversations WHERE conversation_id = $1 AND owner_user_id = $2 AND recipient_type = 'ai' LIMIT 1`,
         [id, userId]
       );
 
@@ -363,7 +302,7 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       if (minutesSinceUpdate > SESSION_TIMEOUT_MINUTES) {
         // Auto-close expired session
         await pool.query(
-          `UPDATE chat_sessions SET status = 'expired', last_message_at = NOW() WHERE session_id = $1`,
+          `UPDATE conversations SET status = 'closed', updated_at = NOW() WHERE conversation_id = $1`,
           [id]
         );
         return res.status(400).json({ error: "session_expired" });
@@ -377,9 +316,9 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       // Save user message
       const userMsgId = randomUUID();
       await pool.query(
-        `INSERT INTO chat_messages (message_id, session_id, role, content, created_at)
-         VALUES ($1, $2, 'user', $3, NOW())`,
-        [userMsgId, id, content.trim()]
+        `INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, delivery_status, created_at)
+         VALUES ($1, $2, $3, 'text', $4, 'user', 'read', NOW())`,
+        [userMsgId, id, userId, content.trim()]
       );
 
       // --- Build AI response ---
@@ -405,8 +344,8 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
         // Fetch last N history messages for context
         const historyResult = await pool.query(
-          `SELECT role, content FROM chat_messages
-           WHERE session_id = $1
+          `SELECT ai_role AS role, content FROM comm_messages
+           WHERE conversation_id = $1
            ORDER BY created_at DESC LIMIT $2`,
           [id, MAX_HISTORY_MESSAGES]
         );
@@ -461,18 +400,18 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       // Save assistant message
       const assistantMsgId = randomUUID();
       await pool.query(
-        `INSERT INTO chat_messages (message_id, session_id, role, content, triage_level, triage_action, follow_up_questions, created_at)
-         VALUES ($1, $2, 'assistant', $3, $4, $5, $6, NOW())`,
+        `INSERT INTO comm_messages (message_id, conversation_id, sender_id, type, content, ai_role, triage_level, triage_action, follow_up_questions, delivery_status, created_at)
+         VALUES ($1, $2, 'ada-assistant', 'text', $3, 'assistant', $4, $5, $6, 'read', NOW())`,
         [assistantMsgId, id, assistantContent, triageData.level, triageData.action, JSON.stringify(triageData.follow_up)]
       );
 
-      // Update session stats
+      // Update conversation stats
       await pool.query(
-        `UPDATE chat_sessions
+        `UPDATE conversations
          SET message_count = message_count + 2,
              triage_level = $1,
-             last_message_at = NOW()
-         WHERE session_id = $2`,
+             updated_at = NOW()
+         WHERE conversation_id = $2`,
         [triageData.level, id]
       );
 
@@ -506,7 +445,7 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
       // Verify session belongs to user
       const sessionResult = await pool.query(
-        `SELECT session_id, status FROM chat_sessions WHERE session_id = $1 AND owner_user_id = $2 LIMIT 1`,
+        `SELECT conversation_id AS session_id, status FROM conversations WHERE conversation_id = $1 AND owner_user_id = $2 AND recipient_type = 'ai' LIMIT 1`,
         [id, userId]
       );
 
@@ -522,8 +461,8 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       let summary = "";
       try {
         const msgResult = await pool.query(
-          `SELECT role, content FROM chat_messages
-           WHERE session_id = $1
+          `SELECT ai_role AS role, content FROM comm_messages
+           WHERE conversation_id = $1
            ORDER BY created_at DESC LIMIT 6`,
           [id]
         );
@@ -544,13 +483,13 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
       }
 
       await pool.query(
-        `UPDATE chat_sessions SET status = 'closed', summary = $1, closed_at = NOW(), last_message_at = NOW() WHERE session_id = $2`,
+        `UPDATE conversations SET status = 'closed', subject = $1, ended_at = NOW(), updated_at = NOW() WHERE conversation_id = $2`,
         [summary || null, id]
       );
 
       res.json({ ok: true, summary: summary || null });
     } catch (e) {
-      if (e.code === "42P01") return res.status(500).json({ error: "chat_sessions_table_not_found" });
+      if (e.code === "42P01") return res.status(500).json({ error: "conversations_table_not_found" });
       console.error("POST /api/chatbot/sessions/:id/close error", e);
       res.status(500).json({ error: "server_error" });
     }
@@ -565,7 +504,7 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
 
       // Verify session belongs to user
       const sessionResult = await pool.query(
-        `SELECT session_id FROM chat_sessions WHERE session_id = $1 AND owner_user_id = $2 LIMIT 1`,
+        `SELECT conversation_id FROM conversations WHERE conversation_id = $1 AND owner_user_id = $2 AND recipient_type = 'ai' LIMIT 1`,
         [id, userId]
       );
 
@@ -573,12 +512,12 @@ function chatbotRouter({ requireAuth, getOpenAiKey, isMockEnv }) {
         return res.status(404).json({ error: "session_not_found" });
       }
 
-      // chat_messages has ON DELETE CASCADE from chat_sessions, so just delete the session
-      await pool.query(`DELETE FROM chat_sessions WHERE session_id = $1`, [id]);
+      // comm_messages has ON DELETE CASCADE from conversations, so just delete the conversation
+      await pool.query(`DELETE FROM conversations WHERE conversation_id = $1`, [id]);
 
       res.json({ ok: true, deleted: id });
     } catch (e) {
-      if (e.code === "42P01") return res.status(500).json({ error: "chat_sessions_table_not_found" });
+      if (e.code === "42P01") return res.status(500).json({ error: "conversations_table_not_found" });
       console.error("DELETE /api/chatbot/sessions/:id error", e);
       res.status(500).json({ error: "server_error" });
     }
