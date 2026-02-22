@@ -170,7 +170,7 @@ Rispondi SOLO con un JSON array di item con: category, title, description, recom
     }
   });
 
-  // PATCH /api/preventive-care/plans/:planId/approve — approve a plan
+  // PATCH /api/preventive-care/plans/:planId/approve — API-only: vet approval (UI not yet connected)
   router.patch("/api/preventive-care/plans/:planId/approve", requireAuth, requireRole(["vet_int", "veterinario", "super_admin"]), async (req, res) => {
     try {
       const userId = req.user?.sub;
@@ -214,7 +214,7 @@ Rispondi SOLO con un JSON array di item con: category, title, description, recom
     }
   });
 
-  // GET /api/preventive-care/breeder/overview — aggregated view for breeder's pets
+  // GET /api/preventive-care/breeder/overview — API-only: breeder aggregated view (UI not yet connected)
   router.get("/api/preventive-care/breeder/overview", requireAuth, requireRole(["breeder"]), async (req, res) => {
     try {
       const userId = req.user?.sub;

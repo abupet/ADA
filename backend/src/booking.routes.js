@@ -35,7 +35,7 @@ function bookingRouter({ requireAuth }) {
     }
   });
 
-  // GET /api/booking/slots
+  // GET /api/booking/slots — API-only: used by external B2B integrations, no frontend UI
   router.get("/api/booking/slots", requireAuth, async (req, res) => {
     try {
       const { service_id, date_from, date_to } = req.query;
@@ -120,7 +120,7 @@ function bookingRouter({ requireAuth }) {
     }
   });
 
-  // PATCH cancel
+  // PATCH cancel — API-only: cancellation endpoint for external B2B integrations
   router.patch("/api/booking/appointments/:appointmentId/cancel", requireAuth, async (req, res) => {
     try {
       const userId = req.user?.sub;
@@ -138,7 +138,7 @@ function bookingRouter({ requireAuth }) {
       res.status(500).json({ error: "server_error" });
     }
   });
-  // POST /api/booking/bulk — breeder bulk booking
+  // POST /api/booking/bulk — API-only: breeder bulk booking via external integration
   router.post("/api/booking/bulk", requireAuth, requireRole(["breeder", "super_admin"]), async (req, res) => {
     try {
       const userId = req.user?.sub;
@@ -173,7 +173,7 @@ function bookingRouter({ requireAuth }) {
     }
   });
 
-  // POST /api/booking/admin/slots — vet_int crea slot
+  // POST /api/booking/admin/slots — API-only: vet_int crea slot (admin panel)
   router.post("/api/booking/admin/slots", requireAuth, requireRole(["vet_int", "vet", "super_admin"]), async (req, res) => {
     try {
       const { service_id, slot_date, start_time, end_time, max_bookings, vet_user_id } = req.body;

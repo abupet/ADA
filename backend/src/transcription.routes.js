@@ -1,5 +1,6 @@
 // backend/src/transcription.routes.js v1
 // Post-call transcription API: save recordings, trigger transcription, list recordings
+// NOTE: These endpoints are backend-only — no frontend UI is connected yet (feature incomplete)
 const express = require("express");
 const crypto = require("crypto");
 const { getPool } = require("./db");

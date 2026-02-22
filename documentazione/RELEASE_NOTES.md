@@ -1,5 +1,21 @@
 # Release Notes (cumulative)
 
+## v9.3.5 — Codex report verification: dead code cleanup & API-only docs
+
+### Refactoring
+- **Dead code removed**: `POST /api/promo/ai-match` and `POST /api/promo/analyze-match` — both superseded by `POST /api/promo/analyze-match-all`, no frontend references
+- **API-only endpoints documented**: added inline comments to booking (slots, bulk, admin/slots, cancel), preventive-care (approve, breeder/overview), and transcription routes clarifying they are backend-only / for external B2B integration
+
+### Documentazione
+- Moved Codex gap report (`REPORT_BACKEND_FRONTEND_GAP_v9.3.4.md`) from `documentazione/` to `tmp/archivio/` (analysis artifact, not operational docs)
+
+### File modificati
+- `backend/src/promo.routes.js` — removed 2 dead endpoints (~140 lines)
+- `backend/src/booking.routes.js` — added API-only comments
+- `backend/src/preventive-care.routes.js` — added API-only comments
+- `backend/src/transcription.routes.js` — added API-only header comment
+- `documentazione/REPORT_BACKEND_FRONTEND_GAP_v9.3.4.md` → `tmp/archivio/`
+
 ## v9.3.4 — Audit backend/frontend coverage report
 
 ### Documentazione
