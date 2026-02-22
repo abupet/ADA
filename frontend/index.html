@@ -59,7 +59,7 @@
                 <div id="sidebar-vet" class="sidebar-role-section">
                     <div class="nav-group" data-group="vet-pet">
                         <div class="nav-group-header" onclick="toggleNavGroup(this)">
-                            <span class="nav-group-label">IL PET</span>
+                            <span class="nav-group-label">PAZIENTE</span>
                             <i data-lucide="chevron-right" class="nav-group-chevron"></i>
                         </div>
                         <div class="nav-group-items">
@@ -84,6 +84,8 @@
                             <i data-lucide="chevron-right" class="nav-group-chevron"></i>
                         </div>
                         <div class="nav-group-items">
+                            <div class="nav-item" data-page="vitals"><i data-lucide="activity" class="icon"></i> Parametri Vitali</div>
+                            <div class="nav-item" data-page="medications"><i data-lucide="pill" class="icon"></i> Farmaci</div>
                             <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
                             <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario <span class="badge" id="historyBadge" data-testid="history-badge">0</span></div>
                             <div class="nav-item" data-page="preventive-care"><i data-lucide="shield-plus" class="icon"></i> Prevenzione</div>
@@ -101,6 +103,7 @@
                             <div class="nav-item" data-page="referral-analytics" data-roles="vet_ext"><i data-lucide="bar-chart-3" class="icon"></i> Analytics Referral</div>
                             <div class="nav-item" data-page="loyalty" data-roles="vet_ext"><i data-lucide="trophy" class="icon"></i> Loyalty</div>
                             <div class="nav-item" data-page="education" data-roles="vet_ext,vet_int"><i data-lucide="graduation-cap" class="icon"></i> Formazione</div>
+                            <div class="nav-item" data-page="developer" data-roles="vet_ext"><i data-lucide="code" class="icon"></i> API &amp; Webhook</div>
                         </div>
                     </div>
                     <div class="nav-group" data-group="vet-services">
@@ -179,6 +182,7 @@
                         </div>
                         <div class="nav-group-items">
                             <div class="nav-item" data-page="patient"><i data-lucide="paw-print" class="icon"></i> Profilo</div>
+                            <div class="nav-item" data-page="diary"><i data-lucide="book-heart" class="icon"></i> Diario</div>
                             <div class="nav-item" data-page="nutrition"><i data-lucide="salad" class="icon"></i> Nutrizione</div>
                             <div class="nav-item" data-page="history"><i data-lucide="folder-open" class="icon"></i> Archivio Sanitario</div>
                             <div class="nav-item" data-page="vaccination-calendar"><i data-lucide="calendar-heart" class="icon"></i> Calendario Vaccini</div>
@@ -200,31 +204,35 @@
                     </div>
                 </div>
 
-                <div id="sidebar-test-demo" class="sidebar-role-section" style="display:none;">
-                    <div class="nav-section">TEST & DEMO</div>
-                    <div class="nav-item seed-nav-item" data-page="seed"><i data-lucide="sprout" class="icon"></i> Seed Engine</div>
-                </div>
-
                 <!-- Sidebar: Admin Brand / Super Admin -->
                 <div id="sidebar-admin" class="sidebar-role-section" style="display:none;">
-                    <div class="nav-group" data-group="admin-manage">
+                    <div class="nav-group" data-group="admin-promo">
                         <div class="nav-group-header" onclick="toggleNavGroup(this)">
-                            <span class="nav-group-label">GESTIONE</span>
+                            <span class="nav-group-label">PROMO</span>
                             <i data-lucide="chevron-right" class="nav-group-chevron"></i>
                         </div>
                         <div class="nav-group-items">
                             <div class="nav-item" data-page="admin-dashboard"><i data-lucide="bar-chart-3" class="icon"></i> Dashboard</div>
                             <div class="nav-item" data-page="admin-catalog"><i data-lucide="package" class="icon"></i> Catalogo</div>
                             <div class="nav-item" data-page="admin-campaigns"><i data-lucide="megaphone" class="icon"></i> Campagne</div>
-                            <div class="nav-item" data-page="admin-wizard"><i data-lucide="upload" class="icon"></i> Importa file</div>
+                            <div class="nav-item" data-page="admin-wizard"><i data-lucide="upload" class="icon"></i> Importa/Esporta</div>
+                        </div>
+                    </div>
+                    <div class="nav-group" data-group="admin-gestione" id="nav-group-gestione" style="display:none;">
+                        <div class="nav-group-header" onclick="toggleNavGroup(this)">
+                            <span class="nav-group-label">GESTIONE</span>
+                            <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                        </div>
+                        <div class="nav-group-items">
+                            <div class="nav-item" data-page="superadmin-gestione"><i data-lucide="wrench" class="icon"></i> Gestione</div>
+                            <div class="nav-item" data-page="superadmin-knowledge"><i data-lucide="book-open" class="icon"></i> Biblioteca Vet</div>
+                            <div class="nav-item" data-page="developer"><i data-lucide="code" class="icon"></i> API &amp; Webhook</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="nav-section">SISTEMA</div>
-                <div class="nav-item" id="nav-superadmin-gestione" data-page="superadmin-gestione" style="display:none;"><i data-lucide="wrench" class="icon"></i> Gestione</div>
-                <div class="nav-item" id="nav-superadmin-knowledge" data-page="superadmin-knowledge" style="display:none;"><i data-lucide="book-open" class="icon"></i> Biblioteca Vet</div>
-                <div class="nav-item" id="nav-developer" data-page="developer" style="display:none;"><i data-lucide="code" class="icon"></i> API & Webhook</div>
+                <div class="nav-item" id="nav-seed" data-page="seed" style="display:none;"><i data-lucide="sprout" class="icon"></i> Seed Engine</div>
                 <div class="nav-item" data-page="settings"><i data-lucide="settings" class="icon"></i> Impostazioni</div>
                 <div class="nav-item" id="nav-debug" data-page="debug" style="display:none;"><i data-lucide="bug" class="icon"></i> Debug</div>
                 <div class="nav-item" id="nav-ai-petdesc" data-page="ai-petdesc" style="display:none;"><i data-lucide="sparkles" class="icon"></i> Identikit</div>
@@ -1205,7 +1213,7 @@
             <!-- Page: Admin Wizard (PR 4) -->
             <div id="page-admin-wizard" class="page">
                 <div class="page-header">
-                    <h2>Importa file</h2>
+                    <h2>Importa/Esporta</h2>
                 </div>
                 <div class="card">
                     <div id="admin-wizard-content"></div>

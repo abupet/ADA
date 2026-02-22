@@ -161,8 +161,8 @@ async function fetchApi(path, options = {}) {
 }
 
 // Version
-const ADA_VERSION = '9.3.6';
-const ADA_RELEASE_NOTES = 'Bugfix post-audit: Sidebar, Archivio Sanitario, Developer page, promo layout.';
+const ADA_VERSION = '9.4.0';
+const ADA_RELEASE_NOTES = 'Sidebar restructuring: vet PAZIENTE group, PROMO/GESTIONE split, seed consolidation, UI cleanup.';
 
 // ============================================
 // ROLE SYSTEM (PR 4)

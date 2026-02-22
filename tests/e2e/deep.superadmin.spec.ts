@@ -94,8 +94,8 @@ test.describe("Deep super admin pages", () => {
     await mockAllEndpoints(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
 
-    const testDemo = page.locator("#sidebar-test-demo");
-    const visible = await testDemo.isVisible().catch(() => false);
+    const seedNav = page.locator("#nav-seed");
+    const visible = await seedNav.isVisible().catch(() => false);
     expect(visible).toBe(false);
 
     expect(errors, errors.join("\n")).toHaveLength(0);

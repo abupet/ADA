@@ -21,17 +21,17 @@ test.describe("Role-based access control", () => {
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Vet: TEST & DEMO section hidden", async ({ page }) => {
+  test("@smoke Vet: Seed Engine + GESTIONE hidden", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_VET_EMAIL });
 
-    await expect(page.locator("#sidebar-test-demo")).not.toBeVisible();
-    await expect(page.locator(".seed-nav-item")).not.toBeVisible();
+    await expect(page.locator("#nav-seed")).not.toBeVisible();
+    await expect(page.locator("#nav-group-gestione")).not.toBeVisible();
 
     expect(errors, errors.join("\n")).toHaveLength(0);
   });
 
-  test("@smoke Super admin: TEST & DEMO visible, debug shows checkboxes", async ({ page }) => {
+  test("@smoke Super admin: Seed Engine + GESTIONE visible, debug shows checkboxes", async ({ page }) => {
     const errors = captureHardErrors(page);
     await login(page, { email: process.env.TEST_SUPER_ADMIN_EMAIL });
 
@@ -47,8 +47,9 @@ test.describe("Role-based access control", () => {
       (window as any).applyRoleUI('super_admin');
     });
 
-    // TEST & DEMO should be visible after switching to super_admin role
-    await expect(page.locator("#sidebar-test-demo")).toBeVisible({ timeout: 10_000 });
+    // Seed Engine and GESTIONE group should be visible after switching to super_admin role
+    await expect(page.locator("#nav-seed")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("#nav-group-gestione")).toBeVisible({ timeout: 10_000 });
 
     // Navigate to debug
     await page.locator('.nav-item[data-page="debug"]').click();

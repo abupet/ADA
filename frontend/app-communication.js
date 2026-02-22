@@ -302,7 +302,7 @@ async function initCommunication(containerId) {
     if (existingForm) return;
 
     container.innerHTML = '<div class="comm-container" data-testid="comm-container">' +
-        '<div class="comm-header"><h3>Messaggi</h3>' +
+        '<div class="comm-header">' +
         '<div style="display:flex;gap:8px;align-items:center;">' +
         '<button class="comm-btn-icon" onclick="_commStartDirectCall(\'voice_call\')" title="Chiamata vocale" style="font-size:20px;background:none;border:none;cursor:pointer;">\uD83D\uDCDE</button>' +
         '<button class="comm-btn-icon" onclick="_commStartDirectCall(\'video_call\')" title="Videochiamata" style="font-size:20px;background:none;border:none;cursor:pointer;">\uD83C\uDFA5</button>' +
