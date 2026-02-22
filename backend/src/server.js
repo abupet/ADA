@@ -294,6 +294,23 @@ function requireJwt(req, res, next) {
         .update(payload).digest("hex").substring(0, 32);
       if (sig === expected) {
         req.user = { sub: uid };
+        // Best-effort: enrich with role/display_name/email from DB
+        try {
+          const { getPool } = require("./db");
+          const p = getPool();
+          p.query(
+            "SELECT base_role, display_name, email FROM users WHERE user_id = $1 LIMIT 1",
+            [uid]
+          ).then(uRow => {
+            if (uRow.rows[0]) {
+              req.user.role = uRow.rows[0].base_role;
+              req.user.display_name = uRow.rows[0].display_name;
+              req.user.email = uRow.rows[0].email;
+            }
+            next();
+          }).catch(() => next());
+          return;
+        } catch (_) { /* proceed with sub-only if DB unavailable */ }
         return next();
       }
     }

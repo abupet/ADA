@@ -569,21 +569,18 @@ REGOLE:
 
       // --- Full pipeline (when DB + services available) ---
       const force = req.query.force === '1';
-      console.log('[PROMO-DIAG] force:', force, 'pool:', !!pool);
 
       // --- Check for cached AI recommendation matches first ---
       // NOTE: AI cached matches are always tried, even with force=1.
       // force=1 only relaxes filters on the standard algorithm fallback.
       if (pool) {
         try {
-          console.log('[PROMO-DIAG] cached path entered for petId:', petId);
           const matchesResult = await pool.query(
             `SELECT ai_recommendation_matches, ai_recommendation_matches_generated_at, name
              FROM pets WHERE pet_id = $1 LIMIT 1`,
             [petId]
           );
           const petRow = matchesResult.rows[0];
-          console.log('[PROMO-DIAG] petRow found:', !!petRow, 'hasMatches:', !!(petRow && petRow.ai_recommendation_matches));
           if (petRow && petRow.ai_recommendation_matches) {
             let matches = petRow.ai_recommendation_matches;
             if (typeof matches === 'string') {
@@ -592,7 +589,6 @@ REGOLE:
             if (Array.isArray(matches) && matches.length > 0) {
               // Pick match using round-robin rotation index from frontend
               const eligible = matches.filter(m => m.promo_item_id && !dismissed.includes(m.promo_item_id));
-              console.log('[PROMO-DIAG] eligible count:', eligible.length, 'rotationIndex:', parseInt(req.query.rotationIndex, 10) || 0);
               if (eligible.length > 0) {
                 // Try matches in rotation order — if one doesn't exist in promo_items, try next
                 const rotationIndex = parseInt(req.query.rotationIndex, 10) || 0;
@@ -608,7 +604,6 @@ REGOLE:
                       [pick.promo_item_id]
                     );
                     const candidate = itemResult.rows[0] || null;
-                    console.log('[PROMO-DIAG] checking match', pick.promo_item_id, '-> found:', !!candidate, 'service_type:', candidate?.service_type);
                     // Skip non-promo products (insurance, nutrition)
                     if (candidate && Array.isArray(candidate.service_type) &&
                         !candidate.service_type.includes('promo')) {
@@ -648,7 +643,6 @@ REGOLE:
                     serviceType: effectiveServiceType,
                   };
 
-                  console.log('[PROMO-DIAG] returning ai_cached_match:', promoItem.name);
                   return res.json({ pet_id: petId, recommendation });
                 } else {
                   // All cached matches are phantom (promo_items deleted) — clear stale data
@@ -662,7 +656,7 @@ REGOLE:
             }
           }
         } catch (cacheErr) {
-          console.warn('[PROMO-DIAG] cached path FAILED:', cacheErr.message, cacheErr.stack);
+          console.warn('[Promo] cached path error:', cacheErr.message);
           // Fall through to standard pipeline
         }
       }

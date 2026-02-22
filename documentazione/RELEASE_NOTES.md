@@ -1,5 +1,25 @@
 # Release Notes (cumulative)
 
+## v9.3.3 — Audit bugfix: Chatbot, Nutrition, Security, Promo
+
+### Bug fix
+- **BUG-01 (Critical)**: Chatbot sessioni rotte — `chatbot.routes.js` ora usa le tabelle `conversations` + `comm_messages` (unificate), allineato con `communication.routes.js` che gestisce POST/GET `/api/chatbot/sessions`. Rimossi i route handler duplicati (dead code)
+- **BUG-02 (Medium)**: Rejection reason del piano nutrizionale ora salvato in DB — aggiunta colonna `rejection_reason` a `nutrition_plans` e inclusa nella query UPDATE
+- **BUG-04 (Low)**: Signed URL auth ora arricchisce `req.user` con `role`, `display_name`, `email` dal DB (best-effort)
+- **BUG-05 (Medium)**: Route `POST /conversations/:id/calls/:callId/reject` ora verifica che l'utente sia un partecipante della conversazione + aggiunto `requireAuth`
+- **BUG-08 (Low)**: Rimossi 7 `console.log/warn('[PROMO-DIAG]...')` hardcoded in `promo.routes.js`
+
+### Migrazioni SQL
+- `039_nutrition_rejection_reason.sql` — aggiunge colonna `rejection_reason` a `nutrition_plans`
+
+### File modificati
+- `backend/src/chatbot.routes.js` — BUG-01: migrazione a tabelle unificate conversations/comm_messages
+- `backend/src/communication.routes.js` — BUG-05: participant check + requireAuth su call reject
+- `backend/src/nutrition.routes.js` — BUG-02: reason ora incluso nella query SQL
+- `backend/src/server.js` — BUG-04: signed URL auth enrichment
+- `backend/src/promo.routes.js` — BUG-08: rimosso debug logging
+- `sql/039_nutrition_rejection_reason.sql` — nuova migrazione
+
 ## v9.3.2 — Bugfix post-audit (Sidebar + Archivio + Developer)
 
 ### Fix
