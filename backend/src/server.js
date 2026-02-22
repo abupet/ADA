@@ -933,7 +933,7 @@ app.use((err, _req, res, _next) => {
   }
 });
 
-const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, () => {
+const httpServer = app.listen(Number.parseInt(PORT, 10) || 3000, "0.0.0.0", () => {
   // eslint-disable-next-line no-console
   console.log(`ADA backend listening on ${PORT}`);
   // Init WebSocket only when not in mock/CI mode
